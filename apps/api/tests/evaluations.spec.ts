@@ -26,6 +26,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  besoinsDeFormation,
   ceQuiManque,
   champsTropLongs,
   contenuDeGrilleSchema,
@@ -45,7 +46,7 @@ import { TenantDb } from '../src/db/tenant-db';
 import { AcademySuiviService } from '../src/modules/academy/academy-suivi.service';
 import { annoncerLOuverture, reconcilierLesGrilles } from '../src/modules/evaluations/circuit';
 import { EvaluationsService } from '../src/modules/evaluations/evaluations.service';
-import { initiales } from '../src/modules/evaluations/grille-cadre';
+import { grilleDuPersonnelCadre, initiales } from '../src/modules/evaluations/grille-cadre';
 
 const env = loadEnv();
 const tenantId = randomUUID();
@@ -474,7 +475,34 @@ describe('le remplissage', () => {
     expect(vue.contenu.objectifs.map((o) => texteBrut(o.texte))).toEqual([
       'Objectif fixé l’an passé n° 1',
       'Objectif fixé l’an passé n° 2',
-      '',
+    ]);
+  });
+
+  it('un objectif à l’ouverture, puis autant qu’on en ajoute, dix au plus', async () => {
+    expect(grilleVide().objectifs).toEqual([{ texte: [], niveau: null }]);
+    const cinq = Array.from({ length: 5 }, (_, i) => ({
+      texte: texteRicheDe(`Objectif n° ${i + 1}`),
+      niveau: 'B' as const,
+    }));
+    // Un objectif resté vide ne se garde pas.
+    const vue = await evaluations.enregistrer(session('awa'), agents.aissatou, ANNEE, {
+      ...complete(),
+      objectifs: [...cinq.slice(0, 2), { texte: [], niveau: null }, ...cinq.slice(2)],
+    });
+    expect(vue.contenu.objectifs.map((o) => texteBrut(o.texte))).toEqual([
+      'Objectif n° 1',
+      'Objectif n° 2',
+      'Objectif n° 3',
+      'Objectif n° 4',
+      'Objectif n° 5',
+    ]);
+    const onze = Array.from({ length: 11 }, () => cinq[0]!);
+    expect(contenuDeGrilleSchema.safeParse({ ...complete(), objectifs: onze }).success).toBe(false);
+  });
+
+  it('sans objectif de travail pour la période à venir, la grille ne part pas', () => {
+    expect(ceQuiManque({ ...complete(), objectifsAVenir: [] }, false)).toEqual([
+      'Un objectif de travail pour la période à venir',
     ]);
   });
 });
@@ -521,6 +549,21 @@ describe('les champs de la grille', () => {
     // Un objectif est du texte, sans puce ni numéro.
     const avecPuce = { ...contenu, objectifs: [{ texte: puces('Un'), niveau: 'B' }] };
     expect(contenuDeGrilleSchema.safeParse(avecPuce).success).toBe(false);
+    // Les points forts, les points faibles et les actions s'écrivent en
+    // puces : un paragraphe ou un numéro y devient une puce, à son niveau.
+    const enPuces = contenuDeGrilleSchema.parse({
+      ...contenu,
+      pointsForts: [
+        { type: 'paragraphe', niveau: 0, segments: [{ texte: 'Autonome' }] },
+        { type: 'numero', niveau: 1, segments: [{ texte: 'et rigoureux', gras: true }] },
+      ],
+      actions: 'Un atelier de planification',
+    });
+    expect(enPuces.pointsForts).toEqual([
+      { type: 'puce', niveau: 0, segments: [{ texte: 'Autonome' }] },
+      { type: 'puce', niveau: 1, segments: [{ texte: 'et rigoureux', gras: true }] },
+    ]);
+    expect(enPuces.actions).toEqual(puces('Un atelier de planification'));
     // Ce qui dépasse sa place sur le PDF ne s'enregistre pas ; l'écran le dit.
     const trop = { ...contenu, pointsForts: texteRicheDe('x'.repeat(521)) };
     expect(contenuDeGrilleSchema.safeParse(trop).success).toBe(false);
@@ -573,6 +616,32 @@ describe('les champs de la grille', () => {
     ).toBe('evaluations.formation');
   });
 
+  it('un besoin hors du catalogue se garde tel qu’il est écrit, une fois', async () => {
+    const vue = await evaluations.enregistrer(session('awa'), agents.moussa, ANNEE, {
+      ...complete(),
+      formations: [
+        { courseId: cours.gestion, titre: 'Gestion de projet' },
+        { courseId: null, titre: '  Excel avancé ' },
+        { courseId: null, titre: 'excel avancé' },
+        { courseId: null, titre: 'Prise de parole en public' },
+      ],
+    });
+    expect(vue.contenu.formations).toEqual([
+      { courseId: cours.gestion, titre: 'Gestion de projet' },
+      { courseId: null, titre: 'Excel avancé' },
+      { courseId: null, titre: 'Prise de parole en public' },
+    ]);
+    // Un titre vide n'est pas un besoin.
+    expect(
+      contenuDeGrilleSchema.parse({ ...complete(), formations: [{ courseId: null, titre: ' ' }] })
+        .formations,
+    ).toEqual([]);
+    // Le titre s'accorde au nombre.
+    expect(besoinsDeFormation(1)).toBe('Besoin de formation identifié');
+    expect(besoinsDeFormation(0)).toBe('Besoins de formation identifiés');
+    expect(besoinsDeFormation(3)).toBe('Besoins de formation identifiés');
+  });
+
   it('une grille d’avant le texte riche se relit, et s’imprime', async () => {
     const ancienne = {
       objectifs: [{ texte: 'Un objectif\nsur deux lignes', niveau: 'B' }],
@@ -593,9 +662,9 @@ describe('les champs de la grille', () => {
     );
     const vue = await evaluations.grille(session('awa'), agents.khady, ANNEE - 2);
     expect(vue.contenu.objectifs[0]!.texte).toEqual(texteRicheDe('Un objectif\nsur deux lignes'));
-    expect(vue.contenu.pointsForts).toEqual(texteRicheDe('Rigueur.'));
+    expect(vue.contenu.pointsForts).toEqual(puces('Rigueur.'));
     expect(vue.contenu.objectifsAVenir).toEqual([{ texte: 'Un objectif', echeance: null }]);
-    expect(vue.contenu.formations).toEqual([]);
+    expect(vue.contenu.formations).toEqual([{ courseId: null, titre: 'Gestion de projet' }]);
     const { pdf } = await evaluations.pdf(session('awa'), agents.khady, ANNEE - 2);
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
   });
@@ -835,6 +904,60 @@ describe('la DCH', () => {
     expect(await codeOf(() => evaluations.grille(session('ndeye'), agents.aissatou, ANNEE))).toBe(
       'evaluations.hors_perimetre',
     );
+  });
+});
+
+describe('le PDF, à la taille de ce qui est écrit', () => {
+  /** Le nombre de pages d'un PDF : ses dictionnaires de page. */
+  const pages = (pdf: Buffer) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length;
+  const imprimer = (contenu: ContenuDeGrille) =>
+    grilleDuPersonnelCadre(
+      {
+        annee: ANNEE,
+        identification: {
+          direction: 'Direction du Capital Humain',
+          departement: null,
+          service: null,
+          agent: 'Moussa NDIAYE',
+          matricule: 'EMP-002',
+          fonction: 'Chargé d’études',
+          anciennete: '3 ans',
+          nouveauAuPoste: false,
+          evaluateur: 'Awa DIOP',
+          fonctionEvaluateur: 'Cheffe du département',
+        },
+        contenu,
+        commandement: false,
+        nouveauAuPoste: false,
+        ratification: {
+          evaluateur: 'Awa DIOP',
+          envoyeeLe: null,
+          agent: 'Moussa NDIAYE',
+          valideeLe: null,
+          commentaires: '',
+        },
+        n2: null,
+      },
+      null,
+    );
+  const objectifs = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      texte: texteRicheDe(`Objectif de l’année écoulée n° ${i + 1}`),
+      niveau: 'B' as const,
+    }));
+
+  it('six pages pour un objectif comme pour cinq ; dix ont une page de suite', async () => {
+    expect(pages(await imprimer({ ...complete(), objectifs: objectifs(1) }))).toBe(6);
+    expect(pages(await imprimer({ ...complete(), objectifs: objectifs(5) }))).toBe(6);
+    const dix = await imprimer({
+      ...complete(),
+      objectifs: objectifs(10),
+      formations: Array.from({ length: 10 }, (_, i) => ({
+        courseId: null,
+        titre: `Besoin n° ${i + 1}`,
+      })),
+    });
+    expect(pages(dix)).toBe(7);
   });
 });
 

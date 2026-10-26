@@ -535,6 +535,15 @@ body {
 .editeur-riche .bn-block-content {
   padding-block: 1px;
 }
+/* Une puce encore vide se grise : celle qui attend le premier point d'un
+   champ en puces (ADR-0153). Elle reprend l'encre du texte dès qu'on écrit. */
+.editeur-riche
+  .bn-block-content[data-content-type='bulletListItem']:has(
+    > .bn-inline-content > .ProseMirror-trailingBreak:only-child
+  )::before {
+  color: var(--color-ink-muted);
+  opacity: 0.7;
+}
 
 /* ── Glissière du son du lecteur Academy ──────────────────────────────────
    La glissière native du navigateur trahissait le « lecteur web » : piste

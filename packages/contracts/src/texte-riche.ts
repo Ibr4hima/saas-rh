@@ -91,19 +91,31 @@ export function normaliserTexteRiche(t: readonly BlocDeTexteEnEntree[]): TexteRi
 }
 
 /**
- * Le schéma d'un champ : `max` caractères de texte au plus, ce que sa place
- * sur le PDF peut tenir ; des puces et des numéros, ou des paragraphes
- * seulement. Un texte simple, d'avant le texte riche, se lit encore.
+ * Ce qu'un champ admet : du texte seul, en paragraphes ; des paragraphes,
+ * des puces et des numéros ; ou des puces seulement, chaque ligne la sienne.
  */
-export function texteRicheSchema(max: number, listes: boolean) {
+export type FormeDuChamp = 'texte' | 'listes' | 'puces';
+
+/** Chaque ligne en puce, à son niveau : un paragraphe passe au premier. */
+const enPuces = (t: TexteRiche): TexteRiche =>
+  t.map((b) => ({ type: 'puce', niveau: b.niveau, segments: b.segments }));
+
+/**
+ * Le schéma d'un champ : `max` caractères de texte au plus, ce que sa place
+ * sur le PDF peut tenir, dans la forme du champ. Un texte simple, d'avant le
+ * texte riche, se lit encore ; dans un champ en puces, chacune de ses lignes
+ * devient une puce.
+ */
+export function texteRicheSchema(max: number, forme: FormeDuChamp) {
   return z
     .preprocess(
       (v) => (typeof v === 'string' ? texteRicheDe(v) : (v ?? [])),
       z.array(blocDeTexteSchema).max(300),
     )
     .transform(normaliserTexteRiche)
+    .transform((t) => (forme === 'puces' ? enPuces(t) : t))
     .refine((t) => texteBrut(t).length <= max, { message: `${max} caractères au plus` })
-    .refine((t) => listes || t.every((b) => b.type === 'paragraphe'), {
+    .refine((t) => forme !== 'texte' || t.every((b) => b.type === 'paragraphe'), {
       message: 'Ni puce ni numéro dans ce champ',
     });
 }

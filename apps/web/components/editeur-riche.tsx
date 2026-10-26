@@ -18,12 +18,13 @@ import {
   useCreateBlockNote,
   useEditorState,
 } from '@blocknote/react';
-import { memo, useCallback, useMemo, type KeyboardEvent, type MouseEvent } from 'react';
+import { memo, useCallback, useEffect, useMemo, type KeyboardEvent, type MouseEvent } from 'react';
 import {
   NIVEAU_MAX,
   normaliserTexteRiche,
   texteBrut,
   type BlocDeTexte,
+  type FormeDuChamp,
   type TexteRiche,
   type TypeDeBloc,
 } from '@teranga/contracts';
@@ -35,7 +36,8 @@ import { usePreferences } from './preferences';
    Un champ de texte mis en forme, sur BlockNote : du gras, de l'italique,
    et, quand le champ les admet, des puces et des numéros (« - » ou « 1. »
    en tête de ligne, ou la barre qui paraît sur une sélection). Rien d'autre :
-   ni titre, ni lien, ni couleur, ni souligné.
+   ni titre, ni lien, ni couleur, ni souligné. Un champ en puces n'a que des
+   puces : vide, il en montre une, grisée, qui ne s'enlève pas (ADR-0153).
 
    Ce qui s'enregistre n'est pas le document de BlockNote mais le texte riche
    des contrats (ADR-0150), que le PDF imprime : l'éditeur le lit à
@@ -60,6 +62,19 @@ const schemaTexte = BlockNoteSchema.create({
   styleSpecs,
 });
 
+/**
+ * Des puces seulement. Le paragraphe reste au schéma, que BlockNote exige :
+ * une ligne qui y passe redevient aussitôt une puce.
+ */
+const schemaPuces = BlockNoteSchema.create({
+  blockSpecs: {
+    paragraph: defaultBlockSpecs.paragraph,
+    bulletListItem: defaultBlockSpecs.bulletListItem,
+  },
+  inlineContentSpecs,
+  styleSpecs,
+});
+
 /** Des paragraphes, des puces et des numéros. */
 const schemaListes = BlockNoteSchema.create({
   blockSpecs: {
@@ -70,6 +85,9 @@ const schemaListes = BlockNoteSchema.create({
   inlineContentSpecs,
   styleSpecs,
 });
+
+/** Le schéma de chaque forme de champ. */
+const SCHEMAS = { texte: schemaTexte, listes: schemaListes, puces: schemaPuces } as const;
 
 /** Aucune invite dans le texte : une ligne vide reste vide. */
 const dictionnaire = {
@@ -101,13 +119,14 @@ const VERS_BLOCKNOTE: Record<TypeDeBloc, string> = {
 /**
  * Les blocs de BlockNote d'un texte riche : un bloc de niveau n se range
  * sous le dernier bloc de niveau n - 1, comme l'éditeur imbrique ses listes.
+ * Dans un champ en puces, chaque bloc en est une.
  */
-function versBlockNote(t: TexteRiche): BlocBN[] {
+function versBlockNote(t: TexteRiche, forme: FormeDuChamp): BlocBN[] {
   const racine: BlocBN[] = [];
   const derniers: BlocBN[] = [];
   for (const b of t) {
     const bloc: BlocBN = {
-      type: VERS_BLOCKNOTE[b.type],
+      type: forme === 'puces' ? 'bulletListItem' : VERS_BLOCKNOTE[b.type],
       props: b.debut ? { start: b.debut } : {},
       content: b.segments.map((s) => ({
         type: 'text',
@@ -245,7 +264,10 @@ function BoutonListe({
   );
 }
 
-/** La barre qui paraît sur une sélection : gras, italique, et les listes si le champ les admet. */
+/**
+ * La barre qui paraît sur une sélection : gras, italique, et les listes si
+ * le champ les admet au choix (un champ en puces n'en a pas d'autre).
+ */
 function barreDeMiseEnForme(listes: boolean) {
   return function Barre() {
     return (
@@ -283,38 +305,78 @@ const BarreListes = barreDeMiseEnForme(true);
 function EditeurRiche({
   valeur,
   onChange,
-  listes,
+  forme,
   max,
   label,
   compact = false,
+  autoFocus = false,
 }: {
   valeur: TexteRiche;
   onChange: (t: TexteRiche) => void;
-  /** Des puces et des numéros ; sans eux, du texte seul. */
-  listes: boolean;
+  /** Du texte seul ; des paragraphes, des puces et des numéros ; ou des puces seulement. */
+  forme: FormeDuChamp;
   max: number;
   /** Le nom du champ, pour les lecteurs d'écran. */
   label: string;
   /** Une ligne à l'ouverture, comme le texte d'un objectif. */
   compact?: boolean;
+  /** Le curseur s'y pose à l'ouverture : le champ qu'on vient d'ajouter. */
+  autoFocus?: boolean;
 }) {
   const { theme } = usePreferences();
+  const puces = forme === 'puces';
   const editeur = useCreateBlockNote({
-    schema: (listes ? schemaListes : schemaTexte) as Schema,
+    schema: SCHEMAS[forme] as Schema,
     dictionary: dictionnaire,
     trailingBlock: false,
     disableExtensions: SANS_LIENS,
     domAttributes: {
       editor: { 'aria-label': label, 'aria-multiline': 'true', role: 'textbox' },
     },
-    initialContent: (valeur.length ? versBlockNote(valeur) : undefined) as never,
+    initialContent: (valeur.length
+      ? versBlockNote(valeur, forme)
+      : puces
+        ? [{ type: 'bulletListItem' }]
+        : undefined) as never,
   });
+  // Le nom suit le champ : l'objectif 3 devient l'objectif 2 quand le 2 se retire.
+  useEffect(() => {
+    editeur.domElement?.setAttribute('aria-label', label);
+  }, [editeur, label]);
+  useEffect(() => {
+    if (!autoFocus) return;
+    const image = requestAnimationFrame(() => editeur.focus());
+    return () => cancelAnimationFrame(image);
+    // À l'ouverture seulement.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editeur]);
   const longueur = texteBrut(valeur).length;
   const trop = longueur > max;
-  const changement = useCallback(
-    () => onChange(depuisBlockNote(editeur.document as unknown as BlocBN[])),
-    [editeur, onChange],
-  );
+  const changement = useCallback(() => {
+    if (puces) {
+      // Une ligne qui a perdu sa puce (un collage, tout effacé, une ligne
+      // remontée d'un cran) la retrouve aussitôt ; le texte se publie ensuite.
+      const sansPuce: BlocBN[] = [];
+      const parcourir = (blocs: readonly BlocBN[]) => {
+        for (const b of blocs) {
+          if (b.type !== 'bulletListItem') sansPuce.push(b);
+          parcourir(b.children ?? []);
+        }
+      };
+      parcourir(editeur.document as unknown as BlocBN[]);
+      if (sansPuce.length > 0) {
+        queueMicrotask(() =>
+          editeur.transact(() => {
+            for (const b of sansPuce) {
+              editeur.updateBlock(b as never, { type: 'bulletListItem', props: {} } as never);
+            }
+          }),
+        );
+        return;
+      }
+    }
+    onChange(depuisBlockNote(editeur.document as unknown as BlocBN[]));
+  }, [editeur, onChange, puces]);
   // L'éditeur ne se redessine pas à chaque frappe : il tient son texte, seul
   // le compteur suit.
   const vue = useMemo(
@@ -331,21 +393,51 @@ function EditeurRiche({
         linkToolbar={false}
         onChange={changement}
       >
-        <FormattingToolbarController formattingToolbar={listes ? BarreListes : BarreTexte} />
+        <FormattingToolbarController
+          formattingToolbar={forme === 'listes' ? BarreListes : BarreTexte}
+        />
       </BlockNoteView>
     ),
-    [editeur, theme, listes, changement],
+    [editeur, theme, forme, changement],
   );
 
   /**
    * Le clavier d'un formulaire : Tab passe au champ suivant, sauf dans une
    * liste, où il range la ligne sous la précédente (deux crans au plus).
-   * Maj+Entrée ne coupe pas la ligne : Entrée ouvre un nouveau bloc.
+   * Maj+Entrée ne coupe pas la ligne : Entrée ouvre un nouveau bloc. Dans
+   * un champ en puces, la première puce ne s'enlève pas, et Entrée sur une
+   * puce vide ne sort pas de la liste.
    */
   const auClavier = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' && e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
+      return;
+    }
+    if (puces && (e.key === 'Backspace' || e.key === 'Enter') && !e.altKey && !e.metaKey) {
+      const { selection } = editeur.prosemirrorState;
+      if (!selection.empty || selection.$from.parentOffset !== 0) return;
+      const bloc = editeur.getTextCursorPosition().block;
+      const imbrique = Boolean(editeur.getParentBlock(bloc));
+      if (e.key === 'Enter') {
+        // Une puce vide au premier niveau reste où elle est.
+        const vide = Array.isArray(bloc.content) && bloc.content.length === 0;
+        if (vide && !imbrique) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
+      }
+      if (!imbrique && editeur.document[0]?.id === bloc.id) {
+        // La première puce reste, même vide.
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      // Au début d'une autre ligne, Retour arrière la remonte d'un cran ou la
+      // joint à la ligne d'avant. BlockNote ôterait d'abord sa puce : il la
+      // trouve déjà en paragraphe, et la ligne qui reste la retrouve.
+      editeur.updateBlock(bloc, { type: 'paragraph', props: {} });
       return;
     }
     if (e.key !== 'Tab') return;
@@ -355,7 +447,7 @@ function EditeurRiche({
     const dansUneListe = bloc.type === 'bulletListItem' || bloc.type === 'numberedListItem';
     const aRanger = e.shiftKey ? profondeur > 0 : dansUneListe && profondeur < NIVEAU_MAX;
     // Laissé à l'éditeur, Tab range la ligne ; arrêté ici, le navigateur passe au champ voisin.
-    if (!listes || !aRanger) e.stopPropagation();
+    if (forme === 'texte' || !aRanger) e.stopPropagation();
   };
 
   /** Un clic sous le texte place le curseur à la fin. */

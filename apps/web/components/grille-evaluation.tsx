@@ -16,6 +16,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
+  besoinsDeFormation,
   CRITERES_CADRE,
   dateEnLettres,
   FORMATIONS,
@@ -30,6 +31,7 @@ import {
   texteRicheVide,
   type ContenuDeGrille,
   type CritereDeGrille,
+  type FormeDuChamp,
   type FormationDemandee,
   type FormationProposable,
   type GrilleAuDossier,
@@ -64,12 +66,13 @@ import {
 import { api, ApiError, apiUrl } from '../lib/api';
 import { enregistrerFichier, lireFichier } from '../lib/fichiers';
 import { majuscule } from '../lib/mots';
+import { BoutonAjouter } from './bouton-ajouter';
 import { ActionDeLEntete } from './entete';
 import { FenetreDocument } from './fenetre-document';
 import { Donnee } from './fiche';
 import { Icon, type IconName } from './icons';
 import { Modal } from './modal';
-import { EditeurObjectifsAVenir, Echeance } from './objectifs-a-venir';
+import { CaseAVenir, EditeurObjectifsAVenir, Echeance } from './objectifs-a-venir';
 import { PdfEnLargeur } from './pdf-viewer';
 import { TexteRicheLu } from './texte-riche';
 
@@ -159,11 +162,25 @@ export function BadgeDeLEtape({
 
 // ──────────────────────────────────────────────── les pièces
 
-/** Une section de la grille : son intitulé, puis ce qui s'y remplit ou s'y lit. */
-function Section({ titre, children }: { titre: string; children: ReactNode }) {
+/**
+ * Une section de la grille : son intitulé, puis ce qui s'y remplit ou s'y
+ * lit. Obligatoire, son intitulé porte l'astérisque des champs.
+ */
+function Section({
+  titre,
+  requise = false,
+  children,
+}: {
+  titre: string;
+  requise?: boolean;
+  children: ReactNode;
+}) {
   return (
     <section className="border-t border-line-soft px-5 pt-4 pb-5">
-      <h3 className="mb-4 text-[13.5px] font-bold text-ink-strong">{titre}</h3>
+      <h3 className="mb-4 text-[13.5px] font-bold text-ink-strong">
+        {titre}
+        {requise ? <span className="text-danger">{'\u00a0'}*</span> : null}
+      </h3>
       {children}
     </section>
   );
@@ -357,23 +374,26 @@ function TexteDonne({ texte }: { texte: TexteRiche }) {
 }
 
 /**
- * Un champ de texte mis en forme, à remplir : `listes` y admet les puces et
- * les numéros. La place du champ est tenue pendant que l'éditeur arrive.
+ * Un champ de texte mis en forme, à remplir, dans sa forme : du texte seul,
+ * des listes au choix, ou des puces seulement. La place du champ est tenue
+ * pendant que l'éditeur arrive.
  */
 const ChampRiche = memo(function ChampRiche({
   label,
   valeur,
   onChange,
-  listes,
+  forme,
   max,
   compact = false,
+  autoFocus = false,
 }: {
   label: string;
   valeur: TexteRiche;
   onChange: (t: TexteRiche) => void;
-  listes: boolean;
+  forme: FormeDuChamp;
   max: number;
   compact?: boolean;
+  autoFocus?: boolean;
 }) {
   return (
     <div className={compact ? 'min-h-[38px]' : 'min-h-[58px]'}>
@@ -381,9 +401,10 @@ const ChampRiche = memo(function ChampRiche({
         label={label}
         valeur={valeur}
         onChange={onChange}
-        listes={listes}
+        forme={forme}
         max={max}
         compact={compact}
+        autoFocus={autoFocus}
       />
     </div>
   );
@@ -393,66 +414,169 @@ const ChampRiche = memo(function ChampRiche({
 const BADGE =
   'inline-flex max-w-full items-center gap-1.5 rounded-[15px] border px-3 py-[5px] text-left text-[12px] font-semibold transition-colors duration-150';
 
+/** Deux besoins n'en font qu'un : la même formation du catalogue, ou le même titre écrit. */
+const memeBesoin = (a: FormationDemandee, b: FormationDemandee) =>
+  a.courseId || b.courseId
+    ? a.courseId === b.courseId
+    : a.titre.toLocaleLowerCase('fr') === b.titre.toLocaleLowerCase('fr');
+
 /**
- * Les besoins de formation, à choisir d'un clic dans le catalogue de l'APIX
- * Academy : ce que l'agent n'a ni terminé ni obtenu, et n'anime pas. Une
- * formation déjà demandée qui n'y est plus se retire d'un clic. Trois au
- * plus, les trois lignes du modèle.
+ * Les besoins de formation, chacun sur sa ligne, qui se retire d'un clic.
+ * « Ajouter un besoin » ouvre un champ : il propose les formations de
+ * l'APIX Academy que l'agent n'a ni terminées ni obtenues, et n'anime pas,
+ * et prend aussi, telle qu'elle s'écrit, une formation hors du catalogue
+ * (ADR-0153). Dix au plus.
  */
-const ChoixDesFormations = memo(function ChoixDesFormations({
-  choisies,
+const BesoinsDeFormation = memo(function BesoinsDeFormation({
+  choisis,
   proposables,
   onChange,
 }: {
-  choisies: FormationDemandee[];
+  choisis: FormationDemandee[];
   proposables: FormationProposable[];
   onChange: (formations: FormationDemandee[]) => void;
 }) {
-  const lignes = [
-    ...proposables,
-    ...choisies.filter((c) => !proposables.some((p) => p.courseId === c.courseId)),
-  ];
-  const complete = choisies.length >= FORMATIONS;
-  if (lignes.length === 0) {
-    return (
-      <p className="text-[12.5px] text-ink-muted/70">
-        Aucune formation de l’APIX Academy à proposer
-      </p>
-    );
-  }
+  const [ouvert, setOuvert] = useState(false);
+  const [saisie, setSaisie] = useState('');
+  const [actif, setActif] = useState(0);
+  const [deroule, setDeroule] = useState(true);
+  const uid = useId();
+  const champ = useRef<HTMLInputElement>(null);
+  const cherche = saisie.trim().toLocaleLowerCase('fr');
+  const suggestions = proposables
+    .filter((p) => !choisis.some((c) => c.courseId === p.courseId))
+    .filter((p) => p.titre.toLocaleLowerCase('fr').includes(cherche))
+    .map((p): FormationDemandee => ({ courseId: p.courseId, titre: p.titre }));
+  // Ce qu'on a tapé, hors du catalogue : la dernière proposition.
+  const ecrit: FormationDemandee = { courseId: null, titre: saisie.trim() };
+  const libre =
+    cherche !== '' &&
+    !suggestions.some((p) => p.titre.toLocaleLowerCase('fr') === cherche) &&
+    !choisis.some((c) => memeBesoin(c, ecrit));
+  const options = libre ? [...suggestions, ecrit] : suggestions;
+  const courant = Math.min(actif, Math.max(options.length - 1, 0));
+
+  const fermer = () => {
+    setOuvert(false);
+    setSaisie('');
+    setActif(0);
+  };
+  const ajouter = (besoin: FormationDemandee) => {
+    const suivants = [...choisis, besoin];
+    onChange(suivants);
+    setSaisie('');
+    setActif(0);
+    if (suivants.length >= FORMATIONS) setOuvert(false);
+    else champ.current?.focus();
+  };
+
   return (
-    <div className="flex flex-wrap gap-2">
-      {lignes.map(({ courseId, titre }) => {
-        const choisie = choisies.some((c) => c.courseId === courseId);
-        const bloquee = !choisie && complete;
-        return (
-          <button
-            key={courseId}
-            type="button"
-            aria-pressed={choisie}
-            disabled={bloquee}
-            title={bloquee ? 'Trois formations au plus' : undefined}
-            onClick={() =>
-              onChange(
-                choisie
-                  ? choisies.filter((c) => c.courseId !== courseId)
-                  : [...choisies, { courseId, titre }],
-              )
-            }
-            className={cn(
-              BADGE,
-              'outline-none focus-visible:ring-2 focus-visible:ring-primary/35',
-              choisie
-                ? 'border-primary bg-primary pl-2 text-primary-ink'
-                : 'border-line bg-surface text-ink hover:border-primary/40 hover:text-primary',
-              bloquee && 'cursor-not-allowed opacity-50 hover:border-line hover:text-ink',
-            )}
-          >
-            {choisie ? <Icon name="check" size={15} className="shrink-0" /> : null}
-            <span className="min-w-0">{titre}</span>
-          </button>
-        );
-      })}
+    <div className="flex flex-col gap-2">
+      {choisis.length > 0 ? (
+        <ul className="flex flex-col">
+          {choisis.map((b, i) => (
+            <li key={b.courseId ?? `titre:${b.titre}`} className="flex items-start gap-[11px] py-1">
+              <span
+                aria-hidden
+                className="w-2 shrink-0 pt-[3px] text-[12.5px] leading-[1.5] text-ink-muted"
+              >
+                •
+              </span>
+              <span className="min-w-0 flex-1 py-[3px] text-[12.5px] leading-[1.5] break-words text-ink-strong">
+                {b.titre}
+              </span>
+              <button
+                type="button"
+                aria-label={`Retirer le besoin ${i + 1}`}
+                title="Retirer"
+                onClick={() => onChange(choisis.filter((_, k) => k !== i))}
+                className="grid size-6 shrink-0 place-items-center rounded-full text-ink-muted/70 transition-colors duration-150 outline-none hover:bg-hover hover:text-danger focus-visible:ring-2 focus-visible:ring-primary/35"
+              >
+                <Icon name="close" size={16} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {choisis.length >= FORMATIONS ? null : ouvert ? (
+        <div className="relative">
+          <input
+            ref={champ}
+            autoFocus
+            role="combobox"
+            aria-label="Besoin de formation"
+            aria-autocomplete="list"
+            aria-expanded={deroule && options.length > 0}
+            aria-controls={`${uid}-liste`}
+            aria-activedescendant={deroule && options.length > 0 ? `${uid}-${courant}` : undefined}
+            value={saisie}
+            maxLength={200}
+            onChange={(e) => {
+              setSaisie(e.target.value);
+              setActif(0);
+              setDeroule(true);
+            }}
+            onFocus={() => setDeroule(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                setDeroule(true);
+                const pas = e.key === 'ArrowDown' ? 1 : -1;
+                setActif((courant + pas + options.length) % Math.max(options.length, 1));
+              } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const choisie = options[courant];
+                if (choisie) ajouter(choisie);
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                fermer();
+              }
+            }}
+            onBlur={() => {
+              setDeroule(false);
+              if (!saisie.trim()) fermer();
+            }}
+            className="h-[38px] w-full rounded-[9px] border-2 border-primary bg-surface px-3.5 text-[12.5px] text-ink-strong outline-none"
+          />
+          {deroule && options.length > 0 ? (
+            <ul
+              id={`${uid}-liste`}
+              role="listbox"
+              aria-label="Besoins proposés"
+              className="absolute inset-x-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-[9px] border border-line bg-surface py-1 shadow-lg"
+            >
+              {options.map((o, i) => (
+                <li
+                  key={o.courseId ?? 'ecrit'}
+                  id={`${uid}-${i}`}
+                  role="option"
+                  aria-selected={i === courant}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    ajouter(o);
+                  }}
+                  onMouseEnter={() => setActif(i)}
+                  className={cn(
+                    'flex cursor-pointer items-start gap-2 px-3 py-[7px] text-[12.5px] leading-[1.45]',
+                    i === courant ? 'bg-hover text-ink-strong' : 'text-ink',
+                  )}
+                >
+                  <Icon
+                    name={o.courseId ? 'school' : 'add'}
+                    size={16}
+                    className="mt-px shrink-0 text-ink-muted"
+                  />
+                  <span className="min-w-0 break-words">
+                    {o.courseId ? o.titre : `Ajouter « ${o.titre} »`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : (
+        <BoutonAjouter libelle="Ajouter un besoin" onClick={() => setOuvert(true)} />
+      )}
     </div>
   );
 });
@@ -559,6 +683,14 @@ function useGestes(onChange: MiseAJour) {
         texte: (texte: TexteRiche) => objectif(i, { texte }),
         niveau: (niveau: Niveau | null) => objectif(i, { niveau }),
       })),
+      ajouterObjectif: () =>
+        onChange((c) =>
+          c.objectifs.length >= OBJECTIFS_ECOULES
+            ? c
+            : { ...c, objectifs: [...c.objectifs, { texte: [], niveau: null }] },
+        ),
+      retirerObjectif: (i: number) =>
+        onChange((c) => ({ ...c, objectifs: c.objectifs.filter((_, k) => k !== i) })),
       raisons: (raisons: TexteRiche) => poser({ raisons }),
       criteres: CRITERES_CADRE.map(
         (cr) => (niveau: Niveau | null) =>
@@ -576,20 +708,42 @@ function useGestes(onChange: MiseAJour) {
   }, [onChange]);
 }
 
-/** Un objectif de l'année écoulée : sa case, son texte, son niveau. */
+type Gestes = ReturnType<typeof useGestes>;
+
+/**
+ * Un objectif de l'année écoulée : sa case, son texte, son niveau. Il se
+ * retire, sauf quand il est le seul.
+ */
 const ObjectifEcoule = memo(function ObjectifEcoule({
   i,
   objectif,
   surTexte,
   surNiveau,
+  surRetirer,
+  nouveau,
 }: {
   i: number;
   objectif: ContenuDeGrille['objectifs'][number];
   surTexte: (t: TexteRiche) => void;
   surNiveau: (n: Niveau | null) => void;
+  /** Absent : le seul objectif, qui reste. */
+  surRetirer: ((i: number) => void) | null;
+  /** Celui qu'on vient d'ajouter : le curseur s'y pose. */
+  nouveau: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="relative flex flex-col gap-2.5">
+      {surRetirer ? (
+        <button
+          type="button"
+          aria-label={`Retirer l’objectif ${i + 1}`}
+          title="Retirer"
+          onClick={() => surRetirer(i)}
+          className="absolute -top-0.5 right-0 grid size-6 place-items-center rounded-full text-ink-muted/70 transition-colors duration-150 outline-none hover:bg-hover hover:text-danger focus-visible:ring-2 focus-visible:ring-primary/35"
+        >
+          <Icon name="close" size={16} />
+        </button>
+      ) : null}
       <Field label={`Objectif ${i + 1}`} required={i === 0}>
         <div className="flex items-start gap-2.5">
           <span className="pt-[11px]">
@@ -598,11 +752,12 @@ const ObjectifEcoule = memo(function ObjectifEcoule({
           <div className="min-w-0 flex-1">
             <ChampRiche
               compact
-              listes={false}
+              forme="texte"
               label={`Objectif ${i + 1}`}
               max={LIMITES_DE_LA_GRILLE.objectif}
               valeur={objectif.texte}
               onChange={surTexte}
+              autoFocus={nouveau}
             />
           </div>
         </div>
@@ -619,6 +774,54 @@ const ObjectifEcoule = memo(function ObjectifEcoule({
     </div>
   );
 });
+
+/**
+ * Les objectifs de l'année écoulée : un à l'ouverture, puis autant qu'on en
+ * ajoute, dix au plus (ADR-0153). Chacun garde sa clé quand un autre se
+ * retire : son éditeur garde son texte.
+ */
+function ObjectifsEcoules({
+  objectifs,
+  gestes,
+}: {
+  objectifs: ContenuDeGrille['objectifs'];
+  gestes: Gestes;
+}) {
+  const [cles, setCles] = useState(() => objectifs.map(() => crypto.randomUUID()));
+  const [nouvelle, setNouvelle] = useState<string | null>(null);
+  const { ajouterObjectif, retirerObjectif } = gestes;
+  const retirer = useCallback(
+    (i: number) => {
+      setCles((c) => c.filter((_, k) => k !== i));
+      retirerObjectif(i);
+    },
+    [retirerObjectif],
+  );
+  const ajouter = () => {
+    const cle = crypto.randomUUID();
+    setCles((c) => [...c, cle]);
+    setNouvelle(cle);
+    ajouterObjectif();
+  };
+  return (
+    <>
+      {objectifs.map((o, i) => (
+        <ObjectifEcoule
+          key={cles[i] ?? i}
+          i={i}
+          objectif={o}
+          surTexte={gestes.objectifs[i]!.texte}
+          surNiveau={gestes.objectifs[i]!.niveau}
+          surRetirer={objectifs.length > 1 ? retirer : null}
+          nouveau={cles[i] === nouvelle}
+        />
+      ))}
+      {objectifs.length < OBJECTIFS_ECOULES ? (
+        <BoutonAjouter libelle="Ajouter un objectif" onClick={ajouter} />
+      ) : null}
+    </>
+  );
+}
 
 /** Un critère de la grille, à noter de A à D. */
 const CritereANoter = memo(function CritereANoter({
@@ -696,21 +899,13 @@ export function SaisieDeLaGrille({
 
       <Section titre="Rappel sur les objectifs fixés à l’agent pour la période écoulée">
         <div className="flex flex-col gap-6">
-          {contenu.objectifs.map((o, i) => (
-            <ObjectifEcoule
-              key={i}
-              i={i}
-              objectif={o}
-              surTexte={gestes.objectifs[i]!.texte}
-              surNiveau={gestes.objectifs[i]!.niveau}
-            />
-          ))}
+          <ObjectifsEcoules objectifs={contenu.objectifs} gestes={gestes} />
           <Field
             label="Raisons des objectifs non atteints ou partiellement réalisés"
             required={avecRaisons}
           >
             <ChampRiche
-              listes
+              forme="listes"
               label="Raisons des objectifs non atteints ou partiellement réalisés"
               max={L.raisons}
               valeur={contenu.raisons}
@@ -741,7 +936,7 @@ export function SaisieDeLaGrille({
         <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
           <Field label="Points forts de l’évalué" required>
             <ChampRiche
-              listes
+              forme="puces"
               label="Points forts de l’évalué"
               max={L.pointsForts}
               valeur={contenu.pointsForts}
@@ -750,7 +945,7 @@ export function SaisieDeLaGrille({
           </Field>
           <Field label="Points faibles de l’évalué (à améliorer)" required>
             <ChampRiche
-              listes
+              forme="puces"
               label="Points faibles de l’évalué (à améliorer)"
               max={L.pointsFaibles}
               valeur={contenu.pointsFaibles}
@@ -762,7 +957,7 @@ export function SaisieDeLaGrille({
 
       <Section titre="Actions pour améliorer les performances de l’évalué">
         <ChampRiche
-          listes
+          forme="puces"
           label="Actions pour améliorer les performances de l’évalué"
           max={L.actions}
           valeur={contenu.actions}
@@ -770,7 +965,7 @@ export function SaisieDeLaGrille({
         />
       </Section>
 
-      <Section titre="Objectifs de travail pour la période à venir">
+      <Section titre="Objectifs de travail pour la période à venir" requise>
         <EditeurObjectifsAVenir
           initial={contenu.objectifsAVenir}
           annee={vue.annee}
@@ -778,9 +973,9 @@ export function SaisieDeLaGrille({
         />
       </Section>
 
-      <Section titre="Besoins de formation identifiés">
-        <ChoixDesFormations
-          choisies={contenu.formations}
+      <Section titre={besoinsDeFormation(contenu.formations.length)}>
+        <BesoinsDeFormation
+          choisis={contenu.formations}
           proposables={vue.formationsProposables}
           onChange={gestes.formations}
         />
@@ -805,7 +1000,7 @@ export function SaisieDeLaGrille({
           ))}
           <Field label="Observations du N+1">
             <ChampRiche
-              listes
+              forme="listes"
               label="Observations du N+1"
               max={L.observations}
               valeur={contenu.observations}
@@ -915,12 +1110,7 @@ export function GrilleEnLecture({ vue }: { vue: VueDeGrille }) {
           <ul className="flex flex-col gap-1.5">
             {c.objectifsAVenir.map((o, i) => (
               <li key={i} className="flex items-start gap-[11px]">
-                <span
-                  aria-hidden
-                  className="w-2 shrink-0 text-[12.5px] leading-relaxed text-ink-muted"
-                >
-                  •
-                </span>
+                <CaseAVenir className="mt-[2px]" />
                 <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed break-words text-ink-strong">
                   {o.texte}
                 </p>
@@ -931,23 +1121,30 @@ export function GrilleEnLecture({ vue }: { vue: VueDeGrille }) {
         )}
       </Section>
 
-      <Section titre="Besoins de formation identifiés">
+      <Section titre={besoinsDeFormation(c.formations.length)}>
         {c.formations.length === 0 ? (
           <NonRenseigne />
         ) : (
           <div className="flex flex-wrap gap-2">
-            {c.formations.map((f) => (
-              <Link
-                key={f.courseId}
-                href={`/academy/${f.courseId}`}
-                className={cn(
-                  BADGE,
-                  'border-primary/20 bg-primary-soft text-primary hover:border-primary/45',
-                )}
-              >
-                <span className="min-w-0">{f.titre}</span>
-              </Link>
-            ))}
+            {c.formations.map((f) =>
+              // Une formation de l'APIX Academy s'ouvre ; un besoin hors du catalogue se lit.
+              f.courseId ? (
+                <Link
+                  key={f.courseId}
+                  href={`/academy/${f.courseId}`}
+                  className={cn(
+                    BADGE,
+                    'border-primary/20 bg-primary-soft text-primary hover:border-primary/45',
+                  )}
+                >
+                  <span className="min-w-0">{f.titre}</span>
+                </Link>
+              ) : (
+                <span key={`titre:${f.titre}`} className={cn(BADGE, 'border-line text-ink-strong')}>
+                  <span className="min-w-0">{f.titre}</span>
+                </span>
+              ),
+            )}
           </div>
         )}
       </Section>

@@ -756,9 +756,10 @@ export class EvaluationsService {
       .objectifsAVenir.map((o) => o.texte)
       .filter(Boolean)
       .slice(0, OBJECTIFS_ECOULES);
+    if (aVenir.length === 0) return vide;
     return {
       ...vide,
-      objectifs: vide.objectifs.map((o, i) => ({ ...o, texte: texteRicheDe(aVenir[i] ?? '') })),
+      objectifs: aVenir.map((texte) => ({ texte: texteRicheDe(texte), niveau: null })),
     };
   }
 
@@ -782,33 +783,29 @@ export class EvaluationsService {
   }
 
   /**
-   * Les formations demandées, telles que le catalogue les connaît : une
-   * formation publiée, sous son titre d'aujourd'hui. Une formation déjà
-   * demandée, retirée du catalogue depuis, se garde sous son titre.
+   * Les besoins de formation, ceux du catalogue tels qu'il les connaît :
+   * une formation publiée, sous son titre d'aujourd'hui. Une formation déjà
+   * demandée, retirée du catalogue depuis, se garde sous son titre. Un
+   * besoin écrit par le N+1, hors du catalogue, se garde tel qu'il est écrit.
    */
   private async formationsDuCatalogue(
     tx: Tx,
     demandees: ContenuDeGrille['formations'],
     deja: ContenuDeGrille['formations'],
   ): Promise<ContenuDeGrille['formations']> {
-    if (demandees.length === 0) return [];
-    const publiees = await tx
-      .select({ id: t.academyCourses.id, titre: t.academyCourses.title })
-      .from(t.academyCourses)
-      .where(
-        and(
-          inArray(
-            t.academyCourses.id,
-            demandees.map((f) => f.courseId),
-          ),
-          isNotNull(t.academyCourses.publishedAt),
-        ),
-      );
-    const titres = new Map([
-      ...deja.map((f) => [f.courseId, f.titre] as const),
+    const ids = demandees.flatMap((f) => (f.courseId ? [f.courseId] : []));
+    const publiees =
+      ids.length === 0
+        ? []
+        : await tx
+            .select({ id: t.academyCourses.id, titre: t.academyCourses.title })
+            .from(t.academyCourses)
+            .where(and(inArray(t.academyCourses.id, ids), isNotNull(t.academyCourses.publishedAt)));
+    const titres = new Map<string, string>([
+      ...deja.flatMap((f) => (f.courseId ? [[f.courseId, f.titre] as const] : [])),
       ...publiees.map((p) => [p.id, p.titre] as const),
     ]);
-    const inconnue = demandees.find((f) => !titres.has(f.courseId));
+    const inconnue = demandees.find((f) => f.courseId && !titres.has(f.courseId));
     if (inconnue) {
       problem(
         422,
@@ -816,7 +813,9 @@ export class EvaluationsService {
         `La formation « ${inconnue.titre} » n’est pas au catalogue de l’APIX Academy`,
       );
     }
-    return demandees.map((f) => ({ courseId: f.courseId, titre: titres.get(f.courseId)! }));
+    return demandees.map((f) =>
+      f.courseId ? { courseId: f.courseId, titre: titres.get(f.courseId)! } : f,
+    );
   }
 
   private actions(c: Contexte): ActionsSurLaGrille {

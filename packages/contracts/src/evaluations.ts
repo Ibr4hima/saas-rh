@@ -219,12 +219,13 @@ export const SYNTHESE_DU_N1: readonly {
 ];
 
 /**
- * Combien de lignes la grille donne à chaque liste : trois objectifs de
- * l'année écoulée, quatre objectifs à venir et trois formations au plus.
+ * Combien chaque liste en admet au plus : dix objectifs de l'année écoulée
+ * et dix besoins de formation, que le PDF range à la taille de ce qui est
+ * écrit (ADR-0153) ; quatre objectifs à venir, les quatre lignes du modèle.
  */
-export const OBJECTIFS_ECOULES = 3;
+export const OBJECTIFS_ECOULES = 10;
 export const OBJECTIFS_A_VENIR = 4;
-export const FORMATIONS = 3;
+export const FORMATIONS = 10;
 
 /**
  * La longueur de chaque champ, retours à la ligne compris : ce qui tient
@@ -270,12 +271,24 @@ export function parEcheance<T extends ObjectifAVenir>(objectifs: readonly T[]): 
   return [...objectifs].sort((a, b) => (cle(a) < cle(b) ? -1 : cle(a) > cle(b) ? 1 : 0));
 }
 
-/** Une formation de l'APIX Academy demandée pour l'agent : son titre est gardé tel qu'il était. */
+/**
+ * Un besoin de formation : une formation de l'APIX Academy, son titre gardé
+ * tel qu'il était, ou une formation hors du catalogue, écrite par le N+1
+ * (`courseId` nul).
+ */
 export const formationDemandeeSchema = z.object({
-  courseId: z.uuid(),
-  titre: z.string().trim().max(200),
+  courseId: z.uuid().nullable(),
+  titre: z.string().trim().min(1).max(200),
 });
 export type FormationDemandee = z.infer<typeof formationDemandeeSchema>;
+
+/** Deux besoins n'en font qu'un : la même formation du catalogue, ou le même titre écrit. */
+const cleDuBesoin = (f: FormationDemandee) =>
+  f.courseId ?? `titre:${f.titre.toLocaleLowerCase('fr')}`;
+
+/** « Besoin de formation identifié », au pluriel dès qu'il n'y en a pas un seul. */
+export const besoinsDeFormation = (n: number) =>
+  n === 1 ? 'Besoin de formation identifié' : 'Besoins de formation identifiés';
 
 /**
  * Ce que le N+1 écrit dans la grille. Tout est facultatif tant que la grille
@@ -285,22 +298,23 @@ export type FormationDemandee = z.infer<typeof formationDemandeeSchema>;
 export const contenuDeGrilleSchema = z.object({
   /** « Agent nouveau à son poste actuel » ; `null` : la case suit l'ancienneté. */
   nouveauAuPoste: z.boolean().nullable().default(null),
-  /** Du texte en gras ou en italique, sans puce ni numéro. */
+  /** Du texte en gras ou en italique, sans puce ni numéro ; un, puis autant qu'on en ajoute. */
   objectifs: z
     .array(
       z.object({
-        texte: texteRicheSchema(LIMITES_DE_LA_GRILLE.objectif, false),
+        texte: texteRicheSchema(LIMITES_DE_LA_GRILLE.objectif, 'texte'),
         niveau: niveauSchema.nullable().default(null),
       }),
     )
     .max(OBJECTIFS_ECOULES)
     .default([]),
-  raisons: texteRicheSchema(LIMITES_DE_LA_GRILLE.raisons, true),
+  raisons: texteRicheSchema(LIMITES_DE_LA_GRILLE.raisons, 'listes'),
   /** Le niveau de chaque critère, dans l'ordre de la grille. */
   criteres: z.array(niveauSchema.nullable()).max(CRITERES_CADRE.length).default([]),
-  pointsForts: texteRicheSchema(LIMITES_DE_LA_GRILLE.pointsForts, true),
-  pointsFaibles: texteRicheSchema(LIMITES_DE_LA_GRILLE.pointsFaibles, true),
-  actions: texteRicheSchema(LIMITES_DE_LA_GRILLE.actions, true),
+  /** Des puces, et rien d'autre : chaque point sur la sienne. */
+  pointsForts: texteRicheSchema(LIMITES_DE_LA_GRILLE.pointsForts, 'puces'),
+  pointsFaibles: texteRicheSchema(LIMITES_DE_LA_GRILLE.pointsFaibles, 'puces'),
+  actions: texteRicheSchema(LIMITES_DE_LA_GRILLE.actions, 'puces'),
   /** Une liste, rangée par échéance ; les lignes restées vides ne se gardent pas. */
   objectifsAVenir: z
     .array(
@@ -313,40 +327,58 @@ export const contenuDeGrilleSchema = z.object({
     .default([])
     .transform((liste) => parEcheance(liste.filter((o) => o.texte !== '' || o.echeance))),
   /**
-   * Les formations demandées, prises au catalogue de l'APIX Academy. Une
-   * formation écrite à la main, d'avant le catalogue, ne se garde pas.
+   * Les besoins de formation : au catalogue de l'APIX Academy, ou écrits
+   * par le N+1. Une formation écrite à la main, d'avant le catalogue, en
+   * devient un ; une ligne vide ne se garde pas.
    */
   formations: z
     .preprocess(
-      (v) => (Array.isArray(v) ? v.filter((f) => typeof f === 'object' && f !== null) : v),
+      (v) =>
+        Array.isArray(v)
+          ? v
+              .map((f) => (typeof f === 'string' ? { courseId: null, titre: f } : f))
+              .filter(
+                (f) =>
+                  typeof f === 'object' &&
+                  f !== null &&
+                  typeof f.titre === 'string' &&
+                  f.titre.trim() !== '',
+              )
+          : v,
       z.array(formationDemandeeSchema).max(FORMATIONS),
     )
     .default([])
     .transform((liste) =>
-      liste.filter((f, i) => liste.findIndex((g) => g.courseId === f.courseId) === i),
+      liste.filter((f, i) => liste.findIndex((g) => cleDuBesoin(g) === cleDuBesoin(f)) === i),
     ),
   comprehension: niveauSchema.nullable().default(null),
   tenue: niveauSchema.nullable().default(null),
-  observations: texteRicheSchema(LIMITES_DE_LA_GRILLE.observations, true),
+  observations: texteRicheSchema(LIMITES_DE_LA_GRILLE.observations, 'listes'),
 });
 export type ContenuDeGrille = z.infer<typeof contenuDeGrilleSchema>;
 
-/** Une grille vide, à la forme complète : trois objectifs et treize critères à remplir. */
+/** Une grille vide, à la forme complète : un objectif et treize critères à remplir. */
 export function grilleVide(): ContenuDeGrille {
   return completerLaGrille(contenuDeGrilleSchema.parse({}));
 }
 
+/** Un objectif de l'année écoulée où rien n'est écrit ni choisi. */
+const objectifVide = (o: ContenuDeGrille['objectifs'][number]) =>
+  texteRicheVide(o.texte) && o.niveau === null;
+
 /**
  * La grille à sa forme complète, quoi qu'en ait gardé l'enregistrement :
- * ses trois objectifs et ses treize critères. Les listes (objectifs à venir,
+ * ses objectifs écrits, un au moins, et ses treize critères. Un objectif
+ * resté vide ne se garde pas. Les autres listes (objectifs à venir,
  * formations) gardent leur longueur.
  */
 export function completerLaGrille(c: ContenuDeGrille): ContenuDeGrille {
   const remplir = <T>(liste: T[], n: number, vide: () => T) =>
     Array.from({ length: n }, (_, i) => liste[i] ?? vide());
+  const objectifs = c.objectifs.filter((o) => !objectifVide(o));
   return {
     ...c,
-    objectifs: remplir(c.objectifs, OBJECTIFS_ECOULES, () => ({ texte: [], niveau: null })),
+    objectifs: objectifs.length > 0 ? objectifs : [{ texte: [], niveau: null }],
     criteres: remplir(c.criteres, CRITERES_CADRE.length, () => null),
   };
 }
@@ -356,11 +388,12 @@ export function completerLaGrille(c: ContenuDeGrille): ContenuDeGrille {
  * un objectif de l'année écoulée et son niveau au moins, les raisons quand un
  * objectif n'est que partiellement réalisé ou ne l'est pas, chaque critère
  * (le commandement pour qui encadre seulement), les points forts et les
- * points faibles, et la synthèse du N+1. Vide : la grille peut partir.
+ * points faibles, un objectif de travail pour la période à venir, et la
+ * synthèse du N+1. Vide : la grille peut partir.
  */
 export function ceQuiManque(c: ContenuDeGrille, avecCommandement: boolean): string[] {
   const manque: string[] = [];
-  const objectifs = c.objectifs.filter((o) => !texteRicheVide(o.texte) || o.niveau !== null);
+  const objectifs = c.objectifs.filter((o) => !objectifVide(o));
   if (objectifs.length === 0) manque.push('Un objectif de la période écoulée');
   if (objectifs.some((o) => texteRicheVide(o.texte) || o.niveau === null)) {
     manque.push('Le texte et le niveau de chaque objectif');
@@ -374,6 +407,7 @@ export function ceQuiManque(c: ContenuDeGrille, avecCommandement: boolean): stri
   }
   if (texteRicheVide(c.pointsForts)) manque.push('Les points forts');
   if (texteRicheVide(c.pointsFaibles)) manque.push('Les points faibles');
+  if (c.objectifsAVenir.length === 0) manque.push('Un objectif de travail pour la période à venir');
   if (c.objectifsAVenir.some((o) => o.echeance && o.texte.trim() === '')) {
     manque.push('L’objectif de chaque échéance');
   }

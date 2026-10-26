@@ -1,7 +1,7 @@
 import PDFDocument from 'pdfkit';
 import {
+  besoinsDeFormation,
   CRITERES_CADRE,
-  FORMATIONS,
   NIVEAUX,
   NIVEAUX_D_OBJECTIF,
   NOTE_COMMANDEMENT,
@@ -10,6 +10,7 @@ import {
   SIGNIFICATION_DES_NIVEAUX,
   SYNTHESE_DU_N1,
   dateEnLettres,
+  texteRicheVide,
   type ContenuDeGrille,
   type IdentificationDeGrille,
   type Niveau,
@@ -29,20 +30,23 @@ import {
    La grille d'évaluation du personnel cadre (réf. S1/EN02), en PDF
    (ADR-0149).
 
-   Six pages, comme le modèle de l'APIX : l'en-tête de la DCH sur chacune,
-   puis la couverture et l'identification, le rappel des objectifs, les
-   treize critères, le résumé et les objectifs à venir, la formation et la
+   Les pages du modèle de l'APIX : l'en-tête de la DCH sur chacune, puis la
+   couverture et l'identification, le rappel des objectifs, les treize
+   critères, le résumé et les objectifs à venir, la formation et la
    ratification, la partie réservée à la hiérarchie. Les cotes viennent du
    modèle ; les marges, les cadres et les polices s'y harmonisent, et le
    texte y est corrigé de ses fautes.
 
-   Ce qui est rempli s'imprime sur les pointillés du modèle ; ce qui ne
-   l'est pas garde ses pointillés, à remplir à la main. Qui a validé la
-   grille dans l'application la paraphe : ses initiales, à la main, sur sa
-   ligne de signature (ADR-0151). Chaque champ tient
-   dans sa place : un texte long s'y imprime plus petit, une liste longue
-   s'y resserre, la grille garde ses six pages. Le texte mis en forme
-   s'imprime comme il s'est écrit : gras, italique, puces et numéros.
+   Ce qui est rempli s'imprime à la place du modèle, sans pointillés ; un
+   champ resté vide garde les siens, à remplir à la main. Le rappel des
+   objectifs et les besoins de formation se taillent à ce qui est écrit
+   (ADR-0153) : autant d'objectifs qu'il y en a, chacun haut de son texte,
+   sur une page de suite s'il le faut. Qui a validé la grille dans
+   l'application la paraphe : ses initiales, à la main, sur sa ligne de
+   signature (ADR-0151). Les autres champs tiennent dans leur place : un
+   texte long s'y imprime plus petit, une liste longue s'y resserre. Le
+   texte mis en forme s'imprime comme il s'est écrit : gras, italique, puces
+   et numéros.
    ──────────────────────────────────────────────────────────────── */
 
 type Doc = typeof PDFDocument.prototype;
@@ -77,7 +81,6 @@ export interface DonneesDeLaGrille {
   } | null;
 }
 
-const PAGES = 6;
 const MARINE = '#001f5f';
 const DIFFUSION = '#17365d';
 const ENCRE = '#000000';
@@ -88,6 +91,10 @@ const D = 564.9;
 const L = D - G;
 /** Le texte dans un cadre : à 5,5 points de son bord. */
 const RETRAIT = 5.5;
+/** Le bord gauche de la case de la pagination, dans l'en-tête. */
+const X_PAGE = 442.7;
+/** Le plus bas où descend une page qui s'allonge : celui de la couverture. */
+const BAS = 780;
 
 /**
  * Les initiales d'un nom, comme on paraphe : « Mariama CISSÉ » donne
@@ -120,6 +127,8 @@ export function grilleDuPersonnelCadre(
     size: 'A4',
     margins: { top: 0, bottom: 0, left: 0, right: 0 },
     autoFirstPage: false,
+    // Les pages se numérotent une fois toutes posées : « Page 2 sur 7 ».
+    bufferPages: true,
     info: {
       Title: `Grille d’évaluation du personnel cadre ${d.annee}`,
       Author: ENTETE.raisonSociale,
@@ -135,11 +144,12 @@ export function grilleDuPersonnelCadre(
 
   const f = new Feuille(doc, logo);
   pageDeCouverture(f, d);
-  pageDesObjectifs(f, d.contenu);
+  pagesDesObjectifs(f, d.contenu);
   pageDesCriteres(f, d.contenu, d.commandement);
   pageDuResume(f, d.contenu);
   pageDeLaRatification(f, d);
   pageDeLaHierarchie(f, d);
+  f.numeroter();
   doc.end();
   return fini;
 }
@@ -175,8 +185,6 @@ const coupeDe = (s: Segment): Coupe =>
   s.gras && s.italique ? 'bold-italic' : s.gras ? 'bold' : s.italique ? 'italic' : 'normal';
 
 class Feuille {
-  private numero = 0;
-
   constructor(
     readonly doc: Doc,
     private readonly logo: string | null,
@@ -185,8 +193,29 @@ class Feuille {
   /** Une page de plus, son en-tête posé. */
   page(): void {
     this.doc.addPage({ size: 'A4', margins: { top: 0, bottom: 0, left: 0, right: 0 } });
-    this.numero += 1;
     this.entete();
+  }
+
+  /**
+   * « Page 1 sur 6 », les nombres en gras, centré dans sa case de l'en-tête :
+   * posé sur chaque page une fois toutes faites, le rappel des objectifs
+   * pouvant en prendre plus d'une.
+   */
+  numeroter(): void {
+    const { start, count } = this.doc.bufferedPageRange();
+    const arial = (coupe: Coupe): Style => ({ famille: 'arial', coupe, taille: 11.04 });
+    for (let i = 0; i < count; i++) {
+      this.doc.switchToPage(start + i);
+      const morceaux: [string, Coupe][] = [
+        ['Page ', 'normal'],
+        [String(i + 1), 'bold'],
+        [' sur ', 'normal'],
+        [String(count), 'bold'],
+      ];
+      const total = morceaux.reduce((s, [t, c]) => s + this.largeur(t, arial(c)), 0);
+      let x = X_PAGE + (D - X_PAGE - total) / 2;
+      for (const [t, c] of morceaux) x = this.texte(t, x, 85, arial(c));
+    }
   }
 
   /** La police d'un style ; rend sa taille. */
@@ -331,10 +360,14 @@ class Feuille {
 
   /**
    * Un texte sur des lignes à remplir : il s'imprime ligne à ligne sur leurs
-   * bases, plus petit s'il le faut pour tenir ; les lignes restées vides
-   * gardent leurs pointillés.
+   * bases, plus petit s'il le faut pour tenir. Vide, les lignes gardent leurs
+   * pointillés, à remplir à la main ; écrit, il n'en laisse pas.
    */
   surLignes(texte: string, x0: number, x1: number, bases: readonly number[], taille = 9) {
+    if (!texte.trim()) {
+      for (const base of bases) this.pointilles(x0, x1, base + 1);
+      return;
+    }
     const largeur = x1 - x0;
     let t = taille;
     let lignes = this.couper(texte, largeur, t);
@@ -346,11 +379,7 @@ class Feuille {
       lignes = lignes.slice(0, bases.length);
       lignes[lignes.length - 1] = `${lignes[lignes.length - 1]!.replace(/\s*\S*$/, '')} …`;
     }
-    bases.forEach((base, i) => {
-      const ligne = lignes[i];
-      if (ligne) this.texte(ligne, x0, base, { taille: t });
-      else this.pointilles(x0, x1, base + 1);
-    });
+    lignes.forEach((ligne, i) => this.texte(ligne, x0, bases[i]!, { taille: t }));
   }
 
   /**
@@ -358,18 +387,18 @@ class Feuille {
    * bases, plus petit s'il le faut, jusqu'à 7,5 points ; au-delà, ou pour
    * une liste plus longue que les lignes, ses lignes se répartissent dans
    * leur hauteur, de la ligne au-dessus de la première base à la dernière.
-   * Les lignes restées vides gardent leurs pointillés.
+   * Vide, les lignes gardent leurs pointillés.
    */
   texteRiche(t: TexteRiche, x0: number, x1: number, bases: readonly number[], taille = 9) {
+    if (texteRicheVide(t)) {
+      for (const base of bases) this.pointilles(x0, x1, base + 1);
+      return;
+    }
     const largeur = x1 - x0;
     for (let tt = taille; tt >= 7.5; tt -= 0.25) {
       const lignes = this.disposer(t, largeur, tt);
       if (lignes.length > bases.length) continue;
-      bases.forEach((base, i) => {
-        const ligne = lignes[i];
-        if (ligne) this.poser(ligne, x0, base, tt);
-        else this.pointilles(x0, x1, base + 1);
-      });
+      lignes.forEach((ligne, i) => this.poser(ligne, x0, bases[i]!, tt));
       return;
     }
     const pas = bases.length > 1 ? bases[1]! - bases[0]! : 2 * taille;
@@ -392,7 +421,7 @@ class Feuille {
   }
 
   /** Une ligne d'un texte mis en forme, posée sur sa base. */
-  private poser(ligne: LigneRiche, x0: number, base: number, taille: number) {
+  poser(ligne: LigneRiche, x0: number, base: number, taille: number) {
     if (ligne.marque) this.texte(ligne.marque.texte, x0 + ligne.marque.x, base, { taille });
     let x = x0 + ligne.retrait;
     for (const m of ligne.morceaux) x = this.texte(m.texte, x, base, { coupe: m.coupe, taille });
@@ -558,12 +587,11 @@ class Feuille {
     const y2 = 61.9;
     const y3 = 100.7;
     const xLogo = 109.9;
-    const xPage = 442.7;
     this.cadre(G, y0, D, y3);
     this.trait(G, y1, D, y1);
     this.trait(G, y2, D, y2);
     this.trait(xLogo, y2, xLogo, y3);
-    this.trait(xPage, y2, xPage, y3);
+    this.trait(X_PAGE, y2, X_PAGE, y3);
     const arial = (coupe: Coupe = 'normal', taille = 9.96): Style => ({
       famille: 'arial',
       coupe,
@@ -592,16 +620,6 @@ class Feuille {
       this.texte(libelle, 115.3, base, arial('bold'));
       this.texte(`: ${valeur}`, 240, base, arial());
     });
-    // « Page 1 sur 6 », les nombres en gras, centré dans sa case.
-    const morceaux: [string, Coupe][] = [
-      ['Page ', 'normal'],
-      [String(this.numero), 'bold'],
-      [' sur ', 'normal'],
-      [String(PAGES), 'bold'],
-    ];
-    const total = morceaux.reduce((s, [t, c]) => s + this.largeur(t, arial(c, 11.04)), 0);
-    let x = xPage + (D - xPage - total) / 2;
-    for (const [t, c] of morceaux) x = this.texte(t, x, 85, arial(c, 11.04));
   }
 }
 
@@ -661,68 +679,128 @@ function pageDeCouverture(f: Feuille, d: DonneesDeLaGrille) {
 
 // ──────────────────────────────────────────────── page 2 : rappel des objectifs
 
-function pageDesObjectifs(f: Feuille, c: ContenuDeGrille) {
-  f.page();
-  const haut = 121;
-  const bas = 672;
-  f.bande(
-    haut,
-    151.5,
-    'RAPPEL SUR LES OBJECTIFS PRINCIPAUX FIXÉS À L’AGENT POUR LA PÉRIODE ÉCOULÉE',
-  );
-  f.cadre(G, haut, D, bas);
+const RAPPEL = 'RAPPEL SUR LES OBJECTIFS PRINCIPAUX FIXÉS À L’AGENT POUR LA PÉRIODE ÉCOULÉE';
 
-  // La grille A, B, C, D : une ligne par objectif.
+/**
+ * Le rappel des objectifs de l'année écoulée, taillé à ce qui est écrit
+ * (ADR-0153). Chaque objectif a sa ligne dans la grille A à D : son
+ * intitulé, son texte, haute de ce texte, la croix au milieu. Puis les
+ * raisons des objectifs partiellement réalisés ou non réalisés, s'il y en a
+ * à donner. Ce qui ne tient pas sur la page continue sur la suivante, sous
+ * le même titre. Un objectif ou des raisons à écrire, restés vides, gardent
+ * leurs pointillés.
+ */
+function pagesDesObjectifs(f: Feuille, c: ContenuDeGrille) {
   const xGrille = 312;
   const colonne = 21.2;
-  const enTete = 168;
-  const premiere = 181;
-  const hauteur = 75;
-  NIVEAUX.forEach((n, i) =>
-    f.centre(n, xGrille + i * colonne, xGrille + (i + 1) * colonne, 178, {
-      coupe: 'bold',
-      taille: 9,
-    }),
-  );
-  const finGrille = premiere + hauteur * c.objectifs.length;
-  f.cadre(xGrille, enTete, xGrille + 4 * colonne, finGrille);
-  f.trait(xGrille, premiere, xGrille + 4 * colonne, premiere);
-  for (let i = 1; i < 4; i++) {
-    f.trait(xGrille + i * colonne, enTete, xGrille + i * colonne, finGrille);
-  }
+  const xFin = xGrille + 4 * colonne;
+  const x0 = 35;
+  const x1 = xGrille - 12;
+  const xLegende = 467.5;
+  const finLegende = 178.8 + 4 * 46;
+  const taille = 9.5;
+  const interligne = 15;
+  /** Une ligne vide, à remplir à la main : l'écart du modèle. */
+  const interligneVide = 20;
+  /** Du haut d'une ligne à la base de son intitulé, de l'intitulé au texte, du texte au bas. */
+  const [avant, entre, apres] = [22, 18, 16];
+
+  let premiere = true;
+  /** Le haut du cadre de la page, celui de sa grille, et le bas de la dernière ligne posée. */
+  let page = { haut: 121, grille: 168, y: 181 };
+
+  const enTeteDeLaGrille = () =>
+    NIVEAUX.forEach((n, i) =>
+      f.centre(n, xGrille + i * colonne, xGrille + (i + 1) * colonne, page.y - 3, {
+        coupe: 'bold',
+        taille: 9,
+      }),
+    );
+  const fermerLaGrille = () => {
+    f.cadre(xGrille, page.grille, xFin, page.y);
+    f.trait(xGrille, page.grille + 13, xFin, page.grille + 13);
+    for (let i = 1; i < 4; i++) {
+      f.trait(xGrille + i * colonne, page.grille, xGrille + i * colonne, page.y);
+    }
+  };
+  const fermerLaPage = (bas: number) => f.cadre(G, page.haut, D, bas);
+  const pageDeSuite = (grille: boolean) => {
+    f.page();
+    f.bande(112.3, 132.3, `${RAPPEL} (SUITE)`, 11);
+    premiere = false;
+    page = { haut: 112.3, grille: 149, y: 162 };
+    if (grille) enTeteDeLaGrille();
+  };
+
+  f.page();
+  f.bande(121, 151.5, RAPPEL);
+  // La légende, à droite, sur la première page.
+  NIVEAUX.forEach((n, i) => {
+    const y = 178.8 + i * 46;
+    f.cadre(xLegende, y, D - 2, y + 46);
+    f.centre(n, xLegende, D - 2, y + 16, { coupe: 'bold', taille: 11 });
+    const lignes = f.couper(NIVEAUX_D_OBJECTIF[n], D - 2 - xLegende - 8, 11);
+    lignes.forEach((l, j) => f.centre(l, xLegende, D - 2, y + 30 + j * 12.8, { taille: 11 }));
+  });
+  enTeteDeLaGrille();
 
   c.objectifs.forEach((o, i) => {
-    const y = premiere + i * hauteur;
-    if (i > 0) f.trait(xGrille, y, xGrille + 4 * colonne, y);
-    f.texte(`OBJECTIF ${i + 1}`, 35, y + 16, { taille: 11 });
-    f.texteRiche(o.texte, 35, 300, [y + 34, y + 51, y + 68], 9.5);
+    const lignes = texteRicheVide(o.texte) ? null : f.disposer(o.texte, x1 - x0, taille);
+    const pas = lignes ? interligne : interligneVide;
+    const nombre = lignes ? lignes.length : 2;
+    const hauteur = avant + entre + (nombre - 1) * pas + apres;
+    if (page.y + hauteur > BAS) {
+      fermerLaGrille();
+      fermerLaPage(page.y + 20);
+      pageDeSuite(true);
+    }
+    const y = page.y;
+    if (y > page.grille + 13) f.trait(xGrille, y, xFin, y);
+    const base = y + avant;
+    f.texte(`OBJECTIF ${i + 1}`, x0, base, { taille: 11 });
+    for (let k = 0; k < nombre; k++) {
+      const ligne = lignes?.[k];
+      if (ligne) f.poser(ligne, x0, base + entre + k * pas, taille);
+      else f.pointilles(x0, x1, base + entre + k * pas + 1);
+    }
     if (o.niveau) {
       const k = NIVEAUX.indexOf(o.niveau);
       f.croix(xGrille + (k + 0.5) * colonne, y + hauteur / 2, 5);
     }
+    page.y = y + hauteur;
   });
+  fermerLaGrille();
 
-  // La légende, à droite.
-  const xLegende = 467.5;
-  const yLegende = 178.8;
-  const pas = 46;
-  NIVEAUX.forEach((n, i) => {
-    const y = yLegende + i * pas;
-    f.cadre(xLegende, y, D - 2, y + pas);
-    f.centre(n, xLegende, D - 2, y + 16, { coupe: 'bold', taille: 11 });
-    const libelle = NIVEAUX_D_OBJECTIF[n];
-    const lignes = f.couper(libelle, D - 2 - xLegende - 8, 11);
-    lignes.forEach((l, j) => f.centre(l, xLegende, D - 2, y + 30 + j * 12.8, { taille: 11 }));
-  });
-
+  // Les raisons : sous la grille et la légende, ou sur une page de suite.
+  const aDonner = c.objectifs.some((o) => o.niveau === 'C' || o.niveau === 'D');
+  const fond = () => Math.max(page.y, premiere ? finLegende : 0);
+  if (texteRicheVide(c.raisons) && !aDonner) {
+    fermerLaPage(fond() + 20);
+    return;
+  }
+  const xFinRaisons = D - RETRAIT - 4;
+  const lignes = texteRicheVide(c.raisons) ? null : f.disposer(c.raisons, xFinRaisons - x0, taille);
+  const pas = lignes ? interligne : interligneVide;
+  const nombre = lignes ? lignes.length : 3;
+  const hauteur = 24 + (nombre - 1) * pas + 20;
+  let intitule = fond() + 32;
+  if (intitule + hauteur > BAS) {
+    fermerLaPage(fond() + 20);
+    pageDeSuite(false);
+    intitule = 162;
+  }
   f.texte(
     'Pour les objectifs non atteints ou partiellement réalisés, indiquez succinctement les raisons :',
-    35,
-    440,
+    x0,
+    intitule,
     { taille: 10 },
   );
-  const bases = Array.from({ length: 8 }, (_, i) => 466 + i * 26);
-  f.texteRiche(c.raisons, 35, D - RETRAIT - 4, bases, 9.5);
+  for (let k = 0; k < nombre; k++) {
+    const ligne = lignes?.[k];
+    if (ligne) f.poser(ligne, x0, intitule + 24 + k * pas, taille);
+    else f.pointilles(x0, xFinRaisons, intitule + 24 + k * pas + 1);
+  }
+  fermerLaPage(intitule + hauteur);
 }
 
 // ──────────────────────────────────────────────── page 3 : les treize critères
@@ -850,40 +928,80 @@ function pageDuResume(f: Feuille, c: ContenuDeGrille) {
     11,
   );
   const xEcheance = 420;
-  f.centre('OBJECTIFS', x0, xEcheance - 20, 494, { taille: 9 });
+  const finObjectif = xEcheance - 20;
+  f.centre('OBJECTIFS', x0, finObjectif, 494, { taille: 9 });
   f.centre('ÉCHÉANCES', xEcheance, x1, 494, { taille: 9 });
-  for (let i = 0; i < OBJECTIFS_A_VENIR; i++) {
-    const o = c.objectifsAVenir[i];
-    const base = 518 + i * 40;
-    f.surLignes(o?.texte ?? '', x0, xEcheance - 20, [base, base + 16], 9);
-    f.surLignes(o?.echeance ? dateEnLettres(o.echeance) : '', xEcheance, x1, [base], 9);
+  const objectifs = c.objectifsAVenir.filter((o) => o.texte);
+  if (objectifs.length === 0) {
+    // Rien d'écrit : les quatre lignes du modèle, à remplir à la main.
+    for (let i = 0; i < OBJECTIFS_A_VENIR; i++) {
+      const base = 518 + i * 40;
+      f.surLignes('', x0, finObjectif, [base, base + 16], 9);
+      f.surLignes('', xEcheance, x1, [base], 9);
+    }
+    return;
+  }
+  // Une puce par objectif, haut de son texte, son échéance en face.
+  const xTexte = x0 + 11;
+  let base = 518;
+  for (const o of objectifs) {
+    const deuxLignes = f.couper(o.texte, finObjectif - xTexte, 9).length > 1;
+    f.texte('•', x0 + 2, base, { taille: 9 });
+    f.surLignes(o.texte, xTexte, finObjectif, deuxLignes ? [base, base + 16] : [base], 9);
+    if (o.echeance) f.centre(dateEnLettres(o.echeance), xEcheance, x1, base, { taille: 9 });
+    base += deuxLignes ? 40 : 26;
   }
 }
 
 // ──────────────────────────────────────────────── page 5 : formation et ratification
 
+/**
+ * Les besoins de formation, puis la ratification de l'entretien, qui les
+ * suit (ADR-0153). Chaque besoin a sa ligne, haute de son titre ; au-delà
+ * des trois lignes du modèle, ils se resserrent. Sans besoin, les trois
+ * lignes du modèle, à remplir à la main.
+ */
 function pageDeLaRatification(f: Feuille, d: DonneesDeLaGrille) {
   f.page();
   const x0 = G + RETRAIT;
   const x1 = D - RETRAIT;
-  f.cadre(G, 104.9, D, 572);
+  const besoins = d.contenu.formations;
   f.bande(
     104.9,
     125.2,
-    'BESOINS DE FORMATION IDENTIFIÉS (à remplir par N+1 après concertation avec N)',
+    `${besoinsDeFormation(besoins.length).toUpperCase()} (à remplir par N+1 après concertation avec N)`,
     11,
   );
-  for (let i = 0; i < FORMATIONS; i++) {
-    const formation = d.contenu.formations[i];
-    f.champ(`Formation n° ${i + 1}`, formation?.titre ?? null, x0, 152 + i * 38.5, x1, 8);
+  let derniere = 229;
+  if (besoins.length === 0) {
+    for (let i = 0; i < 3; i++) f.champ(`Formation n° ${i + 1}`, null, x0, 152 + i * 38.5, x1, 8);
+  } else {
+    const pas = besoins.length <= 3 ? 38.5 : 26;
+    let base = 152;
+    besoins.forEach((b, i) => {
+      const debut = f.texte(`Formation n° ${i + 1}`, x0, base, { taille: 8 }) + 4;
+      const deuxLignes = f.couper(b.titre, x1 - debut, 9).length > 1;
+      f.surLignes(b.titre, debut, x1, deuxLignes ? [base, base + 13] : [base], 9);
+      derniere = deuxLignes ? base + 13 : base;
+      base = derniere + pas;
+    });
   }
+  // La ratification, sous le dernier besoin ; sans besoin, à sa place du modèle.
+  const dy = derniere + 31.7 - 260.7;
+  f.cadre(G, 104.9, D, 572 + dy);
 
-  f.bande(260.7, 281.1, 'RATIFICATION DE L’ENTRETIEN', 11);
-  f.centre('COMMENTAIRES ÉVENTUELS DE L’ÉVALUÉ :', G, D, 303.6, { taille: 8 });
-  f.surLignes(d.ratification.commentaires, x0, x1, [322, 342, 362, 382], 9);
+  f.bande(260.7 + dy, 281.1 + dy, 'RATIFICATION DE L’ENTRETIEN', 11);
+  f.centre('COMMENTAIRES ÉVENTUELS DE L’ÉVALUÉ :', G, D, 303.6 + dy, { taille: 8 });
+  f.surLignes(
+    d.ratification.commentaires,
+    x0,
+    x1,
+    [322, 342, 362, 382].map((b) => b + dy),
+    9,
+  );
   f.doc
-    .moveTo(x0, 400)
-    .lineTo(x1, 400)
+    .moveTo(x0, 400 + dy)
+    .lineTo(x1, 400 + dy)
     .lineWidth(0.6)
     .strokeColor(ENCRE)
     .dash(3, { space: 2 })
@@ -892,16 +1010,16 @@ function pageDeLaRatification(f: Feuille, d: DonneesDeLaGrille) {
 
   const xN1 = 170;
   const xN = 380;
-  f.texte('RATIFICATION :', 45, 426, { coupe: 'bold', taille: 8 });
-  f.texte('ÉVALUATEUR (N+1)', xN1, 426, { taille: 8 });
-  f.texte('ÉVALUÉ (N)', xN, 426, { taille: 8 });
+  f.texte('RATIFICATION :', 45, 426 + dy, { coupe: 'bold', taille: 8 });
+  f.texte('ÉVALUATEUR (N+1)', xN1, 426 + dy, { taille: 8 });
+  f.texte('ÉVALUÉ (N)', xN, 426 + dy, { taille: 8 });
   const r = d.ratification;
   const lignes: [string, string | null, string | null][] = [
     ['PRÉNOM ET NOM :', r.evaluateur, r.agent],
     ['DATE :', enLettres(r.envoyeeLe) || null, enLettres(r.valideeLe) || null],
   ];
   lignes.forEach(([libelle, n1, n], i) => {
-    const base = 456 + i * 30.6;
+    const base = 456 + i * 30.6 + dy;
     f.texte(libelle, 45, base, { taille: 8 });
     for (const [x, valeur] of [
       [xN1, n1],
@@ -913,7 +1031,7 @@ function pageDeLaRatification(f: Feuille, d: DonneesDeLaGrille) {
   });
   // La signature : le N+1 paraphe en envoyant la grille à l'agent, l'agent
   // en la validant.
-  const baseSignature = 456 + 2 * 30.6;
+  const baseSignature = 456 + 2 * 30.6 + dy;
   f.texte('SIGNATURE :', 45, baseSignature, { taille: 8 });
   for (const [x, nom, signe] of [
     [xN1, r.evaluateur, Boolean(r.envoyeeLe)],
@@ -925,7 +1043,7 @@ function pageDeLaRatification(f: Feuille, d: DonneesDeLaGrille) {
   f.texte(
     '(Le document doit obligatoirement être validé par la signature de l’agent évalué (N).)',
     45,
-    548,
+    548 + dy,
     { taille: 8 },
   );
 }

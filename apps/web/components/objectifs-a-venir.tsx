@@ -16,18 +16,36 @@ import {
   parEcheance,
   type ObjectifAVenir,
 } from '@teranga/contracts';
-import { Button, cn } from '@teranga/ui';
+import { cn } from '@teranga/ui';
 import { aujourdhui } from '../lib/temps';
+import { BoutonAjouter } from './bouton-ajouter';
 import { Icon } from './icons';
 
 /*
    Les objectifs de travail pour la période à venir, dans la grille
-   d'évaluation : une liste, comme on écrit des puces. Chaque objectif tient
-   sur une ligne et a son échéance, facultative, choisie d'aujourd'hui à la
-   fin de l'année qui suit celle de la grille. La liste se range par
-   échéance, la plus proche en tête, celles sans échéance en bas. Quatre
-   objectifs au plus : les quatre lignes du modèle.
+   d'évaluation : une liste de choses à faire, chacune derrière sa case
+   (le PDF les imprime en puces, ADR-0153). Chaque objectif tient sur une
+   ligne et a son échéance, facultative, choisie d'aujourd'hui à la fin de
+   l'année qui suit celle de la grille. La liste se range par échéance, la
+   plus proche en tête, celles sans échéance en bas. Quatre objectifs au
+   plus : les quatre lignes du modèle.
 */
+
+/**
+ * La case d'un objectif à venir, devant son texte, à l'écran. Elle ne se
+ * coche pas : elle dit une chose à faire.
+ */
+export function CaseAVenir({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'block size-[14px] shrink-0 rounded-[4px] border-[1.5px] border-ink-muted/45 bg-surface',
+        className,
+      )}
+    />
+  );
+}
 
 /** L'échéance d'un objectif, en lecture : « 31 mars 2027 ». */
 export function Echeance({ date, className }: { date: string; className?: string }) {
@@ -306,12 +324,7 @@ export const EditeurObjectifsAVenir = memo(function EditeurObjectifsAVenir({
         <ul className="flex flex-col">
           {lignes.map((l, i) => (
             <li key={l.id} className="flex items-start gap-[11px] py-1">
-              <span
-                aria-hidden
-                className="w-2 shrink-0 pt-[3px] text-[12.5px] leading-[1.5] text-ink-muted"
-              >
-                •
-              </span>
+              <CaseAVenir className="mt-[6px]" />
               <TexteDeLObjectif
                 id={idDe(l.id)}
                 valeur={l.texte}
@@ -342,10 +355,7 @@ export const EditeurObjectifsAVenir = memo(function EditeurObjectifsAVenir({
         </ul>
       ) : null}
       {complete ? null : (
-        <Button variant="ghost" size="sm" className="mt-1 -ml-2 self-start" onClick={ajouter}>
-          <Icon name="add" size={16} />
-          Ajouter un objectif
-        </Button>
+        <BoutonAjouter libelle="Ajouter un objectif" onClick={ajouter} className="mt-2" />
       )}
     </div>
   );
