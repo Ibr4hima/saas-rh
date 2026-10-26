@@ -792,6 +792,12 @@ export interface LigneDEvaluation {
   poste: string | null;
   direction: string | null;
   personnel: Personnel | null;
+  /**
+   * Dans le suivi de la DCH : la personne qui lit peut dire ici si l'agent
+   * est cadre ou non cadre, comme sur sa fiche. Il faut gérer le personnel,
+   * et le dossier doit être en activité et ne pas être le sien.
+   */
+  personnelModifiable: boolean;
   ouEnEst: OuEnEst;
   /** Le N+1 de l'agent ; pour le N+2, le N+1 qui a envoyé la grille. */
   n1: string | null;

@@ -8,8 +8,10 @@ import {
   LIBELLES_PERSONNEL,
   nomDeLaGrille,
   periodeDEvaluationEnLettres,
+  PERSONNELS,
   type LigneDEvaluation,
   type OuEnEst,
+  type Personnel,
   type SuiviDesEvaluations,
   type VueDeLaPeriode,
 } from '@teranga/contracts';
@@ -17,6 +19,7 @@ import {
   Button,
   CardHeader,
   CardTitle,
+  cn,
   EmptyState,
   Field,
   Input,
@@ -52,7 +55,9 @@ import { RechercheDuTableau, SqueletteTableau } from '../../../components/tablea
    période de chaque année, du … au … ; la DCH suit chaque agent qu'on
    évalue, où en est sa grille, et reçoit en PDF celles que les N+1 lui
    transmettent. Une année se choisit dans l'en-tête : celles qui ont une
-   période, et l'année en cours pour en fixer une.
+   période, et l'année en cours pour en fixer une. Qui gère le personnel dit
+   aussi, ligne par ligne, si l'agent est cadre ou non cadre : la fiche de
+   l'agent change avec, comme si le choix y avait été fait.
 */
 
 type Filtre = 'toutes' | 'a_remplir' | 'en_cours' | 'terminee' | 'en_retard';
@@ -94,13 +99,54 @@ const plat = (texte: string) => texte.normalize('NFD').replace(/[̀-ͯ]/g, '').t
 
 export default function EvaluationPage() {
   const router = useRouter();
+  const qc = useQueryClient();
   const demandee = anneeDeLAdresse(useSearchParams().get('annee'));
+  const cleDuSuivi = [...CLE_EVALUATIONS, 'suivi', demandee] as const;
   const suivi = useQuery({
-    queryKey: [...CLE_EVALUATIONS, 'suivi', demandee],
+    queryKey: cleDuSuivi,
     queryFn: () =>
       api<SuiviDesEvaluations>(`/evaluations/suivi${demandee ? `?annee=${demandee}` : ''}`),
     placeholderData: (precedent) => precedent,
   });
+  // Cadre ou non cadre : la même modification que sur la fiche de l'agent.
+  // La ligne change tout de suite ; un refus la remet comme elle était.
+  const [erreurPersonnel, setErreurPersonnel] = useState<string | null>(null);
+  const changerPersonnel = useMutation({
+    mutationFn: ({ employeeId, personnel }: { employeeId: string; personnel: Personnel }) =>
+      api(`/employees/${employeeId}`, { method: 'PATCH', body: { employee: { personnel } } }),
+    onMutate: async ({ employeeId, personnel }) => {
+      setErreurPersonnel(null);
+      await qc.cancelQueries({ queryKey: cleDuSuivi });
+      const avant = qc.getQueryData<SuiviDesEvaluations>(cleDuSuivi);
+      qc.setQueryData<SuiviDesEvaluations>(cleDuSuivi, (s) =>
+        s
+          ? {
+              ...s,
+              lignes: s.lignes.map((l) => (l.employeeId === employeeId ? { ...l, personnel } : l)),
+            }
+          : s,
+      );
+      return { avant };
+    },
+    onError: (e, _variables, contexte) => {
+      if (contexte?.avant) qc.setQueryData(cleDuSuivi, contexte.avant);
+      setErreurPersonnel(messageDe(e, 'Modification impossible, réessayez.'));
+    },
+    onSettled: (_reponse, _erreur, { employeeId }) => {
+      void qc.invalidateQueries({ queryKey: CLE_EVALUATIONS });
+      void qc.invalidateQueries({ queryKey: ['employee', employeeId] });
+      void qc.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
+  const choixDuPersonnel = (l: LigneDEvaluation) => (
+    <ChoixDuPersonnel
+      ligne={l}
+      enCours={
+        changerPersonnel.isPending && changerPersonnel.variables?.employeeId === l.employeeId
+      }
+      onChange={(personnel) => changerPersonnel.mutate({ employeeId: l.employeeId, personnel })}
+    />
+  );
   const [periodeOuverte, setPeriodeOuverte] = useState(false);
   const [recherche, setRecherche] = useState('');
   const [filtre, setFiltre] = useState<Filtre>('toutes');
@@ -218,6 +264,11 @@ export default function EvaluationPage() {
             </Select>
           </div>
         </CardHeader>
+        {erreurPersonnel ? (
+          <div className="shrink-0 px-5">
+            <Erreur>{erreurPersonnel}</Erreur>
+          </div>
+        ) : null}
         {!v ? (
           <CorpsDefilant>
             <SqueletteTableau />
@@ -257,16 +308,13 @@ export default function EvaluationPage() {
                     <span className="font-mono text-[11px] tracking-tight text-ink-muted">
                       {l.matricule}
                     </span>
+                    {/* Sur un téléphone, la colonne « Personnel » n'a pas la
+                        place : le choix passe sous le nom. */}
+                    <div className="mt-2 sm:hidden">{choixDuPersonnel(l)}</div>
                   </Td>
                   <Td className="max-md:hidden">{l.direction}</Td>
                   <Td className="max-lg:hidden">{l.n1}</Td>
-                  <Td className="max-sm:hidden">
-                    {l.personnel ? (
-                      LIBELLES_PERSONNEL[l.personnel]
-                    ) : (
-                      <span className="font-semibold text-accent-text">À renseigner</span>
-                    )}
-                  </Td>
+                  <Td className="max-sm:hidden">{choixDuPersonnel(l)}</Td>
                   <Td>
                     <span className="flex flex-wrap items-center gap-1.5">
                       <BadgeDeLEtape ouEnEst={l.ouEnEst} />
@@ -309,6 +357,53 @@ export default function EvaluationPage() {
         onClose={() => setApercu(null)}
       />
     </Page>
+  );
+}
+
+/**
+ * Cadre ou non cadre, dans la ligne d'un agent. Qui gère le personnel le
+ * choisit dans la liste, pour un dossier en activité qui n'est pas le sien ;
+ * sinon, il se lit. Tant que rien n'est choisi, « À renseigner » reste en
+ * évidence ; une fois le choix fait, il quitte la liste.
+ */
+function ChoixDuPersonnel({
+  ligne: l,
+  enCours,
+  onChange,
+}: {
+  ligne: LigneDEvaluation;
+  enCours: boolean;
+  onChange: (personnel: Personnel) => void;
+}) {
+  if (!l.personnelModifiable) {
+    return l.personnel ? (
+      <>{LIBELLES_PERSONNEL[l.personnel]}</>
+    ) : (
+      <span className="font-semibold text-accent-text">À renseigner</span>
+    );
+  }
+  return (
+    <Select
+      aria-label={`Personnel de ${l.nom}`}
+      value={l.personnel ?? ''}
+      disabled={enCours}
+      onChange={(e) => onChange(e.target.value as Personnel)}
+      className={cn(
+        'h-8 w-[136px] text-[12.5px]',
+        !l.personnel && 'font-semibold text-accent-text',
+      )}
+    >
+      {l.personnel ? null : (
+        <option value="" disabled>
+          À renseigner
+        </option>
+      )}
+      {PERSONNELS.map((p) => (
+        <option key={p} value={p}>
+          {LIBELLES_PERSONNEL[p]}
+        </option>
+      ))}
+    </Select>
   );
 }
 

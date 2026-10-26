@@ -260,6 +260,7 @@ export class EvaluationsService {
           aujourdhui,
           sql`(${evaluable(sql`e`)} OR g.id IS NOT NULL)`,
           null,
+          peut(user, 'personnel.gerer') ? user.userId : null,
         ),
       };
     });
@@ -272,6 +273,12 @@ export class EvaluationsService {
     aujourdhui: string,
     filtre: ReturnType<typeof sql>,
     moi: string | null,
+    /**
+     * Le compte de qui lit le suivi en gérant le personnel : cadre ou non
+     * cadre se change alors depuis la ligne, comme sur la fiche, sauf sur son
+     * propre dossier et sur un dossier inactif. null : en lecture seule.
+     */
+    gestionnaire: string | null = null,
   ): Promise<LigneDEvaluation[]> {
     const { rows } = await tx.execute<{
       employee_id: string;
@@ -281,6 +288,7 @@ export class EvaluationsService {
       poste: string | null;
       direction: string | null;
       personnel: Personnel | null;
+      personnel_modifiable: boolean;
       etat: EtatDeGrille | null;
       renvoyee: boolean;
       n1: string | null;
@@ -300,7 +308,10 @@ export class EvaluationsService {
               SELECT coalesce(nullif(x.short_name, ''), x.name) FROM remontee rr
                 JOIN org_units x ON x.id = rr.id
                WHERE rr.unit_type = 'direction' ORDER BY rr.prof LIMIT 1) AS direction,
-             e.personnel, g.etat,
+             e.personnel,
+             (${gestionnaire}::uuid IS NOT NULL AND e.status = 'active'
+              AND p.user_id IS DISTINCT FROM ${gestionnaire}::uuid) AS personnel_modifiable,
+             g.etat,
              (g.etat = 'brouillon' AND g.renvoyee_le IS NOT NULL) AS renvoyee,
              CASE WHEN g.n2_employee_id = ${moi} AND g.etat IN ('chez_n2', 'validee_n2', 'terminee')
                   THEN (SELECT pv.given_name || ' ' || pv.family_name FROM employees v
@@ -332,6 +343,7 @@ export class EvaluationsService {
         poste: r.poste,
         direction: r.direction,
         personnel: r.personnel,
+        personnelModifiable: r.personnel_modifiable,
         ouEnEst,
         n1: r.n1,
         enN2: Boolean(moi && r.n2_employee_id === moi && r.manager !== moi),

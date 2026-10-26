@@ -1020,6 +1020,31 @@ describe('la DCH', () => {
     expect(await codeOf(() => evaluations.suivi(session('awa')))).toBe('auth.forbidden');
   });
 
+  it('qui gère le personnel dit, depuis le suivi, si un agent est cadre ou non cadre', async () => {
+    const gestion = {
+      ...session('ndeye'),
+      capacites: ['pilotage', 'personnel.gerer'],
+    } as SessionUser;
+    const ligne = async (qui: SessionUser, nom: string) =>
+      (await evaluations.suivi(qui)).lignes.find((l) => l.nom === nom);
+    // Sans gérer le personnel, la colonne se lit seulement.
+    expect((await ligne(session('ndeye'), 'Ousmane Fall'))?.personnelModifiable).toBe(false);
+    expect((await ligne(gestion, 'Ousmane Fall'))?.personnelModifiable).toBe(true);
+    // Pas sur son propre dossier, comme sur la fiche.
+    expect((await ligne(gestion, 'Ndèye Faye'))?.personnelModifiable).toBe(false);
+    // Pas sur un dossier inactif, dont la grille reste au suivi.
+    await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [agents.moussa]);
+    try {
+      expect((await ligne(gestion, 'Moussa Ndiaye'))?.personnelModifiable).toBe(false);
+    } finally {
+      await raw(`UPDATE employees SET status = 'active' WHERE id = $1`, [agents.moussa]);
+    }
+    // Dans l'équipe du N+1, jamais.
+    expect(
+      (await evaluations.equipe(session('awa'))).lignes.every((l) => !l.personnelModifiable),
+    ).toBe(true);
+  });
+
   it('passé la fin de la période, ce qui n’est pas transmis est en retard', async () => {
     await raw(`UPDATE evaluation_periodes SET au = $1 WHERE tenant_id = $2`, [jour(-1), tenantId]);
     try {
