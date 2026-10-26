@@ -12,7 +12,13 @@ import type {
   InviteResult,
   RepriseDesResponsabilites,
 } from '@teranga/contracts';
-import { peut, posteDAdjoint, posteDeResponsable, titreDeLaFiche } from '@teranga/contracts';
+import {
+  peut,
+  posteDAdjoint,
+  posteDeResponsable,
+  titreDeLaFiche,
+  uniteAvecArticle,
+} from '@teranga/contracts';
 import {
   Badge,
   Button,
@@ -34,7 +40,7 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
-import { compte } from '../lib/mots';
+import { compte, majuscule } from '../lib/mots';
 import { CarteCertificatsAgent } from './academy-certificat';
 import { CarteEvaluationsAgent } from './evaluation-objectifs';
 import { EmployeeDocumentsCard } from './employee-documents-card';
@@ -1151,7 +1157,7 @@ function AssignmentsCard({
                 <Field
                   label="Nouveau manager"
                   htmlFor="asg-n1"
-                  hint={`Dans ${libelle(directionVisee)}.`}
+                  hint={`${majuscule(uniteAvecArticle('dans', directionVisee))}.`}
                 >
                   <Select
                     id="asg-n1"
@@ -1172,7 +1178,7 @@ function AssignmentsCard({
                   label="Qui reprend son équipe"
                   htmlFor="asg-repreneur"
                   required
-                  hint={`${team.map((m) => m.name).join(', ')} ${team.length > 1 ? 'restent' : 'reste'} dans ${libelle(directionActuelle) ?? 'sa direction'}.`}
+                  hint={`${team.map((m) => m.name).join(', ')} ${team.length > 1 ? 'restent' : 'reste'} ${directionActuelle ? uniteAvecArticle('dans', directionActuelle) : 'dans sa direction'}.`}
                 >
                   <Select
                     id="asg-repreneur"

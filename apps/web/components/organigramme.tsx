@@ -7,6 +7,7 @@ import {
   estSecretariatGeneral,
   orgUnitLabel,
   type OrgUnitView,
+  uniteAvecArticle,
 } from '@teranga/contracts';
 import { cn } from '@teranga/ui';
 import { Icon } from './icons';
@@ -630,7 +631,7 @@ function Bloc({
         <button
           type="button"
           onClick={() => actions.onAjouter?.(u)}
-          aria-label={`Rattacher une unité à ${u.name}`}
+          aria-label={`Rattacher une unité ${uniteAvecArticle('à', u, u.name)}`}
           title="Rattacher une unité"
           className={cn(
             'absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full border border-card-line bg-surface text-ink-muted shadow-sm transition-all',

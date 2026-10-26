@@ -240,6 +240,47 @@ export function posteDeResponsable(
 }
 
 /**
+ * Une unité dans une phrase, avec sa préposition et son article : « de la
+ * DCH », « du SG », « à la Direction Générale (DG) », « dans le département
+ * Études », « au service Comptabilité ». Les accords de `posteDeResponsable` :
+ * une direction se dit au féminin, le Secrétariat général au masculin ; un
+ * département ou un service se nomme par sa nature quand son nom ne la dit
+ * pas. `libelle` : ce que la phrase écrit de l'unité (son nom complet, son
+ * libellé d'organigramme) ; par défaut, l'acronyme d'une direction, sinon son
+ * nom.
+ */
+export function uniteAvecArticle(
+  preposition: 'de' | 'à' | 'dans',
+  unite: { name: string; unitType: OrgUnitType; shortName?: string | null },
+  libelle?: string,
+): string {
+  let texte: string;
+  let feminin: boolean;
+  if (unite.unitType === 'direction') {
+    texte = libelle ?? (unite.shortName || unite.name);
+    feminin = !estSecretariatGeneral(unite.name);
+  } else {
+    const nature = unite.unitType === 'department' ? 'département' : 'service';
+    const prefixe = new RegExp(`^${nature}\\s+`, 'iu');
+    texte = prefixe.test(unite.name)
+      ? (libelle ?? `${nature} ${unite.name.replace(prefixe, '')}`)
+      : `${nature} ${libelle ?? unite.name}`;
+    feminin = false;
+  }
+  // L'élision devant une voyelle ; un y suivi d'une voyelle se prononce
+  // comme une consonne et ne l'appelle pas.
+  if (/^(?:[aeiouàâäéèêëîïôöùûü]|y(?![aeiouàâäéèêëîïôöùûü]))/iu.test(texte)) {
+    return `${preposition} l’${texte}`;
+  }
+  const article = {
+    de: feminin ? 'de la' : 'du',
+    à: feminin ? 'à la' : 'au',
+    dans: feminin ? 'dans la' : 'dans le',
+  }[preposition];
+  return `${article} ${texte}`;
+}
+
+/**
  * Le poste de DGA, tel que les affectations l'écrivent (ADR-0126) :
  * « Directeur général adjoint », « Directrice générale adjointe ». Sans genre
  * connu, comme pour un responsable, l'intitulé ne devine pas : « Responsable

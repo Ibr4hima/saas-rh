@@ -20,6 +20,7 @@ import {
   type OrgUnitType,
   type OrgUnitView,
   peut,
+  uniteAvecArticle,
 } from '@teranga/contracts';
 import {
   Button,
@@ -401,7 +402,7 @@ function UnitPanel({
   // Où l'unité se range ; le sommet ne le dit pas, il ne se range sous rien.
   const parent = units.find((u) => u.id === unit.parentId);
   const rattachement = parent
-    ? `Rattachée à ${orgUnitLabel(parent)}`
+    ? `Rattachée ${uniteAvecArticle('à', parent, orgUnitLabel(parent))}`
     : unit.sommet
       ? null
       : 'Sans rattachement, à ranger sous la Direction Générale';
@@ -974,7 +975,9 @@ function FenetreNouvelleUnite({
       open
       onClose={onClose}
       title="Nouvelle unité"
-      subtitle={parent ? `Rattachée à ${orgUnitLabel(parent)}` : undefined}
+      subtitle={
+        parent ? `Rattachée ${uniteAvecArticle('à', parent, orgUnitLabel(parent))}` : undefined
+      }
       maxWidth="max-w-lg"
       footer={
         <div className="flex w-full justify-end gap-2">

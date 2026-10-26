@@ -1,6 +1,7 @@
 'use client';
 
 import type { EmployeeListItem } from '@teranga/contracts';
+import { uniteAvecArticle } from '@teranga/contracts';
 import { Field, Select } from '@teranga/ui';
 import { libelleResponsable, useResponsablesPossibles } from '../lib/responsables';
 
@@ -83,7 +84,11 @@ function LigneReprise({
       label={`${agent.givenName} ${agent.familyName} · ${reste > 1 ? `${reste} agents` : 'un agent'}`}
       htmlFor={id}
       required
-      hint={direction ? `Son équipe reste dans ${direction}.` : undefined}
+      hint={
+        agent.directionName
+          ? `Son équipe reste ${uniteAvecArticle('dans', { name: agent.directionName, unitType: 'direction', shortName: agent.directionShortName })}.`
+          : undefined
+      }
     >
       <Select id={id} value={valeur} onChange={(ev) => onChange(ev.target.value)}>
         <option value="">Qui reprend son équipe ?</option>

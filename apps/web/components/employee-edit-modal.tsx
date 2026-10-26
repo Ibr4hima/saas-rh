@@ -10,7 +10,7 @@ import type {
   OrgUnitView,
   UpdateEmployeeInput,
 } from '@teranga/contracts';
-import { peut } from '@teranga/contracts';
+import { peut, uniteAvecArticle } from '@teranga/contracts';
 import { Button, Field, Input, Select, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { composePhone, COUNTRIES, splitPhone } from '../lib/countries';
@@ -437,7 +437,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
                   : impose
                     ? 'Le responsable d’une unité relève de l’unité au-dessus de la sienne.'
                     : direction
-                      ? `Les agents de ${direction}, et le directeur général.`
+                      ? `Les agents ${uniteAvecArticle('de', { name: direction, unitType: 'direction' }, direction)}, et le directeur général.`
                       : 'Affectez d’abord l’agent à une direction.'
             }
           >

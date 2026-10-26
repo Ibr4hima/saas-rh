@@ -10,6 +10,7 @@ import {
 import { Button, CardHeader, CardTitle, cn } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { useMe } from '../lib/hooks';
+import { de } from '../lib/mots';
 import { Icon, type IconName } from './icons';
 
 /* ————————————————————————————————————————————————————————————————
@@ -210,7 +211,7 @@ export function ConfierAuxBackups({
       variant="secondary"
       loading={confier.isPending}
       onClick={() => confier.mutate()}
-      title={`Confier aux backups la demande de ${employe}`}
+      title={`Confier aux backups la demande ${de(employe)}`}
       className="whitespace-nowrap"
     >
       {confier.isPending ? null : <Icon name="group" size={15} />}

@@ -5,7 +5,7 @@ import {
   type AbsenceRequestView,
 } from '@teranga/contracts';
 import { formatDate } from './hooks';
-import { compte } from './mots';
+import { compte, de } from './mots';
 
 type Periode = Pick<
   AbsenceRequestView,
@@ -65,14 +65,14 @@ export function resumeVisas(r: AbsenceRequestView): string | undefined {
   return r.circuit
     .map((e) => {
       const qui = ETAPE_CONGE_LABELS[e.etape];
-      const signe = `${e.qui}${e.parDelegationDe ? `, par délégation de ${e.parDelegationDe}` : ''}`;
+      const signe = `${e.qui}${e.parDelegationDe ? `, par délégation ${de(e.parDelegationDe)}` : ''}`;
       switch (e.etat) {
         case 'visee':
           return `${qui} : visé par ${signe}`;
         case 'refusee':
           return `${qui} : refusé par ${signe}${e.comment ? ` : « ${e.comment} »` : ''}`;
         case 'attendue':
-          return `${qui} : en attente${e.qui ? ` de ${e.qui}` : ''}`;
+          return `${qui} : en attente${e.qui ? ` ${de(e.qui)}` : ''}`;
         case 'a_venir':
           return `${qui} : ensuite`;
         case 'passee':

@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { EmployeeListItem, EmployeeListPage, OrgUnitView } from '@teranga/contracts';
+import { uniteAvecArticle } from '@teranga/contracts';
 import { Button, Checkbox, cn, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { COUNTRIES, composePhone, countryByCode, DEFAULT_COUNTRY } from '../lib/countries';
@@ -423,7 +424,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             htmlFor="managerId"
             hint={
               directionChoisie
-                ? `Les agents de ${directionChoisie.shortName ?? directionChoisie.name}, et le directeur général.`
+                ? `Les agents ${uniteAvecArticle('de', directionChoisie)}, et le directeur général.`
                 : 'Renseignez d’abord la direction.'
             }
           >

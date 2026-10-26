@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@teranga/ui';
+import { de } from '../lib/mots';
 import { Icon } from './icons';
 
 /**
@@ -53,7 +54,7 @@ export function BoutonDecision({
   onClick: () => void;
 }) {
   const approuve = geste === 'approuver';
-  const intitule = `${approuve ? 'Valider' : 'Refuser'} ${objet} de ${employe}`;
+  const intitule = `${approuve ? 'Valider' : 'Refuser'} ${objet} ${de(employe)}`;
   return (
     <button
       type="button"
