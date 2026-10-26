@@ -52,7 +52,7 @@ function statutDuJour(
   jourFerie: string | null,
   aujourdhui: string,
 ): { texte: string; classe: string } {
-  if (jourFerie == null) return { texte: 'À dater', classe: 'text-ink-muted' };
+  if (jourFerie == null) return { texte: 'Date à confirmer', classe: 'text-ink-muted' };
   if (jourFerie === aujourdhui) return { texte: 'En cours', classe: 'font-semibold text-primary' };
   if (jourFerie < aujourdhui) return { texte: 'Passé', classe: 'text-ink-muted' };
   return { texte: 'À venir', classe: 'text-ink' };
@@ -166,7 +166,7 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
                         ) : peutGerer ? (
                           <button
                             type="button"
-                            aria-label={`Dater ${h.label} sur ${h.year}`}
+                            aria-label={`Fixer la date de ${h.label} ${h.year}`}
                             className="inline-flex items-center gap-1.5 rounded-controle-sm border border-dashed border-line px-2.5 py-1 text-[12px] text-ink-muted transition-colors duration-150 hover:border-primary hover:text-primary"
                             onClick={() => setEdition(h)}
                           >
@@ -217,7 +217,7 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
                 {lignes.length === 0 ? (
                   <Tr>
                     <Td colSpan={colonnes} className="py-8 text-center text-ink-muted">
-                      Aucun jour férié sur {annee}.
+                      Aucun jour férié en {annee}.
                     </Td>
                   </Tr>
                 ) : null}
@@ -258,13 +258,13 @@ function FeriesCard({ peutGerer }: { peutGerer: boolean }) {
         >
           <p className="text-[12.5px] leading-relaxed text-ink">
             {aSupprimer.day != null
-              ? 'Ce jour redevient ouvré : il sera de nouveau décompté des demandes qui l’englobent.'
-              : 'Cette fête sort de la liste de l’année : elle ne pourra plus y être datée.'}
+              ? 'Ce jour redeviendra un jour ouvré et sera de nouveau décompté dans les demandes d’absence.'
+              : 'Ce jour férié sera retiré de la liste de l’année.'}
           </p>
           {aSupprimer.fixed ? (
             <p className="mt-3 rounded-bloc bg-bg px-3 py-2 text-[12px] text-ink-muted">
-              C’est un férié à date civile. Le retirer ne vaut que pour {aSupprimer.year} : les
-              autres années gardent le leur.
+              Ce jour férié tombe à date fixe : il ne sera retiré que pour {aSupprimer.year}, pas
+              pour les autres années.
             </p>
           ) : null}
         </FenetreSuppression>
@@ -313,14 +313,18 @@ function FenetreFerie({
       open
       onClose={onClose}
       title={
-        aDater ? 'Dater ce jour férié' : cible ? 'Modifier le jour férié' : 'Nouveau jour férié'
+        aDater
+          ? 'Fixer la date de ce jour férié'
+          : cible
+            ? 'Modifier le jour férié'
+            : 'Nouveau jour férié'
       }
       subtitle={
         aDater
-          ? `Une fois datée, cette fête sera chômée et exclue des décomptes de ${anneeCible}.`
+          ? `Une fois sa date fixée, ce jour sera chômé et ne sera pas décompté des absences en ${anneeCible}.`
           : cible
-            ? 'Une fête mobile se recale souvent la veille : les rappels déjà partis sont retirés.'
-            : 'Il sera chômé pour toute l’organisation, et exclu des décomptes.'
+            ? 'La date d’une fête mobile est souvent confirmée la veille. Les notifications déjà envoyées seront retirées.'
+            : 'Ce jour sera chômé pour tout le personnel et ne sera pas décompté des absences.'
       }
       maxWidth="max-w-xl"
       footer={
@@ -368,7 +372,7 @@ function FenetreFerie({
               list="feries-mobiles"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="Ex : Korité"
+              placeholder="Ex. : Korité"
             />
           </Field>
         </ModalGrid>

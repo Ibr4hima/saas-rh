@@ -66,11 +66,15 @@ interface EntreeZip {
 function catalogue(buf: Buffer): EntreeZip[] {
   const debutEocd = trouverEocd(buf);
   const nombre = buf.readUInt16LE(debutEocd + 10);
-  if (nombre > MAX_ENTREES) throw new XlsxIllisible('Archive trop fournie');
+  if (nombre > MAX_ENTREES)
+    throw new XlsxIllisible('Ce fichier contient trop d’éléments pour être importé');
   let p = buf.readUInt32LE(debutEocd + 16);
   const entrees: EntreeZip[] = [];
   for (let i = 0; i < nombre; i++) {
-    if (buf.readUInt32LE(p) !== 0x02014b50) throw new XlsxIllisible('Catalogue illisible');
+    if (buf.readUInt32LE(p) !== 0x02014b50)
+      throw new XlsxIllisible(
+        'Ce fichier est endommagé : enregistrez-le de nouveau au format .xlsx',
+      );
     const longueurNom = buf.readUInt16LE(p + 28);
     const longueurExtra = buf.readUInt16LE(p + 30);
     const longueurCommentaire = buf.readUInt16LE(p + 32);
@@ -98,10 +102,10 @@ function trouverEocd(buf: Buffer): number {
 
 function extraire(buf: Buffer, e: EntreeZip, budget: { reste: number }): Buffer {
   if (e.tailleDecompressee > MAX_ENTREE_DECOMPRESSEE) {
-    throw new XlsxIllisible('Une pièce de l’archive est trop volumineuse');
+    throw new XlsxIllisible('Ce fichier est trop volumineux une fois ouvert');
   }
   if (buf.readUInt32LE(e.offsetLocal) !== 0x04034b50) {
-    throw new XlsxIllisible('Archive incohérente');
+    throw new XlsxIllisible('Ce fichier est endommagé : enregistrez-le de nouveau au format .xlsx');
   }
   const longueurNom = buf.readUInt16LE(e.offsetLocal + 26);
   const longueurExtra = buf.readUInt16LE(e.offsetLocal + 28);
@@ -109,7 +113,7 @@ function extraire(buf: Buffer, e: EntreeZip, budget: { reste: number }): Buffer 
   const brut = buf.subarray(debut, debut + e.tailleCompressee);
   const sortie = e.methode === 0 ? Buffer.from(brut) : inflateRawSync(brut);
   budget.reste -= sortie.length;
-  if (budget.reste < 0) throw new XlsxIllisible('Archive trop volumineuse à l’ouverture');
+  if (budget.reste < 0) throw new XlsxIllisible('Ce fichier est trop volumineux une fois ouvert');
   return sortie;
 }
 
@@ -207,7 +211,7 @@ function serieEnDate(serie: number): Date {
  * inviterait à importer par erreur un onglet de notes ou de totaux.
  */
 export function lirePremiereFeuille(buf: Buffer): FeuilleXlsx {
-  if (buf.length < 22) throw new XlsxIllisible('Fichier vide');
+  if (buf.length < 22) throw new XlsxIllisible('Ce fichier est vide');
   const entrees = catalogue(buf);
   const budget = { reste: MAX_TOTAL_DECOMPRESSE };
   const lire = (nom: string): string | undefined => {
@@ -232,7 +236,7 @@ export function lirePremiereFeuille(buf: Buffer): FeuilleXlsx {
     : undefined;
   const cheminFeuille = cible ? cible.replace(/^\/?(xl\/)?/, 'xl/') : 'xl/worksheets/sheet1.xml';
   const feuille = lire(cheminFeuille) ?? lire('xl/worksheets/sheet1.xml');
-  if (!feuille) throw new XlsxIllisible('Le classeur ne contient aucune feuille lisible');
+  if (!feuille) throw new XlsxIllisible('Le fichier ne contient aucune feuille lisible');
 
   // Le tableau des chaînes partagées n'existe pas toujours : les classeurs
   // écrits par un script posent souvent le texte dans la cellule même.
@@ -251,7 +255,7 @@ export function lirePremiereFeuille(buf: Buffer): FeuilleXlsx {
   const lignes: CelluleXlsx[][] = [];
 
   for (const row of feuille.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
-    if (lignes.length >= MAX_LIGNES) throw new XlsxIllisible('Feuille trop longue');
+    if (lignes.length >= MAX_LIGNES) throw new XlsxIllisible('La feuille contient trop de lignes');
     const cellules: CelluleXlsx[] = [];
     for (const c of row[1]!.matchAll(/<c\b([^>]*)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
       const attributs = c[1] ?? '';

@@ -182,7 +182,7 @@ export default function CandidaturesNonRetenuesPage() {
               <tr>
                 <ThCases sel={sel} />
                 <Th>Nom</Th>
-                <Th>Offre postulée</Th>
+                <Th>Offre</Th>
                 <Th>Référence</Th>
                 <Th>Publiée le</Th>
                 <Th className="text-right">Dossier</Th>

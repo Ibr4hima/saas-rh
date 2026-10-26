@@ -97,7 +97,7 @@ export default function GrilleDEvaluationPage({
           <EmptyState
             className="py-14"
             icon={<Icon name="rate_review" size={22} />}
-            title={probleme?.title ?? 'La grille d’évaluation ne s’affiche pas'}
+            title={probleme?.title ?? 'Impossible d’afficher la grille d’évaluation'}
           />
         </Card>
       </Page>
@@ -167,7 +167,7 @@ function CorpsDeLaGrille({ vue }: { vue: VueDeGrille }) {
       return (
         <Vide
           titre="Cadre ou non-cadre à renseigner"
-          description="La DCH le renseigne sur la fiche de l’agent."
+          description="La DCH doit l’indiquer sur la fiche de l’agent."
         />
       );
     }
@@ -323,7 +323,7 @@ function Remplissage({ vue }: { vue: VueDeGrille }) {
                   </p>
                 ) : tropLongs.length > 0 ? (
                   <p role="alert" className="text-danger">
-                    Trop long pour sa place sur le PDF : {tropLongs.map(minuscule).join(', ')}.
+                    Texte trop long pour le PDF : {tropLongs.map(minuscule).join(', ')}.
                   </p>
                 ) : manque.length > 0 ? (
                   <p className="text-ink-muted">

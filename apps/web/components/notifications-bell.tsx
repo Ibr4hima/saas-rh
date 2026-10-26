@@ -377,7 +377,7 @@ function PanneauNotifications({
                   onClick={onTousLus}
                   disabled={tousLusEnCours}
                   icone="check"
-                  libelle="Tout marquer lu"
+                  libelle="Tout marquer comme lu"
                 />
               ) : null}
               {!archive && items.length > 0 ? (
@@ -399,7 +399,7 @@ function PanneauNotifications({
           {/* Deux vues, jamais plus : ce qui reste à voir, ce qu'on a archivé. */}
           <div className="mt-2 flex items-center gap-1 rounded-controle bg-bg p-0.5">
             <Onglet actif={!archive} onClick={() => onVue('inbox')} compte={unread} ton="alerte">
-              Boîte
+              Boîte de réception
             </Onglet>
             <Onglet
               actif={archive}
@@ -419,7 +419,7 @@ function PanneauNotifications({
             <EmptyState
               className="py-9"
               icon={<Icon name={archive ? 'archive' : 'notifications'} size={22} />}
-              title={archive ? 'Aucune archive' : 'Rien à signaler'}
+              title={archive ? 'Aucune archive' : 'Aucune notification'}
             />
           ) : (
             <ul className="flex flex-col">
@@ -522,7 +522,7 @@ function PiedVider({
 }) {
   const [confirmer, setConfirmer] = useState(false);
   const declencheur = useRef<HTMLButtonElement>(null);
-  const libelle = archive ? 'Vider les archives' : 'Vider la boîte';
+  const libelle = archive ? 'Vider les archives' : 'Vider la boîte de réception';
   const annuler = () => {
     setConfirmer(false);
     // Le focus revient au bouton qui a demandé la confirmation.
@@ -666,8 +666,10 @@ function Archiver({
     <button
       type="button"
       onClick={onClick}
-      aria-label={archive ? `Remettre « ${titre} » dans la boîte` : `Archiver « ${titre} »`}
-      title={archive ? 'Remettre dans la boîte' : 'Archiver'}
+      aria-label={
+        archive ? `Remettre « ${titre} » dans la boîte de réception` : `Archiver « ${titre} »`
+      }
+      title={archive ? 'Remettre dans la boîte de réception' : 'Archiver'}
       className={cn(
         'flex size-7 items-center justify-center rounded-lg text-ink-muted transition-all',
         'hover:bg-primary/[0.09] hover:text-primary',

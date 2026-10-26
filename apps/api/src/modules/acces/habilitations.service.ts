@@ -36,7 +36,7 @@ export class HabilitationsService {
         problem(
           403,
           'habilitations.reserve_au_directeur_dch',
-          'Seul le directeur du Capital Humain gère les délégations',
+          'Seule la personne qui dirige la DCH peut gérer les délégations',
         );
       }
       if (!dch) return { estDirecteur, directeur: null, direction: null, membres: [] };
@@ -84,7 +84,7 @@ export class HabilitationsService {
         problem(
           403,
           'habilitations.reserve_au_directeur_dch',
-          'Seul le directeur du Capital Humain gère les délégations',
+          'Seule la personne qui dirige la DCH peut gérer les délégations',
         );
       }
       const { rows: enCours } = await tx.execute<{ id: string }>(sql`
@@ -118,7 +118,7 @@ export class HabilitationsService {
           422,
           'habilitations.pas_membre_dch',
           'Choisissez un membre de la DCH',
-          'Les habilitations se confient aux agents de votre direction, sous contrat.',
+          'Vous pouvez confier des habilitations uniquement aux agents de votre direction, sous contrat.',
         );
       }
       const id = uuidv7();
@@ -144,7 +144,7 @@ export class HabilitationsService {
         problem(
           403,
           'habilitations.reserve_au_directeur_dch',
-          'Seule la personne qui dirige la DCH gère les délégations',
+          'Seule la personne qui dirige la DCH peut gérer les délégations',
         );
       }
       if (!estCapaciteDemande(input.capacite)) {
@@ -165,7 +165,7 @@ export class HabilitationsService {
           422,
           'habilitations.principal_non_delegue',
           'Déléguez d’abord cette demande à cette personne',
-          'La personne principale est l’une des personnes déléguées.',
+          'La personne principale doit faire partie des personnes déléguées.',
         );
       }
       await tx.execute(sql`

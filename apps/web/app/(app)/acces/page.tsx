@@ -258,7 +258,7 @@ export default function GestionDesAccesPage() {
           </CorpsDefilant>
         ) : lignes.length === 0 ? (
           <CorpsDefilant className="grid place-items-center">
-            <EmptyState icon={<Icon name="how_to_reg" size={22} />} title="Aucun agent ici" />
+            <EmptyState icon={<Icon name="how_to_reg" size={22} />} title="Aucun agent" />
           </CorpsDefilant>
         ) : (
           <Table pleine>

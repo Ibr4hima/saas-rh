@@ -52,7 +52,7 @@ export default function MaListePage() {
           <EmptyState
             icon={<Icon name="bookmark" size={22} />}
             title="Votre liste est vide"
-            description="Touchez le signet d’une formation pour la garder ici, et la retrouver en un clic."
+            description="Ajoutez une formation à votre liste avec l’icône signet pour la retrouver ici."
             action={
               <Link href="/academy">
                 <Button variant="secondary">Parcourir le catalogue</Button>

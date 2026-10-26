@@ -48,7 +48,7 @@ export class AccesGuard implements CanActivate {
         403,
         'acces.inactif',
         'Accès restreint',
-        'Vous n’êtes plus en activité : cette page ne vous est plus ouverte.',
+        'Vous n’êtes plus en activité : cette page ne vous est plus accessible.',
       );
     }
     const requises = this.reflector.getAllAndOverride<Capacite[] | undefined>(CAPACITES_KEY, [
@@ -63,7 +63,7 @@ export class AccesGuard implements CanActivate {
     if (auDG && req.sessionUser.estDG) return true;
 
     if (!requises.some((c) => peut(req.sessionUser, c))) {
-      problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
+      problem(403, 'auth.forbidden', 'Vous n’avez pas les droits nécessaires pour cette action');
     }
     return true;
   }

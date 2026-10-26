@@ -430,8 +430,8 @@ function SupprimerModal({
           ))}
         </ul>
         <p className="mt-3 text-[11.5px] leading-relaxed text-ink-muted">
-          Une offre qui a déjà reçu des candidatures ne sera pas supprimée : les dossiers déposés
-          appartiennent aux candidats. Fermez-la plutôt.
+          Une offre qui a déjà reçu des candidatures ne peut pas être supprimée : archivez-la
+          plutôt.
         </p>
       </ModalSection>
     </Modal>

@@ -71,7 +71,7 @@ export default function CongesEquipePage() {
         texte:
           v.decision === 'approved'
             ? `Demande de ${v.demande.employeeName} visée. La DCH est prévenue.`
-            : `Demande de ${v.demande.employeeName} refusée. Un message lui est envoyé.`,
+            : `Demande de ${v.demande.employeeName} refusée. L’agent a été prévenu.`,
       });
       await rafraichir();
     },
@@ -146,7 +146,7 @@ export default function CongesEquipePage() {
             <EmptyState
               className="py-8"
               icon={<Icon name="how_to_reg" size={22} />}
-              title="Rien à valider"
+              title="Aucune demande à valider"
             />
           ) : (
             <ul className="flex flex-col">
@@ -312,7 +312,7 @@ export default function CongesEquipePage() {
           <Field
             label="Motif"
             htmlFor="motif-refus"
-            hint="Facultatif. Il est transmis à l’agent avec le refus. La demande s’arrête là : la DCH n’est pas sollicitée."
+            hint="Facultatif. Il sera communiqué à l’agent avec le refus. La demande ne sera pas transmise à la DCH."
           >
             <Textarea
               id="motif-refus"

@@ -114,7 +114,7 @@ export const titreSaisiSchema = z
     expireLe: z.iso.date(),
   })
   .refine((t) => t.delivreLe < t.expireLe, {
-    message: 'La date d’expiration doit suivre la date de délivrance.',
+    message: 'La date d’expiration doit être postérieure à la date de délivrance.',
     path: ['expireLe'],
   });
 export type TitreSaisi = z.infer<typeof titreSaisiSchema>;

@@ -38,11 +38,11 @@ export default function MotDePasseOubliePage() {
   if (envoye) {
     return (
       <EcranMarque
-        titre="Vérifiez votre boîte"
+        titre="Vérifiez votre boîte mail"
         sousTitre={
           <>
-            Si <span className="font-semibold text-ink">{email.trim()}</span> est l’adresse d’un
-            compte, un lien vient d’y partir.
+            Si <span className="font-semibold text-ink">{email.trim()}</span> correspond à un
+            compte, vous allez recevoir un lien de réinitialisation.
           </>
         }
         pied={

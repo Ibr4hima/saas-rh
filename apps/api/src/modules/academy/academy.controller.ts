@@ -292,7 +292,7 @@ export class AcademyController {
   ) {
     const octets = req.body as unknown;
     if (!Buffer.isBuffer(octets)) {
-      problem(415, 'academy.bad_body', 'Le support doit être envoyé en application/pdf');
+      problem(415, 'academy.bad_body', 'Le support doit être un PDF');
     }
     return this.academy.deposerSupport(req.sessionUser, id, query.filename, octets);
   }

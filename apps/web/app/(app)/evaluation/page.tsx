@@ -226,7 +226,7 @@ export default function EvaluationPage() {
           <CorpsDefilant className="grid place-items-center">
             <EmptyState
               icon={<Icon name="rate_review" size={22} />}
-              title={lignes.length === 0 ? 'Personne à évaluer' : 'Aucun résultat'}
+              title={lignes.length === 0 ? 'Aucun agent à évaluer' : 'Aucun résultat'}
             />
           </CorpsDefilant>
         ) : (
@@ -363,7 +363,7 @@ function FenetrePeriode({ suivi, onClose }: { suivi: SuiviDesEvaluations; onClos
           label="Au"
           htmlFor="periode-au"
           required
-          error={inverse ? 'La fin de la période précède son début' : undefined}
+          error={inverse ? 'La fin de la période doit être après son début' : undefined}
         >
           <Input
             id="periode-au"

@@ -716,7 +716,7 @@ describe('un stagiaire n’est le n+1 de personne', () => {
     expect(err).toBeInstanceOf(ProblemException);
     expect((err as ProblemException).problem).toMatchObject({
       code: 'people.n1_en_stage',
-      detail: expect.stringMatching(/^ENC est le n\+1 d’un agent : /),
+      detail: expect.stringMatching(/^ENC est le N\+1 d’un agent : /),
     });
   });
 

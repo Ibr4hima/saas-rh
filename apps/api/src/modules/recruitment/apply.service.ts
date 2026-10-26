@@ -152,7 +152,7 @@ export class ApplyService {
             422,
             'recruitment.documents_missing',
             'Documents requis manquants',
-            `Manque : ${missing.join(', ')}`,
+            `Manquant : ${missing.join(', ')}`,
           );
         }
 

@@ -65,7 +65,7 @@ export class AuthService {
         403,
         'auth.inscription_fermee',
         'Les inscriptions sont fermées',
-        'Un compte s’ouvre sur invitation de la Direction du Capital Humain.',
+        'Les comptes sont créés sur invitation de la Direction du Capital Humain.',
       );
     }
     const existing = await this.db.global

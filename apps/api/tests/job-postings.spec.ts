@@ -199,7 +199,7 @@ describe('suppression d’offres', () => {
       {
         id: avec.id,
         title: 'Poste convoité',
-        reason: '1 candidature déposée : fermez l’offre plutôt',
+        reason: '1 candidature déposée : archivez l’offre plutôt',
       },
     ]);
     // Le dossier de la candidate est toujours là : c'est tout l'objet du garde-fou.

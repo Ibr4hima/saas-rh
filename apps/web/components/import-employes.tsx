@@ -124,7 +124,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
       setFichier(null);
       setRapport(null);
       return setErreur(
-        `Ce fichier pèse ${(f.size / 1024 / 1024).toFixed(1)} Mo, au-delà des 12 Mo acceptés. Retirez les feuilles et les images inutiles, ou importez l’effectif en deux fois.`,
+        `Ce fichier pèse ${(f.size / 1024 / 1024).toFixed(1)} Mo, au-delà de la limite de 12 Mo. Retirez les feuilles et les images inutiles, ou importez l’effectif en deux fois.`,
       );
     }
     setFichier(f);
@@ -158,7 +158,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
       title="Importer un fichier d’employés"
       subtitle={
         etape === 'depot' ? (
-          'Le classeur de la Direction du Capital Humain, tel qu’il est tenu.'
+          'Le fichier Excel du personnel tenu par la DCH.'
         ) : (
           // La feuille est NOMMÉE : le classeur en porte souvent plusieurs
           // (« Actifs », « Départs », « Brouillon »), et la RH doit voir
@@ -184,7 +184,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
               onClick={() => fichier && void envoyer(fichier, false)}
             >
               {rapport.aCreer === 0
-                ? 'Rien à importer'
+                ? 'Aucun dossier à importer'
                 : `Importer ${compte(rapport.aCreer, 'dossier')}`}
             </Button>
           </>
@@ -242,10 +242,10 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
             />
             <Icon name={enCours ? 'schedule' : 'upload_file'} size={26} className="text-primary" />
             <span className="text-[13.5px] font-bold text-ink-strong">
-              {enCours ? 'Lecture du fichier…' : 'Déposez le classeur, ou cliquez pour le choisir'}
+              {enCours ? 'Lecture du fichier…' : 'Déposez le fichier, ou cliquez pour le choisir'}
             </span>
             <span className="text-[12px] text-ink-muted">
-              Classeur .xlsx · la première feuille est lue · 12 Mo maximum
+              Fichier .xlsx · seule la première feuille est lue · 12 Mo maximum
             </span>
           </label>
 
@@ -253,22 +253,22 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
             <p className="text-[12.5px] leading-relaxed text-ink">
               Une ligne par agent, et une première ligne d’intitulés. Quatre colonnes sont
               indispensables : <b>Prénom</b>, <b>Nom</b>, <b>Matricule</b>, <b>Début du contrat</b>{' '}
-              ; les autres sont reprises si elles sont là.
+              ; les autres colonnes sont importées si elles sont présentes.
             </p>
             <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
-              Les intitulés se reconnaissent sans tenir compte des accents ni de la casse, et
-              l’ordre des colonnes n’a pas d’importance. La direction se désigne par son acronyme («
-              DCH ») ou par son nom complet. Rien n’est écrit avant que vous ne validiez l’aperçu.
+              Les intitulés sont reconnus sans tenir compte des accents ni des majuscules, et
+              l’ordre des colonnes n’a pas d’importance. La direction peut être indiquée par son
+              acronyme (« DCH ») ou par son nom complet. Rien n’est enregistré avant que vous ne
+              validiez l’aperçu.
             </p>
             <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
-              Une colonne <b>Matricule du responsable</b> rattache chaque agent à son n+1, et le
-              fichier n’a pas besoin d’être trié : un chef peut figurer plus bas que son équipe.
-              Sans elle, chaque agent relève du directeur de sa direction ; dans une direction sans
-              directeur, l’agent entre sans n+1 et ne peut pas être évalué tant qu’aucun n+1 n’est
-              désigné.
+              Une colonne <b>Matricule du responsable</b> indique le N+1 de chaque agent, quel que
+              soit l’ordre des lignes. Sans cette colonne, chaque agent a pour N+1 le responsable de
+              sa direction. Dans une direction sans responsable, l’agent est importé sans N+1 et ne
+              pourra pas être évalué tant qu’un N+1 n’est pas désigné.
             </p>
             <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
-              Une colonne <b>Personnel</b>, Cadre ou Non-cadre, choisit la grille d’évaluation de
+              Une colonne <b>Personnel</b> (Cadre ou Non-cadre) détermine la grille d’évaluation de
               chaque agent.
             </p>
           </ModalSection>
@@ -405,7 +405,7 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
               être évalués. Une ligne ignorée, elle, n'attend
               rien — le dossier existe déjà et reste intact. */}
           <Chiffre valeur={rapport.sansUnite} libelle="sans direction" ton="warning" />
-          <Chiffre valeur={rapport.sansResponsable} libelle="sans n+1" ton="warning" />
+          <Chiffre valeur={rapport.sansResponsable} libelle="sans N+1" ton="warning" />
         </div>
       )}
 

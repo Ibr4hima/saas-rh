@@ -114,9 +114,9 @@ export function texteRicheSchema(max: number, forme: FormeDuChamp) {
     )
     .transform(normaliserTexteRiche)
     .transform((t) => (forme === 'puces' ? enPuces(t) : t))
-    .refine((t) => texteBrut(t).length <= max, { message: `${max} caractères au plus` })
+    .refine((t) => texteBrut(t).length <= max, { message: `${max} caractères maximum` })
     .refine((t) => forme !== 'texte' || t.every((b) => b.type === 'paragraphe'), {
-      message: 'Ni puce ni numéro dans ce champ',
+      message: 'Ce champ n’accepte ni puces ni listes numérotées',
     });
 }
 

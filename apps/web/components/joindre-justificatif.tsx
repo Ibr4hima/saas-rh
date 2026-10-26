@@ -37,7 +37,7 @@ export function JoindreJustificatif({
     mutationFn: async (fichier: File) => {
       if (fichier.type !== 'application/pdf') throw new Error('Le justificatif doit être un PDF.');
       if (fichier.size === 0 || fichier.size > MAX_OCTETS) {
-        throw new Error('Le PDF doit faire 5 Mo au plus.');
+        throw new Error('Le PDF est vide ou dépasse 5 Mo.');
       }
       return api(`/absence-requests/${r.id}/document`, {
         method: 'POST',

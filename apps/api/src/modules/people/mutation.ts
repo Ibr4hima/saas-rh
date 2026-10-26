@@ -136,7 +136,7 @@ export async function muter(
         422,
         'people.manager_cannot_leave_unit',
         `Cet employé dirige « ${dirigee.name} »`,
-        'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
+        'Désignez d’abord un nouveau responsable pour cette unité, puis enregistrez de nouveau la mutation.',
       );
     }
   }
@@ -162,8 +162,8 @@ export async function muter(
     problem(
       422,
       'people.mutation_programmee_hors_direction',
-      'Une mutation vers une autre direction s’enregistre le jour où elle prend effet',
-      'Le n+1 vaut dès aujourd’hui : programmée, la mutation laisserait la chaîne hiérarchique fausse jusqu’à sa date. Enregistrez-la ce jour-là, avec son nouveau n+1.',
+      'Une mutation vers une autre direction doit être enregistrée le jour où elle prend effet',
+      'Le N+1 changerait dès aujourd’hui et la chaîne hiérarchique serait fausse jusqu’à cette date. Enregistrez la mutation ce jour-là, avec le nouveau N+1.',
     );
   }
 
@@ -218,7 +218,7 @@ export async function muter(
         422,
         'people.assignment_start_too_early',
         "La nouvelle affectation doit démarrer après le début de l'affectation courante",
-        `L’affectation en cours a commencé le ${frDate(current.validFrom)} : la nouvelle commence au plus tôt le lendemain.`,
+        `L’affectation en cours a commencé le ${frDate(current.validFrom)} : la nouvelle peut commencer au plus tôt le lendemain.`,
       );
     }
     await tx
@@ -270,7 +270,7 @@ export async function muter(
         422,
         'people.manager_cannot_leave_unit',
         `Cet employé dirige « ${dirigee.name} »`,
-        'Désignez d’abord un nouveau responsable pour cette unité, puis remutez-le.',
+        'Désignez d’abord un nouveau responsable pour cette unité, puis enregistrez de nouveau la mutation.',
       );
     }
 
@@ -282,7 +282,7 @@ export async function muter(
           422,
           'people.equipe_sans_repreneur',
           `Cet agent encadre ${restants.length > 1 ? `${restants.length} agents` : 'un agent'}`,
-          'Ils restent dans leur direction : choisissez qui reprend son équipe, dans la même opération.',
+          'Son équipe reste dans sa direction : choisissez qui la reprend, dans la même opération.',
         );
       }
     }
@@ -309,8 +309,8 @@ export async function muter(
       problem(
         422,
         'people.mutation_sans_direction',
-        'Un agent rattaché à un n+1 reste affecté à une direction',
-        'Choisissez une unité rattachée à une direction, ou retirez d’abord son n+1.',
+        'Un agent qui a un N+1 doit être affecté à une direction',
+        'Choisissez une unité rattachée à une direction, ou retirez d’abord son N+1.',
       );
     }
     const tete = direction ? await n1DOffice(tx, id) : null;
@@ -321,7 +321,7 @@ export async function muter(
         422,
         'people.responsable_hors_nouvelle_direction',
         'Le responsable actuel n’appartient pas à la nouvelle direction',
-        `L’agent rejoint « ${direction!.nom} » : désignez son nouveau responsable dans la même opération.`,
+        `L’agent rejoint « ${direction!.nom} » : désignez son nouveau N+1 dans la même opération.`,
       );
     }
   } else if (!dossier.managerId && !futur) {

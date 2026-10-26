@@ -149,7 +149,7 @@ export function quiTraite(t: TraitementView | null | undefined): string | null {
   if (t.confiee) return `Confiée à ${t.confiee.nom}`;
   if (t.traitants)
     return `${t.traitants} la ${t.traitants.includes(' ou ') ? 'traitent' : 'traite'}`;
-  return 'Personne pour la traiter en ce moment';
+  return 'Personne n’est disponible pour la traiter';
 }
 
 /** « 21 oct. à 10 h » : la fin de la fenêtre de 48 heures, à Dakar. */

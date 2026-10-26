@@ -99,8 +99,8 @@ export default function InformationsATraiterPage() {
         ton: 'ok',
         texte:
           v.decision === 'approve'
-            ? `Dossier de ${v.demande.employeeName} mis à jour. Un message lui est envoyé.`
-            : `Changement de ${v.demande.employeeName} refusé. Le motif lui est transmis.`,
+            ? `Dossier de ${v.demande.employeeName} mis à jour. L’agent a été prévenu.`
+            : `Changement de ${v.demande.employeeName} refusé. Le motif a été transmis à l’agent.`,
       });
       await rafraichir();
     },
@@ -142,7 +142,7 @@ export default function InformationsATraiterPage() {
           <EmptyState
             className="py-8"
             icon={<Icon name="badge" size={22} />}
-            title="Rien à traiter"
+            title="Aucune demande à traiter"
           />
         ) : (
           <>
@@ -303,7 +303,7 @@ export default function InformationsATraiterPage() {
             label="Motif"
             htmlFor="motif-refus-info"
             required
-            hint="Obligatoire. Il est transmis à l’agent avec le refus."
+            hint="Obligatoire. Il sera communiqué à l’agent avec le refus."
           >
             <Textarea
               id="motif-refus-info"

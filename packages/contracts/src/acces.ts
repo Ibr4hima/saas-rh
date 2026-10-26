@@ -184,7 +184,7 @@ export interface InfoCapacite {
 export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   'demandes.conges': {
     libelle: 'Demandes de congé',
-    description: 'Les traiter une fois visées par le N+1 : elles lui arrivent directement.',
+    description: 'Les traiter une fois visées par le N+1.',
     groupe: 'Demandes',
   },
   'demandes.documents.contrat_cdd': {
@@ -271,24 +271,24 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   'demandes.documents.contrat_travail': {
     libelle: 'Copies de contrat de travail',
-    description: 'Les demandes anciennes, d’avant la liste de la DCH.',
+    description: 'Les demandes faites avant la mise en place de la liste de la DCH.',
     groupe: 'Documents',
   },
   'demandes.documents.bulletin_salaire': {
     libelle: 'Bulletins de salaire',
-    description: 'Les demandes anciennes, d’avant la liste de la DCH.',
+    description: 'Les demandes faites avant la mise en place de la liste de la DCH.',
     groupe: 'Documents',
     sensible: true,
   },
   'demandes.documents.attestation_salaire': {
     libelle: 'Attestations de salaire',
-    description: 'Les demandes anciennes, d’avant la liste de la DCH.',
+    description: 'Les demandes faites avant la mise en place de la liste de la DCH.',
     groupe: 'Documents',
     sensible: true,
   },
   'demandes.documents.autre': {
     libelle: 'Autres documents',
-    description: 'Les demandes anciennes hors de la liste.',
+    description: 'Les anciennes demandes hors de la liste.',
     groupe: 'Documents',
   },
   'demandes.informations': {
@@ -341,7 +341,7 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   'demandes.pieces.autre': {
     libelle: 'Autres documents déposés',
-    description: 'Les dépôts anciens hors de la liste.',
+    description: 'Les anciens dépôts hors de la liste.',
     groupe: 'Vérification',
     sensible: true,
   },
@@ -353,7 +353,7 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   'personnel.gerer': {
     libelle: 'Gérer les dossiers',
     description:
-      'Créer, modifier, muter, désactiver, importer ; ouvrir le portail d’un agent ; déposer une pièce à son dossier ; être prévenu des CDD et stages qui arrivent à leur terme.',
+      'Créer, modifier, muter, désactiver, importer ; ouvrir le portail d’un agent ; déposer une pièce à son dossier ; recevoir les alertes de fin de CDD et de stage.',
     groupe: 'Personnel',
   },
   'personnel.sensible': {
@@ -371,7 +371,7 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   acces: {
     libelle: 'Gestion des accès',
-    description: 'Voir qui est entré sur le portail, et inviter les agents.',
+    description: 'Voir qui a accès au portail et inviter les agents.',
     groupe: 'Personnel',
   },
   'conges.soldes': {

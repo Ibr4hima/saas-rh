@@ -308,7 +308,7 @@ describe('décision de la RH', () => {
     expect(rows).toEqual([
       {
         type: 'profile_change_reject',
-        title: 'Votre demande de mise à jour est refusée',
+        title: 'Votre demande de mise à jour a été refusée',
         link: `/moi/documents/suivi?traitee=${vue.id}`,
       },
     ]);

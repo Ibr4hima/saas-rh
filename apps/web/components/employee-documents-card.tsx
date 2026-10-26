@@ -346,7 +346,7 @@ export function EmployeeDocumentsCard({
                 {rejectingId === d.id ? (
                   <div className="mt-2.5 flex items-center gap-2">
                     <Input
-                      placeholder="Motif du rejet (ex : document illisible)"
+                      placeholder="Motif du rejet (ex. : document illisible)"
                       value={rejectComment}
                       onChange={(e) => setRejectComment(e.target.value)}
                       className="h-8 flex-1 text-[12.5px]"
@@ -537,7 +537,7 @@ function FenetreDepot({
       return setErreur('Seul le PDF est accepté.');
     }
     if (f.size === 0 || f.size > MAX_EMPLOYEE_DOCUMENT_BYTES) {
-      return setErreur('Le fichier doit faire entre 1 octet et 5 Mo.');
+      return setErreur('Le fichier est vide ou dépasse 5 Mo.');
     }
     const reader = new FileReader();
     reader.onload = () => {

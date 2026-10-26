@@ -622,7 +622,9 @@ describe('le certificat', () => {
       `SELECT n.title FROM notifications n WHERE n.recipient_user_id = $1 AND n.dedupe_key = $2`,
       [agentUserId, `certificat:${c!.id}:revoque`],
     );
-    expect(rows[0]?.title).toBe('Votre certificat « PowerPoint » est révoqué : Copie non conforme');
+    expect(rows[0]?.title).toBe(
+      'Votre certificat « PowerPoint » a été révoqué : Copie non conforme',
+    );
     expect(await codeOf(() => evaluation.revoquer(rh, c!.id, { motif: 'Encore' }))).toBe(
       'academy.certificat_clos',
     );

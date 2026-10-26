@@ -229,7 +229,7 @@ describe('la demande', () => {
     const [parti] = transport.envoyes;
     expect(parti!.to).toBe(awa.email);
     expect(parti!.text).toContain('Bonjour Awa,');
-    expect(parti!.text).toContain('Ce lien vous est personnel et vaut une heure.');
+    expect(parti!.text).toContain('Ce lien est personnel et valable une heure.');
     expect(parti!.html).toContain('Mot de passe oublié');
     const jeton = jetonDuCourriel(parti!);
     expect(await service.lien(jeton)).toEqual({ valide: true, email: awa.email });

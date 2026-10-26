@@ -58,7 +58,7 @@ export default function RegisterPage() {
     return (
       <EcranMarque
         titre="Les inscriptions sont fermées"
-        sousTitre="Un compte s’ouvre sur invitation de la Direction du Capital Humain."
+        sousTitre="Les comptes sont créés sur invitation de la Direction du Capital Humain."
       >
         <Link
           href="/login"
@@ -107,7 +107,7 @@ export default function RegisterPage() {
           <SaisieMarque
             id="organizationName"
             autoFocus
-            placeholder="Ex : APIX"
+            placeholder="Ex. : APIX"
             aria-invalid={errors.organizationName ? true : undefined}
             aria-describedby={errors.organizationName ? 'organizationName-erreur' : undefined}
             {...form.register('organizationName')}

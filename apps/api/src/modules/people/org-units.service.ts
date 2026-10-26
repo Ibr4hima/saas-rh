@@ -105,16 +105,16 @@ function mapUniqueViolation(err: unknown): never {
     problem(
       422,
       'org.sommet_unique',
-      'L’organigramme a déjà son sommet',
-      'Rattachez cette unité sous la Direction Générale : il n’y a qu’un sommet, et son responsable est le DG.',
+      'L’organigramme a déjà une unité au sommet',
+      'Rattachez cette unité à la Direction Générale, qui est la seule unité au sommet.',
     );
   }
   if (detail.includes('sibling_name_unique')) {
     problem(
       422,
       'org.name_taken',
-      'Une unité porte déjà ce nom au même niveau',
-      'Deux unités sœurs homonymes seraient indiscernables dans l’organigramme.',
+      'Une unité porte déjà ce nom à ce niveau',
+      'Choisissez un autre nom pour les distinguer dans l’organigramme.',
     );
   }
   throw err;
@@ -305,8 +305,8 @@ export class OrgUnitsService {
       problem(
         422,
         'org.sommet_indissoluble',
-        'La Direction Générale ne se supprime pas',
-        'Elle porte le sommet de l’organigramme et son responsable est le DG. Renommez-la au besoin.',
+        'La Direction Générale ne peut pas être supprimée',
+        'Elle est au sommet de l’organigramme. Vous pouvez la renommer si besoin.',
       );
     }
 
@@ -321,7 +321,7 @@ export class OrgUnitsService {
       problem(
         422,
         'org.dch_indissoluble',
-        'La direction du personnel ne se supprime pas',
+        'La direction du personnel ne peut pas être supprimée',
         'Elle traite les demandes des agents : désignez d’abord une autre direction du personnel.',
       );
     }
@@ -337,7 +337,7 @@ export class OrgUnitsService {
         422,
         'org.unit_has_children',
         'Cette unité en contient d’autres',
-        `Rattachez d’abord ailleurs : ${children.map((c) => c.name).join(', ')}.`,
+        `Rattachez d’abord ces unités ailleurs : ${children.map((c) => c.name).join(', ')}.`,
       );
     }
 
@@ -351,8 +351,8 @@ export class OrgUnitsService {
       problem(
         422,
         'org.unit_has_job_postings',
-        'Des offres de recrutement visent cette unité',
-        `Clôturez ou rattachez ailleurs : ${postings.map((j) => j.title).join(', ')}.`,
+        'Des offres d’emploi sont rattachées à cette unité',
+        `Archivez-les ou rattachez-les à une autre unité : ${postings.map((j) => j.title).join(', ')}.`,
       );
     }
 
@@ -557,8 +557,8 @@ export class OrgUnitsService {
         problem(
           422,
           'org.adjoint_seul',
-          'La direction générale adjointe se désigne seule',
-          'Enregistrez d’abord les autres changements de l’unité, puis la désignation.',
+          'Le DGA doit être désigné séparément',
+          'Enregistrez d’abord les autres changements de l’unité, puis désignez le DGA.',
         );
       }
       await this.designerLAdjoint(
@@ -603,8 +603,8 @@ export class OrgUnitsService {
       problem(
         403,
         'org.dch_reservee_admin',
-        'Seul l’administrateur désigne la DCH et qui la dirige',
-        'Qui dirige la Direction du Capital Humain a toutes les habilitations : ce choix revient à l’administrateur.',
+        'Seul l’administrateur peut désigner la DCH et la personne qui la dirige',
+        'La personne qui dirige la DCH a toutes les habilitations : ce choix revient à l’administrateur.',
       );
     }
     const nextType = (input.unitType ?? before!.unitType) as OrgUnitType;
@@ -619,8 +619,8 @@ export class OrgUnitsService {
       problem(
         422,
         'org.sommet_fixe',
-        'La Direction Générale reste au sommet',
-        'C’est elle que toutes les directions rejoignent, et son responsable est le DG.',
+        'La Direction Générale doit rester au sommet de l’organigramme',
+        'Toutes les directions lui sont rattachées.',
       );
     }
     if (nextParent === null && before!.parentId !== null) {
@@ -663,7 +663,7 @@ export class OrgUnitsService {
       problem(
         422,
         'org.dch_est_une_direction',
-        'La direction du personnel reste une direction',
+        'La direction du personnel doit rester une direction',
         'Désignez d’abord une autre direction du personnel, puis changez le type de celle-ci.',
       );
     }
@@ -706,8 +706,8 @@ export class OrgUnitsService {
       problem(
         422,
         'org.dg_requis',
-        'La Direction Générale garde toujours un responsable',
-        'On ne retire pas le DG : on désigne la personne qui prend sa suite et reprend ce qui relevait du DG.',
+        'La Direction Générale doit toujours avoir un DG',
+        'Pour remplacer le DG, désignez la personne qui prend sa suite.',
       );
     }
     if (nouveauDG) {
@@ -721,7 +721,7 @@ export class OrgUnitsService {
           422,
           'org.dg_hors_direction_generale',
           'Affectez d’abord le futur DG à la Direction Générale',
-          'D’abord l’affectation, ensuite la hiérarchie : on siège à la Direction Générale avant d’en prendre la tête.',
+          'La personne doit être affectée à la Direction Générale avant d’en prendre la tête.',
         );
       }
     } else if (input.managerEmployeeId) {
@@ -733,7 +733,7 @@ export class OrgUnitsService {
         422,
         'org.aucun_directeur_general',
         'Désignez d’abord le DG',
-        'Qui dirige une direction relève du DG : la Direction Générale a son responsable avant les directions.',
+        'Les responsables de direction ont le DG pour N+1 : le DG doit être désigné en premier.',
       );
     }
 
@@ -753,7 +753,7 @@ export class OrgUnitsService {
         422,
         'org.devenir_meme_unite',
         'Choisissez une autre unité à diriger',
-        'La tête de cette unité change de main : choisissez une autre unité à diriger, ou un poste dans celle-ci.',
+        'Cette unité change de responsable : choisissez une autre unité à diriger, ou un poste dans celle-ci.',
       );
     }
     const { rows: etat } = await tx.execute<{ actif: boolean; aujourdhui: string }>(sql`
@@ -766,7 +766,7 @@ export class OrgUnitsService {
       problem(
         422,
         'org.devenir_hors_service',
-        'Ce que devient la personne remplacée s’écrit depuis l’organigramme ou sa fiche',
+        'Indiquez ce que devient la personne remplacée depuis l’organigramme ou sa fiche',
       );
     }
 
@@ -903,14 +903,14 @@ export class OrgUnitsService {
           422,
           'org.aucun_directeur_general',
           'Désignez d’abord le DG',
-          'Le DGA relève du DG : la Direction Générale a son responsable avant son DGA.',
+          'Le DGA a le DG pour N+1 : désignez d’abord le DG.',
         );
       }
       if (prochain === unite!.dg) {
         problem(
           422,
           'org.adjoint_est_le_dg',
-          'La direction générale et la direction générale adjointe vont à deux personnes',
+          'Le DG et le DGA doivent être deux personnes différentes',
           'Choisissez une autre personne que le DG.',
         );
       }
@@ -921,7 +921,7 @@ export class OrgUnitsService {
           422,
           'org.adjoint_hors_direction_generale',
           'Affectez d’abord cette personne à la Direction Générale',
-          'D’abord l’affectation, ensuite la désignation : la direction générale adjointe siège à la Direction Générale.',
+          'Le DGA doit être affecté à la Direction Générale avant d’être désigné.',
         );
       }
       const [tete] = await tx
@@ -952,7 +952,7 @@ export class OrgUnitsService {
         422,
         'org.devenir_meme_unite',
         'Choisissez une autre unité à diriger',
-        'La direction générale adjointe change de main : choisissez une autre unité à diriger, ou un poste à la Direction Générale.',
+        'Un nouveau DGA est désigné : choisissez une autre unité à diriger, ou un poste à la Direction Générale.',
       );
     }
     const resteIci = devenir?.choix === 'affectation' && devenir.orgUnitId === id;
@@ -962,7 +962,7 @@ export class OrgUnitsService {
       problem(
         422,
         'org.devenir_hors_service',
-        'Ce que devient la personne remplacée s’écrit depuis l’organigramme ou sa fiche',
+        'Indiquez ce que devient la personne remplacée depuis l’organigramme ou sa fiche',
       );
     }
 
@@ -1007,16 +1007,16 @@ export class OrgUnitsService {
       problem(
         422,
         'org.acronyme_requis',
-        'Une direction a un acronyme',
-        '« DCH » pour Direction du Capital Humain.',
+        'Indiquez l’acronyme de la direction',
+        'Par exemple « DCH » pour Direction du Capital Humain.',
       );
     }
     if (shortName && unitType !== 'direction') {
       problem(
         422,
         'org.short_name_direction_only',
-        'Seule une direction porte un acronyme',
-        'Un département ou un service se désigne par son nom complet.',
+        'Seules les directions ont un acronyme',
+        'Un département ou un service est désigné par son nom complet.',
       );
     }
   }
@@ -1055,7 +1055,7 @@ export class OrgUnitsService {
       .where(and(eq(t.orgUnits.id, parentId), isNull(t.orgUnits.deletedAt)))
       .limit(1);
     if (!parent) {
-      problem(422, 'org.parent_not_found', "Cette unité n'existe pas");
+      problem(422, 'org.parent_not_found', 'Unité introuvable');
     }
     if (!allowed.includes(parent.unitType as OrgUnitType)) {
       problem(
@@ -1080,8 +1080,8 @@ export class OrgUnitsService {
       problem(
         422,
         'org.children_type_invalid',
-        'Ce changement de type contredit les unités rattachées',
-        `À rattacher ailleurs d’abord : ${faulty.map((c) => c.name).join(', ')}.`,
+        'Ce changement de type n’est pas compatible avec les unités rattachées',
+        `Rattachez d’abord ailleurs : ${faulty.map((c) => c.name).join(', ')}.`,
       );
     }
   }
@@ -1148,7 +1148,7 @@ export class OrgUnitsService {
       422,
       'org.manager_would_leave_unit',
       `${rompu.given_name} ${rompu.family_name} dirige « ${rompu.name} »`,
-      'Ce changement le sortirait de son unité. Désignez d’abord un successeur.',
+      'Ce changement retirerait cette personne de son unité. Désignez d’abord un successeur.',
     );
   }
 
@@ -1172,8 +1172,8 @@ export class OrgUnitsService {
       problem(
         422,
         'org.sommet_unique',
-        `L’organigramme a déjà son sommet : « ${sommet.name} »`,
-        'Rattachez cette unité sous la Direction Générale : il n’y a qu’un sommet, et son responsable est le DG.',
+        `L’organigramme a déjà une unité au sommet : « ${sommet.name} »`,
+        'Rattachez cette unité à la Direction Générale, qui est la seule unité au sommet.',
       );
     }
   }
@@ -1185,7 +1185,7 @@ export class OrgUnitsService {
       .where(eq(t.employees.id, employeeId))
       .limit(1);
     if (!emp) {
-      problem(422, 'org.manager_not_found', "Cet employé n'existe pas");
+      problem(422, 'org.manager_not_found', 'Employé introuvable');
     }
     if (emp.status !== 'active') {
       problem(
@@ -1235,8 +1235,8 @@ export class OrgUnitsService {
       problem(
         422,
         'org.manager_outside_unit',
-        'Le responsable se choisit dans la direction de l’unité',
-        `Le responsable de cette unité se choisit parmi les agents de « ${direction.nom} » : affectez-le d’abord à cette direction, sans mutation programmée ailleurs.`,
+        'Le responsable doit faire partie de la direction de l’unité',
+        `Choisissez le responsable parmi les agents de « ${direction.nom} », ou affectez d’abord cette personne à cette direction, sans mutation programmée ailleurs.`,
       );
     }
   }
@@ -1337,7 +1337,7 @@ export class OrgUnitsService {
       .where(and(eq(t.orgUnits.id, id), isNull(t.orgUnits.deletedAt)))
       .limit(1);
     if (!unit) {
-      problem(code === 'org.parent_not_found' ? 422 : 404, code, "Cette unité n'existe pas");
+      problem(code === 'org.parent_not_found' ? 422 : 404, code, 'Unité introuvable');
     }
     return unit;
   }

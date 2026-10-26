@@ -92,7 +92,7 @@ export const createOrgUnitSchema = z
     shortName: shortNameField,
   })
   .refine((u) => u.unitType !== 'direction' || Boolean(u.shortName), {
-    message: 'Une direction a un acronyme',
+    message: 'Indiquez l’acronyme de la direction',
     path: ['shortName'],
   });
 export type CreateOrgUnitInput = z.infer<typeof createOrgUnitSchema>;
@@ -548,15 +548,15 @@ const reglesDuContrat = <
 ) =>
   schema
     .refine((c) => ['cdi', 'cdd', 'stage'].includes(c.contractType), {
-      message: 'Un contrat est un CDI, un CDD ou un stage',
+      message: 'Choisissez un CDI, un CDD ou un stage',
       path: ['contractType'],
     })
     .refine((c) => !['cdd', 'stage'].includes(c.contractType) || c.endDate !== undefined, {
-      message: 'Un CDD ou un stage a une date de fin',
+      message: 'Indiquez la date de fin du CDD ou du stage',
       path: ['endDate'],
     })
     .refine((c) => !c.endDate || c.endDate >= c.startDate, {
-      message: 'La fin du contrat précède son début',
+      message: 'La fin du contrat doit être après son début',
       path: ['endDate'],
     });
 
@@ -737,7 +737,7 @@ export const newAssignmentSchema = nouvelleAffectation
     path: ['positionTitle'],
   })
   .refine((a) => !a.responsable || a.orgUnitId, {
-    message: 'Choisissez l’unité qu’il dirigera',
+    message: 'Choisissez l’unité à diriger',
     path: ['orgUnitId'],
   })
   .refine((a) => !a.adjoint || a.orgUnitId, {

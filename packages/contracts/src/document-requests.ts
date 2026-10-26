@@ -171,7 +171,7 @@ export const saisiesDe = (doc: string): readonly Saisie[] =>
 export const DISPONIBILITE_ANS_MAX = 3;
 
 /** Ce que dit une disponibilité, ou une prorogation, de plus de trois ans. */
-export const DISPONIBILITE_TROP_LONGUE = 'La disponibilité dure trois ans au plus';
+export const DISPONIBILITE_TROP_LONGUE = 'La disponibilité ne peut pas dépasser trois ans';
 
 /**
  * Le dernier jour, au plus tard, d'une disponibilité qui commence le
@@ -207,7 +207,7 @@ export function datesEnfreintes(
   const erreurs: Partial<Record<Saisie, string>> = {};
   const deuxJours = doc === 'attestation_conge' || doc === 'attestation_reprise_disponibilite';
   if (deuxJours && debut && fin && fin <= debut) {
-    erreurs.fin = 'Après le premier jour';
+    erreurs.fin = 'Doit être après le premier jour';
   } else if (
     doc === 'attestation_reprise_disponibilite' &&
     debut &&
@@ -535,7 +535,7 @@ export function datesDeLaDisponibilite(f: Record<string, unknown>): ReglesDesDat
   const regles: ReglesDesDates = {};
   if (demande && effet && effet < demande) regles.effetLe = 'Pas avant la demande';
   if (effet && reprise && reprise <= effet) {
-    regles.repriseLe = 'La reprise suit la prise d’effet';
+    regles.repriseLe = 'Doit être après la date de prise d’effet';
   } else if (effet && reprise && reprise > repriseAuPlusTard(effet)) {
     regles.repriseLe = DISPONIBILITE_TROP_LONGUE;
   }
@@ -568,11 +568,11 @@ export function datesDuRenouvellement(f: Record<string, unknown>): ReglesDesDate
     jourDe(f.repriseLe),
   ];
   const regles: ReglesDesDates = {};
-  if (du && au && au < du) regles.initialementAu = 'La fin suit le début';
+  if (du && au && au < du) regles.initialementAu = 'Doit être après le début';
   if (au && reprise && reprise <= au) {
-    regles.repriseLe = 'La reprise suit la période initiale';
+    regles.repriseLe = 'Doit être après la fin de la période initiale';
   } else if (au && reprise && reprise > repriseAuPlusTard(lendemain(au))) {
-    regles.repriseLe = 'La prorogation dure trois ans au plus';
+    regles.repriseLe = 'La prorogation ne peut pas dépasser trois ans';
   }
   return regles;
 }
@@ -799,15 +799,16 @@ export function datesDeLaDeclaration(f: Record<string, unknown>): ReglesDesDates
       : null;
   const regles: ReglesDesDates = {};
   if (effet && entree && effet < entree) {
-    regles.effetLe = 'Le mouvement suit l’entrée dans l’établissement';
+    regles.effetLe = 'Doit être après l’entrée dans l’établissement';
   }
-  if (entree && naissance && entree <= naissance) regles.entreeLe = 'L’entrée suit la naissance';
+  if (entree && naissance && entree <= naissance)
+    regles.entreeLe = 'Doit être après la date de naissance';
   if (delivrance && !etrangere && delivrance < cniDelivreeAuPlusTot()) {
     regles.cniDelivreeLe = CNI_EXPIREE;
   } else if (delivrance && naissance && delivrance <= naissance) {
-    regles.cniDelivreeLe = 'Après la naissance';
+    regles.cniDelivreeLe = 'Doit être après la date de naissance';
   }
-  if (cddDu && cddAu && cddAu < cddDu) regles.cddAu = 'La fin suit le début';
+  if (cddDu && cddAu && cddAu < cddDu) regles.cddAu = 'Doit être après le début';
   if (contrat && visa && visa < contrat) regles['visa.le'] = 'Pas avant la date du contrat';
   if (contrat && enregistrement && enregistrement < contrat) {
     regles['enregistrement.le'] = 'Pas avant la date du contrat';
@@ -815,7 +816,7 @@ export function datesDeLaDeclaration(f: Record<string, unknown>): ReglesDesDates
   if (auSenegal && entree && auSenegal > entree) {
     regles.entreeAuSenegalLe = 'Pas après l’entrée dans l’établissement';
   } else if (auSenegal && naissance && auSenegal <= naissance) {
-    regles.entreeAuSenegalLe = 'Après la naissance';
+    regles.entreeAuSenegalLe = 'Doit être après la date de naissance';
   }
   if (classe && classe > aujourdhuiIso().slice(0, 4)) {
     regles.classeDeRecrutement = 'Pas après cette année';
@@ -862,7 +863,7 @@ export const ficheDeclarationMouvementSchema = z
       .string()
       .trim()
       .toUpperCase()
-      .regex(/^[A-Z0-9]{5,20}$/, 'Des chiffres ou des lettres, de cinq à vingt'),
+      .regex(/^[A-Z0-9]{5,20}$/, 'De 5 à 20 lettres ou chiffres'),
     /**
      * La délivrance de la carte, que le formulaire n'écrit pas : une CNI
      * sénégalaise vaut dix ans et doit être à jour (ADR-0134).
@@ -931,9 +932,9 @@ export const ficheDeclarationMouvementSchema = z
 
     const nature = natureDuMouvement(f.mouvements);
     if (new Set(f.mouvements).size !== f.mouvements.length) {
-      signaler('mouvements', 'Un mouvement en double');
+      signaler('mouvements', 'Ce mouvement est sélectionné deux fois');
     } else if (nature === null) {
-      signaler('mouvements', 'Une embauche, un départ ou des changements');
+      signaler('mouvements', 'Choisissez une embauche, un départ ou des changements');
     }
     seulementSi(nature !== 'embauche', ['effetLe'], 'Date à saisir');
     // La présente déclaration est celle de l'embauche.

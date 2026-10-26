@@ -120,7 +120,7 @@ export function FenetreSignalement({
       return;
     }
     if (file.size === 0 || file.size > MAX_EMPLOYEE_DOCUMENT_BYTES) {
-      setErreurCertificat('Le PDF doit faire entre 1 octet et 5 Mo.');
+      setErreurCertificat('Le PDF est vide ou dépasse 5 Mo.');
       return;
     }
     const reader = new FileReader();
@@ -200,9 +200,9 @@ export function FenetreSignalement({
         <p className="flex items-start gap-2 rounded-bloc bg-accent-soft px-3.5 py-2.5 text-[12.5px] leading-snug text-accent-text ring-1 ring-current/15 ring-inset">
           <Icon name="schedule" size={15} className="mt-px shrink-0" />
           <span>
-            Un signalement attend la validation de la Direction du Capital Humain :{' '}
+            Votre signalement est en attente de validation par la Direction du Capital Humain :{' '}
             {enumerer(enAttente.fields.map((f) => f.label.toLowerCase()))}. Vous pourrez en envoyer
-            un nouveau dès qu&apos;il aura été traité.
+            un nouveau une fois celui-ci traité.
           </span>
         </p>
       ) : (

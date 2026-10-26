@@ -27,7 +27,7 @@ export class SessionGuard implements CanActivate {
       activite: req.headers[EN_ARRIERE_PLAN] !== '1',
     });
     if (!user) {
-      problem(401, 'auth.session_invalid', 'Session expirée ou invalide');
+      problem(401, 'auth.session_invalid', 'Votre session a expiré : reconnectez-vous');
     }
     req.sessionUser = user;
     req.sessionToken = token;

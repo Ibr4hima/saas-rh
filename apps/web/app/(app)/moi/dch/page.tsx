@@ -112,7 +112,7 @@ export default function CongesATraiterPage() {
       setMotif('');
       setMessage({
         ton: 'ok',
-        texte: `Congé de ${v.demande.employeeName} ${v.decision === 'approved' ? 'approuvé' : 'refusé'}. Un message lui est envoyé.`,
+        texte: `Congé de ${v.demande.employeeName} ${v.decision === 'approved' ? 'approuvé' : 'refusé'}. L’agent a été prévenu.`,
       });
       await rafraichir();
     },
@@ -129,7 +129,7 @@ export default function CongesATraiterPage() {
     onSuccess: async (_, v) => {
       setMessage({
         ton: 'ok',
-        texte: `Retour de ${v.demande.employeeName} ${v.decision === 'approved' ? 'confirmé' : 'refusé'}. Un message lui est envoyé.`,
+        texte: `Retour de ${v.demande.employeeName} ${v.decision === 'approved' ? 'confirmé' : 'refusé'}. L’agent a été prévenu.`,
       });
       await rafraichir();
     },
@@ -219,7 +219,7 @@ export default function CongesATraiterPage() {
           <EmptyState
             className="py-8"
             icon={<Icon name="how_to_reg" size={22} />}
-            title="Rien à traiter"
+            title="Aucune demande à traiter"
             description="Une fois visée par le N+1, une demande d’absence ou de congé arrive ici, avec une notification."
           />
         ) : (
@@ -404,8 +404,8 @@ export default function CongesATraiterPage() {
             required={Boolean(refus.continuite)}
             hint={
               refus.continuite
-                ? 'Obligatoire. Il est transmis à l’agent avec le refus.'
-                : 'Facultatif. Il est transmis à l’agent avec le refus.'
+                ? 'Obligatoire. Il sera communiqué à l’agent avec le refus.'
+                : 'Facultatif. Il sera communiqué à l’agent avec le refus.'
             }
           >
             <Textarea
@@ -467,7 +467,7 @@ export default function CongesATraiterPage() {
           onFait={async () => {
             setMessage({
               ton: 'ok',
-              texte: `Congé de ${annulation.employeeName} annulé. Un message lui est envoyé.`,
+              texte: `Congé de ${annulation.employeeName} annulé. L’agent a été prévenu.`,
             });
             setAnnulation(null);
             await rafraichir();
@@ -666,7 +666,7 @@ function CalendrierDesAbsences({
         <EmptyState
           className="py-8"
           icon={<Icon name="event_busy" size={22} />}
-          title="Personne d'absent à l'horizon"
+          title="Aucune absence prévue"
           description="Aucune absence approuvée dans les 30 prochains jours."
         />
       ) : (

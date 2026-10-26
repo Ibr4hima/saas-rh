@@ -334,7 +334,7 @@ function ChampsDuRib({
         required
         error={
           differe
-            ? 'Les deux saisies diffèrent'
+            ? 'Les deux RIB ne correspondent pas'
             : secondIncomplet
               ? 'Vingt-quatre caractères attendus'
               : undefined

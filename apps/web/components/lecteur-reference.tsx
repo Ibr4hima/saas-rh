@@ -102,7 +102,7 @@ export function LecteurReference({ slug }: { slug: string }) {
           title="Ce texte n’a pas encore été déposé"
           description={
             peutDeposer
-              ? 'Collez le texte en vigueur et joignez son fichier officiel : chacun pourra ensuite le consulter depuis son espace.'
+              ? 'Collez le texte en vigueur et joignez son fichier officiel : tout le personnel pourra ensuite le consulter.'
               : undefined
           }
           action={

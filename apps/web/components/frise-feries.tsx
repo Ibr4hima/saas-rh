@@ -85,7 +85,7 @@ export function FriseFeries() {
       <section>
         {entete}
         <p className="mt-5 rounded-bloc border border-dashed border-line bg-surface-raised px-5 py-8 text-center text-[12.5px] text-ink-muted">
-          Aucun jour férié n&apos;est encore posé pour {annee}.
+          Aucun jour férié n&apos;est encore enregistré pour {annee}.
         </p>
       </section>
     );
@@ -135,11 +135,11 @@ export function FriseFeries() {
           <div className="min-w-0 flex-1">
             <p className="text-[12.5px] font-semibold text-ink-strong">
               {aDater.length} fête{aDater.length > 1 ? 's' : ''} mobile
-              {aDater.length > 1 ? 's' : ''} encore à dater
+              {aDater.length > 1 ? 's' : ''} dont la date reste à fixer
             </p>
             <p className="mt-0.5 text-[11.5px] leading-snug text-ink-muted">
-              {aDater.map((h) => h.label).join(' · ')} : la date se pose à l&apos;annonce, et la
-              frise s&apos;y range d&apos;elle-même.
+              {aDater.map((h) => h.label).join(' · ')} : ajoutez la date dès qu&apos;elle est
+              annoncée.
             </p>
           </div>
         </div>

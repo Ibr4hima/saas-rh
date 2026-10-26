@@ -141,7 +141,7 @@ export class AttestationService {
     // La sienne se demande depuis « Mes documents », comme pour tout agent.
     await pasSurSoi(tx, user.userId, [employeeId], 'établir votre propre attestation');
     if (user.role !== 'admin' && !(await this.traiteSaDemande(tx, user, employeeId))) {
-      problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
+      problem(403, 'auth.forbidden', 'Vous n’avez pas les droits nécessaires pour cette action');
     }
   }
 

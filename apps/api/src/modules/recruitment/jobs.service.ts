@@ -513,7 +513,7 @@ export class JobsService {
           skipped.push({
             id,
             title: offre.title,
-            reason: `${n} candidature${n > 1 ? 's' : ''} déposée${n > 1 ? 's' : ''} : fermez l’offre plutôt`,
+            reason: `${n} candidature${n > 1 ? 's' : ''} déposée${n > 1 ? 's' : ''} : archivez l’offre plutôt`,
           });
           continue;
         }
@@ -716,7 +716,7 @@ export class JobsService {
       .where(and(eq(t.orgUnits.id, id), sql`${t.orgUnits.deletedAt} IS NULL`))
       .limit(1);
     if (!unit) {
-      problem(422, 'org.unit_not_found', "Cette unité n'existe pas");
+      problem(422, 'org.unit_not_found', 'Unité introuvable');
     }
   }
 }

@@ -162,7 +162,7 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
                       {t.deductsBalance ? (
                         <Badge tone="bleu">Décompté du solde</Badge>
                       ) : (
-                        <Badge tone="gris">Suivi seul</Badge>
+                        <Badge tone="gris">Non décompté</Badge>
                       )}
                       {t.allowsHours ? <Badge tone="bleu">À l’heure</Badge> : null}
                       {t.requiresDocument ? <Badge tone="orange">Justificatif</Badge> : null}
@@ -217,13 +217,13 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
           }}
         >
           <p className="text-[12.5px] leading-relaxed text-ink">
-            Il disparaît des formulaires : plus personne ne pourra déposer de demande sur ce motif.
+            Ce type n’apparaîtra plus dans le formulaire de demande.
           </p>
           {aSupprimer.usageCount > 0 ? (
             <p className="mt-3 rounded-bloc bg-bg px-3 py-2 text-[12px] text-ink-muted">
               {aSupprimer.usageCount === 1
-                ? 'La demande déjà déposée sur ce type garde son intitulé et son historique : rien n’est effacé du passé.'
-                : `Les ${aSupprimer.usageCount} demandes déjà déposées sur ce type gardent leur intitulé et leur historique : rien n’est effacé du passé.`}
+                ? 'La demande déjà faite avec ce type est conservée, avec son historique.'
+                : `Les ${aSupprimer.usageCount} demandes déjà faites avec ce type sont conservées, avec leur historique.`}
             </p>
           ) : null}
         </FenetreSuppression>
@@ -332,7 +332,7 @@ function FenetreType({
       subtitle={
         <p className="text-xs text-ink-muted">
           {cible
-            ? `Vaut à partir de ${annee} ; les années passées gardent leur paramétrage.`
+            ? `Les modifications s’appliquent à partir de ${annee}. Les années précédentes ne changent pas.`
             : 'Il apparaîtra aussitôt dans le formulaire de demande.'}
         </p>
       }
@@ -371,7 +371,7 @@ function FenetreType({
         </Field>
       </ModalSection>
 
-      <ModalSection title="Droit ouvert">
+      <ModalSection title="Droit annuel">
         <ModalGrid>
           <Field label="Jours par an" htmlFor="typeDays">
             <Input
@@ -439,7 +439,7 @@ function FenetreType({
             <span>
               <span className="font-semibold text-ink-strong">Décompté du solde</span>
               <span className="block text-ink-muted">
-                Les jours pris entament le droit ; sinon l’absence est seulement suivie.
+                Les jours pris sont déduits du solde. Sinon, l’absence est seulement enregistrée.
               </span>
             </span>
           </label>
@@ -452,7 +452,8 @@ function FenetreType({
             <span>
               <span className="font-semibold text-ink-strong">Justificatif obligatoire</span>
               <span className="block text-ink-muted">
-                La demande n’est validée qu’avec sa pièce jointe (certificat, ordre de mission…).
+                La demande ne peut être validée qu’avec un justificatif (certificat, ordre de
+                mission…).
               </span>
             </span>
           </label>
@@ -463,7 +464,7 @@ function FenetreType({
               disabled={decompte}
               onChange={(e) => set('allowsHours', e.target.checked)}
             />
-            <span className="font-semibold text-ink-strong">Se demande aussi à l’heure</span>
+            <span className="font-semibold text-ink-strong">Peut aussi être demandé à l’heure</span>
           </label>
           <label className="flex items-start gap-2.5 text-[12.5px] text-ink">
             <Checkbox

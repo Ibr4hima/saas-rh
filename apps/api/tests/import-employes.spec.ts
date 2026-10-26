@@ -315,13 +315,13 @@ describe('conversion d’une ligne', () => {
     [
       'à la situation inconnue',
       { 'Situation matrimoniale': 'Pacsé' },
-      /ne se comprend pas/i,
+      /n’est pas une situation matrimoniale reconnue/i,
       'Situation matrimoniale',
     ],
     [
       'au numéro de pièce sans type',
       { "Pièce d'identité": null },
-      /sans son type/i,
+      /sans le type de pièce/i,
       "Pièce d'identité",
     ],
     ['au pays inconnu', { 'Pays de naissance': 'Wakanda' }, /Pays inconnu/i, 'Pays de naissance'],
@@ -337,7 +337,7 @@ describe('conversion d’une ligne', () => {
       /adresse email/i,
       'Email personnel',
     ],
-    ['à la durée sur un CDI', { 'Durée (mois)': 12 }, /CDI ne prend pas de durée/i, 'Durée (mois)'],
+    ['à la durée sur un CDI', { 'Durée (mois)': 12 }, /CDI n’a pas de durée/i, 'Durée (mois)'],
     // Les contrôles du formulaire de création, appliqués à l'import.
     [
       'au 31 février',
@@ -376,7 +376,7 @@ describe('conversion d’une ligne', () => {
       /numéro de la pièce/i,
       'Numéro de la pièce',
     ],
-    ['au nom trop long', { Nom: 'N'.repeat(81) }, /80 caractères au plus/i, 'Nom'],
+    ['au nom trop long', { Nom: 'N'.repeat(81) }, /80 caractères maximum/i, 'Nom'],
   ] as [string, Record<string, unknown>, RegExp, string][]) {
     it(`refuse une ligne ${cas}, en nommant la colonne`, () => {
       const r = convertirLigne(ligne({ ...complete, ...modif }) as never, colonnes);
@@ -400,7 +400,8 @@ describe('conversion d’une ligne', () => {
     expect(r.ok.avertissements).toEqual([
       {
         colonne: "Date d'expiration",
-        texte: 'Pièce d’identité périmée le 1er janvier 2020 : non reprise, à renouveler',
+        texte:
+          'Pièce d’identité expirée depuis le 1er janvier 2020 : elle n’a pas été importée et doit être renouvelée',
       },
     ]);
   });

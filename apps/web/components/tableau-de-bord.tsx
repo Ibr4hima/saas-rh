@@ -631,7 +631,7 @@ export function TableauDeBord({ suiviDesContrats }: { suiviDesContrats: boolean 
             prochainFerie
               ? `${prochainFerie.label} · ${inDays(prochainFerie.day)}`
               : d
-                ? 'aucun férié programmé'
+                ? 'aucun jour férié prévu'
                 : undefined
           }
         />
@@ -684,7 +684,7 @@ export function TableauDeBord({ suiviDesContrats }: { suiviDesContrats: boolean 
             <Skeleton className="h-28 w-full" />
           ) : fenetreFeries.length === 0 ? (
             <p className="py-3 text-sm text-ink-muted">
-              Aucun férié enregistré. La liste se gère dans « Gestion des jours fériés ».
+              Aucun jour férié enregistré. Ajoutez-les depuis « Gestion des jours fériés ».
             </p>
           ) : (
             <Frise jours={fenetreFeries} />
@@ -703,7 +703,7 @@ export function TableauDeBord({ suiviDesContrats }: { suiviDesContrats: boolean 
             <EmptyState
               className="py-7"
               icon={<Icon name="description" size={22} />}
-              title="Aucun contrat ne finit d'ici un an"
+              title="Aucun contrat ne se termine dans les 12 prochains mois"
               description={
                 // Le lien ne s'offre qu'à qui ouvre la liste du personnel.
                 peut(me.data, 'personnel.consulter') ? (

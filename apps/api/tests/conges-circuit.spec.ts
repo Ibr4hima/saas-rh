@@ -372,7 +372,7 @@ describe('le N+1 d’abord, puis la DCH', () => {
     expect((await vue(id)).status).toBe('approved');
     expect(await appels(id)).toEqual([]);
     expect(await notif('Moussa', `conge:${id}:verdict`)).toMatch(
-      /^Votre congé annuel du \d+ au \d+ \S+ 2027 est approuvé$/,
+      /^Votre congé annuel du \d+ au \d+ \S+ 2027 a été approuvé$/,
     );
   });
 
@@ -598,7 +598,7 @@ describe('le directeur confie une demande', () => {
     });
     await viser(awa, id);
     expect(await circuit(id)).toEqual(['n1:visee:Ousmane Test', 'dch:visee:Awa Test/Mariama Test']);
-    expect(await notif('Moussa', `conge:${id}:verdict`)).toMatch(/est approuvé$/);
+    expect(await notif('Moussa', `conge:${id}:verdict`)).toMatch(/a été approuvé$/);
   });
 
   it('le directeur garde la main : il vise lui-même une demande confiée, ou la reprend', async () => {
@@ -699,7 +699,7 @@ describe('le directeur habilite des membres de sa direction', () => {
     await reconcilier();
     expect(await appels(id)).toEqual(['dch:Mariama']);
     expect(await notif('Mariama', 'habilitations:%:partie:%')).toBe(
-      'Awa Test a quitté la DCH, ses délégations sont retirées',
+      'Awa Test a quitté la DCH : ses délégations ont été retirées',
     );
     const { rows } = await raw(`SELECT fin_motif FROM habilitations WHERE employee_id = $1`, [
       awa.employeeId,
@@ -795,7 +795,7 @@ describe('le poste de directeur vacant', () => {
     await viser(ousmane, id);
     expect(await appels(id)).toEqual([]);
     expect(await notif('Ibrahima', 'dch:vacante')).toBe(
-      'Une demande attend un responsable à la Direction du Capital Humain',
+      'Une demande est bloquée : la Direction du Capital Humain n’a pas de responsable',
     );
     // L'intérim : l'administrateur désigne Khady à la tête de la DCH.
     await organigramme.update(admin, uDCH, { managerEmployeeId: khady.employeeId });
@@ -1150,7 +1150,7 @@ describe('un congé validé qui change', () => {
     expect(v.status).toBe('cancelled');
     expect(v.annulation).toBeNull();
     expect(await notif('Ousmane', `conge:${id}:annule`)).toMatch(
-      /^Le congé annuel de Moussa Test .* est annulé$/,
+      /^Le congé annuel de Moussa Test .* a été annulé$/,
     );
     expect(await notif('Mariama', `conge:${id}:annule`)).not.toBeNull();
     // L'avis « approuvé » ne dit plus vrai : il a quitté sa boîte.
@@ -1200,7 +1200,7 @@ describe('un congé validé qui change', () => {
       motif: 'Audit de fin d’année',
     });
     expect(await notif('Moussa', `conge:${id}:annule`)).toMatch(
-      /^Votre congé annuel .* est annulé$/,
+      /^Votre congé annuel .* a été annulé$/,
     );
     expect(await notif('Ousmane', `conge:${id}:annule`)).not.toBeNull();
   });
@@ -1225,9 +1225,9 @@ describe('un congé validé qui change', () => {
     });
     expect(await appelsReprise(id)).toEqual([]);
     expect(await notif('Moussa', `conge:${id}:ecourte:%`)).toMatch(
-      /^Votre reprise le .* est confirmée$/,
+      /^Votre reprise le .* a été confirmée$/,
     );
-    expect(await notif('Mariama', `conge:${id}:ecourte:%`)).toMatch(/est écourté : reprise le/);
+    expect(await notif('Mariama', `conge:${id}:ecourte:%`)).toMatch(/a été écourté : reprise le/);
   });
 
   it('le N+1 absent : la DCH confirme le retour', async () => {
@@ -1249,7 +1249,9 @@ describe('un congé validé qui change', () => {
       repriseDemandee: null,
       ecourtement: null,
     });
-    expect(await notif('Moussa', `conge:${id}:reprise-refusee:%`)).toMatch(/n’est pas confirmée$/);
+    expect(await notif('Moussa', `conge:${id}:reprise-refusee:%`)).toMatch(
+      /n’a pas été confirmée$/,
+    );
     await absences.demanderReprise(moussa.session, id, { reprise: jour(2) });
     await absences.retirerReprise(moussa.session, id);
     expect(await appelsReprise(id)).toEqual([]);
@@ -1301,7 +1303,7 @@ describe('un congé validé qui change', () => {
       ecourtement: { nature: 'rappel', par: 'Ousmane Test', motif: 'Incident en production' },
     });
     expect(await notif('Moussa', `conge:${id}:ecourte:%`)).toMatch(
-      /^Votre congé annuel est écourté : reprise le/,
+      /^Votre congé annuel a été écourté : reprise le/,
     );
     expect(await notif('Mariama', `conge:${id}:ecourte:%`)).not.toBeNull();
     expect(await notif('Ousmane', `conge:${id}:ecourte:%`)).toBeNull();
@@ -1414,7 +1416,7 @@ describe('un congé à cheval sur deux années', () => {
         (e: ProblemException) => e.problem,
       );
       expect(refus).toMatchObject({ code: 'absence.insufficient_balance' });
-      expect((refus as { detail: string }).detail).toMatch(/ sur 2032 /);
+      expect((refus as { detail: string }).detail).toMatch(/ en 2032, /);
     } finally {
       await raw(`DELETE FROM absence_requests WHERE absence_type_id = $1`, [court]);
       await raw(`DELETE FROM absence_types WHERE id = $1`, [court]);
@@ -1722,10 +1724,10 @@ describe('un motif confidentiel', () => {
     );
     await absences.cancel(moussa.session, id);
     expect(await notif('Ousmane', `conge:${id}:annule`)).toMatch(
-      /^L’absence de Moussa Test du .* est annulée$/,
+      /^L’absence de Moussa Test du .* a été annulée$/,
     );
     expect(await notif('Mariama', `conge:${id}:annule`)).toMatch(
-      /^Le congé maladie de Moussa Test du .* est annulé$/,
+      /^Le congé maladie de Moussa Test du .* a été annulé$/,
     );
   });
 
@@ -2043,7 +2045,7 @@ describe('une absence ponctuelle', () => {
       }),
     );
     expect(annuel.code).toBe('absence.heures_refusees');
-    expect(annuel.title).toBe('« Congé annuel » se demande à la journée');
+    expect(annuel.title).toBe('« Congé annuel » ne peut être demandé qu’à la journée');
     const samedi = await refusDe(() => aLHeure(moussa, '10:00', '12:00', '2027-03-06'));
     expect(samedi.code).toBe('absence.no_working_days');
     expect(samedi.title).toBe('Ce jour n’est pas un jour ouvré');
@@ -2052,7 +2054,7 @@ describe('une absence ponctuelle', () => {
   it('entre 8 h et 17 h seulement : la journée de travail', async () => {
     const tot = await refusDe(() => aLHeure(moussa, '07:30', '09:00'));
     expect(tot.code).toBe('absence.hors_horaires');
-    expect(tot.title).toMatch(/^Une absence à l’heure se situe entre 8\sh et 17\sh$/);
+    expect(tot.title).toMatch(/^Une absence à l’heure doit être comprise entre 8\sh et 17\sh$/);
     expect(await codeOf(() => aLHeure(moussa, '16:00', '17:30'))).toBe('absence.hors_horaires');
     expect((await aLHeure(moussa, '08:00', '17:00')).daysCount).toBe(1);
   });
@@ -2079,7 +2081,7 @@ describe('une absence ponctuelle', () => {
     // Du lundi au jeudi : quatre jours ouvrés.
     const p = await refusDe(() => aLaJournee(moussa, '2027-03-08', '2027-03-11'));
     expect(p.code).toBe('absence.duree_max');
-    expect(p.title).toBe('« Absence ponctuelle » se demande pour 3 jours ouvrés au plus');
+    expect(p.title).toBe('« Absence ponctuelle » peut être demandé pour 3 jours ouvrés maximum');
     expect(p.detail).toBe('Cette période en compte 4.');
     // Du jeudi au lundi : trois.
     expect((await aLaJournee(moussa, '2027-03-11', '2027-03-15')).daysCount).toBe(3);
@@ -2105,7 +2107,7 @@ describe('une absence ponctuelle', () => {
     await viser(ousmane, id);
     await viser(mariama, id);
     expect(await notif('Moussa', `conge:${id}:verdict`)).toMatch(
-      /^Votre absence ponctuelle le 1er mars 2027 de 10\sh à 12\sh est approuvée$/,
+      /^Votre absence ponctuelle le 1er mars 2027 de 10\sh à 12\sh a été approuvée$/,
     );
   });
 
@@ -2154,7 +2156,7 @@ describe('une absence ponctuelle', () => {
       await absences.createHoliday(admin, { year: 2027, day: '2027-03-02', label: 'Jour chômé' });
       expect((await vue(id)).status).toBe('cancelled');
       expect(await notif('Moussa', `conge:${id}:ferie`)).toMatch(
-        /^Votre absence ponctuelle le 2 mars 2027 de 10\sh à 12\sh est annulée : ce jour est férié$/,
+        /^Votre absence ponctuelle le 2 mars 2027 de 10\sh à 12\sh a été annulée : ce jour est férié$/,
       );
     } finally {
       await raw(`DELETE FROM holidays WHERE tenant_id = $1 AND day = '2027-03-02'`, [tenantId]);
@@ -2189,7 +2191,7 @@ describe('une disponibilité', () => {
     );
     expect(refus).toMatchObject({
       code: 'absence.duree_max',
-      title: '« Disponibilité » se demande pour 3 ans au plus',
+      title: '« Disponibilité » peut être demandé pour 3 ans maximum',
       detail: 'Terminez la demande le 2 mars 2034 au plus tard.',
     });
     expect((await demande('2034-03-02')).daysCount).toBeGreaterThan(700);

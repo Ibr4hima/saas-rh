@@ -436,9 +436,9 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               estDG
                 ? 'Le DG ne relève de personne.'
                 : estDirecteur
-                  ? 'Qui dirige une direction relève du DG.'
+                  ? 'Les responsables de direction ont le DG pour N+1.'
                   : impose
-                    ? 'Le responsable d’une unité relève de l’unité au-dessus de la sienne.'
+                    ? 'Les responsables d’unité ont pour N+1 le responsable de l’unité supérieure.'
                     : direction
                       ? `Les agents ${uniteAvecArticle('de', { name: direction, unitType: 'direction' }, direction)}, et le DG.`
                       : 'Affectez d’abord l’agent à une direction.'

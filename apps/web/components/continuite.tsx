@@ -73,7 +73,7 @@ export function AlerteContinuite({
       {appreciation ? (
         <p className="mt-1 font-semibold text-ink-strong">
           {alerte.auDirecteur
-            ? 'La demande sera appréciée par qui dirige la DCH.'
+            ? 'La demande sera laissée à l’appréciation de la personne qui dirige la DCH.'
             : 'La demande sera laissée à l’appréciation de la DCH.'}
         </p>
       ) : null}

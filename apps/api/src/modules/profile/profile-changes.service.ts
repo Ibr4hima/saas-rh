@@ -81,7 +81,7 @@ function lireLeCertificat(certificat: CertificatDeMariageInput): Buffer {
     problem(
       422,
       'documents.bad_format',
-      'Le contenu ne correspond pas au format annoncé',
+      'Ce fichier n’est pas un PDF valide',
       'Seul le PDF est accepté.',
     );
   }
@@ -151,7 +151,7 @@ export class ProfileChangesService {
         problem(
           422,
           'profile.certificat_sans_mariage',
-          'Le certificat de mariage accompagne un passage à « Marié(e) »',
+          'Le certificat de mariage n’est demandé que pour passer à « Marié(e) »',
         );
       }
       const certificat = input.certificat ? lireLeCertificat(input.certificat) : null;
@@ -357,12 +357,7 @@ export class ProfileChangesService {
         problem(404, 'profile.request_not_found', 'Demande introuvable');
       }
       if (row.status !== 'pending') {
-        problem(
-          422,
-          'profile.request_already_handled',
-          'Cette demande a déjà été traitée',
-          `État actuel : ${row.status}.`,
-        );
+        problem(422, 'profile.request_already_handled', 'Cette demande a déjà été traitée');
       }
       await exigerDeTraiter(tx, user, 'demandes.informations', {
         employeeId: row.employeeId,
@@ -389,8 +384,8 @@ export class ProfileChangesService {
           problem(
             409,
             'profile.modifie_depuis',
-            'Le dossier a changé depuis la demande',
-            `${changes.map((f) => PROFILE_CHANGE_ALL_LABELS[f] ?? f).join(', ')} : la valeur au dossier n’est plus celle que l’agent avait sous les yeux.`,
+            'Le dossier a été modifié depuis la demande',
+            `${changes.map((f) => PROFILE_CHANGE_ALL_LABELS[f] ?? f).join(', ')} : la valeur enregistrée a changé depuis que l’agent a fait sa demande.`,
           );
         }
       }
@@ -405,8 +400,8 @@ export class ProfileChangesService {
           problem(
             422,
             'profile.invalid_stored_changes',
-            'Cette demande porte des données inexploitables',
-            'Demandez à l’employé de la reformuler.',
+            'Cette demande contient des données illisibles',
+            'Demandez à l’agent de la refaire.',
           );
         }
         const patch: Record<string, unknown> = {};
@@ -441,8 +436,8 @@ export class ProfileChangesService {
         sujet: 'informations',
         title:
           input.decision === 'approve'
-            ? 'Vos informations sont mises à jour'
-            : 'Votre demande de mise à jour est refusée',
+            ? 'Vos informations ont été mises à jour'
+            : 'Votre demande de mise à jour a été refusée',
         // Validée, la fiche porte le changement. Refusée, le suivi des
         // demandes l'ouvre en évidence, avec son motif (ADR-0081).
         link: input.decision === 'approve' ? '/moi' : `/moi/documents/suivi?traitee=${requestId}`,
@@ -499,7 +494,11 @@ export class ProfileChangesService {
       const moi = await agentDuCompte(tx, user.userId);
       const fileEntiere = await voitToutLaFile(tx, user, 'informations');
       if (!certificatLisible(user, row, { soi: self?.employeeId ?? null, moi, fileEntiere })) {
-        problem(403, 'profile.forbidden_scope', 'Accès réservé à qui traite cette demande');
+        problem(
+          403,
+          'profile.forbidden_scope',
+          'Accès réservé à la personne qui traite cette demande',
+        );
       }
       const [piece] = await tx
         .select()

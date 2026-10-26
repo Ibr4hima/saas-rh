@@ -140,7 +140,7 @@ export function FenetreControleDuTitre({
         ) : mode === 'autre' ? (
           <>
             <p className="text-[12.5px] text-ink">
-              La fiche porte{' '}
+              La fiche mentionne{' '}
               {fiche.type === 'cni' ? 'une carte nationale d’identité' : 'un passeport'}
               {fiche.numero ? (
                 <>
@@ -152,16 +152,16 @@ export function FenetreControleDuTitre({
             </p>
             <div className="flex flex-col gap-1.5">
               <span className="text-[12.5px] font-semibold text-ink">
-                En faire la pièce de la fiche ?
+                Remplacer la pièce de la fiche par celle-ci ?
               </span>
               <div
                 role="radiogroup"
-                aria-label="En faire la pièce de la fiche ?"
+                aria-label="Remplacer la pièce de la fiche par celle-ci ?"
                 className="flex gap-1 rounded-groupe border border-line-soft bg-bg p-[3px] sm:w-fit"
               >
                 {[
                   { oui: false, label: 'Non' },
-                  { oui: true, label: 'Oui, à la place' },
+                  { oui: true, label: 'Oui, la remplacer' },
                 ].map((o) => (
                   <button
                     key={o.label}
@@ -267,7 +267,7 @@ function Saisie({
           label="Date d’expiration"
           htmlFor={`${id}-expire`}
           required
-          error={datesInversees ? 'Elle doit suivre la date de délivrance.' : undefined}
+          error={datesInversees ? 'Elle doit être postérieure à la date de délivrance.' : undefined}
         >
           <Input
             id={`${id}-expire`}

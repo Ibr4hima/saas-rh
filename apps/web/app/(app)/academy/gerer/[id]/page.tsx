@@ -173,7 +173,7 @@ export default function AtelierFormationPage() {
     const duree = await lireDuree(fichier);
     if (duree !== null && duree > DUREE_MAX_LECON_S + MARGE_DUREE_S) {
       poser({
-        erreur: `La vidéo dure ${minutesSecondes(duree)} : une leçon fait ${DUREE_MAX_LECON_S / 60} minutes au plus. Découpez-la en plusieurs leçons.`,
+        erreur: `La vidéo dure ${minutesSecondes(duree)} : une leçon ne peut pas dépasser ${DUREE_MAX_LECON_S / 60} minutes. Découpez-la en plusieurs leçons.`,
       });
       return;
     }
@@ -758,7 +758,7 @@ function LigneLecon({
   // écrasait le titre de la leçon jusqu'à le rendre illisible.
   const explication =
     envoi?.erreur ??
-    (l.videoStatus === 'erreur' ? (l.videoError ?? 'La vidéo est en erreur.') : null);
+    (l.videoStatus === 'erreur' ? (l.videoError ?? 'La vidéo n’a pas pu être traitée.') : null);
 
   return (
     <li className="border-b border-line-soft px-5 py-3 last:border-b-0">

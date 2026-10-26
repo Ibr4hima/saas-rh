@@ -138,37 +138,37 @@ export function refuserHorsCible(
   const [titre, detail] = {
     not_active: [
       `${libelle} : dossier inactif`,
-      'Ce document se délivre à un agent en activité ; un dossier inactif relève du certificat de travail.',
+      'Ce document est réservé aux agents en activité. Pour un agent qui a quitté l’organisation, établissez un certificat de travail.',
     ],
     en_activite: [
       `${libelle} : dossier en activité`,
-      'Le certificat de travail se délivre au départ ; pour un agent en activité, c’est l’attestation de travail qui convient.',
+      'Le certificat de travail est délivré au départ de l’agent. Pour un agent en activité, établissez une attestation de travail.',
     ],
     stage: [
       `${libelle} : contrat de stage`,
-      'Ce document suppose un contrat de travail ; pour un stage, c’est l’attestation de stage qui convient.',
+      'Ce document nécessite un contrat de travail. Pour un stagiaire, établissez une attestation de stage.',
     ],
     contrat: [
       contrats.length === 1
         ? `${libelle} : pas de ${contrats[0]}`
         : `${libelle} : ni ${contrats.join(' ni ')}`,
-      `Ce document suppose un ${contrats.join(' ou un ')} en cours.`,
+      `Ce document nécessite un ${contrats.join(' ou un ')} en cours.`,
     ],
     sans_stage: [
       `${libelle} : aucun stage au dossier`,
-      'L’attestation de stage cite le dernier stage commencé de l’agent.',
+      'L’attestation de stage nécessite un stage déjà commencé, enregistré dans le dossier.',
     ],
     genre: [
-      `${libelle} : genre du dossier`,
+      `${libelle} : non applicable à cet agent`,
       cible.genre === 'female'
-        ? 'Le dossier de l’agent doit porter le genre féminin.'
-        : 'Le dossier de l’agent doit porter le genre masculin.',
+        ? 'Ce document concerne uniquement les agents de sexe féminin.'
+        : 'Ce document concerne uniquement les agents de sexe masculin.',
     ],
     age: [
       s.age === null
         ? `${libelle} : date de naissance manquante`
         : `${libelle} : moins de ${cible.ageMin} ans`,
-      `Le départ à la retraite se propose dès ${cible.ageMin} ans ; l’âge se lit à la date de naissance du dossier.`,
+      `Ce document est proposé à partir de ${cible.ageMin} ans, d’après la date de naissance du dossier.`,
     ],
   }[raison] as [string, string];
   problem(422, `documents.${raison}`, titre, detail);

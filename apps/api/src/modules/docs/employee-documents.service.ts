@@ -59,7 +59,7 @@ function lireLeFichier(input: { contentType: string; contentBase64: string }): B
     problem(
       422,
       'documents.bad_format',
-      'Le contenu ne correspond pas au format annoncé',
+      'Ce fichier n’est pas un PDF valide',
       'Seul le PDF est accepté.',
     );
   }
@@ -180,8 +180,8 @@ export class EmployeeDocumentsService {
         problem(
           403,
           'documents.self_only',
-          'Chaque agent dépose ses pièces depuis son espace',
-          'La DCH les vérifie ensuite : elle ne dépose pas à la place de l’agent.',
+          'Les pièces sont déposées par l’agent depuis son espace',
+          'La DCH les vérifie ensuite, mais ne peut pas les déposer à la place de l’agent.',
         );
       }
 
@@ -221,7 +221,7 @@ export class EmployeeDocumentsService {
           problem(
             422,
             'documents.deja_en_verification',
-            `${DOCUMENT_CATEGORY_LABELS[input.category]} : un dépôt attend déjà la vérification`,
+            `${DOCUMENT_CATEGORY_LABELS[input.category]} : un document est déjà en attente de vérification`,
             'Remplacez-le, ou annulez-le, avant d’en déposer un autre.',
           );
         }
@@ -277,7 +277,7 @@ export class EmployeeDocumentsService {
           422,
           'documents.already_reviewed',
           'Ce document a déjà été traité',
-          'Il ne se remplace plus : déposez-en un nouveau.',
+          'Il ne peut plus être remplacé : déposez-en un nouveau.',
         );
       }
       const expiresOn = await dateDExpiration(
@@ -336,8 +336,8 @@ export class EmployeeDocumentsService {
         problem(
           403,
           'documents.wrong_reviewer',
-          'Personne ne vérifie ses propres pièces',
-          'Elles vont aux membres de la DCH qui vérifient les pièces, ou à qui dirige la DCH.',
+          'Vous ne pouvez pas vérifier vos propres pièces',
+          'Elles seront vérifiées par un autre membre habilité de la DCH, ou par la personne qui dirige la DCH.',
         );
       }
       await exigerDeTraiter(tx, user, capaciteDeLaPiece(doc.category as PieceAVerifier), {
@@ -394,8 +394,8 @@ export class EmployeeDocumentsService {
         type: 'document_reviewed',
         sujet: 'pieces',
         title: approved
-          ? `Votre ${nom} est ${accord('ajouté', piece)} à votre dossier`
-          : `Votre ${nom} est ${accord('refusé', piece)} : ${input.comment!.trim()}`,
+          ? `Votre ${nom} a été ${accord('ajouté', piece)} à votre dossier`
+          : `Votre ${nom} a été ${accord('refusé', piece)} : ${input.comment!.trim()}`,
         link: '/moi/documents/justificatifs',
         dedupeKey: `piece:${documentId}:verdict`,
       });
@@ -422,7 +422,7 @@ export class EmployeeDocumentsService {
           422,
           'documents.pas_le_titre',
           'Ce document n’est pas la pièce d’identité de la fiche',
-          'Ses informations ne s’y reportent pas.',
+          'Ses informations ne seront pas reportées sur la fiche.',
         );
       }
       return;
@@ -438,7 +438,7 @@ export class EmployeeDocumentsService {
         422,
         'documents.titre_requis',
         'Saisissez les informations de la nouvelle pièce',
-        'Son numéro, sa date de délivrance et sa date d’expiration remplacent celles de la fiche.',
+        'Son numéro, sa date de délivrance et sa date d’expiration remplaceront ceux de la fiche.',
       );
     }
     await refuserSiExpiree(tx, titre.expireLe);

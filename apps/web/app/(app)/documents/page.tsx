@@ -190,8 +190,8 @@ export default function DocumentRequestsPage() {
           <CorpsDefilant className="grid place-items-center">
             <EmptyState
               icon={<Icon name="folder_managed" size={22} />}
-              title="Tout est traité"
-              description="Aucune demande n'attend de votre part. L'historique est juste en dessous."
+              title="Aucune demande en attente"
+              description="Les demandes déjà traitées sont listées ci-dessous."
             />
           </CorpsDefilant>
         ) : (
@@ -353,7 +353,7 @@ export default function DocumentRequestsPage() {
             <EmptyState
               icon={<Icon name="folder_managed" size={22} />}
               title="Aucune demande traitée"
-              description="L'historique se remplira au fur et à mesure des demandes que vous clôturez."
+              description="Les demandes que vous traiterez apparaîtront ici."
             />
           </CorpsDefilant>
         ) : (
@@ -718,13 +718,13 @@ function TraiterModal({
       <Modal
         open
         onClose={onDone}
-        title="Lot partiellement traité"
+        title="Certaines demandes n’ont pas été traitées"
         maxWidth="max-w-lg"
         footer={<Button onClick={onDone}>J&apos;ai compris</Button>}
       >
-        <ModalSection title="Demandes écartées">
+        <ModalSection title="Demandes non traitées">
           <p className="mb-3 text-[12.5px] text-ink-muted">
-            Les autres ont bien été traitées. Celles-ci avaient changé d&apos;état entre-temps :
+            Les autres demandes ont bien été traitées. Celles-ci avaient été modifiées entre-temps :
           </p>
           <ul className="flex flex-col gap-1.5">
             {ecartees.map((s) => (
@@ -855,7 +855,7 @@ function TraiterModal({
               <Field label="À retirer auprès de" htmlFor="pickupContact">
                 <Input
                   id="pickupContact"
-                  placeholder="Vous, si laissé vide"
+                  placeholder="Par défaut : vous"
                   value={pickupContact}
                   onChange={(e) => setPickupContact(e.target.value)}
                 />
@@ -863,7 +863,7 @@ function TraiterModal({
               <Field label="Précision (facultatif)" htmlFor="pickupMessage">
                 <Input
                   id="pickupMessage"
-                  placeholder="Ex : bureau 204, 9h–16h"
+                  placeholder="Ex. : bureau 204, 9h–16h"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                 />
@@ -1026,8 +1026,8 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
           title={dossierInactif ? 'Dossier non actif' : 'Préparé hors application'}
           description={
             dossierInactif
-              ? "L'attestation de travail est réservée aux agents en activité : pour ce dossier, elle est à établir à la main."
-              : 'Veuillez vérifier l’exactitude des informations demandées dans le service de paie avant de valider.'
+              ? "L'attestation de travail est réservée aux agents en activité : pour ce dossier, elle doit être établie manuellement."
+              : 'Veuillez vérifier l’exactitude des informations demandées auprès du service de paie avant de valider.'
           }
         />
       </>
@@ -1056,7 +1056,7 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
         <EmptyState
           className="flex-1"
           icon={<Icon name="error" size={22} />}
-          title={probleme?.title ?? 'Dossier illisible'}
+          title={probleme?.title ?? 'Impossible de charger le dossier'}
           description={probleme?.detail ?? (refus ? undefined : 'Réessayez dans un instant.')}
           action={
             refus ? undefined : (
@@ -1116,7 +1116,7 @@ function DeclinerModal({
       open
       onClose={onClose}
       title={`Décliner ${requests.length} demande${requests.length > 1 ? 's' : ''}`}
-      subtitle="Le motif est transmis tel quel à chaque demandeur."
+      subtitle="Le motif sera envoyé tel quel à chaque demandeur."
       maxWidth="max-w-xl"
       footer={
         <>
@@ -1159,7 +1159,7 @@ function DeclinerModal({
         <Field label="Transmis au demandeur" htmlFor="motif">
           <Input
             id="motif"
-            placeholder="Ex : le bulletin de salaire est délivré par le service paie."
+            placeholder="Ex. : le bulletin de salaire est délivré par le service paie."
             value={motif}
             onChange={(e) => setMotif(e.target.value)}
           />

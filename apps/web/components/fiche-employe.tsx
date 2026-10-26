@@ -633,12 +633,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
           <div className="flex min-w-0 flex-col gap-4">
             {/* Inactif : pas d'accès au portail, donc rien à lui transmettre. */}
             {peutGerer && actif ? (
-              <PortalCard
-                employeeId={e.id}
-                portal={e.portal}
-                prenom={e.person.givenName}
-                gender={e.person.gender}
-              />
+              <PortalCard employeeId={e.id} portal={e.portal} prenom={e.person.givenName} />
             ) : null}
 
             {canSeeHistory ? <CarteHistorique history={history} /> : null}
@@ -979,7 +974,7 @@ function AssignmentsCard({
         onClose={() => setOpen(false)}
         title="Nouvelle affectation"
         subtitle={
-          <p className="text-xs text-ink-muted">L’affectation en cours s’arrête la veille.</p>
+          <p className="text-xs text-ink-muted">L’affectation en cours prendra fin la veille.</p>
         }
         maxWidth="max-w-2xl"
         footer={
@@ -1113,9 +1108,9 @@ function AssignmentsCard({
             <p className="mt-3.5 flex items-start gap-2 text-[12.5px] leading-relaxed text-ink">
               <Icon name="event" size={16} className="mt-px shrink-0 text-primary" />
               <span>
-                Une mutation vers une autre direction s’enregistre le jour où elle prend effet : le
-                n+1 vaut dès aujourd’hui, et la chaîne hiérarchique resterait fausse jusqu’à cette
-                date.
+                Une mutation vers une autre direction doit être enregistrée le jour où elle prend
+                effet : le N+1 changerait dès aujourd’hui et la chaîne hiérarchique serait fausse
+                jusqu’à cette date.
               </span>
             </p>
           ) : null}
@@ -1438,7 +1433,7 @@ function GesteAffectation({
           </Field>
         </div>
       ) : (
-        <p className="text-[13px] text-ink">L’affectation précédente reprend.</p>
+        <p className="text-[13px] text-ink">L’affectation précédente sera rétablie.</p>
       )}
       {erreur ? (
         <p role="alert" className="mt-3 text-[12.5px] text-danger">
@@ -1634,12 +1629,10 @@ function PortalCard({
   employeeId,
   portal,
   prenom,
-  gender,
 }: {
   employeeId: string;
   portal: EmployeeDetail['portal'];
   prenom: string;
-  gender: string | null;
 }) {
   const queryClient = useQueryClient();
   const [invite, setInvite] = useState<InviteResult | null>(null);
@@ -1739,7 +1732,7 @@ function PortalCard({
                 : envoi === 'en_attente'
                   ? 'Invitation en cours d’envoi'
                   : echec
-                    ? 'Le courriel d’invitation n’est pas parti'
+                    ? 'Le courriel d’invitation n’a pas pu être envoyé'
                     : portal.status === 'invited'
                       ? 'Invitation envoyée, pas encore acceptée'
                       : ferme
@@ -1748,7 +1741,9 @@ function PortalCard({
             </p>
             <p className="mt-1 text-[12px] leading-snug text-ink-muted">
               {coupe ? (
-                <>La connexion au portail est refusée à {prenom} jusqu&apos;au rétablissement.</>
+                <>
+                  {prenom} ne peut plus se connecter au portail tant que l’accès n’est pas rétabli.
+                </>
               ) : invitation && envoi ? (
                 <>
                   {echec ? 'Adressé à ' : envoi === 'envoye' ? 'Envoyée à ' : 'À '}
@@ -1764,17 +1759,13 @@ function PortalCard({
                 </>
               ) : (
                 <>
-                  {/* Le pronom suit le sexe au dossier quand il y est. « Il ou
-                    elle » n'est pas une faute, mais quand on connaît la
-                    personne à qui l'on écrit, la phrase n'a pas à hésiter. */}
                   {portal.parCourriel
                     ? 'Envoyez l’invitation à'
                     : 'Transmettez le lien d’invitation à'}{' '}
                   <span className="font-semibold text-ink">{prenom}</span>.{' '}
-                  {gender === 'female' ? 'Elle' : gender === 'male' ? 'Il' : 'Il ou elle'}{' '}
                   {ferme
-                    ? 'choisira un nouveau mot de passe et retrouvera son compte.'
-                    : 'choisira son mot de passe et son compte sera relié à ce dossier.'}
+                    ? 'Une fois un nouveau mot de passe choisi, son compte sera rouvert.'
+                    : 'Une fois son mot de passe choisi, son compte sera relié à ce dossier.'}
                 </>
               )}
             </p>
@@ -2159,10 +2150,10 @@ function NouveauContrat({
           inactif || remplace ? (
             <p className="text-xs text-ink-muted">
               {!inactif
-                ? 'Le contrat en cours s’arrête la veille du début du nouveau.'
+                ? 'Le contrat en cours prendra fin la veille du nouveau contrat.'
                 : debut > aujourdhui
-                  ? `Le dossier de ${prenom} se réactivera le ${formatDate(debut)}.`
-                  : `Le dossier de ${prenom} se réactive avec ce contrat.`}
+                  ? `Le dossier de ${prenom} sera réactivé le ${formatDate(debut)}.`
+                  : `Le dossier de ${prenom} sera réactivé avec ce contrat.`}
             </p>
           ) : undefined
         }
@@ -2197,7 +2188,7 @@ function NouveauContrat({
           {remplace && !inactif ? (
             <p className="flex items-start gap-2 rounded-bloc bg-warning-soft px-3.5 py-2.5 text-[12.5px] font-semibold text-warning ring-1 ring-current/15 ring-inset">
               <Icon name="warning" size={16} className="mt-px shrink-0" />
-              {prenom} est actuellement sous contrat, ce nouveau contrat remplacera l’ancien.
+              {prenom} est actuellement sous contrat : ce nouveau contrat remplacera l’ancien.
             </p>
           ) : null}
           <Field label="Type" htmlFor="contrat-type" required>
@@ -2240,7 +2231,7 @@ function NouveauContrat({
             <Field label="Poste" htmlFor="contrat-poste" required>
               <Input
                 id="contrat-poste"
-                placeholder="Ex : Chargé d’études"
+                placeholder="Ex. : Chargé d’études"
                 value={poste}
                 onChange={(ev) => setPoste(ev.target.value)}
               />

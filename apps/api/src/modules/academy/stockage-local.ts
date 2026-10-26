@@ -116,16 +116,16 @@ export class StockageVideoLocal {
     const temporaire = `${this.chemin(tenantId, uid)}.part`;
     const garde = new AbortController();
     const abandonner = (raison: string) => () => garde.abort(new EnvoiAbandonne(raison));
-    let attente = setTimeout(abandonner('Plus rien n’arrive'), delais.inactiviteMs);
+    let attente = setTimeout(abandonner('L’envoi s’est interrompu'), delais.inactiviteMs);
     const plafond = setTimeout(abandonner('Envoi trop long'), delais.totalMs);
     let recu = 0;
     const compteur = new Transform({
       transform(morceau: Buffer, _enc, suite) {
         clearTimeout(attente);
-        attente = setTimeout(abandonner('Plus rien n’arrive'), delais.inactiviteMs);
+        attente = setTimeout(abandonner('L’envoi s’est interrompu'), delais.inactiviteMs);
         recu += morceau.length;
         if (recu > MAX_VIDEO_LOCALE_BYTES) {
-          suite(new VideoTropLourde('Fichier trop lourd'));
+          suite(new VideoTropLourde('Fichier trop volumineux'));
           return;
         }
         suite(null, morceau);

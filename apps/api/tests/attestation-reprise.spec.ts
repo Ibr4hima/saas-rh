@@ -289,7 +289,7 @@ describe('le dossier et les dates', () => {
       'AUCUNE ERREUR',
     );
     expect(await titre({ debut: '2026-01-02', fin: '2029-01-02', reprise: '2029-01-03' })).toBe(
-      'La disponibilité dure trois ans au plus',
+      'La disponibilité ne peut pas dépasser trois ans',
     );
   });
 

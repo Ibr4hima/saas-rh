@@ -131,7 +131,7 @@ export class EvaluationsService {
 
   async periode(user: SessionUser, annee?: number): Promise<VueDeLaPeriode> {
     if (!peut(user, 'pilotage'))
-      problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
+      problem(403, 'auth.forbidden', 'Vous n’avez pas les droits nécessaires pour cette action');
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const a = annee ?? (await this.anneeCourante(tx));
       return {
@@ -161,7 +161,7 @@ export class EvaluationsService {
       problem(
         422,
         'evaluations.periode_hors_annee',
-        `La période d’évaluation ${annee} s’ouvre en ${annee} ou en ${annee + 1}`,
+        `La période d’évaluation ${annee} doit commencer en ${annee} ou en ${annee + 1}`,
       );
     }
     return this.db.withTenant(this.ctx(user), async (tx) => {
@@ -239,7 +239,7 @@ export class EvaluationsService {
   /** Le suivi de la DCH : chaque agent qu'on évalue, et où en est sa grille. */
   async suivi(user: SessionUser, annee?: number): Promise<SuiviDesEvaluations> {
     if (!peut(user, 'pilotage'))
-      problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
+      problem(403, 'auth.forbidden', 'Vous n’avez pas les droits nécessaires pour cette action');
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const a = annee ?? (await this.anneeCourante(tx));
       const periode = await this.periodeDe(tx, a);
@@ -358,7 +358,7 @@ export class EvaluationsService {
    */
   async dossier(user: SessionUser, employeeId: string): Promise<GrilleAuDossier[]> {
     if (!peut(user, 'pilotage')) {
-      problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
+      problem(403, 'auth.forbidden', 'Vous n’avez pas les droits nécessaires pour cette action');
     }
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const lignes = await tx
@@ -451,7 +451,7 @@ export class EvaluationsService {
           422,
           'evaluations.sans_acces',
           `${nomComplet(c.agent.prenom, c.agent.nom)} n’a pas encore accès au portail`,
-          'L’agent valide sa grille dans l’application : l’invitation part depuis sa fiche.',
+          'L’agent doit valider sa grille sur le portail : envoyez l’invitation depuis sa fiche.',
         );
       }
       await this.passer(tx, c.grille, ['brouillon'], {
@@ -617,7 +617,7 @@ export class EvaluationsService {
         problem(
           422,
           'evaluations.non_cadre',
-          'La grille du personnel non cadre n’est pas encore là',
+          'La grille du personnel non cadre n’est pas encore disponible',
         );
       }
       const g = c.grille;
@@ -687,14 +687,14 @@ export class EvaluationsService {
       problem(
         403,
         'evaluations.hors_perimetre',
-        'Cette grille d’évaluation ne vous est pas ouverte',
+        'Vous n’avez pas accès à cette grille d’évaluation',
       );
     }
     if (role === 'agent' && (!grille || grille.etat === 'brouillon')) {
       problem(
         404,
         'evaluations.pas_encore',
-        `Votre grille d’évaluation ${annee} n’est pas encore là`,
+        `Votre grille d’évaluation ${annee} n’est pas encore disponible`,
       );
     }
     const prefill = grille ? null : await this.objectifsRepris(tx, employeeId, annee);
@@ -882,7 +882,7 @@ export class EvaluationsService {
         422,
         'evaluations.personnel',
         `${nomComplet(agent.prenom, agent.nom)} : cadre ou non-cadre à renseigner`,
-        'La DCH le dit sur la fiche de l’agent.',
+        'La DCH doit l’indiquer sur la fiche de l’agent.',
       );
     }
     if (agent.personnel === 'non_cadre') {

@@ -108,7 +108,7 @@ export default function LeconPage() {
               }
               description={
                 code === 'academy.lesson_locked'
-                  ? 'Les leçons se suivent dans l’ordre : terminez d’abord celles qui la précèdent.'
+                  ? 'Terminez d’abord les leçons précédentes.'
                   : 'Elle sera disponible dès qu’elle aura été déposée.'
               }
               action={

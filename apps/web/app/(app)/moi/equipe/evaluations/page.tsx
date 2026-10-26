@@ -102,7 +102,7 @@ export default function EvaluationsDeLEquipePage() {
           <EmptyState
             className="py-12"
             icon={<Icon name="groups" size={22} />}
-            title="Personne à évaluer"
+            title="Aucun agent à évaluer"
           />
         </Card>
       ) : (
@@ -115,7 +115,7 @@ export default function EvaluationsDeLEquipePage() {
             </Groupe>
           ) : null}
           {recues.length > 0 ? (
-            <Groupe titre="Reçues en N+2">
+            <Groupe titre="Reçues en tant que N+2">
               {recues.map((l) => (
                 <CarteAgent key={l.employeeId} ligne={l} annee={v.annee} />
               ))}

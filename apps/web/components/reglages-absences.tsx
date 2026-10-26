@@ -113,7 +113,7 @@ export function FenetreSuppression({
       {erreur ? (
         <p className="rounded-bloc bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{erreur}</p>
       ) : null}
-      <ModalSection title="Ce que ça change">{children}</ModalSection>
+      <ModalSection title="Conséquences">{children}</ModalSection>
     </Modal>
   );
 }

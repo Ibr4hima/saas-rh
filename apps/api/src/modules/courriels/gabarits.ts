@@ -119,8 +119,8 @@ const SIGNATURE_DCH = ['Cordialement,', 'La Direction du Capital Humain'];
 
 /** Le lien « mot de passe oublié » vaut une heure (cf. REINITIALISATION_TTL_MINUTES). */
 const APRES_REINITIALISATION = [
-  'Ce lien vous est personnel et vaut une heure.',
-  'Si vous n’avez rien demandé, ignorez ce courriel : votre mot de passe ne change pas.',
+  'Ce lien est personnel et valable une heure.',
+  'Si vous n’avez rien demandé, ignorez ce courriel : votre mot de passe restera inchangé.',
 ];
 
 /** L'invitation selon qui la reçoit : un nouveau compte, un retour, un compte en service. */
@@ -128,7 +128,7 @@ const ACCUEILS = {
   nouveau: {
     titre: 'Bienvenue',
     accroche: 'La DCH vous invite à activer votre compte.',
-    apercu: 'Choisissez votre mot de passe pour ouvrir votre accès au portail RH.',
+    apercu: 'Choisissez votre mot de passe pour accéder au portail RH.',
     consigne: 'Pour choisir votre mot de passe',
     bouton: 'Choisir mon mot de passe',
   },
@@ -172,7 +172,7 @@ function corps(g: Gabarit, rendu: Rendu): ContenuCourriel {
         `${a.consigne}, ouvrez ce lien :`,
         g.lien,
         '',
-        `Ce lien vous est personnel et vaut jusqu’au ${jusquau}.`,
+        `Ce lien est personnel et valable jusqu’au ${jusquau}.`,
         'Si vous n’attendiez pas ce courriel, ignorez-le.',
       ].join('\n'),
       html: page(rendu, {
@@ -182,7 +182,7 @@ function corps(g: Gabarit, rendu: Rendu): ContenuCourriel {
         sousTitre: accroche,
         bouton: { libelle: a.bouton, lien: g.lien },
         apres: [
-          `Ce lien vous est personnel et vaut jusqu’au ${jusquau}.`,
+          `Ce lien est personnel et valable jusqu’au ${jusquau}.`,
           'Si vous n’attendiez pas ce courriel, ignorez-le.',
         ],
       }),
@@ -365,7 +365,7 @@ ${o.apres.length ? `<p style="margin:18px 0 0;${texte(12.5, ENCRE_DOUCE, 'line-h
 ${
   o.bouton
     ? `<tr><td class="carte-pied" align="center" bgcolor="#fafaf9" style="background-color:#fafaf9;border-top:1px solid #eceae7;border-radius:0 0 14px 14px;padding:15px 32px;${texte(12.5, ENCRE_DOUCE)}">
-Le bouton ne s’ouvre pas ? Copiez ce <a href="${lien}" target="_blank" style="color:${BLEU};font-weight:700;text-decoration:none">lien</a>.
+Le bouton ne fonctionne pas ? Copiez ce <a href="${lien}" target="_blank" style="color:${BLEU};font-weight:700;text-decoration:none">lien</a>.
 </td></tr>`
     : ''
 }

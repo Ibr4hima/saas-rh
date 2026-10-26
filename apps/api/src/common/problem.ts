@@ -23,13 +23,13 @@ export function problem(status: number, code: string, title: string, detail?: st
 }
 
 const TITRES_HTTP: Record<number, string> = {
-  400: 'Requête invalide',
+  400: 'Informations invalides',
   401: 'Authentification requise',
-  403: 'Droits insuffisants pour cette action',
+  403: 'Vous n’avez pas les droits nécessaires pour cette action',
   404: 'Adresse introuvable',
   405: 'Méthode non permise',
-  409: 'Conflit avec l’état actuel',
-  413: 'Corps de requête trop volumineux',
+  409: 'Cette action n’est plus possible : rechargez la page',
+  413: 'Envoi trop volumineux',
   415: 'Format de requête non pris en charge',
   429: 'Trop de requêtes, réessayez dans un instant',
 };
@@ -117,7 +117,7 @@ export class ProblemFilter implements ExceptionFilter {
     }
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let title = 'Erreur interne';
+    let title = 'Une erreur est survenue, réessayez dans un instant';
     let code = 'internal_error';
     let detail: string | undefined;
 
@@ -144,10 +144,10 @@ export class ProblemFilter implements ExceptionFilter {
       // elles portent un statusCode 4xx et ne sont pas des erreurs internes.
       status = bodyParserStatus(exception)!;
       if (status === HttpStatus.PAYLOAD_TOO_LARGE) {
-        title = 'Corps de requête trop volumineux';
+        title = 'Envoi trop volumineux';
         code = 'request.payload_too_large';
       } else {
-        title = 'Corps de requête illisible';
+        title = 'Envoi illisible, réessayez';
         code = 'request.malformed_body';
       }
     } else if (process.env.NODE_ENV !== 'production' && pourLeJournal(exception) === exception) {

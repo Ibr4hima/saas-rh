@@ -261,7 +261,7 @@ describe('lot qui n’est plus à jour', () => {
 
     expect(res.advanced).toBe(1);
     expect(res.skipped).toEqual([
-      { id: a, employeeName: 'Awa Diop', reason: 'Déjà « Prête à retirer »' },
+      { id: a, employeeName: 'Awa Diop', reason: 'Demande déjà « Prête à retirer »' },
     ]);
     expect((await enBase(b)).status).toBe('ready');
   });

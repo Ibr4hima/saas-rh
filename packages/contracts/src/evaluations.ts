@@ -459,7 +459,7 @@ export type CommenterGrilleInput = z.infer<typeof commenterGrilleSchema>;
 export const periodeEvaluationSchema = z
   .object({ du: z.iso.date(), au: z.iso.date() })
   .refine((p) => p.du <= p.au, {
-    message: 'La fin de la période précède son début',
+    message: 'La fin de la période doit être après son début',
     path: ['au'],
   });
 export type PeriodeEvaluationInput = z.infer<typeof periodeEvaluationSchema>;

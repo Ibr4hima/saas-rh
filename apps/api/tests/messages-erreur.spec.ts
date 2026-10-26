@@ -51,6 +51,6 @@ describe('messages d’erreur', () => {
     const refus = await new ParseUUIDPipe()
       .transform('pas-un-uuid', { type: 'param' })
       .catch((e: unknown) => e);
-    expect(reponse(refus)).toMatchObject({ status: 400, title: 'Requête invalide' });
+    expect(reponse(refus)).toMatchObject({ status: 400, title: 'Informations invalides' });
   });
 });

@@ -144,7 +144,7 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
               <Field
                 label="Validité du certificat"
                 htmlFor="validite"
-                hint="Une formation réglementaire se renouvelle."
+                hint="Pour une formation réglementaire à renouveler."
               >
                 <Select
                   id="validite"
@@ -277,8 +277,8 @@ export function SectionEvaluation({ formation: f }: { formation: CourseAdminView
           }}
         >
           <p className="text-[12.5px] leading-relaxed text-ink">
-            Elle ne sera plus posée. Les copies déjà rendues, et les certificats obtenus, ne
-            changent pas.
+            Elle ne sera plus posée. Les copies déjà rendues et les certificats obtenus ne changent
+            pas.
           </p>
         </FenetreSuppression>
       ) : null}
@@ -420,7 +420,7 @@ function FenetreQuestion({
               rows={3}
               maxLength={1000}
               value={enonce}
-              placeholder="Ex : Que mesure le produit intérieur brut ?"
+              placeholder="Ex. : Que mesure le produit intérieur brut ?"
               onChange={(e) => setEnonce(e.target.value)}
             />
           </Field>

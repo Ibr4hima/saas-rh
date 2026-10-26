@@ -229,7 +229,7 @@ export function porteDesCorps(portier: Portier): RequestHandler {
     if (!route) {
       // Annoncé trop gros, il ne se vide même pas : la réponse part tout de suite.
       if (Number(req.headers['content-length'] ?? 0) > LIMITE_AILLEURS) {
-        refuser(refus(413, 'request.payload_too_large', 'Corps de requête trop volumineux'));
+        refuser(refus(413, 'request.payload_too_large', 'Envoi trop volumineux'));
         return;
       }
       ailleurs(req, res, next);
@@ -242,7 +242,7 @@ export function porteDesCorps(portier: Portier): RequestHandler {
         return refuser(refus(411, 'request.length_required', 'Taille du fichier non annoncée'));
       }
       if (longueur > route.limite) {
-        return refuser(refus(413, 'request.payload_too_large', 'Corps de requête trop volumineux'));
+        return refuser(refus(413, 'request.payload_too_large', 'Envoi trop volumineux'));
       }
 
       if ('session' in route.acces) {
@@ -252,7 +252,13 @@ export function porteDesCorps(portier: Portier): RequestHandler {
           return refuser(refus(401, 'auth.session_required', 'Authentification requise'));
         }
         if (route.acces.capacite && !peut(user, route.acces.capacite)) {
-          return refuser(refus(403, 'auth.forbidden', 'Droits insuffisants pour cette action'));
+          return refuser(
+            refus(
+              403,
+              'auth.forbidden',
+              'Vous n’avez pas les droits nécessaires pour cette action',
+            ),
+          );
         }
         route.lire(req, res, next);
         return;

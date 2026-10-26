@@ -419,7 +419,7 @@ describe('l’appréciation', () => {
       [mariama.session.userId, `continuite:${id}`],
     );
     expect(rows[0]?.title).toMatch(
-      /^Le congé annuel de Binta Test est validé : plus personne pour les attestations de travail du /,
+      /^Le congé annuel de Binta Test a été validé : plus personne ne pourra traiter les attestations de travail du /,
     );
   });
 

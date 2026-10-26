@@ -402,7 +402,7 @@ export function analyserTexte(brut: string): AnalyseTexte {
 
   const vides = chapitres.flatMap((c) => c.articles.filter((a) => a.body === ''));
   if (vides.length > 0) {
-    problemes.push(`${vides.length} article(s) sans contenu : leur corps est resté vide.`);
+    problemes.push(`${vides.length} article(s) sans contenu.`);
   }
   if (chapitres.length === 0) {
     problemes.push('Aucun chapitre reconnu. Un chapitre s’annonce par « CHAPITRE I — Titre ».');

@@ -73,13 +73,13 @@ type ChampsDuType = {
 /** Un quota annuel a son nombre de jours ; sans quota, pas de nombre. */
 const quotaCoherent = (v: ChampsDuType) => (v.frequency === 'annual') === (v.allowanceDays != null);
 const quotaMessage = {
-  message: 'Un quota annuel se donne en jours ; sans quota, pas de nombre de jours',
+  message: 'Indiquez le nombre de jours du quota annuel, ou choisissez « Sans quota »',
   path: ['allowanceDays'] as PropertyKey[],
 };
 /** Seul un quota se décompte : décompter sans quota refuserait toute demande. */
 const decompteSurQuota = (v: ChampsDuType) => !v.deductsBalance || v.frequency === 'annual';
 const decompteMessage = {
-  message: 'Seul un quota annuel se décompte du solde',
+  message: 'Seul un type avec quota annuel peut être décompté du solde',
   path: ['deductsBalance'] as PropertyKey[],
 };
 
@@ -87,7 +87,7 @@ const decompteMessage = {
 const heuresHorsSolde = (v: ChampsDuType & { allowsHours?: boolean }) =>
   !(v.allowsHours && v.deductsBalance);
 const heuresMessage = {
-  message: 'Un type décompté du solde se demande à la journée',
+  message: 'Un type décompté du solde ne peut être demandé qu’à la journée',
   path: ['allowsHours'] as PropertyKey[],
 };
 
@@ -97,7 +97,7 @@ const uneDureeMax = (v: {
   maxYearsPerRequest?: number | null;
 }) => v.maxDaysPerRequest == null || v.maxYearsPerRequest == null;
 const dureeMaxMessage = {
-  message: 'Une durée max se donne en jours ouvrés ou en années',
+  message: 'Indiquez la durée max en jours ouvrés ou en années, pas les deux',
   path: ['maxYearsPerRequest'] as PropertyKey[],
 };
 
@@ -337,7 +337,7 @@ export const dansLaJournee = (debut: string, fin: string) =>
   debut >= HEURE_DEBUT_JOURNEE && fin <= HEURE_FIN_JOURNEE;
 
 /** « Une absence à l'heure se situe entre 8 h et 17 h ». */
-export const horsDeLaJournee = `Une absence à l’heure se situe entre ${heureEnLettres(HEURE_DEBUT_JOURNEE)} et ${heureEnLettres(HEURE_FIN_JOURNEE)}`;
+export const horsDeLaJournee = `Une absence à l’heure doit être comprise entre ${heureEnLettres(HEURE_DEBUT_JOURNEE)} et ${heureEnLettres(HEURE_FIN_JOURNEE)}`;
 
 /** « 2 h », « 1 h 30 », « 45 min » : la durée d'une absence à l'heure. */
 export function dureeEnLettres(debut: string, fin: string): string {
@@ -368,11 +368,11 @@ export const createAbsenceRequestSchema = z
     path: ['endTime'],
   })
   .refine((v) => v.startTime === undefined || v.startDate === v.endDate, {
-    message: 'Une absence à l’heure tient sur un seul jour',
+    message: 'Une absence à l’heure doit tenir sur une seule journée',
     path: ['endDate'],
   })
   .refine((v) => !v.startTime || !v.endTime || minutesEntre(v.startTime, v.endTime) > 0, {
-    message: 'L’heure de fin doit suivre l’heure de début',
+    message: 'L’heure de fin doit être après l’heure de début',
     path: ['endTime'],
   })
   .refine((v) => !v.startTime || !v.endTime || dansLaJournee(v.startTime, v.endTime), {

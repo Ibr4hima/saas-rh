@@ -405,7 +405,7 @@ function UnitPanel({
     ? `Rattachée ${uniteAvecArticle('à', parent, orgUnitLabel(parent))}`
     : unit.sommet
       ? null
-      : 'Sans rattachement, à ranger sous la Direction Générale';
+      : 'Non rattachée : à rattacher à la Direction Générale';
 
   return (
     <Modal
@@ -507,7 +507,7 @@ function UnitPanel({
               label="Type"
               htmlFor={`edit-type-${unit.id}`}
               required
-              hint={unit.sommet ? 'Le sommet reste une direction.' : undefined}
+              hint={unit.sommet ? 'L’unité au sommet doit être une direction.' : undefined}
             >
               <Select
                 id={`edit-type-${unit.id}`}
@@ -531,7 +531,7 @@ function UnitPanel({
               htmlFor={`edit-parent-${unit.id}`}
               hint={
                 unit.sommet
-                  ? 'La Direction Générale reste au sommet : toutes les directions la rejoignent.'
+                  ? 'La Direction Générale est au sommet de l’organigramme : toutes les directions lui sont rattachées.'
                   : sommetLibre
                     ? 'Laissez vide pour une unité au sommet de l’organigramme.'
                     : undefined
@@ -573,9 +573,9 @@ function UnitPanel({
                 <span>
                   <span className="font-semibold text-ink-strong">Direction du personnel</span>
                   <span className="block text-ink-muted">
-                    Elle traite les demandes des agents, dont les congés une fois visés par le N+1.
-                    Qui la dirige a toutes les habilitations de la DCH. Une seule dans
-                    l’organisation : la cocher ici la retire à l’autre.
+                    Cette direction traite les demandes des agents, dont les congés une fois visés
+                    par le N+1. La personne qui la dirige a toutes les habilitations de la DCH. Une
+                    seule direction peut avoir ce rôle : la cocher ici le retire à l’autre.
                   </span>
                 </span>
               </label>
@@ -612,21 +612,21 @@ function UnitPanel({
         <Card className="border-danger/30">
           <CardContent className="flex flex-col gap-3 py-4">
             <p className="text-[12.5px] text-danger">
-              Supprimer « {unit.name} » ? L’unité disparaît de l’organigramme, mais l’historique des
-              affectations continue de la mentionner.
+              Supprimer « {unit.name} » ? L’unité sera retirée de l’organigramme, mais restera
+              visible dans l’historique des affectations.
             </p>
             {unit.attachedEmployees > 0 ? (
               <Field
                 label="Réaffecter les membres à"
                 htmlFor={`reassign-${unit.id}`}
-                hint="Facultatif. Suspendus et affectations à venir compris."
+                hint="Facultatif. Les agents suspendus et les affectations à venir sont aussi concernés."
               >
                 <Select
                   id={`reassign-${unit.id}`}
                   value={reassignTo}
                   onChange={(e) => setReassignTo(e.target.value)}
                 >
-                  <option value="">Aucune : les détacher</option>
+                  <option value="">Aucune (les laisser sans unité)</option>
                   {units
                     .filter((u) => u.id !== unit.id)
                     .map((u) => (

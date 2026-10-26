@@ -563,7 +563,7 @@ export async function pasSurSoi(
     403,
     'acces.son_propre_dossier',
     `Vous ne pouvez pas ${geste} vous-même`,
-    'Ce qui vous concerne passe par une demande, comme pour tout agent : un autre membre de la DCH ou l’administrateur s’en charge. Un changement d’informations se signale depuis « Mes infos personnelles ».',
+    'Comme pour tout agent, les demandes qui vous concernent sont traitées par un autre membre de la DCH ou par l’administrateur. Pour modifier vos informations, faites un signalement depuis « Mes infos personnelles ».',
   );
 }
 
@@ -687,7 +687,7 @@ export async function verifierLesHabilitations(tx: Tx, tenantId: string): Promis
     await notifier(tx, tenantId, dch.directeur.userId, {
       type: 'delegation_rompue',
       sujet: 'dch.delegations',
-      title: `${nom} a quitté la DCH, ses délégations sont retirées`,
+      title: `${nom} a quitté la DCH : ses délégations ont été retirées`,
       link: '/moi/delegations',
       dedupeKey: `habilitations:${r.employee_id}:partie:${new Date().toISOString().slice(0, 10)}`,
     });

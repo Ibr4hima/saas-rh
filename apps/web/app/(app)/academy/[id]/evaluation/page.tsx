@@ -104,7 +104,11 @@ export default function EvaluationPage() {
       void qc.invalidateQueries({ queryKey: ['academy'] });
     },
     onError: (err) =>
-      setErreur(err instanceof ApiError ? err.message : 'La copie n’a pas pu partir.'),
+      setErreur(
+        err instanceof ApiError
+          ? err.message
+          : 'Vos réponses n’ont pas pu être envoyées. Réessayez.',
+      ),
   });
 
   // Une copie déjà ouverte (rechargement, autre onglet) se reprend d'elle-même.
@@ -212,7 +216,7 @@ export default function EvaluationPage() {
           <EmptyState
             icon={<Icon name="quiz" size={22} />}
             title="Cette formation n’a pas d’évaluation"
-            description="Elle délivre son certificat quand toutes les leçons sont validées."
+            description="Le certificat est délivré dès que toutes les leçons sont validées."
           />
         </Card>
       ) : (
@@ -282,15 +286,15 @@ function Accueil({
         <div className="flex flex-col gap-3 border-t border-line-soft pt-5 sm:flex-row sm:items-center">
           <p className="flex-1 text-[12.5px] text-ink-muted">
             {f.mode !== 'suivi'
-              ? 'L’évaluation se passe depuis un compte d’agent.'
+              ? 'L’évaluation n’est accessible que depuis un compte d’agent.'
               : ev.etat === 'verrouillee'
                 ? 'Validez d’abord toutes les leçons de la formation.'
                 : ev.etat === 'attente'
-                  ? `Vos tentatives du jour sont passées. La prochaine s’ouvre ${ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}.`
+                  ? `Vous avez utilisé toutes vos tentatives du jour. Vous pourrez réessayer ${ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}.`
                   : ev.etat === 'reussie'
                     ? 'Vous avez déjà réussi cette évaluation.'
                     : ev.etat === 'en_cours'
-                      ? 'Votre copie est ouverte : le temps court encore.'
+                      ? 'Votre évaluation est en cours et le temps continue de s’écouler.'
                       : tentativesDuJour(ev)}
           </p>
           <Button disabled={!ouvrable} loading={commence} onClick={onCommencer}>
@@ -346,11 +350,11 @@ function Resultat({
         </h1>
         <p className="max-w-md text-[12.5px] leading-relaxed text-ink-muted">
           {r.expired
-            ? 'Le temps était écoulé quand la copie est arrivée : elle compte pour zéro.'
+            ? 'Le temps était écoulé à l’envoi de votre copie : la note est de zéro.'
             : `${compte(r.correctCount, 'bonne réponse', 'bonnes réponses')} sur ${r.total}. Il en fallait ${exigees}.`}
           {!r.passed
             ? ev.etat === 'attente'
-              ? ` Vos tentatives du jour sont passées : la prochaine s’ouvre ${ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}.`
+              ? ` Vous avez utilisé toutes vos tentatives du jour : vous pourrez réessayer ${ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}.`
               : tentativesDuJour(ev)
                 ? ` ${tentativesDuJour(ev)}`
                 : ''
@@ -362,7 +366,7 @@ function Resultat({
             <p className="text-[13px] leading-relaxed text-ink">
               Votre certificat{' '}
               <b className="font-mono font-bold tracking-tight">{r.certificat.number}</b> est prêt.
-              Il se vérifie en ligne par son QR code.
+              Son authenticité peut être vérifiée en ligne grâce au QR code.
             </p>
             <Button onClick={() => setApercu(true)}>
               <Icon name="workspace_premium" size={16} />

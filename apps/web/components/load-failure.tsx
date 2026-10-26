@@ -36,7 +36,7 @@ export function LoadFailure({
         <EmptyState
           icon={<Icon name="badge" size={22} />}
           title="Aucun dossier employé relié à ce compte"
-          description="Ce compte gère l'organisation sans y être lui-même employé : cet écran de l'espace personnel ne le concerne pas."
+          description="Ce compte d'administration n'est rattaché à aucun dossier employé : l'espace personnel n'est pas disponible."
           action={
             <Link href="/dashboard">
               <Button size="sm" variant="secondary">

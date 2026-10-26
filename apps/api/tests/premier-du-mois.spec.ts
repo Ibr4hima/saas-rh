@@ -43,7 +43,7 @@ describe('premierDuMois', () => {
     expect(premierDuMois(intl('2023-06-21', court))).toBe('21 juin 2023');
   });
 
-  it('le courriel d’invitation vaut jusqu’au 1er du mois', () => {
+  it('le lien du courriel d’invitation est valable jusqu’au 1er du mois', () => {
     const c = composer(
       {
         nom: 'invitation',
@@ -54,7 +54,7 @@ describe('premierDuMois', () => {
       },
       { logo: null, portail: 'https://rh.apix.sn/', annee: 2026 },
     );
-    expect(c.text).toContain('vaut jusqu’au 1er juin 2026.');
+    expect(c.text).toContain('valable jusqu’au 1er juin 2026.');
     expect(c.html).toContain('1er juin 2026');
     expect(c.html).not.toMatch(/(^|[^\d])1 juin/);
   });

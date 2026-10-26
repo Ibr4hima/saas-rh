@@ -27,6 +27,7 @@ import { TenantDb, type Tx } from '../../db/tenant-db';
 import { ENTETE } from '../documents/entete';
 import { genererCertificatPdf } from './certificat-pdf';
 import { notifier } from '../notifications/notifier';
+import { leJourALHeure } from '../notifications/phrases';
 import {
   corriger,
   expiration,
@@ -498,7 +499,7 @@ export class AcademyEvaluationService {
       problem(
         403,
         'academy.forbidden',
-        'Vous n’êtes pas habilité à gérer le catalogue de l’Academy',
+        'Vous n’avez pas accès à la gestion du catalogue de l’Academy',
       );
     }
   }
@@ -806,7 +807,11 @@ export class AcademyEvaluationService {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const employeeId = await employeActif(tx, user.userId);
       if (!employeeId) {
-        problem(403, 'academy.preview_only', 'L’évaluation se passe depuis un compte d’agent');
+        problem(
+          403,
+          'academy.preview_only',
+          'L’évaluation n’est accessible que depuis un compte d’agent',
+        );
       }
       const f = await this.formation(tx, courseId);
       if (f.publishedAt === null) problem(404, 'academy.course_not_found', 'Formation introuvable');
@@ -895,8 +900,8 @@ export class AcademyEvaluationService {
         problem(
           429,
           'academy.attempts_exhausted',
-          'Vos tentatives du jour sont passées',
-          prochaine ? `Prochaine tentative possible : ${prochaine.toISOString()}` : undefined,
+          'Vous avez utilisé toutes vos tentatives du jour',
+          prochaine ? `Vous pourrez réessayer ${leJourALHeure(prochaine)}.` : undefined,
         );
       }
 
@@ -954,7 +959,11 @@ export class AcademyEvaluationService {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const employeeId = await employeActif(tx, user.userId);
       if (!employeeId) {
-        problem(403, 'academy.preview_only', 'L’évaluation se passe depuis un compte d’agent');
+        problem(
+          403,
+          'academy.preview_only',
+          'L’évaluation n’est accessible que depuis un compte d’agent',
+        );
       }
       const [a] = await tx
         .select()
@@ -1164,7 +1173,11 @@ export class AcademyEvaluationService {
       .limit(1);
     if (!c) problem(404, 'academy.certificate_not_found', 'Certificat introuvable');
     if ((await sonDossier(tx, user.userId)) === c.employeeId) {
-      problem(403, 'academy.son_certificat', 'Personne ne révoque ni ne réémet ses certificats');
+      problem(
+        403,
+        'academy.son_certificat',
+        'Vous ne pouvez pas révoquer ni réémettre vos propres certificats',
+      );
     }
     const statut = statutCertificat(c, this.horloge());
     if (statut !== 'valide') {
@@ -1212,7 +1225,7 @@ export class AcademyEvaluationService {
         await notifier(tx, user.tenantId, destinataire, {
           type: 'certificat_revoque',
           sujet: 'academy',
-          title: `Votre certificat « ${c.courseTitle} » est révoqué : ${input.motif}`,
+          title: `Votre certificat « ${c.courseTitle} » a été révoqué : ${input.motif}`,
           link: '/academy/certificats',
           dedupeKey: `certificat:${c.id}:revoque`,
         });
@@ -1282,7 +1295,7 @@ export class AcademyEvaluationService {
         await notifier(tx, user.tenantId, destinataire, {
           type: 'certificat_reemis',
           sujet: 'academy',
-          title: `Votre certificat « ${ancien.courseTitle} » est réémis sous le n° ${nouveau.number}`,
+          title: `Votre certificat « ${ancien.courseTitle} » a été réémis sous le n° ${nouveau.number}`,
           link: '/academy/certificats',
           dedupeKey: `certificat:${ancien.id}:reemis`,
         });

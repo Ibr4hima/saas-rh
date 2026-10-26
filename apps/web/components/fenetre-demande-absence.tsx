@@ -185,7 +185,7 @@ export function FenetreDemandeAbsence({
       return;
     }
     if (file.size === 0 || file.size > 5 * 1024 * 1024) {
-      setFileError('Le PDF doit faire entre 1 octet et 5 Mo.');
+      setFileError('Le PDF est vide ou dépasse 5 Mo.');
       return;
     }
     const reader = new FileReader();
@@ -447,7 +447,9 @@ export function FenetreDemandeAbsence({
                 label="À"
                 htmlFor="heureFin"
                 required
-                error={heuresInvalides ? 'La fin précède le début.' : undefined}
+                error={
+                  heuresInvalides ? 'L’heure de fin doit être après l’heure de début.' : undefined
+                }
               >
                 <Select
                   id="heureFin"
@@ -478,7 +480,7 @@ export function FenetreDemandeAbsence({
               label="Au (inclus)"
               htmlFor="end"
               required
-              error={periodeInvalide ? 'La fin précède le début.' : undefined}
+              error={periodeInvalide ? 'La fin ne peut pas être avant le début.' : undefined}
               hint={jourEnLettres(endDate)}
             >
               <Input
@@ -530,7 +532,9 @@ export function FenetreDemandeAbsence({
             ) : null}
           </>
         ) : periodeInvalide ? (
-          <p className="text-[12.5px] text-danger">La date de fin précède la date de début.</p>
+          <p className="text-[12.5px] text-danger">
+            La date de fin ne peut pas être avant la date de début.
+          </p>
         ) : preview.isLoading && !preview.data ? (
           <Skeleton className="h-9 w-56" />
         ) : (
@@ -576,13 +580,13 @@ export function FenetreDemandeAbsence({
               </p>
             ) : depasse && plafond !== null ? (
               <p className="mt-3 text-[12px] text-danger">
-                « {selectedType?.name} » se demande pour{' '}
-                {compte(plafond, 'jour ouvré', 'jours ouvrés')} au plus.
+                « {selectedType?.name} » peut être demandé pour{' '}
+                {compte(plafond, 'jour ouvré', 'jours ouvrés')} maximum.
               </p>
             ) : depasseLesAnnees && selectedType?.maxYearsPerRequest ? (
               <p className="mt-3 text-[12px] text-danger">
-                « {selectedType.name} » se demande pour{' '}
-                {compte(selectedType.maxYearsPerRequest, 'an')} au plus.
+                « {selectedType.name} » peut être demandé pour{' '}
+                {compte(selectedType.maxYearsPerRequest, 'an')} maximum.
               </p>
             ) : insufficient ? (
               <p className="mt-3 text-[12px] text-danger">

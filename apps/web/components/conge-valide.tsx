@@ -352,8 +352,8 @@ export function FenetreAnnulation({
         <div>
           <p className="text-[13px] text-ink">
             {r.deductsBalance
-              ? `${compte(r.daysCount, 'jour')} ${r.daysCount > 1 ? 'reviennent' : 'revient'} sur votre solde.`
-              : 'Votre N+1 et la DCH en sont informés.'}
+              ? `${compte(r.daysCount, 'jour')} ${r.daysCount > 1 ? 'seront recrédités' : 'sera recrédité'} sur votre solde.`
+              : 'Votre N+1 et la DCH en seront informés.'}
           </p>
           {annuler.error ? (
             <p role="alert" className="mt-2 text-[12.5px] text-danger">

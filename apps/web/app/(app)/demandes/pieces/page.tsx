@@ -88,7 +88,7 @@ export default function PiecesAVerifierPage() {
         texte:
           v.decision === 'approved'
             ? `« ${v.piece.label} » ajouté au dossier de ${v.piece.employeeName}.`
-            : `« ${v.piece.label} » rejeté. Un message est envoyé à ${v.piece.employeeName}.`,
+            : `« ${v.piece.label} » rejeté. Un message a été envoyé à ${v.piece.employeeName}.`,
       });
       await rafraichir();
     },
@@ -143,7 +143,7 @@ export default function PiecesAVerifierPage() {
           <EmptyState
             className="py-8"
             icon={<Icon name="upload_file" size={22} />}
-            title="Rien à vérifier"
+            title="Aucun document à vérifier"
           />
         ) : (
           <>

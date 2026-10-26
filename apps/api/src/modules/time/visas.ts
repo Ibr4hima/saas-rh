@@ -370,7 +370,7 @@ export async function annoncerLeVerdict(
   await notifier(tx, d.tenantId, d.demandeurUserId, {
     type: verdict === 'approved' ? 'conge_approuve' : 'conge_refuse',
     sujet: 'conges',
-    title: `Votre ${a.nom} ${duAu(d.debut, d.fin, d.heures)} est ${accord(verdict === 'approved' ? 'approuvé' : 'refusé', a)}`,
+    title: `Votre ${a.nom} ${duAu(d.debut, d.fin, d.heures)} a été ${accord(verdict === 'approved' ? 'approuvé' : 'refusé', a)}`,
     link: '/moi/conges/historique',
     dedupeKey: cleVerdict(d.id),
   });
@@ -508,7 +508,7 @@ export async function reconcilierReprise(tx: Tx, requestId: string): Promise<voi
     {
       type: 'reprise_a_confirmer',
       sujet: att.etape === 'n1' ? 'equipe.conges' : 'dch.conges',
-      title: `${d.nom} écourte ${sonSa(a)} ${a.nom} : reprise le ${frDate(r.reprise)}`,
+      title: `${d.nom} demande à écourter ${sonSa(a)} ${a.nom} : reprise le ${frDate(r.reprise)}`,
       link: att.etape === 'n1' ? '/moi/equipe' : '/moi/dch',
     },
   );
@@ -558,7 +558,7 @@ export async function annoncerLeChangement(
       d.demandeurUserId,
       {
         type: 'conge_refuse',
-        title: `Votre reprise le ${frDate(changement.reprise)} n’est pas confirmée`,
+        title: `Votre reprise le ${frDate(changement.reprise)} n’a pas été confirmée`,
         link: '/moi/conges/historique',
         dedupeKey: cle(`reprise-refusee:${changement.reprise}`),
       },
@@ -603,14 +603,14 @@ export async function annoncerLeChangement(
       d.demandeurUserId,
       {
         type: 'conge_refuse',
-        title: `Votre ${a.nom} ${duAu(d.debut, d.fin, d.heures)} est ${accord('annulé', a)}`,
+        title: `Votre ${a.nom} ${duAu(d.debut, d.fin, d.heures)} a été ${accord('annulé', a)}`,
         link: '/moi/conges/historique',
         dedupeKey: cle('annule'),
         remplace: cle('verdict'),
       },
       'conges',
     );
-    await aux((a) => `${leConge(a)} est ${accord('annulé', a)}`, cle('annule'));
+    await aux((a) => `${leConge(a)} a été ${accord('annulé', a)}`, cle('annule'));
     return;
   }
 
@@ -621,15 +621,15 @@ export async function annoncerLeChangement(
       type: 'conge_modifie',
       title:
         changement.nature === 'retour'
-          ? `Votre reprise le ${reprise} est confirmée`
-          : `Votre ${a.nom} est ${accord('écourté', a)} : reprise le ${reprise}`,
+          ? `Votre reprise le ${reprise} a été confirmée`
+          : `Votre ${a.nom} a été ${accord('écourté', a)} : reprise le ${reprise}`,
       link: '/moi/conges/historique',
       dedupeKey: cle(`ecourte:${changement.reprise}`),
     },
     'conges',
   );
   await aux(
-    (a) => `${leConge(a)} est ${accord('écourté', a)} : reprise le ${reprise}`,
+    (a) => `${leConge(a)} a été ${accord('écourté', a)} : reprise le ${reprise}`,
     cle(`ecourte:${changement.reprise}`),
   );
 }
@@ -774,8 +774,8 @@ async function verifierLaVacance(tx: Tx, tenantId: string, enAttente: string[]):
       type: 'dch_vacante',
       sujet: 'admin.dch',
       title: dch
-        ? `${bloquees > 1 ? 'Des demandes attendent' : 'Une demande attend'} un responsable à la ${dch.nom}`
-        : `${bloquees > 1 ? 'Des demandes attendent' : 'Une demande attend'} une direction du personnel`,
+        ? `${bloquees > 1 ? 'Des demandes sont bloquées' : 'Une demande est bloquée'} : la ${dch.nom} n’a pas de responsable`
+        : `${bloquees > 1 ? 'Des demandes sont bloquées' : 'Une demande est bloquée'} : aucune direction du personnel n’est désignée`,
       link: '/organisation',
       dedupeKey: 'dch:vacante',
     });

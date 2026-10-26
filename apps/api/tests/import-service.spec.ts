@@ -292,7 +292,7 @@ describe('l’écriture', () => {
     expect(ligne?.avertissements).toEqual([
       {
         colonne: 'Direction affectée',
-        texte: 'Acronyme inconnu dans l’organigramme : dossier sans rattachement',
+        texte: 'Acronyme absent de l’organigramme : dossier créé sans direction',
       },
     ]);
     expect(ligne?.uniteResolue).toBeNull();
@@ -428,7 +428,8 @@ describe('le responsable hiérarchique', () => {
     expect(r.lignes[1]?.avertissements).toEqual([
       {
         colonne: 'Matricule du responsable',
-        texte: 'Sans direction affectée : dossier créé sans n+1. Affectez-le d’abord',
+        texte:
+          'Direction manquante : dossier créé sans N+1. Affectez d’abord l’agent à une direction',
       },
     ]);
     expect((await dossier('APIX-0002'))?.responsable).toBeNull();
@@ -448,7 +449,7 @@ describe('le responsable hiérarchique', () => {
     expect(ligne?.avertissements).toEqual([
       {
         colonne: 'Matricule du responsable',
-        texte: 'Matricule « APIX-9999 » introuvable : dossier créé sans n+1',
+        texte: 'Matricule « APIX-9999 » introuvable : dossier créé sans N+1',
       },
     ]);
     expect((await dossier('APIX-0001'))?.responsable).toBeNull();
@@ -485,7 +486,7 @@ describe('le responsable hiérarchique', () => {
       false,
     );
     const textes = apercu.lignes[0]?.avertissements.map((a) => a.texte) ?? [];
-    expect(textes[0]).toContain('Sans poste');
+    expect(textes[0]).toContain('Poste manquant');
     expect(apercu.rattaches).toBe(0);
   });
 
@@ -523,9 +524,11 @@ describe('le responsable hiérarchique', () => {
     const apercu = await imports.importer(admin, fichier, false);
     expect(apercu.rattaches).toBe(1);
     expect(apercu.lignes[0]?.avertissements[0]?.texte).toContain(
-      'relève de « Direction du Capital Humain », l’agent de « Direction de l’Intelligence »',
+      'est dans la direction « Direction du Capital Humain », l’agent dans « Direction de l’Intelligence »',
     );
-    expect(apercu.lignes[0]?.avertissements[0]?.texte).toContain('rattaché d’office à Agent5 Diop');
+    expect(apercu.lignes[0]?.avertissements[0]?.texte).toContain(
+      'N+1 attribué automatiquement, Agent5 Diop',
+    );
 
     const r = await imports.importer(admin, fichier, true);
     expect(r.crees).toBe(1);
@@ -590,7 +593,7 @@ describe('le compte rendu dit ce que la base contient', () => {
     const agent2 = r.lignes.find((l) => l.matricule === 'APIX-0002');
     expect(agent2?.responsableResolu).toBeNull();
     expect(agent2?.avertissements.map((a) => a.texte)).toContain(
-      'Le dossier de Agent1 Diop n’a pas pu être créé : rattachement non fait',
+      'Le dossier de Agent1 Diop n’a pas pu être créé : N+1 non attribué',
     );
   });
 

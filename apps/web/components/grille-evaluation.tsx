@@ -231,7 +231,7 @@ function CaseDuNiveau({ niveau }: { niveau: Niveau | null }) {
   return (
     <span
       role="img"
-      aria-label={niveau ? `${niveau} : ${NIVEAUX_D_OBJECTIF[niveau]}` : 'Niveau à donner'}
+      aria-label={niveau ? `${niveau} : ${NIVEAUX_D_OBJECTIF[niveau]}` : 'Niveau à choisir'}
       className={cn(
         'flex size-[18px] shrink-0 items-center justify-center rounded-[5px] border-[1.5px] transition-colors duration-150',
         niveau
@@ -1331,7 +1331,7 @@ export function ApercuDeLaGrille({
       <Card>
         <EmptyState
           icon={<Icon name="error" size={22} />}
-          title={probleme?.title ?? 'Le PDF de la grille ne s’affiche pas'}
+          title={probleme?.title ?? 'Impossible d’afficher le PDF de la grille'}
           description={probleme?.detail}
           action={
             probleme && probleme.status < 500 ? undefined : (

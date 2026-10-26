@@ -282,7 +282,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
                 htmlFor="idExpiresOn"
                 error={
                   idDatesInvalid
-                    ? "L'expiration doit être future et postérieure à la délivrance"
+                    ? "La date d'expiration doit être à venir et postérieure à la date de délivrance"
                     : undefined
                 }
               >

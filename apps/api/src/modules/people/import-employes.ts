@@ -209,7 +209,9 @@ function date(v: CelluleXlsx): { iso: string } | { erreur: string } | undefined 
   const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
   const fr = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t);
   if (!iso && !fr) {
-    return { erreur: `« ${t} » ne se lit pas comme une date (attendu 12/04/1990 ou 1990-04-12)` };
+    return {
+      erreur: `« ${t} » n’est pas une date reconnue (format attendu : 12/04/1990 ou 1990-04-12)`,
+    };
   }
   const [a, m, j] = iso
     ? [Number(iso[1]), Number(iso[2]), Number(iso[3])]
@@ -387,7 +389,7 @@ export function convertirLigne(
     : undefined;
   if (situationBrute && !situation) {
     return refus(
-      `« ${situationBrute} » ne se comprend pas (attendu Célibataire, Marié(e), Divorcé(e) ou Veuf/Veuve)`,
+      `« ${situationBrute} » n’est pas une situation matrimoniale reconnue (attendu Célibataire, Marié(e), Divorcé(e) ou Veuf/Veuve)`,
       'situation',
     );
   }
@@ -406,7 +408,7 @@ export function convertirLigne(
   // numéro sans type n'est pas exploitable, et l'API le refuserait sans
   // pouvoir nommer la ligne du fichier.
   if (numeroPiece && !piece) {
-    return refus('Le numéro de pièce est donné sans son type', 'piece');
+    return refus('Le numéro de pièce est indiqué sans le type de pièce', 'piece');
   }
   // Une pièce périmée ne fait pas perdre l'agent, mais n'entre pas au
   // dossier : le formulaire la refuse, l'import aussi. Le dossier se crée
@@ -416,7 +418,7 @@ export function convertirLigne(
   if (perimee) {
     avertissements.push({
       colonne: nomColonne('expiration'),
-      texte: `Pièce d’identité périmée le ${frDate(dates.expiration!)} : non reprise, à renouveler`,
+      texte: `Pièce d’identité expirée depuis le ${frDate(dates.expiration!)} : elle n’a pas été importée et doit être renouvelée`,
     });
   }
 
@@ -441,12 +443,12 @@ export function convertirLigne(
       // Le classeur type le dit dans sa note de colonne : la durée ne
       // concerne que les CDD et les stages. Une durée sur un CDI est une
       // erreur de saisie, pas une fin de contrat à inventer.
-      return refus('Un CDI ne prend pas de durée', 'duree');
+      return refus('Un CDI n’a pas de durée', 'duree');
     }
     fin = finDeContrat(debut.iso, mois);
   }
   if ((contrat === 'cdd' || contrat === 'stage') && !fin) {
-    return refus('Un CDD ou un stage a une durée en mois', 'duree');
+    return refus('Indiquez la durée en mois du CDD ou du stage', 'duree');
   }
 
   const personnelBrut = lireTexte('personnel');

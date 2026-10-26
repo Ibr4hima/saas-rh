@@ -236,7 +236,7 @@ describe('ses avis nomment les bulletins', () => {
     ]);
     await service.advance(rh, id, { status: 'rejected', message: 'Paie d’août en reprise' });
     expect(await titresDe(awaUserId)).toEqual([
-      'Votre demande des bulletins de salaire d’août à octobre 2025 est refusée',
+      'Votre demande des bulletins de salaire d’août à octobre 2025 a été refusée',
     ]);
   });
 
@@ -258,7 +258,7 @@ describe('ses avis nomment les bulletins', () => {
     await service.advance(rh, id, { status: 'processing' });
     await service.cancel(awa, id);
     expect(await titresDe(rhUserId)).toContain(
-      'Awa Diop annule sa demande des 3 derniers bulletins de salaire',
+      'Awa Diop a annulé sa demande des 3 derniers bulletins de salaire',
     );
   });
 });

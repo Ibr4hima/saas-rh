@@ -179,7 +179,9 @@ describe('la CNI des fiches', () => {
       expect(f({ cniDelivreeLe: ansPlusTot(AUJOURDHUI, 10) })).toEqual({
         cniDelivreeLe: 'CNI expirée : délivrée il y a plus de dix ans',
       });
-      expect(f({ cniDelivreeLe: DEMAIN })).toEqual({ cniDelivreeLe: 'Pas après aujourd’hui' });
+      expect(f({ cniDelivreeLe: DEMAIN })).toEqual({
+        cniDelivreeLe: 'Ne peut pas être dans le futur',
+      });
       expect(Object.keys(f({ cniDelivreeLe: undefined }))).toEqual(['cniDelivreeLe']);
     }
   });
@@ -210,10 +212,10 @@ describe('la CNI des fiches', () => {
     };
     expect(declaration({ ...etrangere, cniDelivreeLe: ansPlusTot(AUJOURDHUI, 12) })).toEqual({});
     expect(declaration({ ...etrangere, cniDelivreeLe: '1990-03-12' })).toEqual({
-      cniDelivreeLe: 'Après la naissance',
+      cniDelivreeLe: 'Doit être après la date de naissance',
     });
     expect(declaration({ ...etrangere, cniDelivreeLe: DEMAIN })).toEqual({
-      cniDelivreeLe: 'Pas après aujourd’hui',
+      cniDelivreeLe: 'Ne peut pas être dans le futur',
     });
   });
 });
@@ -232,28 +234,30 @@ describe('les décisions de disponibilité', () => {
   it('la demande et les nominations pas après aujourd’hui ; la prise d’effet pas avant la demande, la reprise après', () => {
     expect(disponibilite()).toEqual({});
     expect(disponibilite({ demandeLe: DEMAIN, effetLe: DEMAIN })).toEqual({
-      demandeLe: 'Pas après aujourd’hui',
+      demandeLe: 'Ne peut pas être dans le futur',
     });
     expect(
       disponibilite({ pvDirectionGeneraleLe: DEMAIN, pvDirectionGeneraleAdjointeLe: DEMAIN }),
     ).toEqual({
-      pvDirectionGeneraleLe: 'Pas après aujourd’hui',
-      pvDirectionGeneraleAdjointeLe: 'Pas après aujourd’hui',
+      pvDirectionGeneraleLe: 'Ne peut pas être dans le futur',
+      pvDirectionGeneraleAdjointeLe: 'Ne peut pas être dans le futur',
     });
     expect(disponibilite({ effetLe: plusJours(AUJOURDHUI, -31) })).toEqual({
       effetLe: 'Pas avant la demande',
     });
     expect(disponibilite({ effetLe: decision.demandeLe })).toEqual({});
     expect(disponibilite({ repriseLe: plusJours(AUJOURDHUI, -10) })).toEqual({
-      repriseLe: 'La reprise suit la prise d’effet',
+      repriseLe: 'Doit être après la date de prise d’effet',
     });
   });
 
   it('le renouvellement : la même chose ; la demande peut venir après la période initiale', () => {
     expect(renouvellement()).toEqual({});
-    expect(renouvellement({ demandeLe: DEMAIN })).toEqual({ demandeLe: 'Pas après aujourd’hui' });
+    expect(renouvellement({ demandeLe: DEMAIN })).toEqual({
+      demandeLe: 'Ne peut pas être dans le futur',
+    });
     expect(renouvellement({ pvDirectionGeneraleLe: DEMAIN })).toEqual({
-      pvDirectionGeneraleLe: 'Pas après aujourd’hui',
+      pvDirectionGeneraleLe: 'Ne peut pas être dans le futur',
     });
     expect(
       renouvellement({
@@ -267,7 +271,7 @@ describe('les décisions de disponibilité', () => {
         initialementAu: plusJours(AUJOURDHUI, -40),
         repriseLe: plusJours(AUJOURDHUI, -40),
       }),
-    ).toEqual({ repriseLe: 'La reprise suit la période initiale' });
+    ).toEqual({ repriseLe: 'Doit être après la fin de la période initiale' });
   });
 
   it('la reprise au plus trois ans après la prise d’effet : de la disponibilité, ou de sa prorogation', () => {
@@ -276,7 +280,7 @@ describe('les décisions de disponibilité', () => {
     // Demandée le 10 septembre 2026, prise d'effet le 10 octobre : pas de reprise en 2030.
     const demandee = { demandeLe: '2026-09-10', effetLe: '2026-10-10' };
     expect(disponibilite({ ...demandee, repriseLe: '2030-10-10' })).toEqual({
-      repriseLe: 'La disponibilité dure trois ans au plus',
+      repriseLe: 'La disponibilité ne peut pas dépasser trois ans',
     });
     expect(disponibilite({ ...demandee, repriseLe: '2029-10-10' })).toEqual({});
     // La prorogation prend effet le lendemain de la période initiale.
@@ -284,7 +288,7 @@ describe('les décisions de disponibilité', () => {
     const auPlusTard = repriseAuPlusTard(plusJours(au, 1));
     expect(renouvellement({ initialementAu: au, duree: 36, repriseLe: auPlusTard })).toEqual({});
     expect(renouvellement({ initialementAu: au, repriseLe: plusJours(auPlusTard, 1) })).toEqual({
-      repriseLe: 'La prorogation dure trois ans au plus',
+      repriseLe: 'La prorogation ne peut pas dépasser trois ans',
     });
   });
 });
@@ -292,9 +296,11 @@ describe('les décisions de disponibilité', () => {
 describe('la domiciliation bancaire', () => {
   it('le contrat commencé, la demande ni avant lui ni après aujourd’hui', () => {
     expect(domiciliation()).toEqual({});
-    expect(domiciliation({ demandeLe: DEMAIN })).toEqual({ demandeLe: 'Pas après aujourd’hui' });
+    expect(domiciliation({ demandeLe: DEMAIN })).toEqual({
+      demandeLe: 'Ne peut pas être dans le futur',
+    });
     expect(domiciliation({ debut: DEMAIN, demandeLe: AUJOURDHUI })).toEqual({
-      debut: 'Pas après aujourd’hui',
+      debut: 'Ne peut pas être dans le futur',
       demandeLe: 'Pas avant le début du contrat',
     });
     expect(domiciliation({ debut: AUJOURDHUI, demandeLe: AUJOURDHUI })).toEqual({});
@@ -305,15 +311,18 @@ describe('la déclaration de mouvement du travailleur', () => {
   it('l’entrée et le contrat avant aujourd’hui ; les visas pas après, ni avant le contrat', () => {
     expect(declaration()).toEqual({});
     expect(declaration({ entreeLe: AUJOURDHUI, contratLe: AUJOURDHUI })).toEqual({
-      entreeLe: 'Avant aujourd’hui',
-      contratLe: 'Avant aujourd’hui',
+      entreeLe: 'Doit être antérieure à aujourd’hui',
+      contratLe: 'Doit être antérieure à aujourd’hui',
     });
     expect(
       declaration({
         visa: { numero: '12', le: DEMAIN },
         enregistrement: { numero: '34', le: DEMAIN },
       }),
-    ).toEqual({ 'visa.le': 'Pas après aujourd’hui', 'enregistrement.le': 'Pas après aujourd’hui' });
+    ).toEqual({
+      'visa.le': 'Ne peut pas être dans le futur',
+      'enregistrement.le': 'Ne peut pas être dans le futur',
+    });
     expect(
       declaration({
         visa: { numero: '12', le: plusJours(AUJOURDHUI, -26) },
@@ -339,7 +348,7 @@ describe('la déclaration de mouvement du travailleur', () => {
         effetLe: HIER,
         declarationDEmbauche: { numero: '56', le: DEMAIN },
       }),
-    ).toEqual({ 'declarationDEmbauche.le': 'Pas après aujourd’hui' });
+    ).toEqual({ 'declarationDEmbauche.le': 'Ne peut pas être dans le futur' });
     const militaire = { serviceMilitaire: true, armee: 'terre', grade: 'troupe' };
     const anneeProchaine = String(Number(AUJOURDHUI.slice(0, 4)) + 1);
     expect(declaration({ ...militaire, classeDeRecrutement: anneeProchaine })).toEqual({
@@ -354,7 +363,7 @@ describe('la déclaration de mouvement du travailleur', () => {
 describe('les dates saisies des attestations', () => {
   it('le dernier jour d’un congé ou d’une disponibilité après le premier ; la reprise pas avant le dernier', () => {
     expect(datesEnfreintes('attestation_conge', { debut: AUJOURDHUI, fin: AUJOURDHUI })).toEqual({
-      fin: 'Après le premier jour',
+      fin: 'Doit être après le premier jour',
     });
     expect(datesEnfreintes('attestation_conge', { debut: AUJOURDHUI, fin: DEMAIN })).toEqual({});
     const dispo = { debut: '2026-01-02', fin: '2026-07-01' };
@@ -369,6 +378,6 @@ describe('les dates saisies des attestations', () => {
     expect(datesEnfreintes('attestation_reprise_disponibilite', troisAns)).toEqual({});
     expect(
       datesEnfreintes('attestation_reprise_disponibilite', { ...troisAns, fin: '2029-01-02' }),
-    ).toEqual({ fin: 'La disponibilité dure trois ans au plus' });
+    ).toEqual({ fin: 'La disponibilité ne peut pas dépasser trois ans' });
   });
 });

@@ -127,7 +127,7 @@ export class PortalController {
           404,
           'me.no_employee_record',
           'Aucun dossier employé relié à ce compte',
-          'Ce compte gère l’organisation sans être lui-même un employé.',
+          'Ce compte d’administration n’est rattaché à aucun dossier employé.',
         );
       }
       const { idDocumentType, ...dossier } = row;

@@ -74,9 +74,9 @@ export function resumeVisas(r: AbsenceRequestView): string | undefined {
         case 'attendue':
           return `${qui} : en attente${e.qui ? ` de ${e.qui}` : ''}`;
         case 'a_venir':
-          return `${qui} : ensuite`;
+          return `${qui} : à venir`;
         case 'passee':
-          return `${qui} : personne pour viser : directement à la DCH`;
+          return `${qui} : aucun N+1, transmise directement à la DCH`;
         case 'sans_reponse':
           return `${qui} : sans réponse dans le délai`;
         default:

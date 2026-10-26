@@ -119,7 +119,11 @@ export async function inscrireLaPassation(tx: Tx, user: SessionUser, p: Passatio
   const aujourdhui = jour[0]!.aujourdhui;
   const depuis = p.depuis ?? aujourdhui;
   if (depuis > aujourdhui) {
-    problem(422, 'org.passation_future', 'La prise de fonction se date au plus tard aujourd’hui');
+    problem(
+      422,
+      'org.passation_future',
+      'La date de prise de fonction ne peut pas être dans le futur',
+    );
   }
 
   const ancien = p.ancien && p.ancien !== p.nouveau ? await placeDeLAncien(tx, p.ancien) : null;
@@ -137,7 +141,7 @@ export async function inscrireLaPassation(tx: Tx, user: SessionUser, p: Passatio
       422,
       'org.passation_trop_tot',
       `La passation ne peut pas précéder le ${frDate(place.du)}`,
-      `${nom} occupe son poste actuel depuis le ${frDate(place.du)} : la passation se date au plus tôt ce jour-là.`,
+      `${nom} occupe son poste actuel depuis le ${frDate(place.du)} : la passation ne peut pas être antérieure à cette date.`,
     );
   }
 

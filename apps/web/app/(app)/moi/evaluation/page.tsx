@@ -80,7 +80,7 @@ export default function MonEvaluationPage() {
             icon={<Icon name="rate_review" size={22} />}
             title={
               erreur
-                ? (probleme?.title ?? 'Votre grille d’évaluation ne s’affiche pas')
+                ? (probleme?.title ?? 'Impossible d’afficher votre grille d’évaluation')
                 : (messageDuRenvoi ?? 'Votre grille d’évaluation n’est pas encore disponible')
             }
           />
@@ -283,7 +283,7 @@ function Ratification({ vue, onRenvoyee }: { vue: VueDeGrille; onRenvoyee: () =>
           }
         >
           {erreur ? <Erreur>{erreur}</Erreur> : null}
-          <Field label="Votre mot au N+1" htmlFor="mot-renvoi" required>
+          <Field label="Votre message au N+1" htmlFor="mot-renvoi" required>
             <ZoneDeTexte
               id="mot-renvoi"
               autoFocus

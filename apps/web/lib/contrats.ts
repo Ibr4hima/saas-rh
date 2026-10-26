@@ -29,7 +29,7 @@ export function deadlineLabel(daysLeft: number | null): {
   tone: 'rouge' | 'orange' | 'gris';
 } {
   if (daysLeft === null) return { text: 'À préciser', tone: 'rouge' };
-  if (daysLeft < 0) return { text: `Échu · il y a ${compte(-daysLeft, 'jour')}`, tone: 'rouge' };
-  if (daysLeft === 0) return { text: "Échoit aujourd'hui", tone: 'rouge' };
+  if (daysLeft < 0) return { text: `Terminé · il y a ${compte(-daysLeft, 'jour')}`, tone: 'rouge' };
+  if (daysLeft === 0) return { text: "Se termine aujourd'hui", tone: 'rouge' };
   return { text: dureeRestante(daysLeft), tone: daysLeft <= 30 ? 'orange' : 'gris' };
 }

@@ -80,7 +80,7 @@ export async function exigerHorsStage(tx: Tx, employeeId: string): Promise<void>
       422,
       'org.manager_stagiaire',
       `${rows[0].nom} est en stage`,
-      'Les stagiaires ne dirigent pas d’unité.',
+      'Un stagiaire ne peut pas diriger une unité.',
     );
   }
 }
@@ -136,12 +136,12 @@ export async function exigerEnActivite(tx: Tx, employeeId: string, pour: string)
       FROM employees e JOIN persons p ON p.id = e.person_id
      WHERE e.id = ${employeeId}`);
   const a = rows[0];
-  if (!a) problem(422, 'people.employee_not_found', 'Cet agent n’existe pas');
+  if (!a) problem(422, 'people.employee_not_found', 'Agent introuvable');
   if (a.status !== 'active') {
     problem(
       422,
       'people.agent_inactif',
-      `${a.nom} est inactif`,
+      `Le dossier de ${a.nom} est inactif`,
       `Un agent inactif ne peut pas ${pour}.`,
     );
   }

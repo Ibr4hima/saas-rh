@@ -61,7 +61,7 @@ async function libererLAdresse(tx: Tx, userId: string): Promise<void> {
     problem(
       409,
       'portal.adresse_prise',
-      'Cette adresse est celle d’un autre compte',
+      'Cette adresse est déjà utilisée par un autre compte',
       'Demandez à la Direction du Capital Humain une invitation à une autre adresse.',
     );
   }
@@ -95,8 +95,8 @@ async function exigerDePouvoirInviter(
     problem(
       403,
       'portal.invitation_reservee',
-      'Seuls l’administrateur et le directeur du Capital Humain invitent cet agent',
-      'Son portail porte les droits de la direction ou de l’administration.',
+      'Seuls l’administrateur et la personne qui dirige la DCH peuvent inviter cet agent',
+      'Son compte a des droits de direction ou d’administration.',
     );
   }
 }
@@ -144,7 +144,7 @@ export class InvitationsService {
         422,
         'portal.sans_courrier',
         'Aucun serveur de courrier n’est configuré',
-        'Les invitations ne partent pas d’elles-mêmes : générez le lien depuis la fiche de chaque agent.',
+        'Les invitations ne peuvent pas être envoyées par courriel : générez le lien depuis la fiche de chaque agent.',
       );
     }
     const invites: InviterPlusieursResult['invites'] = [];
@@ -316,8 +316,8 @@ export class InvitationsService {
         problem(
           403,
           'portal.retablir_reserve',
-          'Seul qui a coupé cet accès le rétablit',
-          'Ou l’administration, ou la direction du Capital Humain.',
+          'Seule la personne qui a coupé cet accès peut le rétablir',
+          'L’administrateur et la personne qui dirige la DCH le peuvent aussi.',
         );
       }
       if (user.role !== 'admin') {
@@ -326,8 +326,8 @@ export class InvitationsService {
           problem(
             403,
             'portal.acces_reserve_admin',
-            'Seule l’administration rétablit cet accès',
-            'Ce compte administre l’organisation ou dirige la Direction du Capital Humain : seul un compte d’administration peut rétablir son accès.',
+            'Seul un administrateur peut rétablir cet accès',
+            'Ce compte est celui d’un administrateur ou de la personne qui dirige la DCH.',
           );
         }
       }
@@ -443,7 +443,7 @@ export class InvitationsService {
               problem(
                 409,
                 'portal.adresse_prise',
-                'Cette adresse est celle d’un autre compte',
+                'Cette adresse est déjà utilisée par un autre compte',
                 'Demandez à la Direction du Capital Humain une invitation à une autre adresse.',
               );
             }

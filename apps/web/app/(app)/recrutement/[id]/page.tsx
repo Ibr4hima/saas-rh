@@ -393,8 +393,8 @@ function ConfirmerRejet({
           {a.refusalSent ? (
             <>
               <span className="font-semibold text-ink-strong">{premierPrenom(a.givenName)}</span> a
-              déjà reçu un courriel de refus : aucun autre ne partira. Confirmez-vous votre
-              décision&nbsp;?
+              déjà reçu un courriel de refus : aucun autre courriel ne sera envoyé. Confirmez-vous
+              votre décision&nbsp;?
             </>
           ) : (
             <>

@@ -449,7 +449,7 @@ export class AbsencesService {
         problem(
           422,
           'absence.heures_decomptees',
-          'Un type décompté du solde se demande à la journée',
+          'Un type décompté du solde ne peut être demandé qu’à la journée',
         );
       }
       // Omise, une durée max reste ce qu'elle était ; donnée dans une unité,
@@ -537,7 +537,7 @@ export class AbsencesService {
         problem(
           409,
           'absence.type_in_use',
-          'Ce type porte des demandes en attente',
+          'Ce type a des demandes en attente',
           `« ${row.name} » ne peut pas être retiré tant que ${pending?.n} demande(s) attendent un visa. Traitez-les d’abord.`,
         );
       }
@@ -597,8 +597,8 @@ export class AbsencesService {
       problem(
         422,
         'absence.holiday_year_closed',
-        'Cette année ne se paramètre pas',
-        `Les jours fériés se paramètrent pour ${courante} et ${courante + 1} seulement.`,
+        'Cette année ne peut pas être paramétrée',
+        `Les jours fériés ne peuvent être paramétrés que pour ${courante} et ${courante + 1}.`,
       );
     }
   }
@@ -611,7 +611,7 @@ export class AbsencesService {
         422,
         'absence.holiday_year_mismatch',
         'La date ne tombe pas dans l’année choisie',
-        `Le tableau des fériés se lit année par année : une date de ${input.day.slice(0, 4)} ne s’y range pas sous ${input.year}.`,
+        `Choisissez une date en ${input.year}.`,
       );
     }
     await this.db.withTenant(ctxOf(user), async (tx) => {
@@ -651,7 +651,7 @@ export class AbsencesService {
           409,
           'absence.holiday_fixed',
           'Ce jour férié est à date fixe',
-          `« ${row.label} » tombe à la même date chaque année : sa date ne se déplace pas. Retirez-le si ce jour n’est plus chômé.`,
+          `« ${row.label} » tombe à la même date chaque année : sa date ne peut pas être modifiée. Retirez-le si ce jour n’est plus chômé.`,
         );
       }
       if (jour && Number(jour.slice(0, 4)) !== row.year) {
@@ -659,7 +659,7 @@ export class AbsencesService {
           422,
           'absence.holiday_year_mismatch',
           'La date ne tombe pas dans l’année choisie',
-          `Ce jour est rangé sous ${row.year} : une date de ${jour.slice(0, 4)} ne s’y lirait pas.`,
+          `Ce jour férié est enregistré pour ${row.year} : choisissez une date en ${row.year}.`,
         );
       }
       await this.refuserDoublon(tx, row.year, input.label, id);
@@ -759,8 +759,8 @@ export class AbsencesService {
       problem(
         409,
         'absence.holiday_label_exists',
-        'Ce jour férié figure déjà sur cette année',
-        `« ${label} » est déjà inscrit sur ${year}.`,
+        'Ce jour férié est déjà enregistré pour cette année',
+        `« ${label} » existe déjà en ${year}.`,
       );
     }
   }
@@ -899,7 +899,7 @@ export class AbsencesService {
         await notifier(tx, tenantId, r.user_id, {
           type: 'conge_annule',
           sujet: 'conges',
-          title: `Votre ${a.nom} ${duAu(r.debut, r.fin, heures)} est ${accord('annulé', a)} : ce jour est férié`,
+          title: `Votre ${a.nom} ${duAu(r.debut, r.fin, heures)} a été ${accord('annulé', a)} : ce jour est férié`,
           link: '/moi/conges/historique',
           dedupeKey: `conge:${r.id}:ferie`,
         });
@@ -1005,7 +1005,7 @@ export class AbsencesService {
         problem(
           403,
           'absence.reserve_au_directeur_dch',
-          'Seul le directeur du Capital Humain confie les demandes',
+          'Seule la personne qui dirige la DCH peut confier les demandes',
         );
       }
       if (att?.etape !== 'dch') {
@@ -1021,7 +1021,7 @@ export class AbsencesService {
           problem(
             422,
             'absence.confiee_au_demandeur',
-            'On ne confie pas une demande à qui la pose',
+            'Vous ne pouvez pas confier une demande à la personne qui l’a faite',
           );
         }
         if (
@@ -1031,7 +1031,7 @@ export class AbsencesService {
           problem(
             422,
             'absence.confiee_au_subordonne',
-            'On ne confie pas une demande à une personne placée sous celle qui la pose',
+            'Vous ne pouvez pas confier une demande à un membre de l’équipe de la personne qui l’a faite',
           );
         }
         const m = await membreDCH(tx, dch, employeeId);
@@ -1237,7 +1237,11 @@ export class AbsencesService {
         const heures: Heures | null =
           input.startTime && input.endTime ? { debut: input.startTime, fin: input.endTime } : null;
         if (heures && !type.allowsHours) {
-          problem(422, 'absence.heures_refusees', `« ${type.name} » se demande à la journée`);
+          problem(
+            422,
+            'absence.heures_refusees',
+            `« ${type.name} » ne peut être demandé qu’à la journée`,
+          );
         }
         if (heures && !dansLaJournee(heures.debut, heures.fin)) {
           problem(422, 'absence.hors_horaires', horsDeLaJournee);
@@ -1302,7 +1306,7 @@ export class AbsencesService {
           problem(
             422,
             'absence.duree_max',
-            `« ${type.name} » se demande pour ${enJoursOuvres(type.maxDaysPerRequest)} au plus`,
+            `« ${type.name} » peut être demandé pour ${enJoursOuvres(type.maxDaysPerRequest)} maximum`,
             `Cette période en compte ${daysCount}.`,
           );
         }
@@ -1312,7 +1316,7 @@ export class AbsencesService {
           problem(
             422,
             'absence.duree_max',
-            `« ${type.name} » se demande pour ${enAnnees(type.maxYearsPerRequest)} au plus`,
+            `« ${type.name} » peut être demandé pour ${enAnnees(type.maxYearsPerRequest)} maximum`,
             `Terminez la demande le ${frDate(finPermise)} au plus tard.`,
           );
         }
@@ -1333,7 +1337,7 @@ export class AbsencesService {
               422,
               'absence.insufficient_balance',
               'Solde insuffisant',
-              `Il reste ${view.remainingDays} jour(s) de « ${type.name} » sur ${annee} (demande : ${jours} j sur ${annee}, dont soldes en attente déjà réservés).`,
+              `Il reste ${view.remainingDays} jour(s) de « ${type.name} » en ${annee}, en comptant les demandes déjà en attente. Cette demande en compte ${jours}.`,
             );
           }
         }
@@ -1608,7 +1612,7 @@ export class AbsencesService {
           422,
           'absence.expiree',
           'Cette demande a expiré',
-          'Son premier jour est arrivé sans réponse : l’agent peut en déposer une nouvelle.',
+          'Elle n’a pas été traitée avant son premier jour : l’agent peut en faire une nouvelle.',
         );
       }
       if ((await this.selfEmployeeId(tx, user)) === request.employeeId) {
@@ -1627,16 +1631,16 @@ export class AbsencesService {
             403,
             'absence.reservee_au_n1',
             'Cette demande attend le visa de son N+1',
-            `${nomsDe(att.valideurs) ?? 'Son N+1'} la vise d’abord ; la DCH la reçoit ensuite.`,
+            `${nomsDe(att.valideurs) ?? 'Son N+1'} doit d’abord la viser, puis la DCH la traitera.`,
           );
         }
         problem(
           403,
           'absence.reservee_a_la_dch',
-          'Cette demande attend la Direction du Capital Humain',
+          'Cette demande est en attente de traitement par la DCH',
           att.valideurs.length > 0
-            ? `${nomsDe(att.valideurs)} la traite.`
-            : 'Personne ne traite pour la DCH en ce moment : l’administrateur est prévenu.',
+            ? `${nomsDe(att.valideurs)} s’en occupe.`
+            : 'Personne n’est disponible à la DCH pour la traiter : l’administrateur a été prévenu.',
         );
       }
 
@@ -1660,7 +1664,7 @@ export class AbsencesService {
           422,
           'absence.motif_continuite',
           'Indiquez le motif du refus',
-          'La demande laisserait une délégation sans personne : son refus se motive.',
+          'Cette demande laisserait une délégation sans personne : le refus doit être motivé.',
         );
       };
 
@@ -1773,7 +1777,7 @@ export class AbsencesService {
     await notifier(tx, d.tenantId, directeur.userId, {
       type: 'delegation',
       sujet: 'dch.delegations',
-      title: `${leLa(a)}${a.nom} de ${d.nom} est ${accord('validé', a)} : plus personne pour ${delegations} ${duAu(du, au)}`,
+      title: `${leLa(a)}${a.nom} de ${d.nom} a été ${accord('validé', a)} : plus personne ne pourra traiter ${delegations} ${duAu(du, au)}`,
       link: '/moi/delegations',
       dedupeKey: `continuite:${requestId}`,
     });
@@ -1830,7 +1834,7 @@ export class AbsencesService {
     await notifier(tx, user.tenantId, dch.directeur.userId, {
       type: 'delegation',
       sujet: 'dch.delegations',
-      title: 'Les demandes de congé vous attendront jusqu’à votre retour',
+      title: 'Les demandes de congé resteront en attente jusqu’à votre retour',
       link: '/moi/delegations',
       dedupeKey: `delegation:absence:${demande.id}`,
     });
@@ -1877,10 +1881,10 @@ export class AbsencesService {
           problem(
             422,
             'absence.not_cancellable',
-            'Seul un congé validé qui n’a pas commencé s’annule',
+            'Seul un congé validé qui n’a pas encore commencé peut être annulé',
             request.status === 'pending'
-              ? 'Une demande en attente se refuse.'
-              : 'Un congé en cours se rappelle.',
+              ? 'Une demande en attente peut être refusée.'
+              : 'Pour un congé en cours, utilisez le rappel.',
           );
         }
         if (!input.motif?.trim()) {
@@ -1935,7 +1939,7 @@ export class AbsencesService {
       return row;
     });
     if (!type.renouvelable || type.maxYearsPerRequest === null || type.deletedAt !== null) {
-      problem(422, 'absence.pas_renouvelable', `« ${type.name} » ne se renouvelle pas`);
+      problem(422, 'absence.pas_renouvelable', `« ${type.name} » ne peut pas être renouvelé`);
     }
     const jour = aujourdhui();
     if (
@@ -1947,15 +1951,15 @@ export class AbsencesService {
       problem(
         422,
         'absence.renouvellement_hors_periode',
-        'Seule une période validée et en cours se renouvelle',
-        'Le renouvellement se demande pendant la période, au plus tard son dernier jour.',
+        'Seule une période validée et en cours peut être renouvelée',
+        'Demandez le renouvellement avant la fin de la période, au plus tard le dernier jour.',
       );
     }
     if (input.annees > type.maxYearsPerRequest) {
       problem(
         422,
         'absence.duree_max',
-        `« ${type.name} » se renouvelle pour ${enAnnees(type.maxYearsPerRequest)} au plus`,
+        `« ${type.name} » peut être renouvelé pour ${enAnnees(type.maxYearsPerRequest)} maximum`,
       );
     }
     const { du, au } = periodeDuRenouvellement(request.endDate, input.annees);
@@ -2035,7 +2039,7 @@ export class AbsencesService {
           403,
           'absence.reprise_reservee',
           'Ce retour attend la confirmation de son N+1',
-          'À défaut de N+1 présent, la DCH le confirme.',
+          'En l’absence du N+1, la DCH peut le confirmer.',
         );
       }
       const d = (await lireDemande(tx, requestId))!;
@@ -2077,7 +2081,7 @@ export class AbsencesService {
         problem(
           403,
           'absence.rappel_reserve',
-          'Seuls son N+1 et la DCH rappellent un agent en congé',
+          'Seuls le N+1 et la DCH peuvent rappeler un agent en congé',
         );
       }
       this.exigerEnCours(request);
@@ -2113,14 +2117,14 @@ export class AbsencesService {
   /** Un congé validé, commencé et pas encore fini : seul celui-là s'écourte. */
   private exigerEnCours(request: typeof t.absenceRequests.$inferSelect): void {
     if (request.status !== 'approved') {
-      problem(422, 'absence.pas_validee', 'Seul un congé validé s’écourte');
+      problem(422, 'absence.pas_validee', 'Seul un congé validé peut être écourté');
     }
     if (request.startDate > aujourdhui()) {
       problem(
         422,
         'absence.pas_commence',
         'Ce congé n’a pas commencé',
-        'Un congé qui n’a pas commencé s’annule.',
+        'Un congé qui n’a pas commencé peut être annulé, pas écourté.',
       );
     }
     if (request.endDate < aujourdhui()) {
@@ -2354,8 +2358,8 @@ export class AbsencesService {
         problem(
           422,
           'absence.justificatif_clos',
-          'Le justificatif de cette demande ne se change plus',
-          'Elle a été traitée avec celui-ci.',
+          'Le justificatif de cette demande ne peut plus être modifié',
+          'La demande a déjà été traitée.',
         );
       }
       if (existant) {
@@ -2384,7 +2388,11 @@ export class AbsencesService {
   async agentsPourSaisie(user: SessionUser): Promise<AgentSaisieView[]> {
     return this.db.withTenant(ctxOf(user), async (tx) => {
       if (!(await this.gereLesConges(tx, user))) {
-        problem(403, 'absence.reserve_a_la_dch', 'Réservé à qui traite les congés pour la DCH');
+        problem(
+          403,
+          'absence.reserve_a_la_dch',
+          'Réservé à la personne qui traite les congés à la DCH',
+        );
       }
       const moi = await this.selfEmployeeId(tx, user);
       const { rows } = await tx.execute<{
@@ -2416,8 +2424,8 @@ export class AbsencesService {
     problem(
       422,
       'absence.justificatif_attendu',
-      'Le justificatif manque',
-      `« ${manque.type} » se valide avec son justificatif : il doit être joint d’abord.`,
+      'Justificatif manquant',
+      `« ${manque.type} » ne peut être validé qu’avec son justificatif : joignez-le d’abord.`,
     );
   }
 

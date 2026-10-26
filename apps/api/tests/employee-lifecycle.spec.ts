@@ -606,7 +606,7 @@ describe('un dossier, un matricule, pour toujours', () => {
     const r = await people.remove(admin, { ids: [awa.employeeId] });
     expect(r.done).toBe(0);
     expect(r.skipped[0]!.reason).toBe(
-      'Saisi il y a plus de 30 jours, ce dossier se garde : désactivez-le',
+      'Ce dossier a été créé il y a plus de 30 jours : il ne peut plus être supprimé, désactivez-le',
     );
     expect(await compte('employees', 'id = $1', [awa.employeeId])).toBe(1);
   });

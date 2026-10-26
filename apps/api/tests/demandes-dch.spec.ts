@@ -302,7 +302,7 @@ describe('les demandes de documents', () => {
       `SELECT title FROM notifications WHERE recipient_user_id = $1 AND dedupe_key = $2`,
       [mariama.session.userId, `document:${id}:annulee`],
     );
-    expect(rows).toEqual([{ title: 'Moussa Test annule sa demande d’attestation de revenu' }]);
+    expect(rows).toEqual([{ title: 'Moussa Test a annulé sa demande d’attestation de revenu' }]);
     expect(await codeOf(() => documents.advance(mariama.session, id, { status: 'ready' }))).toBe(
       'documents.request_not_found',
     );
@@ -966,7 +966,7 @@ describe('les pièces justificatives', () => {
       `SELECT title FROM notifications WHERE recipient_user_id = $1 AND dedupe_key = $2`,
       [moussa.session.userId, `piece:${id}:verdict`],
     );
-    expect(rows).toEqual([{ title: 'Votre diplôme est refusé : Document illisible' }]);
+    expect(rows).toEqual([{ title: 'Votre diplôme a été refusé : Document illisible' }]);
   });
 
   it('les documents officiels se vérifient type par type : chaque dépôt va à qui vérifie le sien', async () => {
@@ -998,8 +998,8 @@ describe('les pièces justificatives', () => {
     await pieces.review(awa.session, diplome, { version: 1, decision: 'approved' });
     expect(await appels('piece', diplome)).toEqual([]);
     expect(await titres(moussa, 'piece:%:verdict')).toEqual([
-      'Votre CNI est ajoutée à votre dossier',
-      'Votre diplôme est ajouté à votre dossier',
+      'Votre CNI a été ajoutée à votre dossier',
+      'Votre diplôme a été ajouté à votre dossier',
     ]);
   });
 

@@ -80,12 +80,12 @@ export const dateDeNaissanceSchema = z.iso
 /** Une date d'aujourd'hui au plus tard. */
 export const jusquAujourdhuiSchema = z.iso
   .date()
-  .refine((d) => d <= aujourdhuiIso(), 'Pas après aujourd’hui');
+  .refine((d) => d <= aujourdhuiIso(), 'Ne peut pas être dans le futur');
 
 /** Une date passée, aujourd'hui exclu. */
 export const avantAujourdhuiSchema = z.iso
   .date()
-  .refine((d) => d < aujourdhuiIso(), 'Avant aujourd’hui');
+  .refine((d) => d < aujourdhuiIso(), 'Doit être antérieure à aujourd’hui');
 
 /** Ce que dit une CNI délivrée il y a dix ans ou plus. */
 export const CNI_EXPIREE = 'CNI expirée : délivrée il y a plus de dix ans';

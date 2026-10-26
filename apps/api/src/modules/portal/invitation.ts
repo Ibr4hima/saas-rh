@@ -108,7 +108,7 @@ export async function preparerInvitation(
         409,
         'portal.acces_coupe',
         'Son accès est coupé',
-        'Rétablissez son accès avant de lui envoyer une invitation.',
+        'Rétablissez d’abord son accès, puis envoyez l’invitation.',
       );
     }
   }
@@ -150,7 +150,7 @@ export async function preparerInvitation(
       problem(
         409,
         'portal.adresse_prise',
-        'Cette adresse est celle d’un autre compte',
+        'Cette adresse est déjà utilisée par un autre compte',
         'Changez l’adresse de sa fiche, puis envoyez l’invitation.',
       );
     }

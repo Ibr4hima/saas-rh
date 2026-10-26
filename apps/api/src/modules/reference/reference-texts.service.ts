@@ -264,7 +264,11 @@ export class ReferenceTextsService {
    */
   async save(user: SessionUser, slug: string, input: SaveReferenceTextInput): Promise<void> {
     if (!this.redige(user)) {
-      problem(403, 'reference.forbidden', 'Seul l’administrateur dépose les textes de référence');
+      problem(
+        403,
+        'reference.forbidden',
+        'Seul l’administrateur peut déposer les textes de référence',
+      );
     }
     if (!/^[a-z0-9-]{3,60}$/.test(slug)) {
       problem(422, 'reference.bad_slug', 'Identifiant de texte invalide');
@@ -451,7 +455,11 @@ export class ReferenceTextsService {
     data: Buffer,
   ): Promise<{ size: number }> {
     if (!this.redige(user)) {
-      problem(403, 'reference.forbidden', 'Seul l’administrateur dépose les textes de référence');
+      problem(
+        403,
+        'reference.forbidden',
+        'Seul l’administrateur peut déposer les textes de référence',
+      );
     }
     if (data.length === 0 || data.length > MAX_REFERENCE_PDF_BYTES) {
       problem(422, 'reference.too_large', 'Le fichier doit faire 80 Mo maximum');
@@ -484,7 +492,11 @@ export class ReferenceTextsService {
    */
   async remove(user: SessionUser, slug: string): Promise<void> {
     if (!this.redige(user)) {
-      problem(403, 'reference.forbidden', 'Seul l’administrateur supprime les textes de référence');
+      problem(
+        403,
+        'reference.forbidden',
+        'Seul l’administrateur peut supprimer les textes de référence',
+      );
     }
     await this.db.withTenant(this.ctx(user), async (tx) => {
       const res = await tx

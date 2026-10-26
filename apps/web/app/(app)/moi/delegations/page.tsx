@@ -57,7 +57,7 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
       {
         cle: 'personnel',
         description:
-          'Le délégué pourra consulter et gérer les dossiers du personnel : créer, modifier, muter ou désactiver un agent, importer des dossiers, accéder aux données sensibles et ajuster les soldes de congés. Les alertes d’échéance des CDD et des stages lui seront aussi adressées.',
+          'Le délégué pourra consulter et gérer les dossiers du personnel : créer, modifier, muter ou désactiver un agent, importer des dossiers, accéder aux données sensibles et ajuster les soldes de congés. Le délégué recevra aussi les alertes de fin de CDD et de stage.',
         libelle: 'Gestion du personnel',
         icone: 'group',
         sensible: true,
@@ -66,7 +66,7 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
       {
         cle: 'acces',
         description:
-          'Le délégué verra qui est entré sur le portail et qui attend son invitation, et pourra inviter les agents. L’invitation du DG et des administrateurs reste à vous.',
+          'Le délégué verra qui a accès au portail et qui attend son invitation, et pourra inviter les agents. L’invitation du DG et des administrateurs reste de votre ressort.',
         libelle: 'Gestion des accès',
         icone: 'security',
         capacites: ['acces'],
@@ -95,7 +95,7 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
       {
         cle: 'documents',
         description:
-          'Le délégué traitera les demandes de documents des agents pour les types qui lui sont confiés : préparer le document, puis indiquer à l’agent où le retirer.',
+          'Le délégué traitera les demandes de documents des agents, pour les types choisis : préparer le document, puis indiquer à l’agent où le retirer.',
         libelle: 'Demandes de documents',
         icone: 'folder_managed',
         types: TYPES_DOCUMENTS,
@@ -103,7 +103,7 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
       {
         cle: 'informations',
         description:
-          'Le délégué examinera les changements d’informations signalés par les agents (adresse, téléphone, situation familiale…) : il les applique au dossier, ou les refuse avec un motif.',
+          'Le délégué examinera les changements d’informations signalés par les agents (adresse, téléphone, situation familiale…) : les appliquer au dossier, ou les refuser avec un motif.',
         libelle: 'Mise à jour d’infos',
         icone: 'badge',
         capacites: ['demandes.informations'],
@@ -111,7 +111,7 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
       {
         cle: 'pieces',
         description:
-          'Le délégué vérifiera les documents officiels déposés par les agents pour les types qui lui sont confiés : il les ajoute au dossier, ou les refuse avec un motif.',
+          'Le délégué vérifiera les documents officiels déposés par les agents, pour les types choisis : les ajouter au dossier, ou les refuser avec un motif.',
         libelle: 'Vérification des documents',
         icone: 'verified_user',
         sensible: true,
@@ -125,7 +125,7 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
       {
         cle: 'generation',
         description:
-          'Depuis « Générer des documents », la personne déléguée générera les contrats choisis ici : fiche renseignée, aperçu relu, contrat téléchargé.',
+          'La personne déléguée pourra générer les contrats choisis ici depuis « Générer des documents ».',
         libelle: 'Génération de documents',
         icone: 'description',
         types: TYPES_GENERATION,
@@ -146,7 +146,7 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
       {
         cle: 'feries',
         description:
-          'Le délégué tiendra le calendrier des jours fériés : dater les fêtes mobiles, ajouter ou retirer un jour férié.',
+          'Le délégué gérera le calendrier des jours fériés : fixer la date des fêtes mobiles, ajouter ou retirer un jour férié.',
         libelle: 'Gestion des jours fériés',
         icone: 'event',
         capacites: ['feries'],
@@ -407,7 +407,7 @@ export default function DelegationsPage() {
       {!modifiable ? (
         <BandeauDelegation
           icone="lock"
-          texte="Seule la personne qui dirige la DCH modifie les délégations."
+          texte="Seule la personne qui dirige la DCH peut modifier les délégations."
         />
       ) : null}
 

@@ -512,7 +512,7 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
         {
           type: 'contract_ended',
           sujet: 'dch.contrats',
-          title: `${a.nom} était le dernier administrateur : l’organisation n’en a plus`,
+          title: `${a.nom} était le dernier administrateur : l’organisation n’a plus d’administrateur`,
           link: `/employees/${a.id}`,
           dedupeKey: `dernier_admin:${a.id}`,
         },

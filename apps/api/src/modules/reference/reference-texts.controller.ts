@@ -106,7 +106,7 @@ export class ReferenceTextsController {
   ) {
     const octets = req.body;
     if (!Buffer.isBuffer(octets)) {
-      problem(415, 'reference.bad_body', 'Le fichier doit être envoyé en application/pdf');
+      problem(415, 'reference.bad_body', 'Le fichier doit être un PDF');
     }
     return this.textes.uploadPdf(req.sessionUser, slug, query.filename, octets);
   }

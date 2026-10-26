@@ -112,7 +112,7 @@ export default function CandidaturesPage() {
               title={(jobs.data ?? []).length === 0 ? 'Aucune offre' : 'Aucune offre ne correspond'}
               description={
                 (jobs.data ?? []).length === 0
-                  ? 'Publiez une offre et partagez son lien : les dossiers déposés se rangeront ici, campagne par campagne.'
+                  ? 'Publiez une offre et partagez son lien : les candidatures reçues apparaîtront ici, offre par offre.'
                   : 'Changez de recherche pour voir les autres offres.'
               }
             />

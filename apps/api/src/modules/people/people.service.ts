@@ -96,7 +96,7 @@ export const DELAI_DE_CORRECTION_JOURS = 30;
 
 /** Rouvert, le compte d'un administrateur retrouve ses droits : comme son invitation. */
 const REOUVERTURE_RESERVEE =
-  'Compte administrateur : sa réactivation revient à l’administrateur ou au directeur du Capital Humain';
+  'Ce compte administrateur ne peut être réactivé que par l’administrateur ou la personne qui dirige la DCH';
 
 /** Saisi il y a plus de 30 jours : en SQL, pour le dossier `e`. */
 const dossierFige = sql`(e.created_at < now() - make_interval(days => ${DELAI_DE_CORRECTION_JOURS}))`;
@@ -812,7 +812,7 @@ export class PeopleService {
             422,
             'people.dossier_inactif',
             'Ce dossier est inactif',
-            'La fiche d’un agent inactif ne se modifie pas : réactivez-la d’abord.',
+            'La fiche d’un agent inactif ne peut pas être modifiée : réactivez d’abord le dossier.',
           );
         }
         if (input.employee?.managerEmployeeId !== undefined) await verrouillerLaChaine(tx);
@@ -825,7 +825,7 @@ export class PeopleService {
             problem(
               403,
               'people.donnees_sensibles',
-              'Le numéro de la pièce ne se modifie qu’avec l’accès aux données sensibles',
+              'Seules les personnes ayant accès aux données sensibles peuvent modifier le numéro de la pièce',
             );
           }
           await tx
@@ -840,7 +840,7 @@ export class PeopleService {
         }
         if (input.employee && Object.keys(input.employee).length > 0) {
           if (input.employee.managerEmployeeId) {
-            await exigerEnActivite(tx, id, 'recevoir de n+1');
+            await exigerEnActivite(tx, id, 'recevoir de N+1');
             const direction = await directionDeEmploye(tx, id);
             if (input.employee.managerEmployeeId !== employee.managerEmployeeId) {
               await pasResponsableDeSoi(
@@ -867,8 +867,8 @@ export class PeopleService {
               problem(
                 409,
                 'people.matricule_fige',
-                'Le matricule ne change plus',
-                `Il se corrige dans les ${DELAI_DE_CORRECTION_JOURS} jours qui suivent la saisie du dossier ; il reste ensuite à la personne.`,
+                'Le matricule ne peut plus être modifié',
+                `Il peut être corrigé dans les ${DELAI_DE_CORRECTION_JOURS} jours qui suivent la création du dossier.`,
               );
             }
           }
@@ -947,8 +947,8 @@ export class PeopleService {
             problem(
               422,
               'people.retour_en_stage',
-              'Les stagiaires ne dirigent pas d’unité',
-              'Retirez les unités à reprendre : sous un contrat de stage, aucune ne se reprend.',
+              'Un stagiaire ne peut pas diriger une unité',
+              'Retirez les unités à reprendre.',
             );
           }
         }
@@ -1147,7 +1147,7 @@ export class PeopleService {
         problem(
           422,
           'people.contrat_pas_le_dernier',
-          'Seul le dernier contrat se corrige',
+          'Seul le dernier contrat peut être corrigé',
           'Les contrats précédents sont clos : enregistrez plutôt un nouveau contrat.',
         );
       }
@@ -1243,7 +1243,7 @@ export class PeopleService {
         problem(
           422,
           'people.contrat_pas_le_dernier',
-          'Seul le dernier contrat s’annule',
+          'Seul le dernier contrat peut être annulé',
           'Les contrats précédents sont clos.',
         );
       }
@@ -1251,7 +1251,7 @@ export class PeopleService {
         problem(
           422,
           'people.contrat_commence',
-          'Ce contrat a commencé',
+          'Ce contrat a déjà commencé',
           `Il a commencé le ${frDate(dernier.startDate)} : corrigez-le, ou enregistrez le départ de l’agent.`,
         );
       }
@@ -1306,8 +1306,8 @@ export class PeopleService {
         problem(
           422,
           'people.affectation_pas_la_derniere',
-          'Seule la dernière affectation se corrige',
-          'Les affectations précédentes font l’historique du dossier.',
+          'Seule la dernière affectation peut être corrigée',
+          'Les affectations précédentes font partie de l’historique du dossier.',
         );
       }
       if (precedente && input.startDate <= precedente.du) {
@@ -1322,8 +1322,8 @@ export class PeopleService {
         problem(
           422,
           'people.affectation_apres_sa_fin',
-          'L’affectation commencerait après sa fin',
-          `Elle s’est arrêtée le ${frDate(derniere.au)}.`,
+          'L’affectation commencerait après sa date de fin',
+          `Elle a pris fin le ${frDate(derniere.au)}.`,
         );
       }
       const recaler = precedente && precedente.au === derniere.du;
@@ -1367,8 +1367,8 @@ export class PeopleService {
         problem(
           422,
           'people.affectation_pas_la_derniere',
-          'Seule la dernière affectation s’annule',
-          'Les affectations précédentes font l’historique du dossier.',
+          'Seule la dernière affectation peut être annulée',
+          'Les affectations précédentes font partie de l’historique du dossier.',
         );
       }
       if (!precedente || precedente.au !== derniere.du) {
@@ -1394,7 +1394,7 @@ export class PeopleService {
           422,
           'people.affectation_de_responsable',
           `${tete[0].nom} dirige toujours « ${tete[0].unite} »`,
-          `Cette affectation porte sa fonction à la tête de « ${tete[0].unite} » : désignez d’abord une autre personne à sa place dans l’organigramme.`,
+          `Cette affectation correspond à son poste de responsable de « ${tete[0].unite} » : désignez d’abord une autre personne à sa place dans l’organigramme.`,
         );
       }
       await tx.delete(t.assignments).where(eq(t.assignments.id, derniere.id));
@@ -1507,8 +1507,8 @@ export class PeopleService {
       problem(
         403,
         'auth.forbidden',
-        'Droits insuffisants pour cette action',
-        'La désignation à la tête d’une unité relève de l’organigramme.',
+        'Vous n’avez pas les droits nécessaires pour cette action',
+        'Désignez les responsables d’unité depuis l’organigramme.',
       );
     }
     const uniteId = p.uniteId;
@@ -1526,7 +1526,11 @@ export class PeopleService {
         FROM org_units WHERE id = ${uniteId}`);
     const unite = rows[0]!;
     if (unite.futur) {
-      problem(422, 'org.passation_future', 'La prise de fonction se date au plus tard aujourd’hui');
+      problem(
+        422,
+        'org.passation_future',
+        'La date de prise de fonction ne peut pas être dans le futur',
+      );
     }
     // Une personne ne dirige qu'une unité.
     const { rows: autre } = await tx.execute<{ unite: string; nom: string }>(sql`
@@ -1637,8 +1641,8 @@ export class PeopleService {
       problem(
         403,
         'auth.forbidden',
-        'Droits insuffisants pour cette action',
-        'La désignation du DGA relève de l’organigramme.',
+        'Vous n’avez pas les droits nécessaires pour cette action',
+        'Désignez le DGA depuis l’organigramme.',
       );
     }
     await exigerUniteVivante(tx, p.uniteId);
@@ -1662,7 +1666,11 @@ export class PeopleService {
       );
     }
     if (unite.futur) {
-      problem(422, 'org.passation_future', 'La prise de fonction se date au plus tard aujourd’hui');
+      problem(
+        422,
+        'org.passation_future',
+        'La date de prise de fonction ne peut pas être dans le futur',
+      );
     }
     if (!unite.dg) {
       problem(
@@ -1762,8 +1770,8 @@ export class PeopleService {
         problem(
           422,
           'people.depart_apres_la_passation',
-          'Son dernier jour vient au plus tard le jour de la passation',
-          `${cible?.nom} quitte la tête de l’unité le ${frDate(depuis)} : son dernier jour ne peut pas venir après.`,
+          'Le dernier jour ne peut pas être après la passation',
+          `${cible?.nom} quitte la tête de l’unité le ${frDate(depuis)} : son dernier jour ne peut pas être postérieur à cette date.`,
         );
       }
       const { rows: poste } = await tx.execute<{ du: string }>(sql`
@@ -1788,7 +1796,7 @@ export class PeopleService {
         problem(
           422,
           'people.depart_refuse',
-          `${cible?.nom} ne peut pas quitter l’APIX ainsi`,
+          `Le départ de ${cible?.nom} ne peut pas être enregistré`,
           r.skipped[0]?.reason,
         );
       }
@@ -1922,8 +1930,8 @@ export class PeopleService {
             ? 'Le dernier jour ne peut pas être dans le futur'
             : 'La reprise ne peut pas être dans le futur',
           input.archived
-            ? 'Un départ prévu s’enregistre le jour venu, ou par la date de fin de son contrat.'
-            : 'Une reprise prévue s’enregistre par le contrat qui la porte.',
+            ? 'Enregistrez le départ le jour même, ou indiquez la date de fin de son contrat.'
+            : 'Pour une reprise prévue, enregistrez le nouveau contrat.',
         );
       }
     }
@@ -1980,7 +1988,7 @@ export class PeopleService {
             422,
             'people.responsabilite_non_rendue',
             `${c.prenom} ne peut pas redevenir responsable de « ${refusee.nom} »`,
-            'Un responsable a été nommé depuis, sa nouvelle place est hors de cette unité, ou son contrat est un stage.',
+            'Un responsable a été nommé depuis, son nouveau poste est hors de cette unité, ou son contrat est un stage.',
           );
         }
       }
@@ -2049,7 +2057,7 @@ export class PeopleService {
       return `Son activité a commencé le ${frDate(r.debut)} : son dernier jour ne peut pas la précéder`;
     }
     if (!depart && r.fin && le <= r.fin) {
-      return `Son dernier jour était le ${frDate(r.fin)} : la reprise vient après`;
+      return `Son dernier jour était le ${frDate(r.fin)} : la reprise doit être postérieure à cette date`;
     }
     return null;
   }
@@ -2214,7 +2222,7 @@ export class PeopleService {
         422,
         'people.responsable_en_stage',
         `${rows[0].prenom} dirige « ${rows[0].unite} »`,
-        'Les stagiaires ne dirigent pas d’unité : désignez d’abord un autre responsable.',
+        'Un stagiaire ne peut pas diriger une unité : désignez d’abord un autre responsable.',
       );
     }
     const equipe = await equipeDe(tx, employeeId);
@@ -2229,8 +2237,8 @@ export class PeopleService {
       problem(
         422,
         'people.n1_en_stage',
-        `${personne?.prenom ?? ''} est le n+1 ${agents}`,
-        `${personne?.prenom ?? ''} est le n+1 ${agents} : un stagiaire ne peut pas être n+1. Confiez d’abord son équipe à une autre personne.`,
+        `${personne?.prenom ?? ''} est le N+1 ${agents}`,
+        `${personne?.prenom ?? ''} est le N+1 ${agents} : un stagiaire ne peut pas être N+1. Confiez d’abord son équipe à une autre personne.`,
       );
     }
   }
@@ -2273,7 +2281,7 @@ export class PeopleService {
     // Un dossier se garde : il ne s'efface que le temps de corriger une
     // erreur de saisie. La personne partie, on le désactive.
     if (geste === 'suppression' && (await this.estFige(tx, cible.id))) {
-      return `Saisi il y a plus de ${DELAI_DE_CORRECTION_JOURS} jours, ce dossier se garde : désactivez-le`;
+      return `Ce dossier a été créé il y a plus de ${DELAI_DE_CORRECTION_JOURS} jours : il ne peut plus être supprimé, désactivez-le`;
     }
     // Rouvert, le compte d'un administrateur retrouve ses droits : comme
     // son invitation, sa réactivation revient à l'administrateur ou au
@@ -2302,7 +2310,7 @@ export class PeopleService {
          WHERE employee_id = ${cible.id} AND planned_position_title IS NOT NULL
          ORDER BY start_date LIMIT 1`);
       if (prevu[0]) {
-        return `Le contrat de ${cible.prenom} commence le ${frDate(prevu[0].debut)} : son dossier se réactivera ce jour-là.`;
+        return `Le contrat de ${cible.prenom} commence le ${frDate(prevu[0].debut)} : son dossier sera réactivé ce jour-là.`;
       }
       const fin = await finDeContratPassee(tx, cible.id);
       if (fin) {

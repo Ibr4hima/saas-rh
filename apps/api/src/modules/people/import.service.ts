@@ -181,7 +181,7 @@ export class ImportEmployesService {
                   colonne: 'Direction affectée',
                   // Sans temps : le même texte se relit dans l'aperçu
                   // (« sera créé ») et dans le compte rendu d'après.
-                  texte: 'Acronyme inconnu dans l’organigramme : dossier sans rattachement',
+                  texte: 'Acronyme absent de l’organigramme : dossier créé sans direction',
                 },
               ]
             : unite && !poste
@@ -190,7 +190,7 @@ export class ImportEmployesService {
                     colonne: 'Poste',
                     // L'affectation se crée avec son poste : sans lui, pas
                     // d'affectation — et donc pas de direction.
-                    texte: 'Sans poste, l’agent n’est pas affecté : dossier sans direction',
+                    texte: 'Poste manquant : dossier créé sans affectation',
                   },
                 ]
               : []),
@@ -229,7 +229,10 @@ export class ImportEmployesService {
       // reconnue, le n+1 ne se pose pas — l'aperçu le dit avant l'import.
       const directionAgent = directionDeLigne(l);
       if (!directionAgent) {
-        refuser(l, 'Sans direction affectée : dossier créé sans n+1. Affectez-le d’abord');
+        refuser(
+          l,
+          'Direction manquante : dossier créé sans N+1. Affectez d’abord l’agent à une direction',
+        );
         continue;
       }
       const cle = cleMatricule(l.responsable);
@@ -249,7 +252,7 @@ export class ImportEmployesService {
         continue;
       }
       if (!n1.actif) {
-        refus.set(l, `${n1.nom} est inactif`);
+        refus.set(l, `Le dossier de ${n1.nom} est inactif`);
         continue;
       }
       if (!n1.direction) {
@@ -261,7 +264,7 @@ export class ImportEmployesService {
       if (!memeDirection && !dgCouvre) {
         refus.set(
           l,
-          `${n1.nom} relève de « ${n1.direction.nom} », l’agent de « ${directionAgent.nom} »`,
+          `${n1.nom} est dans la direction « ${n1.direction.nom} », l’agent dans « ${directionAgent.nom} »`,
         );
         continue;
       }
@@ -284,8 +287,8 @@ export class ImportEmployesService {
       refuser(
         l,
         parDefaut.has(l)
-          ? `${raison} : rattaché d’office à ${l.responsableResolu}, qui dirige sa direction`
-          : `${raison} : dossier créé sans n+1`,
+          ? `${raison} : N+1 attribué automatiquement, ${l.responsableResolu}, responsable de sa direction`
+          : `${raison} : dossier créé sans N+1`,
       );
     }
 
@@ -363,7 +366,7 @@ export class ImportEmployesService {
         // Son n+1 devait naître de ce fichier, et sa ligne a échoué.
         l.avertissements.push({
           colonne: NOM_COLONNE_RESPONSABLE,
-          texte: `Le dossier de ${l.responsableResolu} n’a pas pu être créé : rattachement non fait`,
+          texte: `Le dossier de ${l.responsableResolu} n’a pas pu être créé : N+1 non attribué`,
         });
         continue;
       }

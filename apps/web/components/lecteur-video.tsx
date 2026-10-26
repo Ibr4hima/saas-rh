@@ -162,7 +162,7 @@ export function LecteurVideo({
           if (r.devientLibre) setLibre(true);
           if (r.refus === 'saut' && video.current) {
             video.current.currentTime = r.plusLoin;
-            direAvis('Reprise au dernier passage vu.');
+            direAvis('La vidéo reprend là où vous l’aviez laissée.');
           }
           onBattement?.(r);
         })
@@ -505,8 +505,8 @@ export function LecteurVideo({
             ) : (
               <>
                 <p className="text-[12.5px] leading-relaxed text-white/75">
-                  Il faut {Math.round(SEUIL_VISIONNAGE * 100)} % pour valider la leçon. Les passages
-                  non vus restent clairs sur la barre.
+                  Regardez au moins {Math.round(SEUIL_VISIONNAGE * 100)} % de la vidéo pour valider
+                  la leçon. Les passages non vus apparaissent en clair sur la barre.
                 </p>
                 <Button
                   size="sm"
@@ -530,12 +530,12 @@ export function LecteurVideo({
         <div className="absolute inset-0 grid place-items-center bg-black/80 p-6 text-center text-white backdrop-blur-md">
           <div className="flex max-w-sm flex-col items-center gap-3">
             <p className="text-[16px] font-bold tracking-[-0.01em]">
-              {ailleurs ? 'La lecture continue ailleurs' : 'La vidéo ne se charge pas'}
+              {ailleurs ? 'Lecture en cours ailleurs' : 'Impossible de charger la vidéo'}
             </p>
             <p className="text-[12.5px] leading-relaxed text-white/70">
               {ailleurs
-                ? 'Une autre leçon, ou celle-ci dans un autre onglet, a pris le relais. Une seule lecture compte à la fois.'
-                : 'La connexion a peut-être été coupée, ou l’adresse de lecture a expiré.'}
+                ? 'Une autre vidéo est en lecture, dans cet onglet ou dans un autre. Une seule vidéo peut être suivie à la fois.'
+                : 'Vérifiez votre connexion, puis réessayez.'}
             </p>
             <Button size="sm" className="mt-1" onClick={onReprendreIci}>
               {ailleurs ? 'Reprendre ici' : 'Réessayer'}

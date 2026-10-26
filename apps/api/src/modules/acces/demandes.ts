@@ -208,7 +208,7 @@ async function tenir(tx: Tx, d: DemandeDCH, dch: DirectionDuPersonnel | null): P
     await tenirLesAppels(tx, d.tenantId, prefixe, 'a-confier', [t.dch.directeur.userId], {
       type: 'demande_a_confier',
       sujet: 'dch.delegations',
-      title: 'Votre demande est à confier à un membre de la DCH',
+      title: 'Une demande attend d’être confiée à un membre de la DCH',
       link: def.lien,
     });
     return;
@@ -416,8 +416,8 @@ export function refuserAuBackup(f: FenetreDuPrincipal | null, moi: string | null
   problem(
     403,
     'demandes.au_principal',
-    `Cette demande revient d’abord à ${f.principal.nom}`,
-    `Vous pourrez la traiter ${leJourALHeure(f.finLe)}, ou dès que ${f.principal.nom} vous la confie.`,
+    `Cette demande est d’abord attribuée à ${f.principal.nom}`,
+    `Vous pourrez la traiter ${leJourALHeure(f.finLe)}, ou plus tôt si ${f.principal.nom} vous la confie.`,
   );
 }
 
@@ -433,8 +433,8 @@ export async function exigerDeTraiter(
     problem(
       403,
       'demandes.la_sienne',
-      'Personne ne traite sa propre demande',
-      'Elle va aux membres de la DCH habilités, ou au directeur du Capital Humain.',
+      'Vous ne pouvez pas traiter votre propre demande',
+      'Elle sera traitée par un autre membre habilité de la DCH, ou par la personne qui dirige la DCH.',
     );
   }
   const t = await traitementDe(tx, capacite, d);
@@ -444,8 +444,8 @@ export async function exigerDeTraiter(
     problem(
       403,
       'demandes.pas_traitant',
-      'Cette demande ne vous est pas confiée',
-      qui ? `${qui} la traite pour la DCH.` : undefined,
+      'Cette demande ne vous est pas attribuée',
+      qui ? `${qui} s’en occupe pour la DCH.` : undefined,
     );
   }
 }
@@ -472,7 +472,7 @@ export async function confierLaDemande(
     problem(
       403,
       'demandes.reserve_au_directeur_dch',
-      'Seul le directeur du Capital Humain confie les demandes',
+      'Seule la personne qui dirige la DCH peut confier les demandes',
     );
   }
   await tx.execute(sql`SELECT 1 FROM ${def.table} WHERE id = ${id} FOR UPDATE`);
@@ -481,19 +481,23 @@ export async function confierLaDemande(
     problem(
       422,
       'demandes.close',
-      'Cette demande n’attend plus la DCH',
-      'Elle est déjà traitée, ou introuvable.',
+      'Cette demande n’est plus en attente',
+      'Elle a déjà été traitée ou n’existe plus.',
     );
   }
   if (employeeId) {
     if (employeeId === d.employeeId) {
-      problem(422, 'demandes.confiee_au_demandeur', 'On ne confie pas une demande à qui la pose');
+      problem(
+        422,
+        'demandes.confiee_au_demandeur',
+        'Vous ne pouvez pas confier une demande à la personne qui l’a faite',
+      );
     }
     if (d.employeeId !== moi && (await subordonnesDe(tx, d.employeeId)).has(employeeId)) {
       problem(
         422,
         'demandes.confiee_au_subordonne',
-        'On ne confie pas une demande à une personne placée sous celle qui la pose',
+        'Vous ne pouvez pas confier une demande à un membre de l’équipe de la personne qui l’a faite',
       );
     }
     const m = await membreDCH(tx, dch, employeeId);
@@ -512,7 +516,7 @@ export async function confierLaDemande(
     problem(
       422,
       'demandes.la_sienne',
-      'Personne ne traite sa propre demande',
+      'Vous ne pouvez pas traiter votre propre demande',
       'Confiez-la à un membre de votre direction.',
     );
   }
@@ -544,10 +548,10 @@ export function exigerDOuvrir(f: FenetreDuPrincipal | null, moi: string | null):
     problem(
       422,
       'demandes.deja_ouverte',
-      'Vos backups la traitent déjà',
+      'Vos backups peuvent déjà la traiter',
       f.confieeParLePrincipal
-        ? 'Vous la leur avez confiée.'
-        : 'Votre fenêtre de 48 heures ouvrées a pris fin.',
+        ? 'Vous la leur avez déjà confiée.'
+        : 'Le délai de 48 heures ouvrées est dépassé.',
     );
   }
   if (f.backups.length === 0) {
@@ -555,7 +559,7 @@ export function exigerDOuvrir(f: FenetreDuPrincipal | null, moi: string | null):
       422,
       'demandes.sans_backup',
       'Vos backups ne peuvent pas la traiter en ce moment',
-      'En congé, sans accès au portail, ou dans l’équipe de la personne qui la pose.',
+      'Raisons possibles : congé, accès au portail fermé, ou appartenance à l’équipe de la personne qui a fait la demande.',
     );
   }
 }
@@ -574,8 +578,8 @@ export async function ouvrirAuxBackups(
     problem(
       422,
       'demandes.close',
-      'Cette demande n’attend plus la DCH',
-      'Elle est déjà traitée, ou introuvable.',
+      'Cette demande n’est plus en attente',
+      'Elle a déjà été traitée ou n’existe plus.',
     );
   }
   exigerDOuvrir((await traitementDe(tx, d.capacite, d)).fenetre, moi);

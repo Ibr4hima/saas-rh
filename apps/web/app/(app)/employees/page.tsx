@@ -368,8 +368,8 @@ export default function EmployeesPage() {
                 filtreActif
                   ? 'Essayez une autre recherche.'
                   : onglet === 'active'
-                    ? 'Créez le premier dossier, ou importez d’un coup le classeur de la Direction du Capital Humain.'
-                    : 'Les agents dont le contrat a pris fin, ou qui ont quitté l’APIX, se rangent ici. Un dossier se réactive d’un geste, une fois son nouveau contrat enregistré.'
+                    ? 'Créez un premier dossier, ou importez tout le personnel depuis le fichier Excel de la Direction du Capital Humain.'
+                    : 'Les agents dont le contrat a pris fin ou qui ont quitté l’APIX apparaissent ici. Un dossier peut être réactivé dès que le nouveau contrat est enregistré.'
               }
               action={
                 !filtreActif && onglet === 'active' ? (
@@ -526,7 +526,9 @@ export default function EmployeesPage() {
           open
           onClose={() => setBilanLot(null)}
           title={
-            bilanLot.skipped.length > 0 ? 'Dossiers laissés en place' : 'Ce que le lot a changé'
+            bilanLot.skipped.length > 0
+              ? 'Certains dossiers n’ont pas été modifiés'
+              : 'Modifications effectuées'
           }
           maxWidth="max-w-lg"
           footer={<Button onClick={() => setBilanLot(null)}>J&apos;ai compris</Button>}
@@ -647,7 +649,7 @@ function SupprimerModal({
         </ul>
       </ModalSection>
 
-      <ModalSection title="Ce qui disparaît">
+      <ModalSection title="Ce qui sera supprimé">
         <ul className="flex flex-col gap-1.5 text-[12.5px] text-ink">
           {[
             'L’état civil, les contrats et les affectations',
@@ -662,8 +664,8 @@ function SupprimerModal({
           ))}
         </ul>
         <p className="mt-3 rounded-bloc bg-bg px-3 py-2 text-[12px] text-ink-muted">
-          Réservé aux dossiers saisis par erreur : passé 30 jours, un dossier se garde et se
-          désactive.
+          Réservé aux dossiers créés par erreur. Au-delà de 30 jours, un dossier ne peut plus être
+          supprimé : désactivez-le.
         </p>
       </ModalSection>
 

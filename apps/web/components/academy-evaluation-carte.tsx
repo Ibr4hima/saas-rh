@@ -58,12 +58,12 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
     icone = 'lock';
     ton = 'bg-line-soft/70 text-ink-muted';
     texte =
-      'Les agents la passent une fois toutes les leçons validées ; la réussir délivre un certificat.';
+      'Les agents peuvent la passer une fois toutes les leçons validées. Un certificat est délivré en cas de réussite.';
   } else if (ev.etat === 'verrouillee') {
     icone = 'lock';
     ton = 'bg-line-soft/70 text-ink-muted';
     const restantes = formation.lessonCount - formation.completedLessons;
-    texte = `Elle s’ouvre quand toutes les leçons sont validées. Encore ${compte(restantes, 'leçon')}.`;
+    texte = `Elle sera accessible une fois toutes les leçons validées. Encore ${compte(restantes, 'leçon')} à valider.`;
   } else if (ev.etat === 'ouverte' && ev.renouvellement && ev.certificat?.expiresAt) {
     icone = 'workspace_premium';
     titre = 'Renouveler le certificat';
@@ -72,20 +72,20 @@ export function CarteEvaluation({ formation }: { formation: CourseDetail }) {
     texte =
       ev.derniere && !ev.derniere.passed
         ? `Dernière tentative : ${pourcent(ev.derniere.score)}. ${tentativesDuJour(ev) ?? 'Vous pouvez la repasser.'}`
-        : `La réussir délivre un certificat.${ev.tentativesParJour ? ` ${ev.tentativesParJour} tentatives par jour.` : ''}`;
+        : `Un certificat est délivré en cas de réussite.${ev.tentativesParJour ? ` ${ev.tentativesParJour} tentatives par jour.` : ''}`;
   } else if (ev.etat === 'en_cours') {
     icone = 'edit';
-    texte = 'Votre copie est ouverte : le temps court encore.';
+    texte = 'Votre évaluation est en cours et le temps continue de s’écouler.';
   } else if (ev.etat === 'attente') {
     icone = 'timer';
     ton = 'bg-accent-soft text-accent-text';
     texte = (
       <>
-        Vos {ev.tentativesParJour} tentatives du jour sont passées. La prochaine s’ouvre{' '}
+        Vous avez utilisé vos {ev.tentativesParJour} tentatives du jour. Vous pourrez réessayer{' '}
         <b className="font-bold text-ink">
           {ev.prochaineTentative ? quandLisible(ev.prochaineTentative) : 'bientôt'}
         </b>
-        , le temps de revoir les leçons.
+        : profitez-en pour revoir les leçons.
       </>
     );
   } else if (ev.etat === 'reussie' && ev.certificat) {
@@ -144,7 +144,7 @@ function CarteCertificat({ formation: f }: { formation: CourseDetail }) {
       </Button>
     );
   } else if (restantes > 0) {
-    texte = `Délivré quand toutes les leçons sont validées. Encore ${compte(restantes, 'leçon')}.`;
+    texte = `Délivré une fois toutes les leçons validées. Encore ${compte(restantes, 'leçon')} à valider.`;
   } else {
     // Toutes les leçons validées, sans certificat en cours : il a expiré, ou
     // il a été révoqué. La formation terminée se lit déjà plus haut.

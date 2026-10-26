@@ -169,14 +169,14 @@ export class GenerationService {
    */
   private documentConfigure(user: SessionUser, type: string): DocumentGenere {
     if (!genereQuelqueChose(user)) {
-      problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
+      problem(403, 'auth.forbidden', 'Vous n’avez pas les droits nécessaires pour cette action');
     }
     const doc = requestableDocSchema.safeParse(type);
     // Un document retiré de la liste ne se génère pas plus qu'il ne se demande.
     if (!doc.success) problem(404, 'documents.inconnu', 'Document inconnu');
     // Un membre ne génère que les contrats qu'on lui a délégués.
     if (!peutGenerer(user, doc.data)) {
-      problem(403, 'auth.forbidden', 'Droits insuffisants pour cette action');
+      problem(403, 'auth.forbidden', 'Vous n’avez pas les droits nécessaires pour cette action');
     }
     if (!estGenere(doc.data)) {
       problem(

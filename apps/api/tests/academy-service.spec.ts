@@ -212,7 +212,9 @@ describe('la construction du catalogue', () => {
     expect(await codeOf(() => deposerVideo(lecon, 16 * 60))).toBe('academy.video_too_long');
     const [l] = (await academy.gestionDetail(rh, id)).modules[0]!.lessons;
     expect(l!.videoStatus).toBe('erreur');
-    expect(l!.videoError).toBe('La vidéo dure 16 min 00 s : une leçon fait 15 minutes au plus.');
+    expect(l!.videoError).toBe(
+      'La vidéo dure 16 min 00 s : une leçon ne peut pas dépasser 15 minutes.',
+    );
     expect(await codeOf(() => deposerVideo(lecon, 902))).toBe('academy.video_too_long');
 
     // Treize minutes, autrefois refusées, puis quinze minutes pile, à
@@ -565,7 +567,7 @@ describe('le support et la vidéo', () => {
     expect(avis).toHaveLength(1);
     expect(avis[0]).toMatchObject({ recipient_user_id: agent.userId });
     expect(avis[0]!.link).toContain(`/lecon/${l1}`);
-    expect(avis[0]!.title).toMatch(/a changé : revoyez-la$/);
+    expect(avis[0]!.title).toMatch(/a été mise à jour : revoyez-la$/);
     // Un second remplacement chasse l'avis du premier.
     await regarder(l1, 110);
     await deposerVideo(l1, 105, true);

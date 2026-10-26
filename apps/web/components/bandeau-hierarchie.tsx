@@ -39,36 +39,36 @@ import { BandeauDelegation } from './traitement-dch';
 export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: string }> = {
   boucle: {
     court: 'Boucle',
-    explication: 'Sa chaîne de n+1 revient sur elle-même : elle ne remonte plus.',
+    explication: 'Sa chaîne de N+1 forme une boucle : elle ne remonte pas jusqu’au DG.',
   },
   dg_rattache: {
     court: 'DG rattaché',
-    explication: 'Le DG ne relève de personne : retirez son n+1.',
+    explication: 'Le DG ne relève de personne : retirez son N+1.',
   },
   sans_responsable: {
-    court: 'Sans n+1',
+    court: 'Sans N+1',
     explication: 'Personne ne peut remplir sa grille d’évaluation.',
   },
   responsable_archive: {
-    court: 'n+1 inactif',
-    explication: 'Son responsable a quitté l’agence : il faut le remplacer.',
+    court: 'N+1 inactif',
+    explication: 'Son N+1 n’est plus en activité : désignez-en un autre.',
   },
   responsable_stagiaire: {
-    court: 'n+1 stagiaire',
-    explication: 'Son responsable est en stage : il faut le remplacer.',
+    court: 'N+1 stagiaire',
+    explication: 'Son N+1 est stagiaire : désignez-en un autre.',
   },
   dg_hors_direction_generale: {
     court: 'DG hors Direction Générale',
-    explication: 'Le DG siège à la Direction Générale : changez son affectation.',
+    explication: 'Le DG doit être affecté à la Direction Générale : changez son affectation.',
   },
   directeur_mal_rattache: {
-    court: 'n+1 autre que le DG',
-    explication: 'Qui dirige une direction relève du DG, de personne d’autre.',
+    court: 'N+1 autre que le DG',
+    explication: 'Les responsables de direction ont le DG pour N+1.',
   },
   chef_mal_rattache: {
     court: 'Chef mal rattaché',
     explication:
-      'Le responsable d’un département ou d’un service relève du responsable de l’unité au-dessus de la sienne.',
+      'Les responsables de département ou de service ont pour N+1 le responsable de l’unité supérieure.',
   },
   hors_direction: {
     court: 'Autre direction',
@@ -79,7 +79,7 @@ export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: 
     explication: 'Sans direction, la règle de rattachement ne peut pas être vérifiée.',
   },
   responsable_sans_direction: {
-    court: 'n+1 sans affectation',
+    court: 'N+1 sans affectation',
     explication: 'Son responsable n’est affecté à aucune direction : affectez-le d’abord.',
   },
 };
@@ -110,9 +110,9 @@ export function BandeauHierarchie() {
           <>
             {c.sommetsMultiples.length > 1 ? (
               <>
-                L’organigramme a {c.sommetsMultiples.length} sommets (
-                {c.sommetsMultiples.join(', ')}) : rattachez-les sous la Direction Générale, il n’en
-                faut qu’un.{' '}
+                L’organigramme a {c.sommetsMultiples.length} unités au sommet (
+                {c.sommetsMultiples.join(', ')}) : rattachez-les à la Direction Générale, qui doit
+                être la seule au sommet.{' '}
               </>
             ) : null}
             {c.anomalies.length > 0 ? (
@@ -189,7 +189,7 @@ function Ligne({ anomalie }: { anomalie: AnomalieHierarchie }) {
             {anomalie.direction ?? 'Sans direction'}
             {anomalie.responsable ? (
               <>
-                {' · n+1 '}
+                {' · N+1 '}
                 {anomalie.responsable}
                 {anomalie.directionDuResponsable ? ` (${anomalie.directionDuResponsable})` : ''}
               </>

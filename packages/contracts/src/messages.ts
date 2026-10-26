@@ -33,11 +33,11 @@ function messageFr(issue: z.core.$ZodRawIssue): string | undefined {
       }
       return `La valeur doit être au moins ${issue.minimum}`;
     case 'too_big':
-      if (issue.origin === 'string') return `${pluriel(issue.maximum, 'caractère')} au plus`;
+      if (issue.origin === 'string') return `${pluriel(issue.maximum, 'caractère')} maximum`;
       if (issue.origin === 'array' || issue.origin === 'set') {
-        return `${pluriel(issue.maximum, 'élément')} au plus`;
+        return `${pluriel(issue.maximum, 'élément')} maximum`;
       }
-      return `La valeur doit être au plus ${issue.maximum}`;
+      return `La valeur ne doit pas dépasser ${issue.maximum}`;
     case 'invalid_format':
       return FORMATS[issue.format] ?? 'Format invalide';
     case 'invalid_value':

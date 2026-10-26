@@ -66,7 +66,7 @@ export async function dossierDeLAgent(
       422,
       'documents.not_active',
       'Attestation réservée aux agents en activité',
-      'Un dossier inactif relève du certificat de travail.',
+      'Pour un agent qui a quitté l’organisation, établissez un certificat de travail.',
     );
   }
 
@@ -85,7 +85,7 @@ export async function dossierDeLAgent(
       422,
       'documents.stage',
       `${document} réservée aux contrats de travail`,
-      'Pour un stage, c’est l’attestation de stage qui convient.',
+      'Pour un stagiaire, établissez une attestation de stage.',
     );
   }
 
@@ -205,7 +205,7 @@ export async function stageDeLAgent(
       422,
       'documents.sans_stage',
       'Aucun stage au dossier',
-      'L’attestation de stage cite un stage commencé de l’agent.',
+      'L’attestation de stage nécessite un stage déjà commencé.',
     );
   }
   if (debut) {
@@ -224,8 +224,8 @@ export async function stageDeLAgent(
     problem(
       400,
       'documents.stage_a_choisir',
-      'Stage à choisir',
-      `Le dossier compte ${stages.length} stages : l’attestation en cite un.`,
+      'Choisissez le stage',
+      `L’agent a effectué ${stages.length} stages : choisissez celui que l’attestation doit mentionner.`,
     );
   }
   return stages[0]!;
@@ -274,7 +274,7 @@ export async function emploiDeLAgent(tx: Tx, employeeId: string): Promise<Emploi
       422,
       'documents.en_activite',
       'Certificat réservé aux dossiers inactifs',
-      'Pour un agent en activité, c’est l’attestation de travail qui convient.',
+      'Pour un agent en activité, établissez une attestation de travail.',
     );
   }
 
@@ -290,7 +290,7 @@ export async function emploiDeLAgent(tx: Tx, employeeId: string): Promise<Emploi
       422,
       'documents.stage',
       'Certificat de travail réservé aux contrats de travail',
-      'Pour un stage, c’est l’attestation de stage qui convient.',
+      'Pour un stagiaire, établissez une attestation de stage.',
     );
   }
   const debut = au[0]?.debut ?? row.hired_on;

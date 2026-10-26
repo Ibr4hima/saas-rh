@@ -72,7 +72,11 @@ export default function EssaiPage() {
       setConfirmer(false);
     },
     onError: (err) =>
-      setErreur(err instanceof ApiError ? err.message : 'La copie n’a pas pu partir.'),
+      setErreur(
+        err instanceof ApiError
+          ? err.message
+          : 'Vos réponses n’ont pas pu être envoyées. Réessayez.',
+      ),
   });
 
   const repondre = useCallback(
@@ -208,8 +212,8 @@ function Accueil({
         <p className="flex gap-3 rounded-bloc bg-primary-soft/60 px-4 py-3 text-[12.5px] leading-relaxed text-ink">
           <Icon name="visibility" size={18} className="mt-px shrink-0 text-primary" />
           <span>
-            Vous passez l’épreuve comme un agent la passera. Rien n’est enregistré et aucun
-            certificat n’est délivré ; à la fin, vous voyez les bonnes réponses.
+            Vous passez l’évaluation dans les mêmes conditions qu’un agent. Rien n’est enregistré,
+            aucun certificat n’est délivré et les bonnes réponses s’affichent à la fin.
           </span>
         </p>
         <ul className="flex flex-col gap-3">
@@ -280,8 +284,8 @@ function Resultat({
         {r.passed ? (
           <div className="mt-2 flex w-full flex-col items-center gap-3 rounded-bloc border border-success/25 bg-success-soft/50 px-5 py-4">
             <p className="text-[13px] leading-relaxed text-ink">
-              Un agent recevrait ce certificat. L’aperçu est barré « spécimen » : il n’a pas de
-              numéro et ne se vérifie pas.
+              Voici le certificat qu’un agent recevrait. Cet aperçu porte la mention « spécimen » :
+              il n’a pas de numéro et ne peut pas être vérifié.
             </p>
             <Button onClick={() => setSpecimen(true)}>
               <Icon name="workspace_premium" size={16} />
@@ -346,7 +350,7 @@ function Resultat({
 
       <div className="flex flex-wrap justify-center gap-2 border-t border-line-soft px-6 py-4">
         <Link href={`/academy/gerer/${f.id}`}>
-          <Button variant="secondary">Retour à l’atelier</Button>
+          <Button variant="secondary">Retour à la formation</Button>
         </Link>
         <Button loading={recommence} onClick={onRecommencer}>
           <Icon name="replay" size={16} />

@@ -101,8 +101,8 @@ function lireLeFichier(input: DeposerFichierInput): Buffer {
     problem(
       422,
       'documents.bad_format',
-      'Le contenu ne correspond pas au format annoncé',
-      'Déposez un PDF.',
+      'Ce fichier n’est pas un PDF valide',
+      'Déposez un fichier PDF.',
     );
   }
   return data;
@@ -206,7 +206,7 @@ export class DocumentRequestsService {
           'documents.deja_en_cours',
           'Ce document est déjà demandé',
           // Le client n'affiche que le DÉTAIL : il doit se lire seul.
-          `${labelList(doublons)} : votre demande est déjà en cours de traitement. Vous serez prévenu dès qu’il sera prêt.`,
+          `${labelList(doublons)} : votre demande est déjà en cours de traitement. Vous recevrez une notification dès qu’il sera prêt.`,
         );
       }
 
@@ -486,7 +486,7 @@ export class DocumentRequestsService {
       const vues = await capacitesVues(tx, user, 'documents');
       const capacite = capaciteDesDocuments(row.docTypes);
       if (row.employeeId !== moi && traiteLeType(vues, moi, directeur, capacite)) return null;
-      return 'Réservé à qui traite ce document pour la DCH';
+      return 'Réservé à la personne qui traite ce document à la DCH';
     }
     try {
       await exigerDeTraiter(tx, user, capaciteDesDocuments(row.docTypes), {
@@ -540,8 +540,7 @@ export class DocumentRequestsService {
         problem(
           422,
           'documents.invalid_transition',
-          'Cette étape ne suit pas l’étape actuelle de la demande',
-          `État actuel : ${row.status}.`,
+          'La demande a déjà changé d’étape : rechargez la page',
         );
       }
 
@@ -639,7 +638,7 @@ export class DocumentRequestsService {
       await this.notifications.notifyUser(tx, user.tenantId, row.handledByUserId, {
         type: 'document_request_cancelled',
         sujet: 'dch.documents',
-        title: `${soi.givenName} ${soi.familyName} annule sa demande ${quoi}`,
+        title: `${soi.givenName} ${soi.familyName} a annulé sa demande ${quoi}`,
         link: '/documents',
         dedupeKey: `document:${requestId}:annulee`,
       });
@@ -719,7 +718,7 @@ export class DocumentRequestsService {
           skipped.push({
             id,
             employeeName: name,
-            reason: `Déjà « ${DOC_REQUEST_STATUS_LABELS[row.status as DocumentRequestStatus] ?? row.status} »`,
+            reason: `Demande déjà « ${DOC_REQUEST_STATUS_LABELS[row.status as DocumentRequestStatus] ?? row.status} »`,
           });
           continue;
         }
@@ -817,7 +816,7 @@ export class DocumentRequestsService {
           : e.isCorrection
             ? `${votre} ${retrait}`
             : `${votre} ${accorde('prêt')}, ${retrait}`,
-      rejected: `Votre demande ${demande} est refusée`,
+      rejected: `Votre demande ${demande} a été refusée`,
     };
     const title = titres[e.status];
     if (!title) return;
@@ -930,7 +929,7 @@ export class DocumentRequestsService {
         problem(
           422,
           'documents.dernier_fichier',
-          'Le dernier document ne se retire pas',
+          'Impossible de retirer le dernier document',
           'Déposez d’abord le bon fichier, puis retirez celui-ci.',
         );
       }
@@ -1020,7 +1019,11 @@ export class DocumentRequestsService {
           row,
         ))
       ) {
-        problem(403, 'documents.forbidden_scope', 'Réservé à qui traite ce document pour la DCH');
+        problem(
+          403,
+          'documents.forbidden_scope',
+          'Réservé à la personne qui traite ce document à la DCH',
+        );
       }
       const ligne = { tenantId: f.tenantId, id: f.id, cleVersion: f.cleVersion };
       return {
@@ -1044,7 +1047,7 @@ export class DocumentRequestsService {
       .limit(1);
     if (!row) problem(404, 'documents.request_not_found', 'Demande introuvable');
     if (![...OPEN_STATUSES, 'ready'].includes(row.status)) {
-      problem(422, 'documents.deja_traitee', 'Cette demande est close');
+      problem(422, 'documents.deja_traitee', 'Cette demande est clôturée');
     }
     if (row.status === 'ready') {
       // Prête, ses documents restent à qui traite CE type de document : un
@@ -1054,7 +1057,11 @@ export class DocumentRequestsService {
       const vues = await capacitesVues(tx, user, 'documents');
       const capacite = capaciteDesDocuments(row.docTypes);
       if (row.employeeId === moi || !traiteLeType(vues, moi, directeur, capacite)) {
-        problem(403, 'documents.forbidden_scope', 'Réservé à qui traite ce document pour la DCH');
+        problem(
+          403,
+          'documents.forbidden_scope',
+          'Réservé à la personne qui traite ce document à la DCH',
+        );
       }
     } else {
       const motif = await this.refus(tx, user, row);

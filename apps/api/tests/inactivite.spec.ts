@@ -1411,7 +1411,7 @@ describe('un départ daté, un retour daté', () => {
       le: await jour(-100),
     });
     expect(tot.skipped[0]?.reason).toMatch(
-      /^Son dernier jour était le .+ : la reprise vient après$/,
+      /^Son dernier jour était le .+ : la reprise doit être postérieure à cette date$/,
     );
 
     // Sans date : aujourd'hui, pas le lendemain du départ.
@@ -2171,7 +2171,7 @@ describe('les invitations partent d’elles-mêmes', () => {
       {
         employeeId: dg.employeeId,
         nom: 'Cheikh Test',
-        raison: 'Seuls l’administrateur et le directeur du Capital Humain invitent cet agent',
+        raison: 'Seuls l’administrateur et la personne qui dirige la DCH peuvent inviter cet agent',
       },
     ]);
     const { agents } = await portail.etatDesAcces(delegue);
@@ -2250,7 +2250,7 @@ describe('les invitations partent d’elles-mêmes', () => {
       // Rien avant son premier jour : ni réactivation, ni affectation.
       const re = await rh.archive(admin, { ids: [moussa.employeeId], archived: false });
       expect(re.done).toBe(0);
-      expect(re.skipped[0]?.reason).toMatch(/commence le .+ se réactivera ce jour-là/);
+      expect(re.skipped[0]?.reason).toMatch(/commence le .+ sera réactivé ce jour-là/);
       expect(
         await codeOf(async () =>
           people.newAssignment(admin, moussa.employeeId, {
@@ -2874,7 +2874,7 @@ describe('une fin de contrat ne contourne pas la désactivation (audit)', () => 
       await codeOf(async () => people.newContract(rh(), fatou.employeeId, await contrat(5))),
     ).toBe('people.reactivation_reservee');
     const r = await people.archive(rh(), { ids: [fatou.employeeId], archived: false });
-    expect(r.skipped[0]?.reason).toMatch(/^Compte administrateur/);
+    expect(r.skipped[0]?.reason).toMatch(/^Ce compte administrateur/);
     const directrice = {
       userId: mariama.userId,
       tenantId,

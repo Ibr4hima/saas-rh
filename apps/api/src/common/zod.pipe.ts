@@ -25,7 +25,7 @@ export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
       throw new ProblemException({
         status: 400,
         code: 'validation_failed',
-        title: 'Requête invalide',
+        title: 'Informations invalides',
         detail,
       });
     }

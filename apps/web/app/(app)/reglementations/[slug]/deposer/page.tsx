@@ -137,7 +137,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
       <Page>
         <Card>
           <CardContent className="py-10 text-center text-[13px] text-ink-muted">
-            Seul l’administrateur dépose les textes de référence.
+            Seul l’administrateur peut déposer les textes de référence.
           </CardContent>
         </Card>
       </Page>
@@ -156,7 +156,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
           <Field
             label="Référence"
             htmlFor="reference"
-            hint="Ce qui identifie la version en vigueur, par exemple « Loi n° 97-17 du 1er décembre 1997 »."
+            hint="La référence de la version en vigueur, par exemple « Loi n° 97-17 du 1er décembre 1997 »."
           >
             <Input
               id="reference"
@@ -184,7 +184,8 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
               <span className="text-[12.5px] leading-snug text-ink">
                 Visible par tout le personnel
                 <span className="mt-0.5 block text-[11.5px] text-ink-muted">
-                  Tant que la case est décochée, le texte reste un brouillon, invisible des agents.
+                  Tant que la case n’est pas cochée, le texte reste un brouillon que les agents ne
+                  voient pas.
                 </span>
               </span>
             </label>
@@ -199,7 +200,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
               Le texte
             </p>
             <p className="text-[11.5px] text-ink-muted">
-              Collez le texte tel quel. Les en-têtes se reconnaissent seuls :{' '}
+              Collez le texte tel quel. Les en-têtes sont reconnus automatiquement :{' '}
               <code className="rounded bg-bg px-1 font-mono text-[11px]">CHAPITRE I — Titre</code>,{' '}
               <code className="rounded bg-bg px-1 font-mono text-[11px]">Section I — Titre</code>,{' '}
               <code className="rounded bg-bg px-1 font-mono text-[11px]">
@@ -275,7 +276,7 @@ export default function DeposerTextePage({ params }: { params: Promise<{ slug: s
           }}
         >
           <p className="text-[13px] text-ink-muted">
-            Ses articles et son fichier officiel disparaissent de l’espace des agents.
+            Ses articles et son fichier officiel ne seront plus visibles par les agents.
           </p>
         </FenetreSuppression>
       ) : null}
@@ -380,7 +381,7 @@ function FichierOfficiel({
               ? `${choisi.name} · ${poids(choisi.size)}, sera déposé à l’enregistrement`
               : actuel
                 ? `${actuel.filename} · ${poids(actuel.size)}`
-                : 'Aucun fichier déposé. Le texte lu reste consultable sans lui.'}
+                : 'Aucun fichier déposé. Le texte reste consultable en ligne.'}
           </p>
         </div>
         <label className="shrink-0 cursor-pointer rounded-controle-sm border border-card-line px-3 py-1.5 text-[12px] font-semibold text-ink transition-colors hover:border-primary/40 hover:text-primary">

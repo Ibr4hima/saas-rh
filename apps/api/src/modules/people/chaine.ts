@@ -159,7 +159,7 @@ export async function validerRattachement(
       422,
       'people.dg_sans_responsable',
       'Le DG ne relève de personne',
-      'Cet agent dirige l’unité racine de l’organigramme : pas de n+1 dans l’agence.',
+      'La personne qui dirige l’unité au sommet de l’organigramme n’a pas de N+1.',
     );
   }
   const [manager] = await tx
@@ -168,7 +168,7 @@ export async function validerRattachement(
     .where(eq(t.employees.id, managerId))
     .limit(1);
   if (!manager) {
-    problem(422, 'people.manager_not_found', "Ce manager n'existe pas");
+    problem(422, 'people.manager_not_found', 'N+1 introuvable');
   }
   if (manager.status !== 'active') {
     problem(
@@ -180,7 +180,7 @@ export async function validerRattachement(
   }
   // Un n+1 dont le contrat est arrivé à terme n'est plus de l'APIX, même si
   // son dossier n'est pas encore passé dans les inactifs.
-  await exigerEnActivite(tx, managerId, 'être n+1');
+  await exigerEnActivite(tx, managerId, 'être N+1');
   // Un stagiaire n'est le n+1 de personne : ni pendant son stage, ni avant
   // qu'il commence.
   const { rows: stage } = await tx.execute<{ nom: string; debut: string | null; deja: boolean }>(
@@ -197,10 +197,10 @@ export async function validerRattachement(
     problem(
       422,
       'people.n1_stagiaire',
-      'Un stagiaire ne peut pas être n+1',
+      'Un stagiaire ne peut pas être N+1',
       s.deja
-        ? `${s.nom} est en stage : un stagiaire ne peut pas être n+1.`
-        : `${s.nom} commence un stage le ${frDate(s.debut)} : un stagiaire ne peut pas être n+1.`,
+        ? `${s.nom} est en stage : un stagiaire ne peut pas être N+1.`
+        : `${s.nom} commence un stage le ${frDate(s.debut)} : un stagiaire ne peut pas être N+1.`,
     );
   }
   // UNION, pas UNION ALL : sur une boucle déjà présente dans les données, la
@@ -231,7 +231,7 @@ export async function validerRattachement(
       422,
       'people.sans_affectation',
       'Affectez d’abord l’agent à une direction',
-      'Le n+1 se désigne ensuite : c’est la direction qui dit parmi qui le choisir.',
+      'Le N+1 pourra ensuite être choisi parmi les agents de cette direction.',
     );
   }
   const directionDuResponsable = await directionDeEmploye(tx, managerId);
@@ -239,8 +239,8 @@ export async function validerRattachement(
     problem(
       422,
       'people.responsable_sans_affectation',
-      'Le n+1 désigné n’est affecté à aucune direction',
-      'Affectez-le d’abord à une direction ; ses agents pourront ensuite lui être rattachés.',
+      'Le N+1 désigné n’est affecté à aucune direction',
+      'Affectez d’abord ce N+1 à une direction.',
     );
   }
 
@@ -255,15 +255,15 @@ export async function validerRattachement(
         422,
         'people.aucun_directeur_general',
         'Aucun DG n’est désigné',
-        'Qui dirige une direction relève du DG : désignez d’abord le responsable de l’unité racine dans l’organigramme.',
+        'Les responsables de direction ont le DG pour N+1 : désignez d’abord le DG dans l’organigramme.',
       );
     }
     if (managerId !== dg) {
       problem(
         422,
         'people.directeur_hors_dg',
-        'Qui dirige une direction relève du DG',
-        'Cet agent dirige une direction : son responsable hiérarchique ne peut être que le DG.',
+        'Le N+1 d’un responsable de direction est le DG',
+        'Cet agent dirige une direction : son N+1 ne peut être que le DG.',
       );
     }
     return;
@@ -278,7 +278,7 @@ export async function validerRattachement(
         422,
         'people.chef_mal_rattache',
         `Le responsable de « ${place.unite} » relève de ${place.superieur.nom}`,
-        `Le responsable de « ${place.unite} » relève de ${place.superieur.nom}, qui dirige « ${place.superieur.unite} », l’unité au-dessus de la sienne.`,
+        `Le responsable de « ${place.unite} » relève de ${place.superieur.nom}, responsable de « ${place.superieur.unite} », l’unité supérieure.`,
       );
     }
     return;
@@ -926,7 +926,11 @@ export async function planifierReprise(
   partants: ReadonlySet<string> = new Set([partant]),
 ): Promise<PlanDeReprise> {
   if (repreneur === partant) {
-    problem(422, 'people.repreneur_partant', 'Le repreneur ne peut pas être celui qui part');
+    problem(
+      422,
+      'people.repreneur_partant',
+      'Le repreneur doit être une autre personne que l’agent qui part',
+    );
   }
   if (partants.has(repreneur)) {
     problem(422, 'people.repreneur_partant', 'Le repreneur part aussi');
@@ -953,16 +957,16 @@ export async function planifierReprise(
       problem(
         422,
         'people.repreneur_sans_place',
-        'Le repreneur ne peut pas prendre sa place : il n’a pas de n+1',
-        'Pris dans l’équipe, le repreneur relèverait du n+1 du partant. Choisissez-le hors de l’équipe, ou désignez d’abord ce n+1.',
+        'Le repreneur ne peut pas être choisi dans l’équipe : l’agent qui part n’a pas de N+1',
+        'Choisissez un repreneur hors de l’équipe, ou désignez d’abord un N+1 pour l’agent qui part.',
       );
     }
     if (partants.has(place)) {
       problem(
         422,
         'people.repreneur_sans_place',
-        'Le repreneur ne peut pas prendre sa place : son n+1 part aussi',
-        'Traitez d’abord le départ de ce n+1, ou choisissez un repreneur hors de l’équipe.',
+        'Le repreneur ne peut pas être choisi dans l’équipe : le N+1 de l’agent qui part s’en va aussi',
+        'Traitez d’abord le départ de ce N+1, ou choisissez un repreneur hors de l’équipe.',
       );
     }
     await validerRattachement(tx, repreneur, place, await directionDeEmploye(tx, repreneur));
@@ -1028,8 +1032,8 @@ export async function assertDGALaDirectionGenerale(tx: Tx): Promise<void> {
     problem(
       422,
       'org.dg_hors_direction_generale',
-      'Le DG resterait hors de la Direction Générale',
-      'Sa place est à la Direction Générale : cette opération l’en ferait sortir. Désignez d’abord la personne qui prendra sa suite.',
+      'Le DG doit rester affecté à la Direction Générale',
+      'Cette opération l’en ferait sortir. Désignez d’abord la personne qui prendra sa suite.',
     );
   }
 }

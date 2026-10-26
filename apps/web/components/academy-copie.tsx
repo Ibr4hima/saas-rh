@@ -45,7 +45,7 @@ export function reglesEpreuve(
     ['quiz', `${compte(questionCount, 'question')}, tirées au hasard pour chaque tentative.`],
     [
       'timer',
-      `${compte(minutes, 'minute')}, ${minutes > 1 ? 'décomptées' : 'décomptée'} dès que vous commencez. À zéro, la copie part d’elle-même.`,
+      `${compte(minutes, 'minute')}, ${minutes > 1 ? 'décomptées' : 'décomptée'} dès que vous commencez. À la fin du temps, votre copie est envoyée automatiquement.`,
     ],
     [
       'check_circle',

@@ -124,7 +124,7 @@ const MOTS_STATUT: Record<string, string> = {
   absente: 'n’a pas encore de vidéo',
   envoi: 'a une vidéo en cours d’envoi',
   traitement: 'a une vidéo en cours de traitement',
-  erreur: 'a une vidéo en erreur',
+  erreur: 'a une vidéo qui n’a pas pu être traitée',
 };
 
 function formatDuree(secondes: number): string {
@@ -159,7 +159,7 @@ export class AcademyService {
       problem(
         403,
         'academy.forbidden',
-        'Vous n’êtes pas habilité à gérer le catalogue de l’Academy',
+        'Vous n’avez pas accès à la gestion du catalogue de l’Academy',
       );
     }
   }
@@ -677,7 +677,7 @@ export class AcademyService {
         problem(
           422,
           'academy.formateur_inconnu',
-          'Ce formateur n’est pas un agent actif de l’APIX',
+          'Ce formateur ne fait plus partie du personnel en activité',
         );
       }
       return {
@@ -736,7 +736,7 @@ export class AcademyService {
           problem(
             422,
             'academy.publication_incomplete',
-            'La formation n’est pas encore publiable',
+            'La formation n’est pas encore prête à être publiée',
             obstacles.map((o) => o.texte).join(' '),
           );
         }
@@ -1000,7 +1000,7 @@ export class AcademyService {
         413,
         'academy.video_too_large',
         'Le fichier dépasse 2 Go',
-        'Exportez la vidéo en 1080p ou 720p : quinze minutes y tiennent largement.',
+        'Exportez la vidéo en 1080p ou 720p : une leçon de quinze minutes ne dépassera pas cette taille.',
       );
     }
     const { uid, cible } = this.stockage.preparerEnvoi(lessonId);
@@ -1102,7 +1102,7 @@ export class AcademyService {
     }
     if (duree > DUREE_MAX_LECON_S + MARGE_DUREE_S) {
       await rm(temporaire, { force: true });
-      const texte = `La vidéo dure ${formatDuree(duree)} : une leçon fait ${DUREE_MAX_LECON_S / 60} minutes au plus.`;
+      const texte = `La vidéo dure ${formatDuree(duree)} : une leçon ne peut pas dépasser ${DUREE_MAX_LECON_S / 60} minutes.`;
       await refuser(texte);
       problem(422, 'academy.video_too_long', texte, 'Découpez-la en plusieurs leçons.');
     }
@@ -1185,7 +1185,7 @@ export class AcademyService {
       await notifier(tx, tenantId, r.user_id, {
         type: 'academy_lecon_a_revoir',
         sujet: 'academy',
-        title: `La leçon « ${lecon.title} » de « ${r.formation} » a changé : revoyez-la`,
+        title: `La leçon « ${lecon.title} » de « ${r.formation} » a été mise à jour : revoyez-la`,
         link: `/academy/${lecon.courseId}/lecon/${lecon.id}`,
         dedupeKey: `academy:lecon:${lecon.id}:revoir:${uid}`,
         remplace: `academy:lecon:${lecon.id}:revoir:`,
@@ -1364,8 +1364,8 @@ export class AcademyService {
         problem(
           409,
           'academy.playing_elsewhere',
-          'La lecture se poursuit ailleurs',
-          'Une autre leçon, ou la même dans un autre onglet, a pris le relais.',
+          'Lecture en cours ailleurs',
+          'Une autre vidéo est en lecture, dans cet onglet ou dans un autre.',
         );
       }
       const lecon = await this.lecon(tx, lessonId);
@@ -1459,7 +1459,7 @@ export class AcademyService {
   /** Le fichier d'une vidéo locale, si l'adresse signée tient. */
   media(tenantId: string, uid: string, exp: string, sig: string): string {
     if (!this.stockage.verifier(tenantId, uid, exp, sig)) {
-      problem(403, 'academy.media_forbidden', 'Adresse de lecture invalide ou expirée');
+      problem(403, 'academy.media_forbidden', 'Le lien de la vidéo a expiré : rechargez la page');
     }
     return this.stockage.chemin(tenantId, uid);
   }
