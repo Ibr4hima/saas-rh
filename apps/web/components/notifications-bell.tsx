@@ -40,7 +40,7 @@ function iconOf(type: string): IconName {
   if (type.startsWith('profile_change')) return 'person';
   if (type === 'contract_deadline') return 'schedule';
   if (type === 'holiday_reminder') return 'flag';
-  if (type === 'objectif') return 'task_alt';
+  if (type === 'evaluation') return 'rate_review';
   if (type.startsWith('delegation') || type === 'dch_vacante') return 'group';
   return 'notifications';
 }

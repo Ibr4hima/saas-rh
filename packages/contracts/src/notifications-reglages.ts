@@ -88,16 +88,10 @@ export const SUJETS = {
     icone: 'how_to_reg',
     pour: agent,
   },
-  objectifs: {
+  evaluation: {
     groupe: 'moi',
-    libelle: 'Mes objectifs et mon évaluation',
-    icone: 'flag',
-    pour: agentEvalue,
-  },
-  'objectifs.apix': {
-    groupe: 'moi',
-    libelle: 'Objectifs de ma direction et orientations de l’APIX',
-    icone: 'trending_up',
+    libelle: 'Mon évaluation annuelle',
+    icone: 'rate_review',
     pour: agentEvalue,
   },
   academy: {
@@ -118,10 +112,10 @@ export const SUJETS = {
     icone: 'groups',
     pour: (p) => p.aUneEquipe,
   },
-  'equipe.objectifs': {
+  'equipe.evaluations': {
     groupe: 'equipe',
-    libelle: 'Objectifs et auto-évaluations de mon équipe',
-    icone: 'rate_review',
+    libelle: 'Évaluations de mon équipe',
+    icone: 'rule',
     pour: (p) => p.aUneEquipe,
   },
   'dch.conges': {

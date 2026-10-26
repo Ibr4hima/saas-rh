@@ -188,6 +188,8 @@ export const employees = pgTable('employees', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   /** À qui l'agent rend compte — distinct du responsable d'unité. */
   managerEmployeeId: uuid('manager_employee_id'),
+  /** Cadre ou non cadre (0123) : la grille d'évaluation de l'agent en dépend. */
+  personnel: text('personnel'),
 });
 
 export const assignments = pgTable('assignments', {
@@ -815,7 +817,7 @@ export const academyCertificates = pgTable('academy_certificates', {
   reemisSous: text('reemis_sous'),
 });
 
-// ---------- Objectifs (0042) ----------
+// ---------- Objectifs (0042), inutilisés depuis l'ADR-0149 ----------
 
 export const objectifs = pgTable('objectifs', {
   id: uuid('id').primaryKey(),
@@ -873,6 +875,46 @@ export const objectiveReviewSchedule = pgTable('objective_review_schedule', {
   tenantId: uuid('tenant_id').notNull(),
   reviewMonth: smallint('review_month').notNull().default(12),
   reviewDay: smallint('review_day').notNull().default(15),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- Évaluation annuelle sur la grille de l'APIX (0123, ADR-0149) ----------
+
+/** La période d'évaluation d'une année, fixée par qui dirige la DCH. */
+export const evaluationPeriodes = pgTable('evaluation_periodes', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  annee: smallint('annee').notNull(),
+  du: date('du').notNull(),
+  au: date('au').notNull(),
+  ouvertureAnnonceeLe: timestamp('ouverture_annoncee_le', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** La grille d'un agent pour une année, et son circuit. */
+export const evaluationGrilles = pgTable('evaluation_grilles', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  annee: smallint('annee').notNull(),
+  modele: text('modele').notNull(),
+  etat: text('etat').notNull().default('brouillon'),
+  contenu: jsonb('contenu').notNull().default({}),
+  identification: jsonb('identification'),
+  evaluateurEmployeeId: uuid('evaluateur_employee_id'),
+  envoyeeLe: timestamp('envoyee_le', { withTimezone: true }),
+  renvoiMot: text('renvoi_mot'),
+  renvoyeeLe: timestamp('renvoyee_le', { withTimezone: true }),
+  commentairesAgent: text('commentaires_agent'),
+  valideeAgentLe: timestamp('validee_agent_le', { withTimezone: true }),
+  n2EmployeeId: uuid('n2_employee_id'),
+  n2Identite: jsonb('n2_identite'),
+  envoyeeN2Le: timestamp('envoyee_n2_le', { withTimezone: true }),
+  commentairesN2: text('commentaires_n2'),
+  valideeN2Le: timestamp('validee_n2_le', { withTimezone: true }),
+  termineeLe: timestamp('terminee_le', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

@@ -429,4 +429,30 @@ describe('conversion d’une ligne', () => {
     expect(r.ok.entree.assignment).toBeUndefined();
     expect(r.ok.uniteAbrege).toBeNull();
   });
+
+  it('lit si l’agent est cadre ou non, pour sa grille d’évaluation', () => {
+    const entetes = ['Prénom', 'Nom', 'Matricule', 'Début du contrat', 'Cadre ou non-cadre'];
+    const { colonnes: c } = correspondre(entetes);
+    const lire = (personnel: string | null) =>
+      convertirLigne(['Awa', 'Ndiaye', 'APIX-0003', '2022-03-14', personnel] as never, c);
+    for (const [ecrit, attendu] of [
+      ['Cadre', 'cadre'],
+      ['NON-CADRE', 'non_cadre'],
+      ['Non cadre', 'non_cadre'],
+    ] as const) {
+      const r = lire(ecrit);
+      if (!('ok' in r)) throw new Error(`« ${ecrit} » : attendu convertible`);
+      expect(r.ok.entree.employee.personnel).toBe(attendu);
+    }
+    const vide = lire(null);
+    if (!('ok' in vide)) throw new Error('attendu convertible');
+    expect(vide.ok.entree.employee).not.toHaveProperty('personnel');
+    const faux = lire('Agent de maîtrise');
+    expect('refus' in faux && faux.refus).toEqual({
+      matricule: 'APIX-0003',
+      nom: 'Awa Ndiaye',
+      motif: '« Agent de maîtrise » n’est ni Cadre ni Non-cadre',
+      colonne: 'Personnel',
+    });
+  });
 });

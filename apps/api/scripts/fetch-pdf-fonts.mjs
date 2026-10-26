@@ -19,7 +19,9 @@
  * (Monotype, Microsoft) interdit de les versionner. Arimo, Tinos et Comic
  * Relief en sont les équivalents libres, sous licence OFL, dessinés aux MÊMES
  * chasses : un mot y occupe la même largeur, une ligne se coupe au même
- * endroit. Google Sans reste celle du certificat d'APIX Academy, comme du
+ * endroit. Gill Sans MT, celle des grilles d'évaluation (ADR-0149), n'a pas
+ * d'équivalent aux mêmes chasses : Cabin, de la même famille humaniste, en
+ * tient lieu. Google Sans reste celle du certificat d'APIX Academy, comme du
  * site.
  */
 import { execFileSync } from 'node:child_process';
@@ -74,6 +76,19 @@ const FAMILLES = [
       { nom: 'google-sans-regular.ttf', style: 'normal', poids: '400' },
       { nom: 'google-sans-bold.ttf', style: 'normal', poids: '700' },
       { nom: 'google-sans-italic.ttf', style: 'italic', poids: '400' },
+    ],
+  },
+  {
+    // Gill Sans MT, celle des grilles d'évaluation de l'APIX (ADR-0149), ne se
+    // redistribue pas plus qu'Arial : Cabin, humaniste comme elle, en tient
+    // lieu tant que l'exploitant n'a pas déposé la vraie.
+    css: 'Cabin:ital,wght@0,400;0,700;1,400;1,700',
+    licence: { source: 'ofl/cabin/OFL.txt', nom: 'cabin-OFL.txt' },
+    coupes: [
+      { nom: 'cabin-regular.ttf', style: 'normal', poids: '400' },
+      { nom: 'cabin-bold.ttf', style: 'normal', poids: '700' },
+      { nom: 'cabin-italic.ttf', style: 'italic', poids: '400' },
+      { nom: 'cabin-bold-italic.ttf', style: 'italic', poids: '700' },
     ],
   },
   {

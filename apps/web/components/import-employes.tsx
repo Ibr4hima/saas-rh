@@ -264,8 +264,12 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
               Une colonne <b>Matricule du responsable</b> rattache chaque agent à son n+1, et le
               fichier n’a pas besoin d’être trié : un chef peut figurer plus bas que son équipe.
               Sans elle, chaque agent relève du directeur de sa direction ; dans une direction sans
-              directeur, il entre sans n+1 et ne pourra ni recevoir d’objectifs ni être évalué avant
-              qu’on lui en désigne un.
+              directeur, l’agent entre sans n+1 et ne peut pas être évalué tant qu’aucun n+1 n’est
+              désigné.
+            </p>
+            <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
+              Une colonne <b>Personnel</b>, Cadre ou Non-cadre, choisit la grille d’évaluation de
+              chaque agent.
             </p>
           </ModalSection>
         </>
@@ -397,8 +401,8 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
           <Chiffre valeur={rapport.erreurs} libelle="lignes en erreur" ton="danger" />
           {/* L'orange pour les deux chiffres qui laissent du travail : ces
               agents entrent sans direction ou sans n+1, et quelqu'un devra
-              les rattacher. Sans n+1, ils ne pourront d'ailleurs ni recevoir
-              d'objectifs ni être évalués. Une ligne ignorée, elle, n'attend
+              les rattacher. Sans n+1, ces agents ne pourront d'ailleurs pas
+              être évalués. Une ligne ignorée, elle, n'attend
               rien — le dossier existe déjà et reste intact. */}
           <Chiffre valeur={rapport.sansUnite} libelle="sans direction" ton="warning" />
           <Chiffre valeur={rapport.sansResponsable} libelle="sans n+1" ton="warning" />

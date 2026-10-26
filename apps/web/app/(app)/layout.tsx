@@ -160,7 +160,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     href: '/evaluation',
-    label: 'Évaluation des objectifs',
+    label: 'Évaluation annuelle',
     short: 'Évaluation',
     icon: 'rule',
     groupe: 'croissance',
@@ -206,16 +206,15 @@ const PAGE_TITLES: Record<string, string> = {
   '/academy/gerer': 'Gérer le catalogue',
   '/academy/certificats': 'Mes certificats',
   '/notifications': 'Notifications',
-  '/evaluation': 'Évaluation des objectifs',
+  '/evaluation': 'Évaluation annuelle',
   '/organisation': 'Organigramme',
   '/reglementations/code-du-travail': 'Code du travail',
   '/reglementations/reglement-interieur': 'Règlement intérieur',
   '/moi/conges': 'Poser une demande',
   '/moi/conges/historique': 'Historique',
   '/moi/equipe': 'Demandes à viser',
-  '/moi/equipe/suivi': 'Suivi & Évaluation',
-  '/moi/objectifs': 'Mes objectifs',
-  '/moi/objectifs-apix': 'Objectifs de l’APIX',
+  '/moi/equipe/evaluations': 'Évaluations',
+  '/moi/evaluation': 'Mon évaluation',
   '/moi/dch': 'Absences & Congés',
   '/moi/documents': 'Demander un document',
   '/moi/documents/suivi': 'Suivi de mes demandes',
@@ -249,7 +248,7 @@ function pageTitle(pathname: string, givenName: string): string {
   }
   if (pathname.startsWith('/recrutement/')) return 'Offre de recrutement';
   if (pathname.startsWith('/academy/gerer/')) return 'Gérer le catalogue';
-  if (pathname.startsWith('/moi/equipe/suivi/')) return 'Suivi & Évaluation';
+  if (pathname.startsWith('/moi/equipe/evaluations/')) return 'Évaluations';
   if (pathname.startsWith('/academy/')) return 'APIX Academy';
   if (pathname.endsWith('/deposer')) return 'Dépôt du texte';
   // Un troisième texte — convention collective, accord d'entreprise — entrera
@@ -577,9 +576,9 @@ function accueilDeLaGestion(user: SessionUser, items: NavItem[]): string {
  * validations d'un manager tiennent à part : c'est le seul endroit où il
  * décide pour un autre.
  *
- * Les objectifs descendent l'organigramme : chacun a « Mes objectifs », sauf
- * le directeur général, qui fixe les « Objectifs de l'APIX ». Qui encadre a
- * « Mon équipe » — les demandes à viser, le suivi de ses directs.
+ * Chacun a « Mon évaluation », sauf le directeur général, que personne
+ * n'évalue (ADR-0149). Qui encadre a « Mon équipe » : les demandes à viser,
+ * et les grilles d'évaluation de ses directs.
  */
 function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
   return [
@@ -602,24 +601,16 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
       icon: 'badge',
       groupe: 'pilotage',
     },
-    // Ce que chacun doit atteindre cette année : ceux de l'APIX, de sa
-    // direction, les siens. Le DG, lui, les fixe.
+    // La grille d'évaluation de l'année, une fois que le N+1 l'a envoyée
+    // (ADR-0149). Personne n'évalue le DG.
     ...(estDG
-      ? [
-          {
-            href: '/moi/objectifs-apix',
-            label: 'Objectifs de l’APIX',
-            short: 'Objectifs',
-            icon: 'trending_up' as const,
-            groupe: 'pilotage' as const,
-          },
-        ]
+      ? []
       : [
           {
-            href: '/moi/objectifs',
-            label: 'Mes objectifs',
-            short: 'Objectifs',
-            icon: 'flag' as const,
+            href: '/moi/evaluation',
+            label: 'Mon évaluation',
+            short: 'Évaluation',
+            icon: 'rate_review' as const,
             groupe: 'pilotage' as const,
           },
         ]),
@@ -651,35 +642,23 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
       ],
     },
     // Le seul endroit où un agent décide pour un autre : son équipe — les
-    // demandes qu'il vise en premier, les objectifs de ses directs. Le DG ne
-    // garde que les demandes à viser : il fixe les objectifs de ses
-    // directeurs par ceux de leurs directions.
+    // demandes visées en premier, et la grille d'évaluation de chaque agent
+    // (ADR-0149), le DG compris pour ses directs.
     ...(aUneEquipe
-      ? estDG
-        ? [
-            {
-              href: '/moi/equipe',
-              label: 'Demandes à viser',
-              short: 'À viser',
-              icon: 'how_to_reg' as const,
-              badge: 'visas' as const,
-              groupe: 'croissance' as const,
-            },
-          ]
-        : [
-            {
-              href: '/moi/equipe',
-              label: 'Mon équipe',
-              short: 'Équipe',
-              icon: 'groups' as const,
-              badge: 'visas' as const,
-              groupe: 'croissance' as const,
-              children: [
-                { href: '/moi/equipe', label: 'Demandes à viser' },
-                { href: '/moi/equipe/suivi', label: 'Suivi & Évaluation' },
-              ],
-            },
-          ]
+      ? [
+          {
+            href: '/moi/equipe',
+            label: 'Mon équipe',
+            short: 'Équipe',
+            icon: 'groups' as const,
+            badge: 'visas' as const,
+            groupe: 'croissance' as const,
+            children: [
+              { href: '/moi/equipe', label: 'Demandes à viser' },
+              { href: '/moi/equipe/evaluations', label: 'Évaluations' },
+            ],
+          },
+        ]
       : []),
     // L'Academy : ce qui fait grandir l'agent. Elle tient la famille de la
     // croissance, juste après les validations d'un manager.
@@ -720,13 +699,7 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
  * est la page même des congés ; l'historique, lui, reste ouvert. De
  * l'Academy, il garde « Mes certificats » : il les emporte.
  */
-const FERMEES_AUX_INACTIFS = [
-  '/moi/objectifs',
-  '/moi/objectifs-apix',
-  '/moi/equipe',
-  '/academy',
-  '/organisation',
-];
+const FERMEES_AUX_INACTIFS = ['/moi/evaluation', '/moi/equipe', '/academy', '/organisation'];
 const fermeeAuxInactifs = (chemin: string) =>
   chemin === '/moi/conges' ||
   (FERMEES_AUX_INACTIFS.some((p) => chemin === p || chemin.startsWith(`${p}/`)) &&
@@ -1213,10 +1186,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
     }
     if (commence('/moi/delegations')) return u.dirigeLaDCH || u.role === 'admin';
     if (commence('/generer')) return genereQuelqueChose(u);
-    // Les objectifs : chacun les siens, le DG ceux de l'APIX, qui encadre son équipe.
-    if (commence('/moi/objectifs-apix') || commence('/moi/tableau-de-bord')) return u.estDG;
-    if (commence('/moi/objectifs')) return u.estAgent && !u.estDG;
-    if (commence('/moi/equipe/suivi')) return !validations.data || (aUneEquipe && !u.estDG);
+    // L'évaluation : la sienne pour chaque agent, sauf le DG ; celles de son
+    // équipe pour qui en a une.
+    if (commence('/moi/tableau-de-bord')) return u.estDG;
+    if (commence('/moi/evaluation')) return u.estAgent && !u.estDG;
+    if (commence('/moi/equipe/evaluations')) return !validations.data || aUneEquipe;
     if (commence('/moi') || commence('/calendrier') || commence('/notifications')) return true;
     // L'organigramme est un annuaire interne ; les textes de référence, le
     // cadre de tous ; l'Academy est faite pour les agents.

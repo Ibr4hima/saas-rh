@@ -76,9 +76,9 @@ export interface RapportImportEmployes {
   rattaches: number;
   /**
    * Dossiers qui entrent SANS responsable hiérarchique — colonne vide ou
-   * matricule introuvable. Ils ne pourront ni recevoir d'objectifs ni être
-   * évalués avant qu'on leur en désigne un : c'est le contrôle de la chaîne
-   * hiérarchique qui les reprend ensuite.
+   * matricule introuvable. Ils ne pourront pas être évalués avant qu'on
+   * leur en désigne un : c'est le contrôle de la chaîne hiérarchique qui les
+   * reprend ensuite.
    */
   sansResponsable: number;
   /** Faux en aperçu : rien n'a été écrit dans la base. */

@@ -13,6 +13,7 @@ import type {
   RepriseDesResponsabilites,
 } from '@teranga/contracts';
 import {
+  LIBELLES_PERSONNEL,
   peut,
   posteDAdjoint,
   posteDeResponsable,
@@ -42,7 +43,7 @@ import {
 import { api, ApiError } from '../lib/api';
 import { compte, majuscule } from '../lib/mots';
 import { CarteCertificatsAgent } from './academy-certificat';
-import { CarteEvaluationsAgent } from './evaluation-objectifs';
+import { CarteDesGrilles } from './grille-evaluation';
 import { EmployeeDocumentsCard } from './employee-documents-card';
 import { ProfileChangeCard } from './profile-change-card';
 import { EmployeeEditModal } from './employee-edit-modal';
@@ -184,7 +185,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
   const canSeeHistory = !soi && peut(me.data, 'personnel.consulter');
   /** Ce qui se lit de son propre dossier comme de celui d'un autre, pour qui le consulte. */
   const voitLeDossier = soi || canSeeHistory;
-  /** Plus en activité : ses objectifs et l'Academy lui sont fermés jusqu'à la fin de son accès. */
+  /** Plus en activité : l'Academy se ferme jusqu'à la fin de son accès. */
   const finDAcces = soi ? (me.data?.finDAcces ?? null) : null;
 
   const detail = useQuery({
@@ -303,11 +304,13 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
         }
         // Sous le nom, les deux choses qui désignent la personne dans une
         // conversation : le matricule qu'on cite au téléphone, et le poste
-        // qu'on occupe. La direction, elle, a sa colonne.
+        // qu'on occupe. La direction, elle, a sa colonne. Puis cadre ou non :
+        // la grille d'évaluation en dépend (ADR-0149).
         sousTitre={
           <>
             <span className="font-mono tracking-tight">{e.employeeNumber}</span>
             {actif && current?.positionTitle ? <> · {current.positionTitle}</> : null}
+            {actif && e.personnel ? <> · {LIBELLES_PERSONNEL[e.personnel]}</> : null}
           </>
         }
         note={
@@ -595,10 +598,14 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
             )}
           </Card>
 
-          {/* Les années évaluées par le n+1, dès la validation : l'agent et
-              le directeur du Capital Humain, eux seuls. */}
-          {(soi || me.data?.dirigeLaDCH) && !finDAcces ? (
-            <CarteEvaluationsAgent employeeId={e.id} />
+          {/* Les grilles d'évaluation transmises à la DCH : l'original au
+              dossier, pour qui suit l'évaluation (ADR-0149). */}
+          {!soi && peut(me.data, 'pilotage') ? (
+            <CarteDesGrilles
+              employeeId={e.id}
+              nom={`${e.person.givenName} ${e.person.familyName}`}
+              matricule={e.employeeNumber}
+            />
           ) : null}
 
           {/* En tête des cartes de gauche : c'est ce qui attend une décision. */}

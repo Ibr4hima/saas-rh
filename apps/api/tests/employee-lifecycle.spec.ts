@@ -378,7 +378,8 @@ describe('suppression définitive', () => {
   it('vide le journal d’audit de ce qu’il avait recopié, et garde la trace', async () => {
     await garnir(awa);
     // Ce que la cascade emportait sans en effacer la copie au journal : un
-    // certificat (nom figé), une habilitation, un objectif, une fiche notée.
+    // certificat (nom figé), une habilitation, un objectif, une fiche notée,
+    // une grille d'évaluation.
     await raw(
       `INSERT INTO academy_certificates (id, tenant_id, employee_id, number, holder_name,
          holder_number, course_title, course_category, organization_name, score)
@@ -400,6 +401,11 @@ describe('suppression définitive', () => {
        VALUES ($1,$2,$3,2026,'A')`,
       [randomUUID(), tenantId, awa.employeeId],
     );
+    await raw(
+      `INSERT INTO evaluation_grilles (id, tenant_id, employee_id, annee, modele, contenu)
+       VALUES ($1,$2,$3,2026,'cadre','{"pointsForts":"Rigueur"}')`,
+      [randomUUID(), tenantId, awa.employeeId],
+    );
     // Une pièce retirée bien avant l'effacement : elle n'est plus là pour
     // être récoltée, mais le journal en garde la copie.
     const piece = randomUUID();
@@ -416,7 +422,8 @@ describe('suppression définitive', () => {
     const notes = await raw(
       `SELECT count(*)::int AS n FROM audit_log
         WHERE tenant_id = $1 AND table_name IN
-              ('academy_certificates', 'habilitations', 'objectifs', 'objectifs_fiches')
+              ('academy_certificates', 'habilitations', 'objectifs', 'objectifs_fiches',
+               'evaluation_grilles')
           AND (old_data IS NOT NULL OR new_data IS NOT NULL)`,
       [tenantId],
     );

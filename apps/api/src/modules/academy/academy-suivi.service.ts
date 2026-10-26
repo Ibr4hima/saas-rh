@@ -9,7 +9,6 @@ import { GRACE_SOUMISSION_S, statutCertificat } from './evaluation';
 
 /*
    APIX Academy : où en sont des agents sur les formations du catalogue.
-   La fiche d'objectifs s'en sert pour les formations à suivre.
 
    Tout se calcule en quelques requêtes pour tous les agents demandés :
    quarante agents ne font pas quarante allers-retours.

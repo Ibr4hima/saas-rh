@@ -25,7 +25,7 @@ import { BandeauDelegation } from './traitement-dch';
    n'en a pas —, et ce n+1 est de sa direction. Elles ne se tiennent pas par
    un refus : on crée souvent un dossier avant de savoir de qui l'agent
    relèvera, et un import n'en sait rien. Elles se tiennent par CE BANDEAU, et
-   par une conséquence : sans n+1, ni objectifs ni évaluation.
+   par une conséquence : sans n+1, pas d'évaluation.
 
    Il ne s'affiche que s'il a quelque chose à dire. Un bandeau permanent
    « tout va bien » se met à ne plus se lire au bout d'une semaine, et le jour
@@ -47,7 +47,7 @@ export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: 
   },
   sans_responsable: {
     court: 'Sans n+1',
-    explication: 'Personne ne peut lui fixer d’objectifs ni l’évaluer.',
+    explication: 'Personne ne peut remplir sa grille d’évaluation.',
   },
   responsable_archive: {
     court: 'n+1 inactif',

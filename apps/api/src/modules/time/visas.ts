@@ -22,7 +22,7 @@ import { compterLesBloquees, libererLesConfiees, reconcilierLesDemandes } from '
 import { seuleAuxConges } from '../acces/continuite';
 import { DG } from '../people/chaine';
 import { DELAI_N1_JOURS_OUVRES } from './workdays';
-import { reconcilierLesEvaluations } from '../objectifs/evaluation-attendue';
+import { reconcilierLesGrilles } from '../evaluations/circuit';
 import { parLeSysteme } from '../../db/systeme';
 import { avecMemoire } from '../../common/memoire';
 
@@ -724,7 +724,7 @@ async function demandesEnAttente(tx: Tx, employeeId?: string): Promise<string[]>
 export async function faireSuivreLesDemandes(tx: Tx, employeeId: string): Promise<void> {
   for (const id of await demandesEnAttente(tx, employeeId)) await reconcilierDemande(tx, id);
   for (const id of await reprisesEnAttente(tx, employeeId)) await reconcilierReprise(tx, id);
-  await reconcilierLesEvaluations(tx, employeeId);
+  await reconcilierLesGrilles(tx, employeeId);
 }
 
 /**
@@ -744,7 +744,7 @@ export async function reconcilierLeCircuit(tx: Tx, tenantId: string): Promise<vo
     const enAttente = await demandesEnAttente(tx);
     for (const id of enAttente) await reconcilierDemande(tx, id);
     for (const id of await reprisesEnAttente(tx)) await reconcilierReprise(tx, id);
-    await reconcilierLesEvaluations(tx);
+    await reconcilierLesGrilles(tx);
     await reconcilierLesDemandes(tx, tenantId);
     await verifierLaVacance(tx, tenantId, enAttente);
     await relancer(tx, tenantId);

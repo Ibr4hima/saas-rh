@@ -189,7 +189,7 @@ export function pourLesBackups(titre: string, confieePar: string | null): string
   return `${confieePar ? `${confieePar} vous confie` : 'Vous pouvez traiter'} : ${suite}`;
 }
 
-/** « de l’année 2026 » : les objectifs, l'auto-évaluation, l'évaluation d'une année. */
+/** « de l’année 2026 » : l'évaluation d'une année. */
 export const deLAnnee = (annee: number) => `de l’année ${annee}`;
 
 /**

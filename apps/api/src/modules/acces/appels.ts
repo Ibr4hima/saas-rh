@@ -146,7 +146,7 @@ function sujetDeLAppel(sujet: string | null, cle: string): SujetNotification {
   if (sujet && sujetSchema.safeParse(sujet).success) return sujet as SujetNotification;
   if (/^(conge|reprise):[^:]+:appel:n1$/.test(cle)) return 'equipe.conges';
   if (/:appel:a-confier$/.test(cle)) return 'dch.delegations';
-  if (cle.startsWith('objectifs:')) return 'equipe.objectifs';
+  if (cle.startsWith('evaluation:')) return 'equipe.evaluations';
   if (cle.startsWith('document:')) return 'dch.documents';
   if (cle.startsWith('information:')) return 'dch.informations';
   if (cle.startsWith('piece:')) return 'dch.pieces';

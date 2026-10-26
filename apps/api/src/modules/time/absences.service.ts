@@ -959,12 +959,11 @@ export class AbsencesService {
       SELECT count(*)::int AS equipe FROM employees e
        WHERE e.manager_employee_id = ${moi}
          AND (e.status = 'active'
-              -- Un départ qui laisse une auto-évaluation à évaluer : l'agent reste
-              -- de l'équipe le temps que son n+1 la termine.
-              OR EXISTS (SELECT 1 FROM objectifs_fiches f
-                          WHERE f.employee_id = e.id
-                            AND f.commentaires_envoyes_le IS NOT NULL
-                            AND f.evaluation_validee_le IS NULL))
+              -- Un départ qui laisse une grille d'évaluation à envoyer : l'agent
+              -- reste de l'équipe le temps que son n+1 la termine.
+              OR EXISTS (SELECT 1 FROM evaluation_grilles g
+                          WHERE g.employee_id = e.id
+                            AND g.etat IN ('validee_agent', 'chez_n2')))
          AND e.id IS DISTINCT FROM ${DG}`);
     const equipe = rows[0]?.equipe ?? 0;
     const { aViser, conges } = await compterLesVisas(tx, moi);

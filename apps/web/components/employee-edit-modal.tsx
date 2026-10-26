@@ -10,7 +10,7 @@ import type {
   OrgUnitView,
   UpdateEmployeeInput,
 } from '@teranga/contracts';
-import { peut, uniteAvecArticle } from '@teranga/contracts';
+import { LIBELLES_PERSONNEL, PERSONNELS, peut, uniteAvecArticle } from '@teranga/contracts';
 import { Button, Field, Input, Select, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { composePhone, COUNTRIES, splitPhone } from '../lib/countries';
@@ -88,6 +88,7 @@ interface FormValues {
   workPhone: string;
   status: string;
   managerEmployeeId: string;
+  personnel: string;
 }
 
 const PERSON_KEYS = [
@@ -112,6 +113,7 @@ const EMPLOYEE_KEYS = [
   'workPhone',
   'status',
   'managerEmployeeId',
+  'personnel',
 ] as const;
 const REQUIRED_KEYS = new Set(['givenName', 'familyName', 'employeeNumber', 'hiredOn', 'status']);
 
@@ -137,6 +139,7 @@ function toDefaults(e: EmployeeDetail): FormValues {
     status: e.status,
     // Vidé, le champ vaut « plus de manager » : c'est bien un effacement.
     managerEmployeeId: e.managerId ?? '',
+    personnel: e.personnel ?? '',
   };
 }
 
@@ -474,6 +477,17 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               stocke={employee.workPhone}
               onChange={(v) => form.setValue('workPhone', v, { shouldDirty: true })}
             />
+          </Field>
+          {/* Cadre ou non : la grille d'évaluation de l'agent en dépend (ADR-0149). */}
+          <Field label="Personnel" htmlFor="personnel">
+            <Select id="personnel" {...form.register('personnel')}>
+              <option value="">À renseigner</option>
+              {PERSONNELS.map((p) => (
+                <option key={p} value={p}>
+                  {LIBELLES_PERSONNEL[p]}
+                </option>
+              ))}
+            </Select>
           </Field>
         </ModalGrid>
       </ModalSection>

@@ -194,13 +194,13 @@ describe('les sujets selon le profil', () => {
   it('un agent : ce qui le concerne, sans équipe ni gestion', () => {
     const s = sujetsDe(profil({}));
     expect(s).toContain('conges');
-    expect(s).toContain('objectifs');
+    expect(s).toContain('evaluation');
     expect(s.some((x) => x.startsWith('equipe.') || x.startsWith('dch.'))).toBe(false);
   });
 
-  it('un N+1 : les congés et auto-évaluations de son équipe', () => {
+  it('un N+1 : les congés et les évaluations de son équipe', () => {
     expect(sujetsDe(profil({ aUneEquipe: true }))).toEqual(
-      expect.arrayContaining(['equipe.conges', 'equipe.objectifs']),
+      expect.arrayContaining(['equipe.conges', 'equipe.evaluations']),
     );
   });
 
@@ -218,8 +218,8 @@ describe('les sujets selon le profil', () => {
     expect(s).not.toContain('conges');
   });
 
-  it('le DG n’a pas d’objectifs à recevoir : il les fixe', () => {
-    expect(sujetsDe(profil({ estDG: true }))).not.toContain('objectifs');
+  it('le DG n’a pas d’évaluation à recevoir : personne ne l’évalue', () => {
+    expect(sujetsDe(profil({ estDG: true }))).not.toContain('evaluation');
   });
 });
 

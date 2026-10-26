@@ -19,7 +19,7 @@ import type { Tx } from '../../db/tenant-db';
 
    Son compte, lui, reste ouvert trente jours après son dernier jour, le
    temps de demander et de récupérer ses documents : un portail restreint,
-   sans demande d'absence, objectifs, équipe, Academy ni organigramme. Passé
+   sans demande d'absence, évaluation, équipe, Academy ni organigramme. Passé
    ce délai, il ne se connecte plus, et son mot de passe s'efface. S'il
    revient, une invitation le lui fait choisir à nouveau, sur le même
    compte : rien de ce qu'il y avait laissé ne se perd.

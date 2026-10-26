@@ -9,7 +9,7 @@ import { sql } from 'drizzle-orm';
 import { parLeSysteme } from '../../db/systeme';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
-import { prevenirDeLOuverture } from '../objectifs/evaluation-attendue';
+import { annoncerLOuverture } from '../evaluations/circuit';
 import { inactiverLesContratsEchus } from '../people/activite';
 import { reconcilierLeCircuit } from '../time/visas';
 
@@ -97,7 +97,7 @@ export class Veille implements OnModuleInit, OnModuleDestroy {
       ['contrats', (tx) => inactiverLesContratsEchus(tx, tenantId)],
       ['échéances', (tx) => this.notifications.genererLesEcheances(tx, tenantId)],
       ['circuit', (tx) => reconcilierLeCircuit(tx, tenantId)],
-      ['auto-évaluation', (tx) => prevenirDeLOuverture(tx, tenantId)],
+      ['évaluation', (tx) => annoncerLOuverture(tx, tenantId)],
     ];
   }
 }

@@ -504,6 +504,18 @@ export const personFieldsSchema = personFieldsBaseSchema.superRefine((p, ctx) =>
   checkIdDocument(p, ctx, true),
 );
 
+/**
+ * Cadre ou non cadre (ADR-0149) : la grille d'évaluation qui revient à
+ * l'agent. La DCH le dit sur sa fiche.
+ */
+export const PERSONNELS = ['cadre', 'non_cadre'] as const;
+export type Personnel = (typeof PERSONNELS)[number];
+export const personnelSchema = z.enum(PERSONNELS);
+export const LIBELLES_PERSONNEL: Record<Personnel, string> = {
+  cadre: 'Cadre',
+  non_cadre: 'Non-cadre',
+};
+
 export const employeeFieldsSchema = z.object({
   employeeNumber: matricule,
   hiredOn: isoDate,
@@ -511,6 +523,7 @@ export const employeeFieldsSchema = z.object({
   workPhone: optionalTrimmed(30),
   /** À qui l'agent rend compte. Absent = personne (un DG n'a pas de manager). */
   managerEmployeeId: optionalUuid,
+  personnel: personnelSchema.optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -671,6 +684,7 @@ export const updateEmployeeFieldsSchema = z
      */
     /** null = plus de manager ; absent = inchangé. */
     managerEmployeeId: z.uuid().nullable(),
+    personnel: personnelSchema.nullable(),
   })
   .partial();
 
@@ -1004,6 +1018,8 @@ export interface EmployeeDetail {
   hiredOn: string;
   workEmail: string | null;
   workPhone: string | null;
+  /** Cadre ou non cadre ; null : pas encore dit. */
+  personnel: Personnel | null;
   managerId: string | null;
   managerName: string | null;
   /** Le matricule du manager : il le distingue d'un homonyme dans une liste. */

@@ -69,9 +69,8 @@ export interface AnomalieHierarchie {
  * corriger sans qu'elles arrêtent quoi que ce soit.
  *
  * Un agent sans n+1 — ou dont le n+1 est archivé, ou pris dans une boucle —
- * ne peut ni recevoir d'objectifs ni être évalué : il n'y a personne pour les
- * lui fixer ni pour l'évaluer. Ce n'est pas une punition, c'est une
- * impossibilité. Un rattachement hors direction, lui, est une entorse à la
+ * ne peut pas être évalué : il n'y a personne pour remplir sa grille
+ * (ADR-0149). Ce n'est pas une punition, c'est une impossibilité. Un rattachement hors direction, lui, est une entorse à la
  * règle : quelqu'un peut l'évaluer, et la fiche se corrige sans bloquer la
  * campagne.
  *
@@ -159,6 +158,6 @@ export interface ControleHierarchie {
   anomalies: AnomalieHierarchie[];
   /** Le décompte par type, pour l'annoncer sans parcourir la liste. */
   parType: Record<TypeAnomalieHierarchie, number>;
-  /** Agents qui ne peuvent ni recevoir d'objectifs ni être évalués. */
+  /** Agents qui ne peuvent pas être évalués. */
   nonEvaluables: number;
 }

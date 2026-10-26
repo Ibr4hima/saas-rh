@@ -99,10 +99,11 @@ export type Coupe = 'normal' | 'bold' | 'italic' | 'bold-italic';
 /**
  * Les familles des documents : Arial, la police principale (ADR-0090), Times
  * New Roman, celle des contrats de travail (ADR-0098), Comic Sans MS pour ce
- * que les modèles de l'APIX écrivent avec elle, et Google Sans, celle du
- * certificat d'APIX Academy.
+ * que les modèles de l'APIX écrivent avec elle, Gill Sans MT, celle des
+ * grilles d'évaluation (ADR-0149), et Google Sans, celle du certificat d'APIX
+ * Academy.
  */
-export type Famille = 'arial' | 'times' | 'comic' | 'google-sans';
+export type Famille = 'arial' | 'times' | 'comic' | 'gill-sans' | 'google-sans';
 
 /**
  * Où les systèmes rangent Arial, Times New Roman et Comic Sans MS, quand ils
@@ -120,11 +121,13 @@ const surLeSysteme = (windows: string, macos?: string) => [
 /**
  * Où trouver chaque coupe, par ordre de préférence, depuis `assets/`.
  *
- * Arial, Times New Roman et Comic Sans MS ne se versionnent pas : leur
- * licence l'interdit (ADR-0090). Le générateur prend celles que l'exploitant dépose à la racine
- * des ressources, sous leur nom Windows, puis celles du serveur. Sans elles,
- * leurs équivalents libres, versionnés dans `fonts/`, prennent la place, aux
- * mêmes chasses : la mise en page ne bouge pas d'un caractère.
+ * Arial, Times New Roman, Comic Sans MS et Gill Sans MT ne se versionnent
+ * pas : leur licence l'interdit (ADR-0090). Le générateur prend celles que
+ * l'exploitant dépose à la racine des ressources, sous leur nom Windows, puis
+ * celles du serveur. Sans elles, leurs équivalents libres, versionnés dans
+ * `fonts/`, prennent la place, aux mêmes chasses : la mise en page ne bouge
+ * pas d'un caractère. Gill Sans MT n'en a pas aux mêmes chasses : Cabin, de
+ * la même famille humaniste, la remplace, et une grille la place à sa mesure.
  */
 const FICHIERS: Record<Famille, Partial<Record<Coupe, readonly string[]>>> = {
   arial: {
@@ -177,6 +180,12 @@ const FICHIERS: Record<Famille, Partial<Record<Coupe, readonly string[]>>> = {
     // Comic Relief n'a pas d'italique : sans les fichiers d'origine, le romain.
     italic: ['comici.ttf', ...surLeSysteme('comici.ttf')],
     'bold-italic': ['comicz.ttf', ...surLeSysteme('comicz.ttf')],
+  },
+  'gill-sans': {
+    normal: ['GIL_____.TTF', ...surLeSysteme('GIL_____.TTF'), 'fonts/cabin-regular.ttf'],
+    bold: ['GILB____.TTF', ...surLeSysteme('GILB____.TTF'), 'fonts/cabin-bold.ttf'],
+    italic: ['GILI____.TTF', ...surLeSysteme('GILI____.TTF'), 'fonts/cabin-italic.ttf'],
+    'bold-italic': ['GILBI___.TTF', ...surLeSysteme('GILBI___.TTF'), 'fonts/cabin-bold-italic.ttf'],
   },
   'google-sans': {
     normal: ['fonts/google-sans-regular.ttf'],

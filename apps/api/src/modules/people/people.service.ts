@@ -392,8 +392,8 @@ export class PeopleService {
    * import n'en sait rien du tout. Sans n+1 choisi, l'agent relève d'office du
    * responsable de sa direction s'il y en a un ; sinon, la règle de l'APIX —
    * un n+1 pour chacun — se tient par un AVERTISSEMENT (le contrôle de la
-   * chaîne hiérarchique) et par une conséquence : sans n+1, ni objectifs ni
-   * évaluation.
+   * chaîne hiérarchique) et par une conséquence : sans n+1, pas de grille
+   * d'évaluation.
    *
    * Ce qui est vérifié, en revanche, c'est le rattachement QUAND il est
    * donné : même direction, responsable actif, pas de boucle.
@@ -432,6 +432,7 @@ export class PeopleService {
           workEmail: input.employee.workEmail,
           workPhone: input.employee.workPhone,
           managerEmployeeId: input.employee.managerEmployeeId ?? null,
+          personnel: input.employee.personnel ?? null,
           customFields: input.employee.customFields ?? {},
         });
         if (input.contract) {
@@ -662,6 +663,7 @@ export class PeopleService {
         hiredOn: employee.hiredOn,
         workEmail: employee.workEmail,
         workPhone: employee.workPhone,
+        personnel: (employee.personnel as EmployeeDetail['personnel']) ?? null,
         managerId: employee.managerEmployeeId,
         managerName: managerRow ? `${managerRow.givenName} ${managerRow.familyName}` : null,
         managerNumber: managerRow?.employeeNumber ?? null,
@@ -874,6 +876,7 @@ export class PeopleService {
           if (e.workEmail !== undefined) champs.workEmail = e.workEmail;
           if (e.workPhone !== undefined) champs.workPhone = e.workPhone;
           if (e.managerEmployeeId !== undefined) champs.managerEmployeeId = e.managerEmployeeId;
+          if (e.personnel !== undefined) champs.personnel = e.personnel;
           if (Object.keys(champs).length > 0) {
             champs.updatedAt = new Date();
             await tx.update(t.employees).set(champs).where(eq(t.employees.id, id));
@@ -2464,7 +2467,7 @@ export class PeopleService {
     );
     // Ce que la suppression du dossier emporterait en cascade sans le dire :
     // ses certificats (nom et matricule figés), ses habilitations, ses
-    // objectifs et ses fiches d'objectifs (évaluations comprises), ses départs
+    // anciens objectifs et leurs fiches, ses grilles d'évaluation, ses départs
     // et retours. Effacés ici, leurs identifiants rejoignent la récolte, et le
     // journal oublie aussi leur contenu.
     for (const table of [
@@ -2472,6 +2475,7 @@ export class PeopleService {
       sql`habilitations`,
       sql`objectifs`,
       sql`objectifs_fiches`,
+      sql`evaluation_grilles`,
       sql`periodes_inactivite`,
     ]) {
       const { rows } = await tx.execute<{ id: string }>(
@@ -2526,8 +2530,9 @@ export class PeopleService {
       RETURNING n.id`);
     recolter(parIdentifiant);
 
-    // Celles qui ne le citent que par son nom (« Moussa Ndiaye a évalué vos
-    // objectifs ») : seulement si ce nom ne désigne personne d'autre ici.
+    // Celles qui ne citent l'agent que par son nom (« Moussa Ndiaye a validé
+    // sa grille d'évaluation 2026 ») : seulement si ce nom ne désigne personne
+    // d'autre ici.
     const [homonyme] = await tx
       .select({ id: t.persons.id })
       .from(t.persons)

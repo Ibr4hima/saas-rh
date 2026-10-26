@@ -25,8 +25,8 @@ export const FERME_AUX_INACTIFS_KEY = 'fermeAuxInactifs';
 
 /**
  * Fermé à qui n'est plus en activité : pendant le mois où son portail reste
- * ouvert, il ne pose plus de demande d'absence et n'a plus accès aux
- * objectifs, à l'Academy ni à l'organigramme. Sur une classe ou une route.
+ * ouvert, plus de demande d'absence, ni d'évaluation, d'Academy ou
+ * d'organigramme. Sur une classe ou une route.
  */
 export const FermeAuxInactifs = () => SetMetadata(FERME_AUX_INACTIFS_KEY, true);
 

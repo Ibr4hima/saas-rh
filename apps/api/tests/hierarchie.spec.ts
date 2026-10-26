@@ -307,7 +307,7 @@ describe('l’ordre et les décomptes', () => {
   });
 
   it('dit lesquelles empêchent d’évaluer', () => {
-    // Sans n+1, personne ne peut fixer d'objectifs ni évaluer : c'est une
+    // Sans n+1, personne ne peut remplir la grille d'évaluation : c'est une
     // impossibilité, pas une punition. Un rattachement hors direction, lui,
     // est une entorse — quelqu'un peut évaluer.
     expect(ANOMALIES_BLOQUANTES).toEqual(['boucle', 'sans_responsable', 'responsable_archive']);

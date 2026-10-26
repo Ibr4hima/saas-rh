@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { EmployeeListItem, EmployeeListPage, OrgUnitView } from '@teranga/contracts';
-import { uniteAvecArticle } from '@teranga/contracts';
+import { LIBELLES_PERSONNEL, PERSONNELS, uniteAvecArticle } from '@teranga/contracts';
 import { Button, Checkbox, cn, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { COUNTRIES, composePhone, countryByCode, DEFAULT_COUNTRY } from '../lib/countries';
@@ -58,6 +58,8 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   const [workPhoneCountry, setWorkPhoneCountry] = useState(DEFAULT_COUNTRY);
   const [workPhoneLocal, setWorkPhoneLocal] = useState('');
   const [positionTitle, setPositionTitle] = useState('');
+  // Cadre ou non : la grille d'évaluation de l'agent en dépend (ADR-0149).
+  const [personnel, setPersonnel] = useState('');
   // L'unité d'affectation : la direction, ou un département ou un service de celle-ci.
   const [uniteId, setUniteId] = useState('');
   // L'invitation au portail part dans la foulée, à l'adresse professionnelle
@@ -135,6 +137,8 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             workPhone: composePhone(workPhoneCountry, workPhoneLocal),
             // Le n+1 part avec l'affectation, jamais sans elle.
             managerEmployeeId: peutChoisirLeN1 && managerId ? managerId : undefined,
+            // Une personne en stage n'est pas évaluée sur la grille.
+            personnel: contractType !== 'stage' && personnel ? personnel : undefined,
           },
           assignment: positionTitle.trim()
             ? {
@@ -444,6 +448,22 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               ))}
             </Select>
           </Field>
+          {contractType === 'stage' ? null : (
+            <Field label="Personnel" htmlFor="personnel">
+              <Select
+                id="personnel"
+                value={personnel}
+                onChange={(e) => setPersonnel(e.target.value)}
+              >
+                <option value="">À renseigner</option>
+                {PERSONNELS.map((p) => (
+                  <option key={p} value={p}>
+                    {LIBELLES_PERSONNEL[p]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
         </ModalGrid>
       </ModalSection>
     </Modal>

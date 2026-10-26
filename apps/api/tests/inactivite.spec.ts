@@ -46,7 +46,7 @@ import { AuthService } from '../src/modules/auth/auth.service';
 import { DocumentRequestsService } from '../src/modules/docs/document-requests.service';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
 import { Veille } from '../src/modules/veille/veille';
-import { ObjectifsController } from '../src/modules/objectifs/objectifs.controller';
+import { EvaluationsController } from '../src/modules/evaluations/evaluations.controller';
 import { inactiverLesContratsEchus } from '../src/modules/people/activite';
 import { delaiJusquAMinuit, PassageDeMinuit } from '../src/modules/people/passage-de-minuit';
 import { OrgUnitsService } from '../src/modules/people/org-units.service';
@@ -631,10 +631,10 @@ describe('trente jours pour récupérer ses documents', () => {
     );
   });
 
-  it('ce qui lui est fermé ces trente jours : demandes d’absence, objectifs, Academy, organigramme', () => {
+  it('ce qui se ferme ces trente jours : demandes d’absence, évaluation, Academy, organigramme', () => {
     const ferme = (cible: object) => Reflect.getMetadata(FERME_AUX_INACTIFS_KEY, cible) === true;
     expect(ferme(AcademyController)).toBe(true);
-    expect(ferme(ObjectifsController)).toBe(true);
+    expect(ferme(EvaluationsController)).toBe(true);
     expect(ferme(PeopleController.prototype.listOrgUnits)).toBe(true);
     expect(ferme(PeopleController.prototype.orgUnitMembers)).toBe(true);
     expect(ferme(AbsencesController.prototype.createRequest)).toBe(true);

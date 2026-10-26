@@ -7,6 +7,7 @@ import {
   type Gender,
   type IdDocumentType,
   type MaritalStatus,
+  type Personnel,
   type AvertissementImport,
 } from '@teranga/contracts';
 import type { CelluleXlsx } from '../../common/xlsx';
@@ -54,6 +55,7 @@ type Champ =
   | 'indicatifPro'
   | 'telephonePro'
   | 'poste'
+  | 'personnel'
   | 'unite'
   | 'responsable';
 
@@ -88,6 +90,8 @@ const INTITULES: Record<Champ, string[]> = {
   indicatifPro: ['Indicatif téléphone professionnel', 'Indicatif pro'],
   telephonePro: ['Téléphone professionnel', 'Téléphone pro', 'Poste téléphonique'],
   poste: ['Poste', 'Fonction', 'Intitulé du poste'],
+  // Cadre ou non : la grille d'évaluation de l'agent en dépend (ADR-0149).
+  personnel: ['Personnel', 'Cadre ou non-cadre', 'Catégorie de personnel'],
   unite: ['Direction affectée', 'Direction', 'Unité', 'Service'],
   // Le n+1 se désigne par son MATRICULE, pas par son nom : deux homonymes
   // existent dans toute agence de trois cents personnes, et un nom mal
@@ -158,6 +162,14 @@ const VOCABULAIRE_CONTRAT: Record<string, ContractType> = {
   prestataire: 'consultant',
   detachement: 'detachement',
   detache: 'detachement',
+};
+
+const VOCABULAIRE_PERSONNEL: Record<string, Personnel> = {
+  cadre: 'cadre',
+  cadres: 'cadre',
+  'non cadre': 'non_cadre',
+  'non cadres': 'non_cadre',
+  noncadre: 'non_cadre',
 };
 
 /** Les noms de pays en français, comme le formulaire les écrit. */
@@ -437,6 +449,14 @@ export function convertirLigne(
     return refus('Un CDD ou un stage a une durée en mois', 'duree');
   }
 
+  const personnelBrut = lireTexte('personnel');
+  const personnel = personnelBrut
+    ? VOCABULAIRE_PERSONNEL[normaliserIntitule(personnelBrut)]
+    : undefined;
+  if (personnelBrut && !personnel) {
+    return refus(`« ${personnelBrut} » n’est ni Cadre ni Non-cadre`, 'personnel');
+  }
+
   const emailPersonnel = lireTexte('emailPersonnel');
   const emailPro = lireTexte('emailPro');
   const poste = lireTexte('poste') ?? null;
@@ -472,6 +492,7 @@ export function convertirLigne(
       ...(telephone(lire('indicatifPro'), lire('telephonePro'))
         ? { workPhone: telephone(lire('indicatifPro'), lire('telephonePro')) }
         : {}),
+      ...(personnel ? { personnel } : {}),
     },
     ...(contrat
       ? {
@@ -528,6 +549,7 @@ const COLONNE_DU_CHAMP: Record<string, Champ> = {
   'employee.hiredOn': 'debutContrat',
   'employee.workEmail': 'emailPro',
   'employee.workPhone': 'telephonePro',
+  'employee.personnel': 'personnel',
   'contract.contractType': 'contrat',
   'contract.startDate': 'debutContrat',
   'contract.endDate': 'duree',
