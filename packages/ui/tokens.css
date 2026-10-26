@@ -96,12 +96,12 @@
   --tg-niveau-d-soft: #fde1dd;
   --tg-niveau-d-text: #b02c20;
 
-  /* --- Badges : six tons, et seulement six ---
+  /* --- Badges : sept tons, et seulement sept ---
      Fond blanc, le mot dans sa couleur, et un liseré de la même couleur en
      plus clair : le liseré dessine la forme, le mot porte le sens. Le liseré
      est posé en transparence sur le fond du badge. Contrastes du mot sur
-     blanc, mesurés : bleu 8,3:1 · orange 5,6:1 · teal 6,1:1 · prune 6,3:1 ·
-     gris 6,8:1 · rouge 4,8:1. L'orange de marque (#e0802f) ne passe que
+     blanc, mesurés : bleu 8,3:1 · orange 5,6:1 · teal 6,1:1 · vert 6,0:1 ·
+     prune 6,3:1 · gris 6,8:1 · rouge 4,8:1. L'orange de marque (#e0802f) ne passe que
      2,9:1 en texte : il tient le liseré, le mot prend son palier assombri. */
   --tg-badge-bleu-ink: #004f91;
   --tg-badge-bleu-line: rgb(0 79 145 / 0.35);
@@ -109,6 +109,8 @@
   --tg-badge-orange-line: rgb(224 128 47 / 0.55);
   --tg-badge-teal-ink: #0b6e65;
   --tg-badge-teal-line: rgb(15 138 126 / 0.4);
+  --tg-badge-vert-ink: #177245;
+  --tg-badge-vert-line: rgb(23 114 69 / 0.4);
   --tg-badge-prune-ink: #8e4585;
   --tg-badge-prune-line: rgb(142 69 133 / 0.38);
   --tg-badge-gris-ink: #555a6e;
@@ -354,6 +356,8 @@
     --tg-badge-orange-line: rgb(224 128 47 / 0.55);
     --tg-badge-teal-ink: #69d3c6;
     --tg-badge-teal-line: rgb(47 179 165 / 0.5);
+    --tg-badge-vert-ink: #5fbf8f;
+    --tg-badge-vert-line: rgb(95 191 143 / 0.5);
     --tg-badge-prune-ink: #dba2d2;
     --tg-badge-prune-line: rgb(180 106 169 / 0.55);
     --tg-badge-gris-ink: #b0b5c6;
@@ -446,6 +450,8 @@
   --tg-badge-orange-line: rgb(224 128 47 / 0.55);
   --tg-badge-teal-ink: #69d3c6;
   --tg-badge-teal-line: rgb(47 179 165 / 0.5);
+  --tg-badge-vert-ink: #5fbf8f;
+  --tg-badge-vert-line: rgb(95 191 143 / 0.5);
   --tg-badge-prune-ink: #dba2d2;
   --tg-badge-prune-line: rgb(180 106 169 / 0.55);
   --tg-badge-gris-ink: #b0b5c6;

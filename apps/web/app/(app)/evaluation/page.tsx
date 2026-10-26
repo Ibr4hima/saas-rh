@@ -16,6 +16,7 @@ import {
   type VueDeLaPeriode,
 } from '@teranga/contracts';
 import {
+  Badge,
   Button,
   CardHeader,
   CardTitle,
@@ -40,7 +41,6 @@ import { EnTete, Repere } from '../../../components/fiche';
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import {
   anneeDeLAdresse,
-  BadgeDeLEtape,
   CLE_EVALUATIONS,
   Erreur,
   messageDe,
@@ -58,15 +58,18 @@ import { RechercheDuTableau, SqueletteTableau } from '../../../components/tablea
    période, et l'année en cours pour en fixer une. Qui gère le personnel dit
    aussi, ligne par ligne, si l'agent est cadre ou non cadre : la fiche de
    l'agent change avec, comme si le choix y avait été fait.
+
+   Le tableau ne garde que deux statuts : un agent est évalué quand sa grille
+   est transmise à la DCH, non évalué avant. Les étapes du circuit restent
+   au N+1 ; l'en-tête en compte les grandes lignes.
 */
 
-type Filtre = 'toutes' | 'a_remplir' | 'en_cours' | 'terminee' | 'en_retard';
+type Filtre = 'tous' | 'evalues' | 'non_evalues' | 'en_retard';
 
 const FILTRES: { cle: Filtre; label: string }[] = [
-  { cle: 'toutes', label: 'Toutes les étapes' },
-  { cle: 'a_remplir', label: 'À remplir' },
-  { cle: 'en_cours', label: 'En cours' },
-  { cle: 'terminee', label: 'Transmises à la DCH' },
+  { cle: 'tous', label: 'Tous les statuts' },
+  { cle: 'evalues', label: 'Évalués' },
+  { cle: 'non_evalues', label: 'Non évalués' },
   { cle: 'en_retard', label: 'En retard' },
 ];
 
@@ -79,14 +82,15 @@ const EN_COURS: OuEnEst[] = [
   'validee_n2',
 ];
 
+/** Évalué : la grille de l'agent est transmise à la DCH. */
+const evalue = (l: LigneDEvaluation) => l.ouEnEst === 'terminee';
+
 function retenue(l: LigneDEvaluation, filtre: Filtre): boolean {
   switch (filtre) {
-    case 'a_remplir':
-      return l.ouEnEst === 'a_remplir';
-    case 'en_cours':
-      return EN_COURS.includes(l.ouEnEst);
-    case 'terminee':
-      return l.ouEnEst === 'terminee';
+    case 'evalues':
+      return evalue(l);
+    case 'non_evalues':
+      return !evalue(l);
     case 'en_retard':
       return l.enRetard;
     default:
@@ -149,7 +153,7 @@ export default function EvaluationPage() {
   );
   const [periodeOuverte, setPeriodeOuverte] = useState(false);
   const [recherche, setRecherche] = useState('');
-  const [filtre, setFiltre] = useState<Filtre>('toutes');
+  const [filtre, setFiltre] = useState<Filtre>('tous');
   const [apercu, setApercu] = useState<{ doc: ViewableDoc; telechargement: string } | null>(null);
 
   const v = suivi.data;
@@ -160,7 +164,8 @@ export default function EvaluationPage() {
   const choisir = (cle: string) => router.replace(`/evaluation?annee=${cle}`, { scroll: false });
 
   const lignes = v?.lignes ?? [];
-  const compte = (f: Filtre) => lignes.filter((l) => retenue(l, f)).length;
+  const compte = (garde: (l: LigneDEvaluation) => boolean) => lignes.filter(garde).length;
+  const enRetard = compte((l) => l.enRetard);
   const cherche = plat(recherche.trim());
   const visibles = lignes.filter(
     (l) =>
@@ -225,13 +230,16 @@ export default function EvaluationPage() {
           }
           reperes={
             <>
-              <Repere label="À remplir" valeur={String(compte('a_remplir'))} />
-              <Repere label="En cours" valeur={String(compte('en_cours'))} />
-              <Repere label="Transmises à la DCH" valeur={String(compte('terminee'))} />
+              <Repere label="À remplir" valeur={String(compte((l) => l.ouEnEst === 'a_remplir'))} />
+              <Repere
+                label="En cours"
+                valeur={String(compte((l) => EN_COURS.includes(l.ouEnEst)))}
+              />
+              <Repere label="Évalués" valeur={String(compte(evalue))} />
               <Repere
                 label="En retard"
-                valeur={String(compte('en_retard'))}
-                ton={compte('en_retard') > 0 ? 'attente' : undefined}
+                valeur={String(enRetard)}
+                ton={enRetard > 0 ? 'attente' : undefined}
               />
             </>
           }
@@ -251,7 +259,7 @@ export default function EvaluationPage() {
               libelle="Rechercher un agent"
             />
             <Select
-              aria-label="Étape"
+              aria-label="Statut"
               value={filtre}
               onChange={(e) => setFiltre(e.target.value as Filtre)}
               className="h-8 w-auto text-[12.5px]"
@@ -288,7 +296,7 @@ export default function EvaluationPage() {
                 <Th className="max-md:hidden">Direction</Th>
                 <Th className="max-lg:hidden">N+1</Th>
                 <Th className="max-sm:hidden">Personnel</Th>
-                <Th>Étape</Th>
+                <Th>Statut</Th>
                 <Th className="max-sm:hidden">Date</Th>
                 <Th>
                   <span className="sr-only">Grille</span>
@@ -316,17 +324,15 @@ export default function EvaluationPage() {
                   <Td className="max-lg:hidden">{l.n1}</Td>
                   <Td className="max-sm:hidden">{choixDuPersonnel(l)}</Td>
                   <Td>
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      <BadgeDeLEtape ouEnEst={l.ouEnEst} />
-                      {l.enRetard ? (
-                        <span className="text-[11.5px] font-semibold text-accent-text">
-                          En retard
-                        </span>
-                      ) : null}
-                    </span>
+                    {evalue(l) ? (
+                      <Badge tone="vert">Évalué</Badge>
+                    ) : (
+                      <Badge tone="gris">Non évalué</Badge>
+                    )}
                   </Td>
+                  {/* Le jour où la grille est arrivée à la DCH. */}
                   <Td className="text-ink-muted tabular-nums max-sm:hidden">
-                    {l.le && l.ouEnEst !== 'a_remplir' ? formatDate(l.le) : null}
+                    {l.le && evalue(l) ? formatDate(l.le) : null}
                   </Td>
                   <Td className="w-12 text-right">
                     {l.ouEnEst === 'terminee' ? (

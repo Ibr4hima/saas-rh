@@ -2,16 +2,17 @@ import * as React from 'react';
 import { cn } from './cn';
 
 /**
- * Les six tons de badge de la plateforme, et il n'y en a pas d'autre.
+ * Les sept tons de badge de la plateforme, et il n'y en a pas d'autre.
  *
  *   bleu   le bleu APIX : l'information, ce qui est prêt
  *   orange l'attente : ce qui réclame un geste (cf. la charte, tokens.css)
  *   teal   ce qui a abouti : approuvé, publié, valide
+ *   vert   ce qui est fait et acquis : un agent évalué
  *   rouge  ce qui a été refusé, révoqué, ce qui est échu
  *   prune  une catégorie, quand le sens n'est pas un état
  *   gris   ce qui est clos sans suite : annulé, brouillon, archivé
  */
-export type BadgeTone = 'bleu' | 'orange' | 'teal' | 'rouge' | 'prune' | 'gris';
+export type BadgeTone = 'bleu' | 'orange' | 'teal' | 'vert' | 'rouge' | 'prune' | 'gris';
 
 /**
  * Fond blanc (la carte, la nuit), le mot dans sa couleur, et un liseré de la
@@ -22,6 +23,7 @@ const tones: Record<BadgeTone, string> = {
   bleu: 'border-badge-bleu-line text-badge-bleu-ink',
   orange: 'border-badge-orange-line text-badge-orange-ink',
   teal: 'border-badge-teal-line text-badge-teal-ink',
+  vert: 'border-badge-vert-line text-badge-vert-ink',
   rouge: 'border-badge-rouge-line text-badge-rouge-ink',
   prune: 'border-badge-prune-line text-badge-prune-ink',
   gris: 'border-badge-gris-line text-badge-gris-ink',
