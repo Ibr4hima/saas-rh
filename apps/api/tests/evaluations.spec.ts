@@ -7,7 +7,7 @@
  *   └─ Direction du Capital Humain (Mariama, qui la dirige ; Ndèye, de la DCH)
  *        └─ Département Études (Awa, N+1 Mariama)
  *             ├─ Moussa, cadre, N+1 Awa
- *             ├─ Khady, cadre, N+1 Awa, qui encadre Ibou (non cadre)
+ *             ├─ Khady, cadre, N+1 Awa, qui encadre Ibou (non cadre) et Binta
  *             ├─ Aïssatou, cadre, N+1 Awa
  *             ├─ Fatou, non cadre ; Ousmane, à renseigner
  *             └─ Lamine, en stage
@@ -16,8 +16,9 @@
  * chacun de ses agents, que l'agent la lit sans la page 6, la valide ou la
  * renvoie, que le N+2 est facultatif et ne bloque jamais, et que la DCH
  * suit les grilles et reçoit leur PDF. Le texte mis en forme (ADR-0150), les
- * échéances des objectifs à venir et les formations de l'APIX Academy
- * proposées au N+1 ont leurs propres cas.
+ * échéances des objectifs à venir, les formations de l'APIX Academy
+ * proposées au N+1 et la grille du personnel non cadre (ADR-0155) ont leurs
+ * propres cas.
  *
  * La période se pose autour d'aujourd'hui : le test ne dépend pas du jour où
  * il tourne.
@@ -31,11 +32,17 @@ import {
   champsTropLongs,
   contenuDeGrilleSchema,
   CRITERES_CADRE,
+  CRITERES_NON_CADRE,
   grilleVide,
+  niveauDeLaNote,
+  NOTES,
   periodeDEvaluationEnLettres,
+  releveDesNotes,
   texteBrut,
   texteRicheDe,
+  TOTAL_DES_POINTS,
   type ContenuDeGrille,
+  type Note,
   type SessionUser,
   type TexteRiche,
 } from '@teranga/contracts';
@@ -46,7 +53,9 @@ import { TenantDb } from '../src/db/tenant-db';
 import { AcademySuiviService } from '../src/modules/academy/academy-suivi.service';
 import { annoncerLOuverture, reconcilierLesGrilles } from '../src/modules/evaluations/circuit';
 import { EvaluationsService } from '../src/modules/evaluations/evaluations.service';
-import { grilleDuPersonnelCadre, initiales } from '../src/modules/evaluations/grille-cadre';
+import { initiales } from '../src/modules/evaluations/feuille-de-grille';
+import { grilleDuPersonnelCadre } from '../src/modules/evaluations/grille-cadre';
+import { grilleDuPersonnelNonCadre } from '../src/modules/evaluations/grille-non-cadre';
 
 const env = loadEnv();
 const tenantId = randomUUID();
@@ -66,6 +75,7 @@ type Nom =
   | 'moussa'
   | 'khady'
   | 'ibou'
+  | 'binta'
   | 'aissatou'
   | 'fatou'
   | 'ousmane'
@@ -78,6 +88,7 @@ const NOMS: Nom[] = [
   'moussa',
   'khady',
   'ibou',
+  'binta',
   'aissatou',
   'fatou',
   'ousmane',
@@ -168,6 +179,12 @@ async function titres(qui: Nom): Promise<string[]> {
 const puces = (...lignes: string[]): TexteRiche =>
   lignes.map((texte) => ({ type: 'puce', niveau: 0, segments: [{ texte }] }));
 
+/** Ce qu'il faut à `ceQuiManque` : la grille du personnel cadre, le commandement ou non. */
+const cadre = (commandement = false) => ({ modele: 'cadre' as const, commandement });
+
+/** Le nombre de pages d'un PDF : ses dictionnaires de page. */
+const pages = (pdf: Buffer) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length;
+
 /** Une grille complète ; le commandement noté pour qui encadre. */
 function complete(commandement = false): ContenuDeGrille {
   const vide = grilleVide();
@@ -190,6 +207,21 @@ function complete(commandement = false): ContenuDeGrille {
     comprehension: 'A',
     tenue: 'B',
     observations: texteRicheDe('Agent fiable.'),
+  };
+}
+
+/** Une grille du personnel non cadre complète : chaque critère noté, de 10 à 0. */
+function completeNonCadre(notes: (Note | null)[] = [10, 9, 7, 6, 4, 3, 1, 0]): ContenuDeGrille {
+  return {
+    ...grilleVide('non_cadre'),
+    notes,
+    pointsForts: puces('Ponctualité'),
+    pointsFaibles: puces('Le classement des courriers'),
+    actions: puces('Une formation au classement.'),
+    formations: [{ courseId: null, titre: 'Classement et archivage' }],
+    comprehension: 'B',
+    tenue: 'B',
+    observations: texteRicheDe('Agent sérieux.'),
   };
 }
 
@@ -259,6 +291,7 @@ beforeAll(async () => {
   );
   await agent('khady', 'Khady', 'Sarr', 'awa', unites.etudes, 'Cheffe de projet', 'cadre');
   await agent('ibou', 'Ibou', 'Faye', 'khady', unites.etudes, 'Assistant', 'non_cadre');
+  await agent('binta', 'Binta', 'Diallo', 'khady', unites.etudes, 'Comptable', 'cadre');
   await agent('aissatou', 'Aïssatou', 'Ba', 'awa', unites.etudes, 'Analyste', 'cadre');
   await agent('fatou', 'Fatou', 'Sall', 'awa', unites.etudes, 'Secrétaire', 'non_cadre');
   await agent('ousmane', 'Ousmane', 'Fall', 'awa', unites.etudes, 'Chauffeur', null);
@@ -378,9 +411,13 @@ describe('l’équipe du N+1', () => {
 
 describe('le remplissage', () => {
   it('la grille suit la fiche : cadre, non cadre, ou à renseigner', async () => {
-    expect(
-      await codeOf(() => evaluations.enregistrer(session('awa'), agents.fatou, ANNEE, complete())),
-    ).toBe('evaluations.non_cadre');
+    expect((await evaluations.grille(session('awa'), agents.moussa, ANNEE)).modele).toBe('cadre');
+    // Non cadre : huit critères à noter, sans objectifs.
+    const nonCadre = await evaluations.grille(session('awa'), agents.fatou, ANNEE);
+    expect(nonCadre).toMatchObject({ modele: 'non_cadre', personnel: 'non_cadre', etat: null });
+    expect(nonCadre.contenu.notes).toEqual(Array(8).fill(null));
+    expect(nonCadre.contenu.objectifs).toEqual([]);
+    expect(nonCadre.contenu.criteres).toEqual([]);
     expect(
       await codeOf(() =>
         evaluations.enregistrer(session('awa'), agents.ousmane, ANNEE, complete()),
@@ -448,8 +485,8 @@ describe('le remplissage', () => {
   });
 
   it('le critère du commandement ne vaut que pour qui encadre', async () => {
-    expect(ceQuiManque(complete(false), false)).toEqual([]);
-    expect(ceQuiManque(complete(false), true)).toEqual(['Le niveau de chaque critère']);
+    expect(ceQuiManque(complete(false), cadre(false))).toEqual([]);
+    expect(ceQuiManque(complete(false), cadre(true))).toEqual(['Le niveau de chaque critère']);
     expect((await evaluations.grille(session('awa'), agents.khady, ANNEE)).commandement).toBe(true);
     expect((await evaluations.grille(session('awa'), agents.moussa, ANNEE)).commandement).toBe(
       false,
@@ -501,7 +538,7 @@ describe('le remplissage', () => {
   });
 
   it('sans objectif de travail pour la période à venir, la grille ne part pas', () => {
-    expect(ceQuiManque({ ...complete(), objectifsAVenir: [] }, false)).toEqual([
+    expect(ceQuiManque({ ...complete(), objectifsAVenir: [] }, cadre())).toEqual([
       'Un objectif de travail pour la période à venir',
     ]);
   });
@@ -590,7 +627,7 @@ describe('les champs de la grille', () => {
       ...vue.contenu,
       objectifsAVenir: [{ texte: '', echeance: `${ANNEE + 1}-01-15` }],
     };
-    expect(ceQuiManque(orpheline, false)).toEqual(['L’objectif de chaque échéance']);
+    expect(ceQuiManque(orpheline, cadre())).toEqual(['L’objectif de chaque échéance']);
   });
 
   it('les formations proposées : le catalogue, sans ce que l’agent a terminé ni anime', async () => {
@@ -667,6 +704,91 @@ describe('les champs de la grille', () => {
     expect(vue.contenu.formations).toEqual([{ courseId: null, titre: 'Gestion de projet' }]);
     const { pdf } = await evaluations.pdf(session('awa'), agents.khady, ANNEE - 2);
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+});
+
+describe('la grille du personnel non cadre', () => {
+  it('huit critères notés de 10 à 0, deux notes par niveau ; le relevé sur 170', () => {
+    expect(CRITERES_NON_CADRE.map((c) => c.coefficient)).toEqual([2, 3, 3, 2, 1, 1, 2, 3]);
+    expect(TOTAL_DES_POINTS).toBe(170);
+    expect(NOTES.map(niveauDeLaNote)).toEqual(['A', 'A', 'B', 'B', 'C', 'C', 'D', 'D']);
+    const releve = releveDesNotes([10, 9, 7, 6, 4, 3, 1, 0]);
+    expect(releve.lignes.map((l) => l.ponderee)).toEqual([20, 27, 21, 12, 4, 3, 2, 0]);
+    expect(releve.total).toBe(89);
+    // Tant qu'un critère n'est pas noté, pas de total.
+    expect(releveDesNotes([10, 9, null]).total).toBeNull();
+    // Une note qui n'est pas dans les cases du modèle est refusée.
+    expect(contenuDeGrilleSchema.safeParse({ notes: [8] }).success).toBe(false);
+  });
+
+  it('elle part avec ses huit notes, le résumé et la synthèse, sans objectifs', () => {
+    const nonCadre = { modele: 'non_cadre' as const, commandement: false };
+    expect(ceQuiManque(completeNonCadre(), nonCadre)).toEqual([]);
+    expect(ceQuiManque(completeNonCadre([10, 9, 7, 6, 4, 3, 1, null]), nonCadre)).toEqual([
+      'La note de chaque critère',
+    ]);
+    expect(ceQuiManque(grilleVide('non_cadre'), nonCadre)).toEqual([
+      'La note de chaque critère',
+      'Les points forts',
+      'Les points faibles',
+      'La synthèse générale',
+    ]);
+  });
+
+  it('le N+1 la remplit ; ce qui est propre à la grille du personnel cadre ne s’y garde pas', async () => {
+    const vue = await evaluations.enregistrer(session('khady'), agents.ibou, ANNEE, {
+      ...complete(),
+      notes: [10, 9, 7, 6, 4, 3, 1, null],
+    });
+    expect(vue.modele).toBe('non_cadre');
+    expect(vue.contenu.notes).toEqual([10, 9, 7, 6, 4, 3, 1, null]);
+    expect(vue.contenu.objectifs).toEqual([]);
+    expect(vue.contenu.criteres).toEqual([]);
+    expect(vue.contenu.objectifsAVenir).toEqual([]);
+    expect(vue.contenu.pointsForts).toEqual(puces('Rigueur', 'Disponibilité'));
+    expect(await codeOf(() => evaluations.envoyer(session('khady'), agents.ibou, ANNEE))).toBe(
+      'evaluations.incomplete',
+    );
+  });
+
+  it('elle suit le même circuit, jusqu’au dossier ; son PDF a cinq pages', async () => {
+    await evaluations.enregistrer(session('khady'), agents.ibou, ANNEE, completeNonCadre());
+    expect((await evaluations.envoyer(session('khady'), agents.ibou, ANNEE)).etat).toBe(
+      'chez_agent',
+    );
+    const lue = await evaluations.grille(session('ibou'), agents.ibou, ANNEE);
+    expect(lue.modele).toBe('non_cadre');
+    expect(lue.contenu.notes).toEqual([10, 9, 7, 6, 4, 3, 1, 0]);
+    expect(lue.contenu.comprehension).toBeNull();
+    await evaluations.valider(session('ibou'), agents.ibou, ANNEE, '');
+    await evaluations.terminer(session('khady'), agents.ibou, ANNEE);
+    expect(await evaluations.dossier(session('ndeye'), agents.ibou)).toEqual([
+      expect.objectContaining({
+        annee: ANNEE,
+        modele: 'non_cadre',
+        comprehension: 'B',
+        tenue: 'B',
+      }),
+    ]);
+    const { pdf } = await evaluations.pdf(session('ndeye'), agents.ibou, ANNEE);
+    expect(pages(pdf)).toBe(5);
+  });
+
+  it('chez le N+1, elle suit la fiche que la DCH corrige ; partie, elle garde son modèle', async () => {
+    await evaluations.enregistrer(session('khady'), agents.binta, ANNEE, complete());
+    await raw(`UPDATE employees SET personnel = 'non_cadre' WHERE id = $1`, [agents.binta]);
+    const corrigee = await evaluations.grille(session('khady'), agents.binta, ANNEE);
+    expect(corrigee.modele).toBe('non_cadre');
+    expect(corrigee.contenu.notes).toEqual(Array(8).fill(null));
+    expect(corrigee.contenu.objectifs).toEqual([]);
+    expect(corrigee.contenu.pointsForts).toEqual(puces('Rigueur', 'Disponibilité'));
+
+    await evaluations.enregistrer(session('khady'), agents.binta, ANNEE, completeNonCadre());
+    await evaluations.envoyer(session('khady'), agents.binta, ANNEE);
+    await raw(`UPDATE employees SET personnel = 'cadre' WHERE id = $1`, [agents.binta]);
+    const partie = await evaluations.grille(session('khady'), agents.binta, ANNEE);
+    expect(partie).toMatchObject({ modele: 'non_cadre', personnel: 'cadre', etat: 'chez_agent' });
+    expect(partie.contenu.notes).toEqual([10, 9, 7, 6, 4, 3, 1, 0]);
   });
 });
 
@@ -938,38 +1060,33 @@ describe('la DCH', () => {
 });
 
 describe('le PDF, à la taille de ce qui est écrit', () => {
-  /** Le nombre de pages d'un PDF : ses dictionnaires de page. */
-  const pages = (pdf: Buffer) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length;
-  const imprimer = (contenu: ContenuDeGrille) =>
-    grilleDuPersonnelCadre(
-      {
-        annee: ANNEE,
-        identification: {
-          direction: 'Direction du Capital Humain',
-          departement: null,
-          service: null,
-          agent: 'Moussa NDIAYE',
-          matricule: 'EMP-002',
-          fonction: 'Chargé d’études',
-          anciennete: '3 ans',
-          nouveauAuPoste: false,
-          evaluateur: 'Awa DIOP',
-          fonctionEvaluateur: 'Cheffe du département',
-        },
-        contenu,
-        commandement: false,
-        nouveauAuPoste: false,
-        ratification: {
-          evaluateur: 'Awa DIOP',
-          envoyeeLe: null,
-          agent: 'Moussa NDIAYE',
-          valideeLe: null,
-          commentaires: '',
-        },
-        n2: null,
-      },
-      null,
-    );
+  const donnees = (contenu: ContenuDeGrille) => ({
+    annee: ANNEE,
+    identification: {
+      direction: 'Direction du Capital Humain',
+      departement: null,
+      service: null,
+      agent: 'Moussa NDIAYE',
+      matricule: 'EMP-002',
+      fonction: 'Chargé d’études',
+      anciennete: '3 ans',
+      nouveauAuPoste: false,
+      evaluateur: 'Awa DIOP',
+      fonctionEvaluateur: 'Cheffe du département',
+    },
+    contenu,
+    commandement: false,
+    nouveauAuPoste: false,
+    ratification: {
+      evaluateur: 'Awa DIOP',
+      envoyeeLe: null,
+      agent: 'Moussa NDIAYE',
+      valideeLe: null,
+      commentaires: '',
+    },
+    n2: null,
+  });
+  const imprimer = (contenu: ContenuDeGrille) => grilleDuPersonnelCadre(donnees(contenu), null);
   const objectifs = (n: number) =>
     Array.from({ length: n }, (_, i) => ({
       texte: texteRicheDe(`Objectif de l’année écoulée n° ${i + 1}`),
@@ -988,6 +1105,20 @@ describe('le PDF, à la taille de ce qui est écrit', () => {
       })),
     });
     expect(pages(dix)).toBe(7);
+  });
+
+  it('cinq pages pour la grille du personnel non cadre, vide ou remplie', async () => {
+    const imprimerNonCadre = (contenu: ContenuDeGrille) =>
+      grilleDuPersonnelNonCadre(donnees(contenu), null);
+    expect(pages(await imprimerNonCadre(grilleVide('non_cadre')))).toBe(5);
+    const remplie = await imprimerNonCadre({
+      ...completeNonCadre(),
+      formations: Array.from({ length: 10 }, (_, i) => ({
+        courseId: null,
+        titre: `Besoin n° ${i + 1}`,
+      })),
+    });
+    expect(pages(remplie)).toBe(5);
   });
 });
 

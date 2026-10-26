@@ -45,15 +45,18 @@ import {
   reconcilierLesGrilles,
 } from './circuit';
 import { grilleDuPersonnelCadre } from './grille-cadre';
+import { grilleDuPersonnelNonCadre } from './grille-non-cadre';
 
 /* ────────────────────────────────────────────────────────────────
    L'évaluation annuelle sur la grille de l'APIX (ADR-0149).
 
    Qui fait quoi se lit dans l'organigramme, comme pour les congés :
    · le N+1 d'aujourd'hui remplit la grille de chaque agent de son équipe,
-     une fois la période ouverte, l'envoie à l'agent, puis à la DCH ou
-     d'abord au N+2 ;
-   · l'agent la lit, sans la page 6, la valide ou la renvoie ;
+     celle du personnel cadre ou celle du personnel non cadre, selon sa
+     fiche (ADR-0155), une fois la période ouverte ; l'envoie à l'agent,
+     puis à la DCH ou d'abord au N+2 ;
+   · l'agent la lit, sans la partie réservée à la hiérarchie, la valide ou
+     la renvoie ;
    · le N+2 qui l'a reçue la lit en entier, la commente et la valide ;
    · la DCH ouvre la période, suit les grilles, et reçoit l'original.
    ──────────────────────────────────────────────────────────────── */
@@ -97,8 +100,8 @@ interface Contexte {
   agent: Agent & { unites: Unites };
   grille: Grille | null;
   /**
-   * Une grille pas encore commencée : le rappel des objectifs y reprend les
-   * objectifs à venir de la grille précédente.
+   * Une grille pas encore commencée ; celle du personnel cadre reprend dans
+   * son rappel des objectifs les objectifs à venir de la grille précédente.
    */
   prefill: ContenuDeGrille | null;
   periode: PeriodeEvaluation | null;
@@ -398,7 +401,10 @@ export class EvaluationsService {
     );
   }
 
-  /** Le N+1 enregistre la grille telle qu'elle est ; le premier enregistrement la crée. */
+  /**
+   * Le N+1 enregistre la grille telle qu'elle est, sur le modèle que dit la
+   * fiche de l'agent ; le premier enregistrement la crée.
+   */
   async enregistrer(
     user: SessionUser,
     employeeId: string,
@@ -409,7 +415,7 @@ export class EvaluationsService {
       const c = await this.contexte(tx, user, employeeId, annee);
       this.exiger(c, 'enregistrer');
       const modele = this.modeleDe(c.agent);
-      const lu = completerLaGrille(contenuDeGrilleSchema.parse(contenu));
+      const lu = completerLaGrille(contenuDeGrilleSchema.parse(contenu), modele);
       const avant = c.grille ? contenuDeGrilleSchema.parse(c.grille.contenu).formations : [];
       const complet = {
         ...lu,
@@ -426,7 +432,9 @@ export class EvaluationsService {
           evaluateurEmployeeId: c.moi,
         });
       } else {
+        // La DCH a pu corriger la fiche entre-temps : la grille la suit.
         await this.passer(tx, c.grille, ['brouillon'], {
+          modele,
           contenu: complet,
           evaluateurEmployeeId: c.moi,
         });
@@ -435,14 +443,15 @@ export class EvaluationsService {
     });
   }
 
-  /** Le N+1 envoie la grille complète à l'agent ; l'identification s'y fige. */
+  /** Le N+1 envoie la grille complète à l'agent ; son modèle et l'identification s'y figent. */
   async envoyer(user: SessionUser, employeeId: string, annee: number): Promise<VueDeGrille> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const c = await this.contexte(tx, user, employeeId, annee);
       this.exiger(c, 'envoyer');
       if (!c.grille) problem(422, 'evaluations.vide', 'La grille n’est pas encore remplie');
-      const contenu = completerLaGrille(contenuDeGrilleSchema.parse(c.grille.contenu));
-      const manque = ceQuiManque(contenu, c.agent.encadre);
+      const modele = this.modeleDe(c.agent);
+      const contenu = completerLaGrille(contenuDeGrilleSchema.parse(c.grille.contenu), modele);
+      const manque = ceQuiManque(contenu, { modele, commandement: c.agent.encadre });
       if (manque.length > 0) {
         problem(422, 'evaluations.incomplete', 'La grille n’est pas complète', manque.join(' ; '));
       }
@@ -456,6 +465,7 @@ export class EvaluationsService {
       }
       await this.passer(tx, c.grille, ['brouillon'], {
         etat: 'chez_agent',
+        modele,
         identification: this.identification(c.agent, c.aujourdhui),
         evaluateurEmployeeId: c.moi,
         envoyeeLe: new Date(),
@@ -613,16 +623,11 @@ export class EvaluationsService {
       const c = await this.contexte(tx, user, employeeId, annee);
       this.exiger(c, 'pdf');
       const v = await this.vue(tx, c);
-      if (v.modele !== 'cadre') {
-        problem(
-          422,
-          'evaluations.non_cadre',
-          'La grille du personnel non cadre n’est pas encore disponible',
-        );
-      }
       const g = c.grille;
       const n2 = g?.n2Identite as { nom: string; prenom: string; fonction: string | null } | null;
-      const pdf = await grilleDuPersonnelCadre({
+      const imprimer =
+        v.modele === 'non_cadre' ? grilleDuPersonnelNonCadre : grilleDuPersonnelCadre;
+      const pdf = await imprimer({
         annee,
         identification: v.identification,
         contenu: v.contenu,
@@ -697,7 +702,9 @@ export class EvaluationsService {
         `Votre grille d’évaluation ${annee} n’est pas encore disponible`,
       );
     }
-    const prefill = grille ? null : await this.objectifsRepris(tx, employeeId, annee);
+    const prefill = grille
+      ? null
+      : await this.grilleNeuve(tx, employeeId, annee, agent.personnel ?? 'cadre');
     const parQui = grille?.evaluateurEmployeeId ?? agent.n1?.id ?? null;
     const evaluateur =
       parQui && parQui === agent.n1?.id
@@ -720,15 +727,19 @@ export class EvaluationsService {
   }
 
   /**
-   * Une grille neuve : les objectifs à venir de la grille précédente
-   * deviennent le rappel des objectifs de l'année écoulée, que le N+1 corrige.
+   * Une grille neuve. Dans celle du personnel cadre, les objectifs à venir de
+   * la grille précédente deviennent le rappel des objectifs de l'année
+   * écoulée, que le N+1 corrige. Celle du personnel non cadre n'a pas
+   * d'objectifs.
    */
-  private async objectifsRepris(
+  private async grilleNeuve(
     tx: Tx,
     employeeId: string,
     annee: number,
+    modele: Personnel,
   ): Promise<ContenuDeGrille> {
-    const vide = grilleVide();
+    const vide = grilleVide(modele);
+    if (modele === 'non_cadre') return vide;
     const [precedente] = await tx
       .select({ contenu: t.evaluationGrilles.contenu })
       .from(t.evaluationGrilles)
@@ -885,23 +896,21 @@ export class EvaluationsService {
         'La DCH doit l’indiquer sur la fiche de l’agent.',
       );
     }
-    if (agent.personnel === 'non_cadre') {
-      problem(
-        422,
-        'evaluations.non_cadre',
-        'La grille du personnel non cadre n’est pas encore disponible',
-      );
-    }
     return agent.personnel;
   }
 
   private async vue(tx: Tx, c: Contexte): Promise<VueDeGrille> {
     const g = c.grille;
+    // Chez le N+1, la grille suit la fiche de l'agent ; partie, elle garde son modèle.
+    const modele: Personnel =
+      g && g.etat !== 'brouillon'
+        ? (g.modele as Personnel)
+        : (c.agent.personnel ?? (g?.modele as Personnel | undefined) ?? 'cadre');
     let contenu = g
-      ? completerLaGrille(contenuDeGrilleSchema.parse(g.contenu))
-      : (c.prefill ?? grilleVide());
+      ? completerLaGrille(contenuDeGrilleSchema.parse(g.contenu), modele)
+      : (c.prefill ?? grilleVide(modele));
     if (c.role === 'agent') {
-      // La page 6 est réservée à la hiérarchie.
+      // La dernière page est réservée à la hiérarchie.
       contenu = { ...contenu, comprehension: null, tenue: null, observations: [] };
     }
     const figee =
@@ -917,7 +926,7 @@ export class EvaluationsService {
     return {
       employeeId: c.agent.id,
       annee: g?.annee ?? c.annee,
-      modele: (g?.modele as Personnel | undefined) ?? c.agent.personnel ?? 'cadre',
+      modele,
       personnel: c.agent.personnel,
       etat: (g?.etat as EtatDeGrille | undefined) ?? null,
       role: c.role,

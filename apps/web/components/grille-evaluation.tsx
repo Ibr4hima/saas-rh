@@ -18,17 +18,22 @@ import { useQuery } from '@tanstack/react-query';
 import {
   besoinsDeFormation,
   CRITERES_CADRE,
+  CRITERES_NON_CADRE,
   dateEnLettres,
   FORMATIONS,
   LIBELLES_OU_EN_EST,
   LIMITES_DE_LA_GRILLE,
+  niveauDeLaNote,
   NIVEAUX,
   NIVEAUX_D_OBJECTIF,
   nomDeLaGrille,
+  NOTES_DU_NIVEAU,
   OBJECTIFS_ECOULES,
   periodeDEvaluationEnLettres,
+  releveDesNotes,
   SYNTHESE_DU_N1,
   texteRicheVide,
+  TOTAL_DES_POINTS,
   type ContenuDeGrille,
   type CritereDeGrille,
   type FormeDuChamp,
@@ -36,6 +41,7 @@ import {
   type FormationProposable,
   type GrilleAuDossier,
   type Niveau,
+  type Note,
   type ObjectifAVenir,
   type OuEnEst,
   type PeriodeEvaluation,
@@ -88,7 +94,8 @@ const EditeurRiche = dynamic(() => import('./editeur-riche'), {
 
 /*
    La grille d'évaluation de l'APIX à l'écran (ADR-0149) : le N+1 la remplit
-   section par section, dans l'ordre du modèle ; l'agent la lit, sans la
+   section par section, dans l'ordre de son modèle, celui du personnel cadre
+   ou celui du personnel non cadre (ADR-0155) ; l'agent la lit, sans la
    partie réservée à la hiérarchie ; le N+1, le N+2 et la DCH la voient telle
    qu'elle s'imprime, en PDF. Chacun voit ce que les autres y ont fait : le
    circuit dit qui l'a eue, quand, et ce qu'en ont dit l'agent et le N+2.
@@ -329,6 +336,101 @@ export const ChoixDeNiveau = memo(function ChoixDeNiveau({
   );
 });
 
+/**
+ * Les huit notes d'un critère de la grille du personnel non cadre : chaque
+ * niveau avec ce qu'il veut dire et ses deux notes, la plus haute d'abord,
+ * comme les cases du modèle. Le niveau de la note cochée prend sa couleur.
+ */
+const ChoixDeNote = memo(function ChoixDeNote({
+  legende,
+  valeur,
+  libelles,
+  onChange,
+}: {
+  legende: string;
+  valeur: Note | null;
+  libelles: Record<Niveau, string>;
+  /** Un nouveau clic sur la note cochée la retire, mais pas le second d'un double-clic. */
+  onChange: (n: Note | null) => void;
+}) {
+  const nom = useId();
+  const choisieA = useRef(0);
+  const niveau = valeur === null ? null : niveauDeLaNote(valeur);
+  return (
+    <fieldset className="relative min-w-0">
+      <legend className="sr-only">{legende}</legend>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {NIVEAUX.map((n) => {
+          const choisi = niveau === n;
+          return (
+            <div
+              key={n}
+              className={cn(
+                'flex flex-col gap-2 rounded-controle border px-3 py-2.5 transition-colors duration-150',
+                choisi ? COULEURS_DU_NIVEAU[n].choix : 'border-line bg-surface',
+              )}
+            >
+              <div className="flex items-center gap-2.5">
+                <span
+                  className={cn(
+                    'flex size-6 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold transition-colors duration-150',
+                    choisi ? COULEURS_DU_NIVEAU[n].pastille : 'bg-line-soft text-ink-strong',
+                  )}
+                >
+                  {n}
+                </span>
+                <span className="ml-auto flex gap-1.5">
+                  {NOTES_DU_NIVEAU[n].map((note) => {
+                    const cochee = valeur === note;
+                    return (
+                      <label
+                        key={note}
+                        // `relative` : la case radio, cachée, se place dans son libellé.
+                        className={cn(
+                          'relative flex h-8 min-w-10 cursor-pointer items-center justify-center rounded-[8px] border px-2 text-[12.5px] font-bold tabular-nums transition-colors duration-150',
+                          'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary',
+                          cochee
+                            ? cn(COULEURS_DU_NIVEAU[n].pastille, 'border-transparent')
+                            : 'border-line bg-surface text-ink-strong hover:border-ink-muted/40 hover:bg-hover',
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name={nom}
+                          value={note}
+                          checked={cochee}
+                          aria-label={`${note}, niveau ${n}`}
+                          onChange={() => {
+                            choisieA.current = Date.now();
+                            onChange(note);
+                          }}
+                          onClick={() => {
+                            if (cochee && Date.now() - choisieA.current > 600) onChange(null);
+                          }}
+                          className="sr-only"
+                        />
+                        {note}
+                      </label>
+                    );
+                  })}
+                </span>
+              </div>
+              <span
+                className={cn(
+                  'text-[12px] leading-snug',
+                  choisi ? cn('font-semibold', COULEURS_DU_NIVEAU[n].texte) : 'text-ink',
+                )}
+              >
+                {libelles[n]}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+});
+
 /** Un niveau donné, en lecture : la lettre dans sa pastille, puis ce qu'elle veut dire. */
 function NiveauDonne({ niveau, libelle }: { niveau: Niveau | null; libelle?: string }) {
   if (!niveau) return <NonRenseigne />;
@@ -351,8 +453,96 @@ function NiveauDonne({ niveau, libelle }: { niveau: Niveau | null; libelle?: str
   );
 }
 
+/** Une note donnée, en lecture : la lettre de son niveau, la note, puis ce que dit le niveau. */
+function NoteDonnee({ note, libelles }: { note: Note | null; libelles: Record<Niveau, string> }) {
+  if (note === null) return <NonRenseigne />;
+  const niveau = niveauDeLaNote(note);
+  return (
+    <span className="flex items-start gap-2.5">
+      <span
+        className={cn(
+          'flex size-6 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold',
+          COULEURS_DU_NIVEAU[niveau].pastille,
+        )}
+      >
+        {niveau}
+      </span>
+      <span className="flex h-6 min-w-8 shrink-0 items-center justify-center rounded-[7px] border border-line px-1.5 text-[12px] font-bold text-ink-strong tabular-nums">
+        {note}
+      </span>
+      <span className="min-w-0 pt-[3px] text-[12.5px] leading-snug font-semibold text-ink-strong">
+        {libelles[niveau]}
+      </span>
+    </span>
+  );
+}
+
 function NonRenseigne() {
   return <span className="text-[12.5px] text-ink-muted/70">Non renseigné</span>;
+}
+
+/**
+ * Le relevé des notes obtenues, comme à la page 3 du modèle : chaque
+ * critère, sa note, son coefficient, sa note pondérée, et le total des
+ * points sur 170, une fois chaque critère noté. Il suit la saisie.
+ */
+function ReleveDesNotesObtenues({ notes }: { notes: readonly (Note | null)[] }) {
+  const releve = releveDesNotes(notes);
+  // Ce qui n'est pas encore noté garde sa place, comme les pointillés du modèle.
+  const valeur = (v: number | null) =>
+    v === null ? <span className="text-ink-muted/60">…</span> : v;
+  const serre = 'max-sm:px-2.5';
+  return (
+    <div className="rounded-bloc border border-line">
+      <Table>
+        <THead>
+          <tr>
+            <Th className={serre}>Critère</Th>
+            <Th className={cn(serre, 'text-right')}>
+              Note<span className="max-sm:hidden"> brute</span>
+            </Th>
+            <Th className={cn(serre, 'text-right')}>
+              <span className="sm:hidden">Coef.</span>
+              <span className="max-sm:hidden">Coefficient</span>
+            </Th>
+            <Th className={cn(serre, 'text-right')}>
+              <span className="max-sm:hidden">Note </span>pondérée
+            </Th>
+          </tr>
+        </THead>
+        <TBody>
+          {releve.lignes.map((l) => (
+            <Tr key={l.critere.numero}>
+              <Td className={cn(serre, 'text-ink-strong')}>
+                <span className="text-ink-muted tabular-nums">{l.critere.numero}.</span>{' '}
+                {l.critere.intitule}
+              </Td>
+              <Td className={cn(serre, 'text-right tabular-nums')}>{valeur(l.note)}</Td>
+              <Td className={cn(serre, 'text-right text-ink-muted tabular-nums')}>
+                {l.critere.coefficient}
+              </Td>
+              <Td className={cn(serre, 'text-right font-semibold text-ink-strong tabular-nums')}>
+                {valeur(l.ponderee)}
+              </Td>
+            </Tr>
+          ))}
+          <tr className="border-t border-line">
+            <Td colSpan={3} className={cn(serre, 'font-bold text-ink-strong')}>
+              Total des points
+            </Td>
+            <Td
+              className={cn(
+                serre,
+                'text-right font-bold whitespace-nowrap text-ink-strong tabular-nums',
+              )}
+            >
+              {valeur(releve.total)} / {TOTAL_DES_POINTS}
+            </Td>
+          </tr>
+        </TBody>
+      </Table>
+    </div>
+  );
 }
 
 /**
@@ -698,6 +888,10 @@ function useGestes(onChange: MiseAJour) {
         (cr) => (niveau: Niveau | null) =>
           onChange((c) => ({ ...c, criteres: remplacer(c.criteres, cr.numero - 1, niveau) })),
       ),
+      notes: CRITERES_NON_CADRE.map(
+        (cr) => (note: Note | null) =>
+          onChange((c) => ({ ...c, notes: remplacer(c.notes, cr.numero - 1, note) })),
+      ),
       pointsForts: (pointsForts: TexteRiche) => poser({ pointsForts }),
       pointsFaibles: (pointsFaibles: TexteRiche) => poser({ pointsFaibles }),
       actions: (actions: TexteRiche) => poser({ actions }),
@@ -851,6 +1045,32 @@ const CritereANoter = memo(function CritereANoter({
   );
 });
 
+/** Un critère de la grille du personnel non cadre, à noter de 10 à 0. */
+const CritereANoterSurDix = memo(function CritereANoterSurDix({
+  critere,
+  valeur,
+  onChange,
+}: {
+  critere: CritereDeGrille;
+  valeur: Note | null;
+  onChange: (n: Note | null) => void;
+}) {
+  return (
+    <li className="flex flex-col gap-2.5">
+      <p className="text-[13px] font-semibold text-ink-strong">
+        <span className="text-ink-muted tabular-nums">{critere.numero}.</span> {critere.intitule}
+        <span className="text-danger">{'\u00a0'}*</span>
+      </p>
+      <ChoixDeNote
+        legende={critere.intitule}
+        valeur={valeur}
+        libelles={critere.niveaux}
+        onChange={onChange}
+      />
+    </li>
+  );
+});
+
 /** La case « agent nouveau à son poste actuel », sous l'identification. */
 const NouveauAuPoste = memo(function NouveauAuPoste({
   coche,
@@ -868,10 +1088,12 @@ const NouveauAuPoste = memo(function NouveauAuPoste({
 });
 
 /**
- * La grille que remplit le N+1 : les sections du modèle, dans son ordre,
- * de l'identification à la partie réservée à la hiérarchie. Les champs
- * marqués d'un astérisque sont ceux sans lesquels la grille ne part pas à
- * l'agent (cf. `ceQuiManque`).
+ * La grille que remplit le N+1 : les sections de son modèle, dans son
+ * ordre, de l'identification à la partie réservée à la hiérarchie. Celle du
+ * personnel cadre rappelle les objectifs et note ses critères de A à D ;
+ * celle du personnel non cadre note les siens de 10 à 0, et en tient le
+ * relevé. Les champs marqués d'un astérisque sont ceux sans lesquels la
+ * grille ne part pas à l'agent (cf. `ceQuiManque`).
  */
 export function SaisieDeLaGrille({
   vue,
@@ -885,6 +1107,7 @@ export function SaisieDeLaGrille({
 }) {
   const L = LIMITES_DE_LA_GRILLE;
   const gestes = useGestes(onChange);
+  const cadre = vue.modele === 'cadre';
   const avecRaisons = contenu.objectifs.some((o) => o.niveau === 'C' || o.niveau === 'D');
 
   return (
@@ -899,40 +1122,63 @@ export function SaisieDeLaGrille({
         }
       />
 
-      <Section titre="Rappel sur les objectifs fixés à l’agent pour la période écoulée">
-        <div className="flex flex-col gap-6">
-          <ObjectifsEcoules objectifs={contenu.objectifs} gestes={gestes} />
-          <Field
-            label="Raisons des objectifs non atteints ou partiellement réalisés"
-            required={avecRaisons}
-          >
-            <ChampRiche
-              forme="listes"
-              label="Raisons des objectifs non atteints ou partiellement réalisés"
-              max={L.raisons}
-              valeur={contenu.raisons}
-              onChange={gestes.raisons}
-            />
-          </Field>
-        </div>
-      </Section>
+      {cadre ? (
+        <>
+          <Section titre="Rappel sur les objectifs fixés à l’agent pour la période écoulée">
+            <div className="flex flex-col gap-6">
+              <ObjectifsEcoules objectifs={contenu.objectifs} gestes={gestes} />
+              <Field
+                label="Raisons des objectifs non atteints ou partiellement réalisés"
+                required={avecRaisons}
+              >
+                <ChampRiche
+                  forme="listes"
+                  label="Raisons des objectifs non atteints ou partiellement réalisés"
+                  max={L.raisons}
+                  valeur={contenu.raisons}
+                  onChange={gestes.raisons}
+                />
+              </Field>
+            </div>
+          </Section>
 
-      <Section titre="Évaluation des performances dans le poste">
-        <ol className="flex flex-col gap-6">
-          {CRITERES_CADRE.map((c, i) =>
-            c.commandement && !vue.commandement ? (
-              <SansObjet key={c.numero} numero={c.numero} intitule={c.intitule} />
-            ) : (
-              <CritereANoter
-                key={c.numero}
-                critere={c}
-                valeur={contenu.criteres[c.numero - 1] ?? null}
-                onChange={gestes.criteres[i]!}
-              />
-            ),
-          )}
-        </ol>
-      </Section>
+          <Section titre="Évaluation des performances dans le poste">
+            <ol className="flex flex-col gap-6">
+              {CRITERES_CADRE.map((c, i) =>
+                c.commandement && !vue.commandement ? (
+                  <SansObjet key={c.numero} numero={c.numero} intitule={c.intitule} />
+                ) : (
+                  <CritereANoter
+                    key={c.numero}
+                    critere={c}
+                    valeur={contenu.criteres[c.numero - 1] ?? null}
+                    onChange={gestes.criteres[i]!}
+                  />
+                ),
+              )}
+            </ol>
+          </Section>
+        </>
+      ) : (
+        <>
+          <Section titre="Évaluation des performances dans le poste">
+            <ol className="flex flex-col gap-6">
+              {CRITERES_NON_CADRE.map((c, i) => (
+                <CritereANoterSurDix
+                  key={c.numero}
+                  critere={c}
+                  valeur={contenu.notes[c.numero - 1] ?? null}
+                  onChange={gestes.notes[i]!}
+                />
+              ))}
+            </ol>
+          </Section>
+
+          <Section titre="Relevé des notes obtenues">
+            <ReleveDesNotesObtenues notes={contenu.notes} />
+          </Section>
+        </>
+      )}
 
       <Section titre="Résumé de l’évaluation des performances">
         <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
@@ -967,13 +1213,15 @@ export function SaisieDeLaGrille({
         />
       </Section>
 
-      <Section titre="Objectifs de travail pour la période à venir" requise>
-        <EditeurObjectifsAVenir
-          initial={contenu.objectifsAVenir}
-          annee={vue.annee}
-          onChange={gestes.objectifsAVenir}
-        />
-      </Section>
+      {cadre ? (
+        <Section titre="Objectifs de travail pour la période à venir" requise>
+          <EditeurObjectifsAVenir
+            initial={contenu.objectifsAVenir}
+            annee={vue.annee}
+            onChange={gestes.objectifsAVenir}
+          />
+        </Section>
+      ) : null}
 
       <Section titre={besoinsDeFormation(contenu.formations.length)}>
         <BesoinsDeFormation
@@ -1023,6 +1271,7 @@ export function SaisieDeLaGrille({
  */
 export function GrilleEnLecture({ vue }: { vue: VueDeGrille }) {
   const c = vue.contenu;
+  const cadre = vue.modele === 'cadre';
   const objectifs = c.objectifs.filter((o) => !texteRicheVide(o.texte) || o.niveau);
   const nouveau = c.nouveauAuPoste ?? vue.identification.nouveauAuPoste;
   return (
@@ -1039,54 +1288,78 @@ export function GrilleEnLecture({ vue }: { vue: VueDeGrille }) {
         }
       />
 
-      <Section titre="Rappel sur les objectifs fixés à l’agent pour la période écoulée">
-        <div className="flex flex-col gap-5">
-          {objectifs.map((o, i) => (
-            <div key={i} className="flex flex-col gap-2">
-              <Intitule>Objectif {i + 1}</Intitule>
-              <div className="flex items-start gap-2.5">
-                <span className="pt-[3px]">
-                  <CaseDuNiveau niveau={o.niveau} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <TexteDonne texte={o.texte} />
+      {cadre ? (
+        <>
+          <Section titre="Rappel sur les objectifs fixés à l’agent pour la période écoulée">
+            <div className="flex flex-col gap-5">
+              {objectifs.map((o, i) => (
+                <div key={i} className="flex flex-col gap-2">
+                  <Intitule>Objectif {i + 1}</Intitule>
+                  <div className="flex items-start gap-2.5">
+                    <span className="pt-[3px]">
+                      <CaseDuNiveau niveau={o.niveau} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <TexteDonne texte={o.texte} />
+                    </div>
+                  </div>
+                  <div className="sm:pl-7">
+                    <NiveauDonne
+                      niveau={o.niveau}
+                      libelle={o.niveau ? NIVEAUX_D_OBJECTIF[o.niveau] : ''}
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="sm:pl-7">
-                <NiveauDonne
-                  niveau={o.niveau}
-                  libelle={o.niveau ? NIVEAUX_D_OBJECTIF[o.niveau] : ''}
-                />
-              </div>
+              ))}
+              {!texteRicheVide(c.raisons) ? (
+                <div>
+                  <Intitule>Raisons des objectifs non atteints ou partiellement réalisés</Intitule>
+                  <TexteDonne texte={c.raisons} />
+                </div>
+              ) : null}
             </div>
-          ))}
-          {!texteRicheVide(c.raisons) ? (
-            <div>
-              <Intitule>Raisons des objectifs non atteints ou partiellement réalisés</Intitule>
-              <TexteDonne texte={c.raisons} />
-            </div>
-          ) : null}
-        </div>
-      </Section>
+          </Section>
 
-      <Section titre="Évaluation des performances dans le poste">
-        <ol className="flex flex-col gap-4">
-          {CRITERES_CADRE.map((cr) => {
-            if (cr.commandement && !vue.commandement) {
-              return <SansObjet key={cr.numero} numero={cr.numero} intitule={cr.intitule} />;
-            }
-            const niveau = c.criteres[cr.numero - 1] ?? null;
-            return (
-              <li key={cr.numero} className="flex flex-col gap-2">
-                <p className="text-[13px] font-semibold text-ink-strong">
-                  <span className="text-ink-muted tabular-nums">{cr.numero}.</span> {cr.intitule}
-                </p>
-                <NiveauDonne niveau={niveau} libelle={niveau ? cr.niveaux[niveau] : ''} />
-              </li>
-            );
-          })}
-        </ol>
-      </Section>
+          <Section titre="Évaluation des performances dans le poste">
+            <ol className="flex flex-col gap-4">
+              {CRITERES_CADRE.map((cr) => {
+                if (cr.commandement && !vue.commandement) {
+                  return <SansObjet key={cr.numero} numero={cr.numero} intitule={cr.intitule} />;
+                }
+                const niveau = c.criteres[cr.numero - 1] ?? null;
+                return (
+                  <li key={cr.numero} className="flex flex-col gap-2">
+                    <p className="text-[13px] font-semibold text-ink-strong">
+                      <span className="text-ink-muted tabular-nums">{cr.numero}.</span>{' '}
+                      {cr.intitule}
+                    </p>
+                    <NiveauDonne niveau={niveau} libelle={niveau ? cr.niveaux[niveau] : ''} />
+                  </li>
+                );
+              })}
+            </ol>
+          </Section>
+        </>
+      ) : (
+        <>
+          <Section titre="Évaluation des performances dans le poste">
+            <ol className="flex flex-col gap-4">
+              {CRITERES_NON_CADRE.map((cr) => (
+                <li key={cr.numero} className="flex flex-col gap-2">
+                  <p className="text-[13px] font-semibold text-ink-strong">
+                    <span className="text-ink-muted tabular-nums">{cr.numero}.</span> {cr.intitule}
+                  </p>
+                  <NoteDonnee note={c.notes[cr.numero - 1] ?? null} libelles={cr.niveaux} />
+                </li>
+              ))}
+            </ol>
+          </Section>
+
+          <Section titre="Relevé des notes obtenues">
+            <ReleveDesNotesObtenues notes={c.notes} />
+          </Section>
+        </>
+      )}
 
       <Section titre="Résumé de l’évaluation des performances">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -1105,23 +1378,25 @@ export function GrilleEnLecture({ vue }: { vue: VueDeGrille }) {
         <TexteDonne texte={c.actions} />
       </Section>
 
-      <Section titre="Objectifs de travail pour la période à venir">
-        {c.objectifsAVenir.length === 0 ? (
-          <NonRenseigne />
-        ) : (
-          <ul className="flex flex-col gap-1.5">
-            {c.objectifsAVenir.map((o, i) => (
-              <li key={i} className="flex items-start gap-[11px]">
-                <CaseAVenir className="mt-[2px]" />
-                <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed break-words text-ink-strong">
-                  {o.texte}
-                </p>
-                {o.echeance ? <Echeance date={o.echeance} className="pt-px" /> : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+      {cadre ? (
+        <Section titre="Objectifs de travail pour la période à venir">
+          {c.objectifsAVenir.length === 0 ? (
+            <NonRenseigne />
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {c.objectifsAVenir.map((o, i) => (
+                <li key={i} className="flex items-start gap-[11px]">
+                  <CaseAVenir className="mt-[2px]" />
+                  <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed break-words text-ink-strong">
+                    {o.texte}
+                  </p>
+                  {o.echeance ? <Echeance date={o.echeance} className="pt-px" /> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      ) : null}
 
       <Section titre={besoinsDeFormation(c.formations.length)}>
         {c.formations.length === 0 ? (

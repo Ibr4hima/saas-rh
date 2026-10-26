@@ -8,13 +8,14 @@ import { texteBrut, texteRicheSchema, texteRicheVide } from './texte-riche';
 
    Qui dirige la DCH ouvre la période d'évaluation de l'année. Le N+1
    remplit la grille de chaque agent de son équipe : la grille du personnel
-   cadre (réf. S1/EN02) ou celle du personnel non cadre, selon la fiche de
-   l'agent. La grille passe ensuite à l'agent, qui la valide ou la renvoie ;
-   puis, au choix du N+1, au N+2 ; enfin à la DCH, en PDF.
+   cadre (réf. S1/EN02) ou celle du personnel non cadre (réf. S1/EN03,
+   ADR-0155), selon la fiche de l'agent. La grille passe ensuite à l'agent,
+   qui la valide ou la renvoie ; puis, au choix du N+1, au N+2 ; enfin à la
+   DCH, en PDF.
 
-   Le texte de la grille est celui du modèle de l'APIX, corrigé de ses
-   fautes ; il est ici, une fois, pour l'écran qui la fait remplir et pour
-   le PDF qui l'imprime.
+   Le texte des deux grilles est celui des modèles de l'APIX, corrigé de
+   leurs fautes ; il est ici, une fois, pour l'écran qui les fait remplir et
+   pour le PDF qui les imprime.
    ──────────────────────────────────────────────────────────────── */
 
 export const NIVEAUX = ['A', 'B', 'C', 'D'] as const;
@@ -190,7 +191,160 @@ export const CRITERES_CADRE: readonly CritereDeGrille[] = [
 export const NOTE_COMMANDEMENT =
   'Utiliser ce critère uniquement pour les agents ayant des collaborateurs sous leurs ordres';
 
-/** La synthèse générale du N+1, page 6 : deux critères, chacun de A à D. */
+// ──────────────────────────────────────────────── la grille du personnel non cadre
+
+/** Les notes d'un critère de la grille du personnel non cadre : deux par niveau, de 10 à 0. */
+export const NOTES = [10, 9, 7, 6, 4, 3, 1, 0] as const;
+export type Note = (typeof NOTES)[number];
+export const noteSchema = z.literal(NOTES);
+
+/** Les deux notes de chaque niveau, la plus haute d'abord, comme les cases du modèle. */
+export const NOTES_DU_NIVEAU: Record<Niveau, readonly [Note, Note]> = {
+  A: [10, 9],
+  B: [7, 6],
+  C: [4, 3],
+  D: [1, 0],
+};
+
+/** Le niveau d'une note : 10 et 9 font A, 7 et 6 B, 4 et 3 C, 1 et 0 D. */
+export function niveauDeLaNote(note: Note): Niveau {
+  return NIVEAUX.find((n) => NOTES_DU_NIVEAU[n].includes(note))!;
+}
+
+/** Un critère qui se note : sa note compte au relevé selon son coefficient. */
+export interface CritereNote extends CritereDeGrille {
+  coefficient: number;
+}
+
+/**
+ * Les huit critères de la grille du personnel non cadre, page 2, dans
+ * l'ordre du modèle, avec leur coefficient du relevé des notes, page 3.
+ * Corrigés : « Prend » pour « Prends », « maîtrise », les majuscules
+ * égarées en milieu de phrase, la ponctuation, l'accord de « insuffisante »,
+ * et « Quantité de travail parfois en dessous des exigences » pour la
+ * capacité de travail, où le modèle écrit « Qualité ». Le « il » de
+ * « il maîtrise » et de « il rejette » tombe, comme dans la grille du
+ * personnel cadre.
+ */
+export const CRITERES_NON_CADRE: readonly CritereNote[] = [
+  {
+    numero: 1,
+    intitule: 'Connaissances techniques et expérience pratique',
+    coefficient: 2,
+    niveaux: {
+      A: 'Domine parfaitement son travail, très sûr techniquement ; expérience étendue',
+      B: 'Assez compétent et bonne expérience pratique ; maîtrise ses tâches',
+      C: 'Lacunes techniques, a du mal à maîtriser son travail ; expérience limitée',
+      D: 'Lacunes techniques graves, ne maîtrise pas son travail, n’a aucune expérience',
+    },
+  },
+  {
+    numero: 2,
+    intitule: 'Qualité du travail fourni',
+    coefficient: 3,
+    niveaux: {
+      A: 'Travail irréprochable ; qualité parfaite, constante',
+      B: 'Travail satisfaisant et de qualité',
+      C: 'Travail à peine satisfaisant, doit être souvent repris',
+      D: 'Travail de mauvaise qualité, est constamment repris',
+    },
+  },
+  {
+    numero: 3,
+    intitule: 'Capacité de travail',
+    coefficient: 3,
+    niveaux: {
+      A: 'Rythme de travail et de production élevé ; cherche à éviter toute perte de temps',
+      B: 'Rythme de travail adéquat et en rapport avec la qualité attendue',
+      C: 'Quantité de travail parfois en dessous des exigences',
+      D: 'Quantité de travail et de production insuffisante, perte de temps dans le travail',
+    },
+  },
+  {
+    numero: 4,
+    intitule: 'Sens de l’initiative',
+    coefficient: 2,
+    niveaux: {
+      A: 'Prend l’initiative de décisions judicieuses en toutes circonstances',
+      B: 'Prend souvent de bonnes initiatives, habile à résoudre les problèmes',
+      C: 'Peu d’initiative, a besoin d’aide pour résoudre les problèmes non routiniers',
+      D: 'Ne prend aucune initiative, évite les situations présentant quelques difficultés',
+    },
+  },
+  {
+    numero: 5,
+    intitule: 'Relations humaines',
+    coefficient: 1,
+    niveaux: {
+      A: 'Excellentes relations avec ses collègues et autrui, sait résoudre les conflits',
+      B: 'A un contact humain facile et évite de créer des conflits',
+      C: 'Limite ses relations au strict nécessaire avec les autres, crée parfois des conflits',
+      D: 'Manque de sociabilité, a souvent des rapports conflictuels avec les autres',
+    },
+  },
+  {
+    numero: 6,
+    intitule: 'Esprit d’équipe et de collaboration',
+    coefficient: 1,
+    niveaux: {
+      A: 'Excellent esprit d’équipe, fait preuve d’une solidarité sans faille avec ses collègues et supérieurs',
+      B: 'S’intègre bien à son équipe, collabore avec ses collègues et supérieurs',
+      C: 'Collabore peu avec les autres, a tendance à travailler seul',
+      D: 'Aucun esprit d’équipe, rejette toute collaboration avec les autres membres de son équipe',
+    },
+  },
+  {
+    numero: 7,
+    intitule: 'Ponctualité, absentéisme, assiduité',
+    coefficient: 2,
+    niveaux: {
+      A: 'Assiduité et ponctualité remarquables, ne quitte son lieu de travail qu’exceptionnellement',
+      B: 'Absences et retards rares, est assidu et ponctuel',
+      C: 'Quelques absences et retards, perd parfois de son temps dans la journée',
+      D: 'Beaucoup d’absences et de retards, ne se consacre jamais à son travail',
+    },
+  },
+  {
+    numero: 8,
+    intitule: 'Discipline (par rapport aux consignes et ordres)',
+    coefficient: 3,
+    niveaux: {
+      A: 'Réalise avec promptitude et détermination tous les ordres qu’on lui donne ; comportement exemplaire',
+      B: 'Accepte naturellement les ordres, consignes et normes disciplinaires',
+      C: 'A des difficultés pour accepter les ordres, ne respecte pas toujours les consignes',
+      D: 'Indiscipliné ; a de mauvaises réactions quand il reçoit un ordre, esprit frondeur',
+    },
+  },
+];
+
+/** Le total du relevé des notes : la meilleure note à chaque critère, coefficients compris (170). */
+export const TOTAL_DES_POINTS =
+  NOTES[0] * CRITERES_NON_CADRE.reduce((total, c) => total + c.coefficient, 0);
+
+/**
+ * Le relevé des notes obtenues, page 3 : chaque critère, sa note brute et
+ * sa note pondérée, puis le total, une fois chaque critère noté.
+ */
+export interface ReleveDesNotes {
+  lignes: { critere: CritereNote; note: Note | null; ponderee: number | null }[];
+  /** null tant qu'un critère n'est pas noté. */
+  total: number | null;
+}
+
+export function releveDesNotes(notes: readonly (Note | null)[]): ReleveDesNotes {
+  const lignes = CRITERES_NON_CADRE.map((critere) => {
+    const note = notes[critere.numero - 1] ?? null;
+    return { critere, note, ponderee: note === null ? null : note * critere.coefficient };
+  });
+  const total = lignes.every((l) => l.ponderee !== null)
+    ? lignes.reduce((somme, l) => somme + l.ponderee!, 0)
+    : null;
+  return { lignes, total };
+}
+
+// ──────────────────────────────────────────────── la synthèse, dans les deux grilles
+
+/** La synthèse générale du N+1, à la dernière page : deux critères, chacun de A à D. */
 export const SYNTHESE_DU_N1: readonly {
   cle: 'comprehension' | 'tenue';
   intitule: string;
@@ -229,7 +383,7 @@ export const FORMATIONS = 10;
 
 /**
  * La longueur de chaque champ, retours à la ligne compris : ce qui tient
- * dans sa place sur le PDF, où la grille garde ses six pages.
+ * dans sa place sur le PDF des deux grilles.
  */
 export const LIMITES_DE_LA_GRILLE = {
   objectif: 220,
@@ -293,7 +447,8 @@ export const besoinsDeFormation = (n: number) =>
 /**
  * Ce que le N+1 écrit dans la grille. Tout est facultatif tant que la grille
  * est en cours : elle s'enregistre telle qu'elle est, et ne s'envoie que
- * complète (cf. `ceQuiManque`).
+ * complète (cf. `ceQuiManque`). Les deux grilles ont cette forme ; chacune
+ * n'en garde que ses champs (cf. `completerLaGrille`).
  */
 export const contenuDeGrilleSchema = z.object({
   /** « Agent nouveau à son poste actuel » ; `null` : la case suit l'ancienneté. */
@@ -309,8 +464,10 @@ export const contenuDeGrilleSchema = z.object({
     .max(OBJECTIFS_ECOULES)
     .default([]),
   raisons: texteRicheSchema(LIMITES_DE_LA_GRILLE.raisons, 'listes'),
-  /** Le niveau de chaque critère, dans l'ordre de la grille. */
+  /** Le niveau de chaque critère, dans l'ordre de la grille du personnel cadre. */
   criteres: z.array(niveauSchema.nullable()).max(CRITERES_CADRE.length).default([]),
+  /** La note de chaque critère, dans l'ordre de la grille du personnel non cadre. */
+  notes: z.array(noteSchema.nullable()).max(CRITERES_NON_CADRE.length).default([]),
   /** Des puces, et rien d'autre : chaque point sur la sienne. */
   pointsForts: texteRicheSchema(LIMITES_DE_LA_GRILLE.pointsForts, 'puces'),
   pointsFaibles: texteRicheSchema(LIMITES_DE_LA_GRILLE.pointsFaibles, 'puces'),
@@ -357,9 +514,13 @@ export const contenuDeGrilleSchema = z.object({
 });
 export type ContenuDeGrille = z.infer<typeof contenuDeGrilleSchema>;
 
-/** Une grille vide, à la forme complète : un objectif et treize critères à remplir. */
-export function grilleVide(): ContenuDeGrille {
-  return completerLaGrille(contenuDeGrilleSchema.parse({}));
+/**
+ * Une grille vide, à la forme complète de son modèle : un objectif et
+ * treize critères à remplir pour le personnel cadre, huit critères à noter
+ * pour le personnel non cadre.
+ */
+export function grilleVide(modele: Personnel = 'cadre'): ContenuDeGrille {
+  return completerLaGrille(contenuDeGrilleSchema.parse({}), modele);
 }
 
 /** Un objectif de l'année écoulée où rien n'est écrit ni choisi. */
@@ -367,49 +528,75 @@ const objectifVide = (o: ContenuDeGrille['objectifs'][number]) =>
   texteRicheVide(o.texte) && o.niveau === null;
 
 /**
- * La grille à sa forme complète, quoi qu'en ait gardé l'enregistrement :
- * ses objectifs écrits, un au moins, et ses treize critères. Un objectif
- * resté vide ne se garde pas. Les autres listes (objectifs à venir,
- * formations) gardent leur longueur.
+ * La grille à la forme complète de son modèle, quoi qu'en ait gardé
+ * l'enregistrement. Celle du personnel cadre : ses objectifs écrits, un au
+ * moins, et ses treize critères ; un objectif resté vide ne se garde pas.
+ * Celle du personnel non cadre : ses huit notes, sans objectifs ni niveaux.
+ * Les autres listes (objectifs à venir, formations) gardent leur longueur.
  */
-export function completerLaGrille(c: ContenuDeGrille): ContenuDeGrille {
+export function completerLaGrille(c: ContenuDeGrille, modele: Personnel): ContenuDeGrille {
   const remplir = <T>(liste: T[], n: number, vide: () => T) =>
     Array.from({ length: n }, (_, i) => liste[i] ?? vide());
+  if (modele === 'non_cadre') {
+    return {
+      ...c,
+      objectifs: [],
+      raisons: [],
+      criteres: [],
+      notes: remplir(c.notes, CRITERES_NON_CADRE.length, () => null),
+      objectifsAVenir: [],
+    };
+  }
   const objectifs = c.objectifs.filter((o) => !objectifVide(o));
   return {
     ...c,
     objectifs: objectifs.length > 0 ? objectifs : [{ texte: [], niveau: null }],
     criteres: remplir(c.criteres, CRITERES_CADRE.length, () => null),
+    notes: [],
   };
 }
 
 /**
- * Ce qui manque pour envoyer la grille à l'agent, section par section :
- * un objectif de l'année écoulée et son niveau au moins, les raisons quand un
- * objectif n'est que partiellement réalisé ou ne l'est pas, chaque critère
- * (le commandement pour qui encadre seulement), les points forts et les
- * points faibles, un objectif de travail pour la période à venir, et la
- * synthèse du N+1. Vide : la grille peut partir.
+ * Ce qui manque pour envoyer la grille à l'agent, section par section. Pour
+ * le personnel cadre : un objectif de l'année écoulée et son niveau au
+ * moins, les raisons quand un objectif n'est que partiellement réalisé ou ne
+ * l'est pas, chaque critère (le commandement pour qui encadre seulement).
+ * Pour le personnel non cadre : la note de chaque critère. Pour tous : les
+ * points forts et les points faibles ; un objectif de travail pour la période
+ * à venir, dans la grille du personnel cadre ; la synthèse du N+1. Vide : la
+ * grille peut partir.
  */
-export function ceQuiManque(c: ContenuDeGrille, avecCommandement: boolean): string[] {
+export function ceQuiManque(
+  c: ContenuDeGrille,
+  grille: { modele: Personnel; commandement: boolean },
+): string[] {
   const manque: string[] = [];
-  const objectifs = c.objectifs.filter((o) => !objectifVide(o));
-  if (objectifs.length === 0) manque.push('Un objectif de la période écoulée');
-  if (objectifs.some((o) => texteRicheVide(o.texte) || o.niveau === null)) {
-    manque.push('Le texte et le niveau de chaque objectif');
-  }
-  if (objectifs.some((o) => o.niveau === 'C' || o.niveau === 'D') && texteRicheVide(c.raisons)) {
-    manque.push('Les raisons des objectifs partiellement réalisés ou non réalisés');
-  }
-  const criteres = CRITERES_CADRE.filter((cr) => avecCommandement || !cr.commandement);
-  if (criteres.some((cr) => !c.criteres[cr.numero - 1])) {
-    manque.push('Le niveau de chaque critère');
+  const cadre = grille.modele === 'cadre';
+  if (cadre) {
+    const objectifs = c.objectifs.filter((o) => !objectifVide(o));
+    if (objectifs.length === 0) manque.push('Un objectif de la période écoulée');
+    if (objectifs.some((o) => texteRicheVide(o.texte) || o.niveau === null)) {
+      manque.push('Le texte et le niveau de chaque objectif');
+    }
+    if (objectifs.some((o) => o.niveau === 'C' || o.niveau === 'D') && texteRicheVide(c.raisons)) {
+      manque.push('Les raisons des objectifs partiellement réalisés ou non réalisés');
+    }
+    const criteres = CRITERES_CADRE.filter((cr) => grille.commandement || !cr.commandement);
+    if (criteres.some((cr) => !c.criteres[cr.numero - 1])) {
+      manque.push('Le niveau de chaque critère');
+    }
+  } else if (CRITERES_NON_CADRE.some((cr) => (c.notes[cr.numero - 1] ?? null) === null)) {
+    manque.push('La note de chaque critère');
   }
   if (texteRicheVide(c.pointsForts)) manque.push('Les points forts');
   if (texteRicheVide(c.pointsFaibles)) manque.push('Les points faibles');
-  if (c.objectifsAVenir.length === 0) manque.push('Un objectif de travail pour la période à venir');
-  if (c.objectifsAVenir.some((o) => o.echeance && o.texte.trim() === '')) {
-    manque.push('L’objectif de chaque échéance');
+  if (cadre) {
+    if (c.objectifsAVenir.length === 0) {
+      manque.push('Un objectif de travail pour la période à venir');
+    }
+    if (c.objectifsAVenir.some((o) => o.echeance && o.texte.trim() === '')) {
+      manque.push('L’objectif de chaque échéance');
+    }
   }
   if (!c.comprehension || !c.tenue) manque.push('La synthèse générale');
   return manque;
@@ -553,6 +740,10 @@ export interface FormationProposable {
 export interface VueDeGrille {
   employeeId: string;
   annee: number;
+  /**
+   * La grille de l'agent : celle que dit sa fiche tant que la grille est
+   * chez le N+1, celle qui est partie une fois envoyée.
+   */
   modele: Personnel;
   /** Ce que dit la fiche de l'agent aujourd'hui ; null : à renseigner par la DCH. */
   personnel: Personnel | null;
@@ -566,7 +757,10 @@ export interface VueDeGrille {
   identification: IdentificationDeGrille;
   /** Le critère « Commandement » vaut pour cet agent, qui encadre. */
   commandement: boolean;
-  /** Pour l'agent, sans la page 6 : la synthèse et les observations du N+1 restent vides. */
+  /**
+   * Pour l'agent, sans la partie réservée à la hiérarchie : la synthèse et
+   * les observations du N+1 restent vides.
+   */
   contenu: ContenuDeGrille;
   /**
    * Au N+1 qui remplit la grille : le catalogue de l'APIX Academy, sans ce

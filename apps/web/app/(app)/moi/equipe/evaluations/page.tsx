@@ -169,10 +169,6 @@ function CarteAgent({ ligne: l, annee }: { ligne: LigneDEvaluation; annee: numbe
             <Badge tone="orange" size="sm">
               Cadre ou non-cadre à renseigner
             </Badge>
-          ) : sansGrille && l.personnel === 'non_cadre' ? (
-            <Badge tone="gris" size="sm">
-              Personnel non cadre
-            </Badge>
           ) : l.enN2 && l.ouEnEst === 'chez_n2' ? (
             <Badge tone="orange" size="sm">
               À commenter

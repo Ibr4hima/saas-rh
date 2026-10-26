@@ -137,7 +137,7 @@ function TeteDeLaGrille({ vue }: { vue: VueDeGrille }) {
             valeur={
               aRenseigner
                 ? 'Cadre ou non-cadre à renseigner'
-                : (vue.etat ? vue.modele : vue.personnel) === 'non_cadre'
+                : vue.modele === 'non_cadre'
                   ? 'Personnel non cadre'
                   : 'Personnel cadre'
             }
@@ -170,9 +170,6 @@ function CorpsDeLaGrille({ vue }: { vue: VueDeGrille }) {
           description="La DCH doit l’indiquer sur la fiche de l’agent."
         />
       );
-    }
-    if (!vue.etat && vue.personnel === 'non_cadre') {
-      return <Vide titre="La grille du personnel non cadre n’est pas encore disponible" />;
     }
     if (!vue.actions.enregistrer) {
       return (
@@ -220,7 +217,7 @@ function Remplissage({ vue }: { vue: VueDeGrille }) {
   const [erreur, setErreur] = useState<string | null>(null);
   const [message, setMessage] = useMessageBref();
   const carte = useRef<HTMLDivElement>(null);
-  const manque = ceQuiManque(contenu, vue.commandement);
+  const manque = ceQuiManque(contenu, vue);
   const tropLongs = champsTropLongs(contenu);
   useGardeDeSaisie(modifie);
   // Un seul geste, stable, pour toute la grille : chaque champ y applique sa
