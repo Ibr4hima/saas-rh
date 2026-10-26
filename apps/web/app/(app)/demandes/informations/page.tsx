@@ -48,8 +48,8 @@ import { formatDate, useMe } from '../../../../lib/hooks';
    son espace ; la DCH le confirme — le dossier est mis à jour aussitôt — ou
    le refuse, avec un motif. Qui dirige la DCH peut DÉLÉGUER ces demandes,
    depuis « Déléguer des tâches » : les membres cochés les traitent, et la
-   direction aussi, toujours. Ce qui est traité ne s'affiche plus : le
-   dossier de l'agent le porte.
+   direction aussi, toujours. Ce qui est traité ne s'affiche plus : validé,
+   le dossier le porte ; refusé, l'agent en lit le motif dans son suivi.
    ———————————————————————————————————————————————————————————————— */
 
 const lisible = (champ: string, valeur: string | null | undefined) =>

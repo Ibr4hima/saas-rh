@@ -85,7 +85,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0077](0077-resultats-obtenus.md)                     | Le dossier montre les résultats obtenus : la case de chaque objectif, rien d'autre      | remplacée par ADR-0149                      |
 | [0078](0078-mes-objectifs-une-annee-a-la-fois.md)     | Mes objectifs : une année à la fois, comme chez le n+1                                  | remplacée par ADR-0149                      |
 | [0079](0079-auto-evaluation-sans-commentaire.md)      | Auto-évaluation : un statut par objectif, sans commentaire                              | remplacée par ADR-0149                      |
-| [0080](0080-certificat-de-mariage.md)                 | Le certificat de mariage accompagne le passage à « Marié(e) »                           | acceptée                                    |
+| [0080](0080-certificat-de-mariage.md)                 | Le certificat de mariage accompagne le passage à « Marié(e) »                           | acceptée, en partie remplacée : 0152        |
 | [0081](0081-suivi-des-mises-a-jour.md)                | Le suivi des demandes porte aussi les mises à jour d'informations                       | acceptée, précisée par 0082                 |
 | [0082](0082-mise-a-jour-validee-hors-du-suivi.md)     | Validée, une mise à jour d'informations ne figure pas au suivi                          | acceptée                                    |
 | [0083](0083-anciennete-du-contrat-en-cours.md)        | L'ancienneté est celle du contrat en cours ; le stage n'en donne pas                    | acceptée                                    |
@@ -157,3 +157,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0149](0149-evaluation-sur-la-grille-de-l-apix.md)    | L'évaluation annuelle sur la grille de l'APIX, sans objectifs fixés dans l'application  | acceptée, en partie remplacée : 0150, 0151  |
 | [0150](0150-grille-en-texte-mis-en-forme.md)          | La grille en texte mis en forme ; échéances et formations de l'APIX Academy             | acceptée                                    |
 | [0151](0151-paraphes-et-notes-au-dossier.md)          | Les paraphes des signataires de la grille, et ses deux notes au dossier de l'agent      | acceptée                                    |
+| [0152](0152-mises-a-jour-hors-de-la-fiche.md)         | Les mises à jour d'informations se décident dans leur file, plus sur la fiche           | acceptée                                    |

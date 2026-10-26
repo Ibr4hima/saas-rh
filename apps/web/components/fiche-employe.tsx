@@ -45,7 +45,6 @@ import { compte, majuscule } from '../lib/mots';
 import { CarteCertificatsAgent } from './academy-certificat';
 import { CarteDesGrilles } from './grille-evaluation';
 import { EmployeeDocumentsCard } from './employee-documents-card';
-import { ProfileChangeCard } from './profile-change-card';
 import { EmployeeEditModal } from './employee-edit-modal';
 import { Telephone } from './telephone';
 import { Donnee, EnTete, Groupe, Peremption, Repere } from './fiche';
@@ -180,8 +179,8 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
   const [signalement, setSignalement] = useState(false);
   useMesSignalements(soi);
   const me = useMe();
-  // Dans l'espace personnel, rien de la gestion : ni l'historique du dossier,
-  // ni les signalements à traiter — même pour un membre de la DCH.
+  // Dans l'espace personnel, rien de la gestion : pas d'historique du
+  // dossier, même pour un membre de la DCH.
   const canSeeHistory = !soi && peut(me.data, 'personnel.consulter');
   /** Ce qui se lit de son propre dossier comme de celui d'un autre, pour qui le consulte. */
   const voitLeDossier = soi || canSeeHistory;
@@ -607,9 +606,6 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
               matricule={e.employeeNumber}
             />
           ) : null}
-
-          {/* En tête des cartes de gauche : c'est ce qui attend une décision. */}
-          {canSeeHistory ? <ProfileChangeCard employeeId={e.id} /> : null}
 
           {voitLeDossier ? (
             <EmployeeDocumentsCard
