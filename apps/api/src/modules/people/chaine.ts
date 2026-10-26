@@ -148,7 +148,7 @@ export async function validerRattachement(
   directionCible: { id: string; nom: string } | null,
 ): Promise<void> {
   if (managerId === employeeId) {
-    problem(422, 'people.manager_is_self', 'Un employé ne peut pas être son propre manager');
+    problem(422, 'people.manager_is_self', 'Un agent ne peut pas être son propre N+1');
   }
   // ——— La première règle de l'APIX : le directeur général ne relève de
   // personne dans l'agence — il répond au conseil d'administration. Lui
@@ -174,7 +174,7 @@ export async function validerRattachement(
     problem(
       422,
       'people.manager_not_active',
-      'Seul un employé actif peut être désigné manager',
+      'Seul un agent en activité peut être désigné N+1',
       'Ce dossier est inactif.',
     );
   }

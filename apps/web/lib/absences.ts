@@ -48,7 +48,7 @@ export const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrateur',
   hr: 'RH',
   payroll: 'Paie',
-  manager: 'Manager',
+  manager: 'N+1',
   employee: 'Employé',
 };
 

@@ -220,7 +220,7 @@ export function DevenirDeLAncien({
             />
           </Field>
           {lu.changeDeDirection ? (
-            <Field label="Nouveau manager" htmlFor={`${idPrefix}-n1`} required>
+            <Field label="Nouveau N+1" htmlFor={`${idPrefix}-n1`} required>
               <Select
                 id={`${idPrefix}-n1`}
                 value={lu.n1}

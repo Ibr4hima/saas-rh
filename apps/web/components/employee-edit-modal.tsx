@@ -430,7 +430,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
             />
           </Field>
           <Field
-            label="Manager"
+            label="N+1"
             htmlFor="managerEmployeeId"
             hint={
               estDG

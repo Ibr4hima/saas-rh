@@ -424,7 +424,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             vide="—"
           />
           <Field
-            label="Manager"
+            label="N+1"
             htmlFor="managerId"
             hint={
               directionChoisie

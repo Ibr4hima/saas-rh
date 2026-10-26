@@ -1158,7 +1158,7 @@ function AssignmentsCard({
             <ModalGrid>
               {changeDeDirection && directionVisee && !designe ? (
                 <Field
-                  label="Nouveau manager"
+                  label="Nouveau N+1"
                   htmlFor="asg-n1"
                   hint={`${majuscule(uniteAvecArticle('dans', directionVisee))}.`}
                 >
@@ -1167,7 +1167,7 @@ function AssignmentsCard({
                     value={nouveauN1}
                     onChange={(ev) => setNouveauN1(ev.target.value)}
                   >
-                    <option value="">Garder le manager actuel</option>
+                    <option value="">Garder le N+1 actuel</option>
                     {n1Possibles.map((m) => (
                       <option key={m.id} value={m.id}>
                         {libelleResponsable(m)}
