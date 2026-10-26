@@ -172,7 +172,7 @@ function CorpsDeLaGrille({ vue }: { vue: VueDeGrille }) {
       );
     }
     if (!vue.etat && vue.personnel === 'non_cadre') {
-      return <Vide titre="La grille du personnel non cadre n’est pas encore là" />;
+      return <Vide titre="La grille du personnel non cadre n’est pas encore disponible" />;
     }
     if (!vue.actions.enregistrer) {
       return (
@@ -385,7 +385,8 @@ function Remplissage({ vue }: { vue: VueDeGrille }) {
  * La grille partie du N+1 : le circuit, les gestes de l'étape, et le PDF.
  * Le N+1 la reprend tant que l'agent ne l'a pas validée ; validée, elle part
  * au N+2 ou à la DCH, au choix du N+1, et à la DCH à tout moment quand elle
- * est chez le N+2. Le N+2 la commente et la valide.
+ * est chez le N+2. Le N+2 la commente et la valide : elle revient au N+1,
+ * qui seul l'envoie à la DCH (ADR-0154).
  */
 function SuiviDeLaGrille({ vue }: { vue: VueDeGrille }) {
   const qc = useQueryClient();
@@ -487,7 +488,7 @@ function SuiviDeLaGrille({ vue }: { vue: VueDeGrille }) {
           onConfirmer={() => geste.mutate({ route: 'dch' })}
           onClose={() => setConfirmer(null)}
         >
-          La grille d’évaluation {vue.annee} de {vue.agent.nom} part à la DCH
+          La grille d’évaluation {vue.annee} de {vue.agent.nom} sera envoyée à la DCH
           {vue.etat === 'chez_n2' ? ', sans attendre les commentaires du N+2' : ''}. Elle ne pourra
           plus être modifiée.
         </Confirmation>
@@ -501,8 +502,9 @@ function SuiviDeLaGrille({ vue }: { vue: VueDeGrille }) {
           onConfirmer={() => geste.mutate({ route: 'commentaires-n2', corps: { commentaires } })}
           onClose={() => setConfirmer(null)}
         >
-          La grille d’évaluation {vue.annee} de {vue.agent.nom} part à la DCH
-          {commentaires.trim() ? ' avec vos commentaires' : ''}. Elle ne pourra plus être modifiée.
+          {commentaires.trim()
+            ? 'Vos commentaires seront transmis au N+1. Vous ne pourrez plus les modifier.'
+            : 'La grille sera renvoyée au N+1 sans commentaire de votre part. Vous ne pourrez plus la commenter.'}
         </Confirmation>
       ) : null}
     </>

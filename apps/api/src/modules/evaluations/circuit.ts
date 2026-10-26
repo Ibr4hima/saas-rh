@@ -10,8 +10,9 @@ import { enActivite, enStage } from '../people/en-activite';
    Le circuit d'une grille d'évaluation (ADR-0149) : qui elle attend, et
    l'appel que reçoit cette personne.
 
-   · le N+1, quand l'agent l'a renvoyée ou validée : son appel suit le N+1
-     d'aujourd'hui, comme celui d'un congé à viser ;
+   · le N+1, quand l'agent l'a renvoyée ou validée, et quand le N+2 l'a
+     validée (ADR-0154) : son appel suit le N+1 d'aujourd'hui, comme celui
+     d'un congé à viser ;
    · l'agent, une fois la grille envoyée par le N+1 ;
    · le N+2, une fois la grille transmise par le N+1.
 
@@ -37,9 +38,9 @@ export const evaluable = (e: SQL) =>
        AND ${enActivite(sql`${e}.id`)} AND NOT ${enStage(sql`${e}.id`)})`;
 
 /**
- * Les grilles qui attendent le N+1 : renvoyées par l'agent, ou validées. Leur
- * appel va au N+1 d'aujourd'hui ; sans N+1 en activité, il s'en va.
- * Idempotente.
+ * Les grilles qui attendent le N+1 : renvoyées par l'agent, validées par
+ * l'agent ou par le N+2. Leur appel va au N+1 d'aujourd'hui ; sans N+1 en
+ * activité, il s'en va. Idempotente.
  */
 export async function reconcilierLesGrilles(tx: Tx, employeeId?: string): Promise<void> {
   const { rows } = await tx.execute<{
@@ -48,17 +49,20 @@ export async function reconcilierLesGrilles(tx: Tx, employeeId?: string): Promis
     annee: number;
     etat: string;
     nom: string;
+    n2: string | null;
     n1: string | null;
   }>(sql`
     SELECT g.tenant_id, g.employee_id, g.annee, g.etat,
            p.given_name || ' ' || p.family_name AS nom,
+           (g.n2_identite ->> 'prenom') || ' ' || (g.n2_identite ->> 'nom') AS n2,
            (SELECT pn.user_id FROM employees n JOIN persons pn ON pn.id = n.person_id
              WHERE n.id = e.manager_employee_id AND n.status = 'active'
                AND pn.deleted_at IS NULL) AS n1
       FROM evaluation_grilles g
       JOIN employees e ON e.id = g.employee_id
       JOIN persons p ON p.id = e.person_id
-     WHERE (g.etat = 'validee_agent' OR (g.etat = 'brouillon' AND g.renvoyee_le IS NOT NULL))
+     WHERE (g.etat IN ('validee_agent', 'validee_n2')
+            OR (g.etat = 'brouillon' AND g.renvoyee_le IS NOT NULL))
        ${employeeId ? sql`AND g.employee_id = ${employeeId}` : sql``}`);
   for (const r of rows) {
     const prefixe = prefixeDeLaGrille(r.employee_id, r.annee);
@@ -70,9 +74,11 @@ export async function reconcilierLesGrilles(tx: Tx, employeeId?: string): Promis
       type: 'evaluation',
       sujet: 'equipe.evaluations',
       title:
-        r.etat === 'validee_agent'
-          ? `${r.nom} a validé sa grille d’évaluation ${r.annee}`
-          : `${r.nom} vous renvoie sa grille d’évaluation ${r.annee}`,
+        r.etat === 'validee_n2'
+          ? `${r.n2 ?? 'Le N+2'} a validé la grille d’évaluation ${r.annee} de ${r.nom}`
+          : r.etat === 'validee_agent'
+            ? `${r.nom} a validé sa grille d’évaluation ${r.annee}`
+            : `${r.nom} vous renvoie sa grille d’évaluation ${r.annee}`,
       link: lienDeLEquipe(r.employee_id, r.annee),
     });
   }

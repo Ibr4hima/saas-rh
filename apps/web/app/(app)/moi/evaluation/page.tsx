@@ -81,7 +81,7 @@ export default function MonEvaluationPage() {
             title={
               erreur
                 ? (probleme?.title ?? 'Votre grille d’évaluation ne s’affiche pas')
-                : (messageDuRenvoi ?? 'Votre grille d’évaluation n’est pas encore là')
+                : (messageDuRenvoi ?? 'Votre grille d’évaluation n’est pas encore disponible')
             }
           />
         </Card>

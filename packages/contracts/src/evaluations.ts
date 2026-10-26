@@ -483,11 +483,17 @@ export interface VueDeLaPeriode {
 
 // ──────────────────────────────────────────────── le circuit
 
+/**
+ * Les étapes d'une grille : chez le N+1 (brouillon), chez l'agent, de
+ * retour au N+1 une fois validée par l'agent, chez le N+2 s'il y a lieu, de
+ * retour au N+1 une fois validée par le N+2 (ADR-0154), à la DCH.
+ */
 export const ETATS_DE_GRILLE = [
   'brouillon',
   'chez_agent',
   'validee_agent',
   'chez_n2',
+  'validee_n2',
   'terminee',
 ] as const;
 export type EtatDeGrille = (typeof ETATS_DE_GRILLE)[number];
@@ -502,6 +508,7 @@ export const LIBELLES_OU_EN_EST: Record<Exclude<OuEnEst, 'brouillon'>, string> =
   chez_agent: 'Chez l’agent',
   validee_agent: 'Validée par l’agent',
   chez_n2: 'Chez le N+2',
+  validee_n2: 'Validée par le N+2',
   terminee: 'Transmise à la DCH',
 };
 

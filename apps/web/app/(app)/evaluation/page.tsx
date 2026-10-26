@@ -65,7 +65,14 @@ const FILTRES: { cle: Filtre; label: string }[] = [
   { cle: 'en_retard', label: 'En retard' },
 ];
 
-const EN_COURS: OuEnEst[] = ['en_cours', 'renvoyee', 'chez_agent', 'validee_agent', 'chez_n2'];
+const EN_COURS: OuEnEst[] = [
+  'en_cours',
+  'renvoyee',
+  'chez_agent',
+  'validee_agent',
+  'chez_n2',
+  'validee_n2',
+];
 
 function retenue(l: LigneDEvaluation, filtre: Filtre): boolean {
   switch (filtre) {

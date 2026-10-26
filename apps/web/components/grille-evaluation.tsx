@@ -121,9 +121,9 @@ export function ouEnEstDe(vue: Pick<VueDeGrille, 'etat' | 'renvoi'>): OuEnEst {
 
 /**
  * L'orange de l'attente pour ce qui attend la personne qui regarde : le N+1
- * pour une grille à remplir, renvoyée ou validée par l'agent ; le N+2 pour
- * une grille reçue. Le bleu pour ce qui est chez quelqu'un d'autre, le
- * vert d'eau pour ce qui est arrivé à la DCH.
+ * pour une grille à remplir, renvoyée, ou validée par l'agent ou le N+2 ; le
+ * N+2 pour une grille reçue. Le bleu pour ce qui est chez quelqu'un
+ * d'autre, le vert d'eau pour ce qui est arrivé à la DCH.
  */
 export function tonDeLEtape(o: OuEnEst, enN2 = false): BadgeTone {
   switch (o) {
@@ -133,6 +133,8 @@ export function tonDeLEtape(o: OuEnEst, enN2 = false): BadgeTone {
       return 'orange';
     case 'chez_n2':
       return enN2 ? 'orange' : 'bleu';
+    case 'validee_n2':
+      return enN2 ? 'bleu' : 'orange';
     case 'terminee':
       return 'teal';
     default:
@@ -1168,15 +1170,13 @@ interface Etape {
 function etapesDe(vue: VueDeGrille): Etape[] {
   const d = vue.dates;
   const e = vue.etat;
-  const apres = (...etats: (typeof e)[]) => etats.includes(e);
+  const envoyee = e !== null && e !== 'brouillon';
   const etapes: Etape[] = [
     {
       cle: 'agent',
-      titre: apres('chez_agent', 'validee_agent', 'chez_n2', 'terminee')
-        ? 'Envoyée à l’agent'
-        : 'Envoi à l’agent',
-      le: apres('chez_agent', 'validee_agent', 'chez_n2', 'terminee') ? d.envoyeeLe : null,
-      etat: apres('chez_agent', 'validee_agent', 'chez_n2', 'terminee') ? 'faite' : 'en_cours',
+      titre: envoyee ? 'Envoyée à l’agent' : 'Envoi à l’agent',
+      le: envoyee ? d.envoyeeLe : null,
+      etat: envoyee ? 'faite' : 'en_cours',
     },
     {
       cle: 'validation',
@@ -1191,7 +1191,7 @@ function etapesDe(vue: VueDeGrille): Etape[] {
     etapes.push({
       cle: 'n2',
       titre: d.valideeN2Le
-        ? `Commentée par le N+2${n2}`
+        ? `Validée par le N+2${n2}`
         : e === 'chez_n2'
           ? `Chez le N+2${n2}`
           : `Envoyée au N+2${n2}`,
@@ -1212,7 +1212,12 @@ function etapesDe(vue: VueDeGrille): Etape[] {
     cle: 'dch',
     titre: d.termineeLe ? 'Transmise à la DCH' : 'Transmission à la DCH',
     le: d.termineeLe,
-    etat: d.termineeLe ? 'faite' : e === 'validee_agent' ? 'en_cours' : 'a_venir',
+    // De retour au N+1, après l'agent ou après le N+2 : au N+1 de l'envoyer.
+    etat: d.termineeLe
+      ? 'faite'
+      : e === 'validee_agent' || e === 'validee_n2'
+        ? 'en_cours'
+        : 'a_venir',
   });
   return etapes;
 }

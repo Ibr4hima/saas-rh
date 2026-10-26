@@ -677,7 +677,7 @@ describe('le circuit', () => {
     expect(envoyee.etat).toBe('chez_agent');
     expect(envoyee.actions.reprendre).toBe(true);
     expect(await titres('moussa')).toContain(
-      `Votre grille d’évaluation ${ANNEE} est à lire et à valider`,
+      `Awa Diop vous a envoyé votre grille d’évaluation ${ANNEE} à valider`,
     );
 
     const lue = await evaluations.grille(session('moussa'), agents.moussa, ANNEE);
@@ -705,7 +705,7 @@ describe('le circuit', () => {
       `Moussa Ndiaye vous renvoie sa grille d’évaluation ${ANNEE}`,
     );
     expect(await titres('moussa')).not.toContain(
-      `Votre grille d’évaluation ${ANNEE} est à lire et à valider`,
+      `Awa Diop vous a envoyé votre grille d’évaluation ${ANNEE} à valider`,
     );
     expect(
       (await evaluations.equipe(session('awa'))).lignes.find((l) => l.nom === 'Moussa Ndiaye')
@@ -719,7 +719,7 @@ describe('le circuit', () => {
     expect(reprise.etat).toBe('brouillon');
     expect(reprise.renvoi).toBeNull();
     expect(await titres('moussa')).not.toContain(
-      `Votre grille d’évaluation ${ANNEE} est à lire et à valider`,
+      `Awa Diop vous a envoyé votre grille d’évaluation ${ANNEE} à valider`,
     );
     await evaluations.envoyer(session('awa'), agents.moussa, ANNEE);
   });
@@ -742,7 +742,7 @@ describe('le circuit', () => {
     const auN2 = await evaluations.transmettre(session('awa'), agents.moussa, ANNEE);
     expect(auN2.etat).toBe('chez_n2');
     expect(await titres('mariama')).toContain(
-      `Grille d’évaluation ${ANNEE} de Moussa Ndiaye à commenter`,
+      `Awa Diop vous a envoyé la grille d’évaluation ${ANNEE} de Moussa Ndiaye`,
     );
     expect(await titres('awa')).not.toContain(
       `Moussa Ndiaye a validé sa grille d’évaluation ${ANNEE}`,
@@ -763,7 +763,7 @@ describe('le circuit', () => {
     const terminee = await evaluations.terminer(session('awa'), agents.moussa, ANNEE);
     expect(terminee.etat).toBe('terminee');
     expect(await titres('mariama')).not.toContain(
-      `Grille d’évaluation ${ANNEE} de Moussa Ndiaye à commenter`,
+      `Awa Diop vous a envoyé la grille d’évaluation ${ANNEE} de Moussa Ndiaye`,
     );
     expect(await titres('moussa')).toContain(
       `Votre grille d’évaluation ${ANNEE} est transmise à la DCH`,
@@ -775,7 +775,7 @@ describe('le circuit', () => {
     ).toBe('evaluations.etat');
   });
 
-  it('le N+2 commente et valide : la grille part à la DCH', async () => {
+  it('le N+2 valide avec ses commentaires : la grille revient au N+1, qui seul l’envoie à la DCH', async () => {
     expect(
       await codeOf(() => evaluations.enregistrer(session('awa'), agents.khady, ANNEE, complete())),
     ).toBe('AUCUNE ERREUR');
@@ -793,12 +793,42 @@ describe('le circuit', () => {
       ANNEE,
       'Une année solide.',
     );
-    expect(commentee.etat).toBe('terminee');
+    expect(commentee.etat).toBe('validee_n2');
     expect(commentee.commentairesN2).toBe('Une année solide.');
     expect(commentee.dates.valideeN2Le).not.toBeNull();
-    expect(await titres('awa')).toContain(
-      `Mariama Cissé a commenté la grille d’évaluation ${ANNEE} de Khady Sarr, transmise à la DCH`,
+    expect(commentee.dates.termineeLe).toBeNull();
+    expect(commentee.actions).toMatchObject({ commenter: false, terminer: false });
+    // L'appel passe du N+2 au N+1.
+    expect(await titres('mariama')).not.toContain(
+      `Awa Diop vous a envoyé la grille d’évaluation ${ANNEE} de Khady Sarr`,
     );
+    expect(await titres('awa')).toContain(
+      `Mariama Cissé a validé la grille d’évaluation ${ANNEE} de Khady Sarr`,
+    );
+    const ligne = (await evaluations.equipe(session('mariama'))).lignes.find(
+      (l) => l.nom === 'Khady Sarr',
+    );
+    expect(ligne).toMatchObject({ enN2: true, ouEnEst: 'validee_n2' });
+
+    // Le N+2 ne l'envoie pas à la DCH ; le N+1, oui, et rien d'autre.
+    expect(
+      await codeOf(() => evaluations.terminer(session('mariama'), agents.khady, ANNEE)),
+    ).not.toBe('AUCUNE ERREUR');
+    const chezN1 = await evaluations.grille(session('awa'), agents.khady, ANNEE);
+    expect(chezN1.actions).toMatchObject({ terminer: true, transmettreAuN2: false });
+    const terminee = await evaluations.terminer(session('awa'), agents.khady, ANNEE);
+    expect(terminee.etat).toBe('terminee');
+    expect(terminee.commentairesN2).toBe('Une année solide.');
+    expect(await titres('awa')).not.toContain(
+      `Mariama Cissé a validé la grille d’évaluation ${ANNEE} de Khady Sarr`,
+    );
+    expect(await titres('khady')).toContain(
+      `Votre grille d’évaluation ${ANNEE} est transmise à la DCH`,
+    );
+    // Le N+2 la lit encore, sans geste.
+    const relue = await evaluations.grille(session('mariama'), agents.khady, ANNEE);
+    expect(relue.role).toBe('n2');
+    expect(relue.actions.commenter).toBe(false);
   });
 
   it('l’appel du N+1 suit le N+1 d’aujourd’hui ; l’ancien garde la lecture', async () => {

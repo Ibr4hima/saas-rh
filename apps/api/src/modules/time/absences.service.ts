@@ -963,7 +963,7 @@ export class AbsencesService {
               -- reste de l'équipe le temps que son n+1 la termine.
               OR EXISTS (SELECT 1 FROM evaluation_grilles g
                           WHERE g.employee_id = e.id
-                            AND g.etat IN ('validee_agent', 'chez_n2')))
+                            AND g.etat IN ('validee_agent', 'chez_n2', 'validee_n2')))
          AND e.id IS DISTINCT FROM ${DG}`);
     const equipe = rows[0]?.equipe ?? 0;
     const { aViser, conges } = await compterLesVisas(tx, moi);

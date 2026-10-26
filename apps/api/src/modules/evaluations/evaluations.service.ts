@@ -223,7 +223,7 @@ export class EvaluationsService {
         // Ses agents à évaluer, et ceux dont la grille existe déjà, partis
         // depuis : elle s'achève comme les autres.
         sql`((e.manager_employee_id = ${moi} AND (${evaluable(sql`e`)} OR g.id IS NOT NULL))
-             OR (g.n2_employee_id = ${moi} AND g.etat IN ('chez_n2', 'terminee')))`,
+             OR (g.n2_employee_id = ${moi} AND g.etat IN ('chez_n2', 'validee_n2', 'terminee')))`,
         moi,
       );
       return {
@@ -299,7 +299,7 @@ export class EvaluationsService {
                WHERE rr.unit_type = 'direction' ORDER BY rr.prof LIMIT 1) AS direction,
              e.personnel, g.etat,
              (g.etat = 'brouillon' AND g.renvoyee_le IS NOT NULL) AS renvoyee,
-             CASE WHEN g.n2_employee_id = ${moi} AND g.etat IN ('chez_n2', 'terminee')
+             CASE WHEN g.n2_employee_id = ${moi} AND g.etat IN ('chez_n2', 'validee_n2', 'terminee')
                   THEN (SELECT pv.given_name || ' ' || pv.family_name FROM employees v
                           JOIN persons pv ON pv.id = v.person_id WHERE v.id = g.evaluateur_employee_id)
                   ELSE (SELECT pm.given_name || ' ' || pm.family_name FROM employees m
@@ -471,7 +471,7 @@ export class EvaluationsService {
         {
           type: 'evaluation',
           sujet: 'evaluation',
-          title: `Votre grille d’évaluation ${annee} est à lire et à valider`,
+          title: `${c.evaluateur ?? 'Votre N+1'} vous a envoyé votre grille d’évaluation ${annee} à valider`,
           link: lienDeLAgent(annee),
         },
       );
@@ -549,7 +549,7 @@ export class EvaluationsService {
         {
           type: 'evaluation',
           sujet: 'equipe.evaluations',
-          title: `Grille d’évaluation ${annee} de ${nom} à commenter`,
+          title: `${c.evaluateur ?? 'Le N+1'} vous a envoyé la grille d’évaluation ${annee} de ${nom}`,
           link: lienDeLEquipe(employeeId, annee),
         },
       );
@@ -557,21 +557,38 @@ export class EvaluationsService {
     });
   }
 
-  /** Le N+1 envoie la grille à la DCH : sans attendre le N+2, s'il le faut. */
+  /**
+   * Le N+1 envoie la grille à la DCH : validée par l'agent, validée par le
+   * N+2, ou chez le N+2, sans l'attendre s'il le faut. Seul le N+1 l'envoie
+   * (ADR-0154). Ses appels s'en vont ; l'agent est prévenu.
+   */
   async terminer(user: SessionUser, employeeId: string, annee: number): Promise<VueDeGrille> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const c = await this.contexte(tx, user, employeeId, annee);
       this.exiger(c, 'terminer');
-      await this.passer(tx, c.grille!, ['validee_agent', 'chez_n2'], {
+      await this.passer(tx, c.grille!, ['validee_agent', 'chez_n2', 'validee_n2'], {
         etat: 'terminee',
         termineeLe: new Date(),
       });
-      await this.cloturer(tx, user.tenantId, c, null);
+      const prefixe = prefixeDeLaGrille(employeeId, annee);
+      await retirerLesAppels(tx, prefixe);
+      if (c.agent.userId) {
+        await notifier(tx, user.tenantId, c.agent.userId, {
+          type: 'evaluation',
+          sujet: 'evaluation',
+          title: `Votre grille d’évaluation ${annee} est transmise à la DCH`,
+          link: lienDeLAgent(annee),
+          dedupeKey: `${prefixe}:terminee`,
+        });
+      }
       return this.vue(tx, await this.contexte(tx, user, employeeId, annee));
     });
   }
 
-  /** Le N+2 commente et valide : la grille part à la DCH. */
+  /**
+   * Le N+2 commente et valide : la grille revient au N+1, qui l'envoie à la
+   * DCH (ADR-0154). L'appel du N+2 laisse la place à celui du N+1.
+   */
   async commenter(
     user: SessionUser,
     employeeId: string,
@@ -581,45 +598,14 @@ export class EvaluationsService {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const c = await this.contexte(tx, user, employeeId, annee);
       this.exiger(c, 'commenter');
-      const maintenant = new Date();
       await this.passer(tx, c.grille!, ['chez_n2'], {
-        etat: 'terminee',
+        etat: 'validee_n2',
         commentairesN2: commentaires || null,
-        valideeN2Le: maintenant,
-        termineeLe: maintenant,
+        valideeN2Le: new Date(),
       });
-      await this.cloturer(tx, user.tenantId, c, c.moi);
+      await reconcilierLesGrilles(tx, employeeId);
       return this.vue(tx, await this.contexte(tx, user, employeeId, annee));
     });
-  }
-
-  /**
-   * La grille est à la DCH : ses appels s'en vont ; l'agent est prévenu, et
-   * le N+1 quand c'est le N+2 qui l'a envoyée.
-   */
-  private async cloturer(tx: Tx, tenantId: string, c: Contexte, parLeN2: string | null) {
-    const { employeeId, annee } = c.grille!;
-    const prefixe = prefixeDeLaGrille(employeeId, annee);
-    await retirerLesAppels(tx, prefixe);
-    if (c.agent.userId) {
-      await notifier(tx, tenantId, c.agent.userId, {
-        type: 'evaluation',
-        sujet: 'evaluation',
-        title: `Votre grille d’évaluation ${annee} est transmise à la DCH`,
-        link: lienDeLAgent(annee),
-        dedupeKey: `${prefixe}:terminee`,
-      });
-    }
-    if (parLeN2 && c.agent.n1?.userId) {
-      const n2 = c.agent.n2 ? nomComplet(c.agent.n2.prenom, c.agent.n2.nom) : 'Le N+2';
-      await notifier(tx, tenantId, c.agent.n1.userId, {
-        type: 'evaluation',
-        sujet: 'equipe.evaluations',
-        title: `${n2} a commenté la grille d’évaluation ${annee} de ${nomComplet(c.agent.prenom, c.agent.nom)}, transmise à la DCH`,
-        link: lienDeLEquipe(employeeId, annee),
-        dedupeKey: `${prefixe}:terminee:n1`,
-      });
-    }
   }
 
   async pdf(user: SessionUser, employeeId: string, annee: number): Promise<DocumentPdf> {
@@ -686,7 +672,11 @@ export class EvaluationsService {
     let role: RoleDansLaGrille | null = null;
     if (moi && moi === employeeId) role = 'agent';
     else if (n1Courant) role = 'n1';
-    else if (moi && grille?.n2EmployeeId === moi && ['chez_n2', 'terminee'].includes(grille.etat)) {
+    else if (
+      moi &&
+      grille?.n2EmployeeId === moi &&
+      ['chez_n2', 'validee_n2', 'terminee'].includes(grille.etat)
+    ) {
       role = 'n2';
     } else if (moi && grille?.evaluateurEmployeeId === moi && grille.etat !== 'brouillon') {
       role = 'n1';
@@ -830,7 +820,7 @@ export class EvaluationsService {
       renvoyer: c.role === 'agent' && e === 'chez_agent',
       valider: c.role === 'agent' && e === 'chez_agent',
       transmettreAuN2: c.n1Courant && e === 'validee_agent' && Boolean(n2?.userId),
-      terminer: c.n1Courant && (e === 'validee_agent' || e === 'chez_n2'),
+      terminer: c.n1Courant && (e === 'validee_agent' || e === 'chez_n2' || e === 'validee_n2'),
       commenter: c.role === 'n2' && e === 'chez_n2',
       pdf: c.role === 'n1' || c.role === 'n2' || (c.role === 'dch' && e === 'terminee'),
     };
@@ -854,7 +844,11 @@ export class EvaluationsService {
         );
       }
     }
-    problem(409, 'evaluations.etat', 'Cette étape n’est plus possible sur la grille');
+    problem(
+      409,
+      'evaluations.etat',
+      'La grille est déjà passée à une autre étape : rechargez la page',
+    );
   }
 
   /** Passe la grille d'un état attendu au suivant ; refusé si elle a changé entre-temps. */
@@ -892,7 +886,11 @@ export class EvaluationsService {
       );
     }
     if (agent.personnel === 'non_cadre') {
-      problem(422, 'evaluations.non_cadre', 'La grille du personnel non cadre n’est pas encore là');
+      problem(
+        422,
+        'evaluations.non_cadre',
+        'La grille du personnel non cadre n’est pas encore disponible',
+      );
     }
     return agent.personnel;
   }

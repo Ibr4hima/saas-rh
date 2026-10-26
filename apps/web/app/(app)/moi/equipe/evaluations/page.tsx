@@ -48,7 +48,7 @@ export default function EvaluationsDeLEquipePage() {
   const recues = v?.lignes.filter((l) => l.enN2) ?? [];
   const compte = (...etats: OuEnEst[]) => miennes.filter((l) => etats.includes(l.ouEnEst)).length;
   const aTraiter =
-    compte('a_remplir', 'en_cours', 'renvoyee', 'validee_agent') +
+    compte('a_remplir', 'en_cours', 'renvoyee', 'validee_agent', 'validee_n2') +
     recues.filter((l) => l.ouEnEst === 'chez_n2').length;
 
   return (
