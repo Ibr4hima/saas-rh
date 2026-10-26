@@ -85,7 +85,7 @@ const champ = (nom: string, v: string | null | undefined): Passage[] => [
   libelle(`${nom}${insecable(' :')} `),
   valeur(v),
 ];
-/** « de Moussa », « d’Ibrahima » : la préposition, élidée devant une voyelle, puis la valeur. */
+/** « de Diamniadio », « d’Ourossogui » : la préposition, élidée devant une voyelle, puis la valeur. */
 const de = (avant: string, nom: string): Passage[] => {
   const elidee = elide('d', nom);
   return [libelle(`${avant}${elidee.slice(0, elidee.length - nom.length)}`), valeur(nom)];
@@ -187,7 +187,13 @@ export function declarationDe(
         { de: 0.5, passages: champ('Pays', nomDuPays(f.naissancePays)) },
         { de: 0.74, passages: champ('Nationalité', nationalityLabel(f.nationalite)) },
       ],
-      pleine([...de(femme ? 'Fille ' : 'Fils ', f.perePrenom), ...de(' et ', mere)]),
+      // Devant un nom de personne, « de » ne s'élide pas : « Fils de Ibrahima et de Aïssatou Sall ».
+      pleine([
+        libelle(`${femme ? 'Fille' : 'Fils'} de `),
+        valeur(f.perePrenom),
+        libelle(' et de '),
+        valeur(mere),
+      ]),
       pleine(champ('Adresse', f.adresse)),
       deux(
         [

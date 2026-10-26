@@ -8,6 +8,7 @@ import {
   type ReferenceChapterView,
   type ReferenceSearchHit,
   type ReferenceTextView,
+  texteDeReferenceAvecArticle,
 } from '@teranga/contracts';
 import Link from 'next/link';
 import { Button, Card, CardContent, cn, EmptyState, Input, Skeleton } from '@teranga/ui';
@@ -219,6 +220,7 @@ function Enseigne({
     texte.reference,
     texte.effectiveOn ? `en vigueur depuis le ${dateLongue(texte.effectiveOn)}` : null,
   ].filter(Boolean) as string[];
+  const nomme = texteDeReferenceAvecArticle(texte);
   const mesures = [
     `${texte.chapters.length} chapitre${texte.chapters.length > 1 ? 's' : ''}`,
     `${texte.articleCount} article${texte.articleCount > 1 ? 's' : ''}`,
@@ -251,7 +253,7 @@ function Enseigne({
               value={saisie}
               onChange={(e) => onSaisie(e.target.value)}
               placeholder="Rechercher un article…"
-              aria-label={`Rechercher dans ${texte.title}`}
+              aria-label={nomme ? `Rechercher dans ${nomme}` : 'Rechercher dans ce texte'}
               className="pl-9"
             />
           </span>

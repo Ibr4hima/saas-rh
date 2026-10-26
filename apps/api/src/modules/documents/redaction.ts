@@ -14,14 +14,18 @@ export const insecable = (texte: string) => texte.replace(/ /g, INSECABLE);
 /** Le blanc à remplir à la main quand l'organigramme ne désigne personne. */
 export const A_REMPLIR = '……………………………';
 
-/** Ce qui s'élide : une voyelle, ou un y qui n'en précède pas une (« d’Yves », « de Youssou »). */
+/**
+ * Ce qui s'élide : une voyelle, ou un y qui n'en précède pas une (un y suivi
+ * d'une voyelle sonne comme une consonne).
+ */
 const VOYELLE_INITIALE = /^(?:[aeiouàâäéèêëîïôöùûü]|y(?![aeiouàâäéèêëîïôöùûü]))/i;
 
 /**
  * « la fonction de Analyste » : l'élision ne se saute pas devant une voyelle.
  * Le h muet français est indécidable sans dictionnaire ; on élide devant les
  * voyelles seules, ce qui couvre les intitulés de poste réels. Le y suivi
- * d'une voyelle est une consonne : « de Youssou », mais « d’Yves ».
+ * d'une voyelle est une consonne. Jamais devant un nom de personne : la
+ * filiation écrit « Fils de Ousmane et de Aminata Ba ».
  */
 export function elide(prefixe: string, mot: string): string {
   return VOYELLE_INITIALE.test(mot.trim()) ? `${prefixe}’${mot}` : `${prefixe}e ${mot}`;

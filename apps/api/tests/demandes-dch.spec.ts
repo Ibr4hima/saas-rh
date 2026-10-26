@@ -527,7 +527,7 @@ describe('les demandes de documents', () => {
       [moussa.session.userId, `document:${id}:suivi:%`],
     );
     expect(avis.map((r) => r.title)).toEqual([
-      'Votre attestation de stage est prête, à retirer auprès d’Awa Diop',
+      'Votre attestation de stage est prête, à retirer auprès de Awa Diop',
     ]);
   });
 

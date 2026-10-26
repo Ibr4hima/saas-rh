@@ -49,7 +49,6 @@ import {
 import { dureeAbsence, periodeAbsence, resumeVisas } from '../../../../lib/absences';
 import { api, apiUrl } from '../../../../lib/api';
 import { formatDate, useMe } from '../../../../lib/hooks';
-import { de } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
    « Absences & Congés » — les demandes de congé, pour la Direction du
@@ -130,7 +129,7 @@ export default function CongesATraiterPage() {
     onSuccess: async (_, v) => {
       setMessage({
         ton: 'ok',
-        texte: `Retour ${de(v.demande.employeeName)} ${v.decision === 'approved' ? 'confirmé' : 'refusé'}. Un message lui est envoyé.`,
+        texte: `Retour de ${v.demande.employeeName} ${v.decision === 'approved' ? 'confirmé' : 'refusé'}. Un message lui est envoyé.`,
       });
       await rafraichir();
     },
@@ -468,7 +467,7 @@ export default function CongesATraiterPage() {
           onFait={async () => {
             setMessage({
               ton: 'ok',
-              texte: `Congé ${de(annulation.employeeName)} annulé. Un message lui est envoyé.`,
+              texte: `Congé de ${annulation.employeeName} annulé. Un message lui est envoyé.`,
             });
             setAnnulation(null);
             await rafraichir();

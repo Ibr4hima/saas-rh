@@ -225,7 +225,7 @@ describe('ses avis nomment les bulletins', () => {
     ]);
     await service.advance(rh, id, { status: 'ready', pickupContact: 'Ibrahima Ba' });
     expect(await titresDe(awaUserId)).toEqual([
-      'Votre bulletin de salaire d’avril 2025 est prêt, à retirer auprès d’Ibrahima Ba',
+      'Votre bulletin de salaire d’avril 2025 est prêt, à retirer auprès de Ibrahima Ba',
     ]);
   });
 
@@ -249,7 +249,7 @@ describe('ses avis nomment les bulletins', () => {
     });
     await service.batchAdvance(rh, { ids: [id], status: 'ready', pickupContact: 'Ibrahima Ba' });
     expect(await titresDe(awaUserId)).toEqual([
-      'Vos 3 derniers bulletins de salaire sont déposés dans votre espace, l’original à retirer auprès d’Ibrahima Ba',
+      'Vos 3 derniers bulletins de salaire sont déposés dans votre espace, l’original à retirer auprès de Ibrahima Ba',
     ]);
   });
 

@@ -589,7 +589,7 @@ export async function annoncerLeChangement(
       );
     }
   };
-  const leConge = (a: Nom) => `${leLa(a)}${a.nom} ${de(d.nom)} ${duAu(d.debut, d.fin, d.heures)}`;
+  const leConge = (a: Nom) => `${leLa(a)}${a.nom} de ${d.nom} ${duAu(d.debut, d.fin, d.heures)}`;
 
   if (changement.quoi === 'annule') {
     // L'avis « approuvé » ne dit plus vrai : il quitte la boîte de l'agent.
@@ -693,7 +693,7 @@ async function expirer(tx: Tx): Promise<void> {
       });
     }
     const titre = (m: Nom) =>
-      `La demande ${de(m.nom)} ${de(d.nom)} ${periode} a expiré sans réponse`;
+      `La demande ${de(m.nom)} de ${d.nom} ${periode} a expiré sans réponse`;
     const prevenus = new Set<string>(d.demandeurUserId ? [d.demandeurUserId] : []);
     const prevenir = async (userId: string, pour: 'n1' | 'dch') => {
       if (prevenus.has(userId)) return;

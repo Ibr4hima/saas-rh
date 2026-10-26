@@ -99,8 +99,8 @@ export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): Bl
     // Le numéro en groupes, comme sur la carte : « n° 1 234 0000 12345 ».
     texte(`CNI ${no(cniGroupee(s.cni))}`),
     texte(
-      `Filiation : ${genre === 'female' ? 'Fille' : 'Fils'} ${elide('d', s.perePrenom)} et ` +
-        elide('d', `${s.merePrenom} ${s.mereNom}`),
+      `Filiation : ${genre === 'female' ? 'Fille' : 'Fils'} de ${s.perePrenom} et de ` +
+        `${s.merePrenom} ${s.mereNom}`,
     ),
     texte(`Adresse : ${s.adresse}`),
     {

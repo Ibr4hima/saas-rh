@@ -35,7 +35,6 @@ import {
 import { api, ApiError, apiUrl } from '../../../lib/api';
 import { enregistrer, lireFichier } from '../../../lib/fichiers';
 import { formatDate, useMe } from '../../../lib/hooks';
-import { de } from '../../../lib/mots';
 import { DocumentsDeposes } from '../../../components/documents-deposes';
 import { Icon } from '../../../components/icons';
 import { LoadFailure } from '../../../components/load-failure';
@@ -462,9 +461,9 @@ function SuiteDonnee({
     <>
       <span className="text-ink">
         {n > 0
-          ? `Déposée en ligne${r.pickupContact ? ` · Original auprès ${de(r.pickupContact)}` : ''}`
+          ? `Déposée en ligne${r.pickupContact ? ` · Original auprès de ${r.pickupContact}` : ''}`
           : r.pickupContact
-            ? `À retirer auprès ${de(r.pickupContact)}`
+            ? `À retirer auprès de ${r.pickupContact}`
             : 'Prête'}
       </span>
       {n > 0 || r.hrMessage || (r.canHandleFiles && r.status === 'ready') ? (

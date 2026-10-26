@@ -28,7 +28,6 @@ import {
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../../../lib/api';
 import { formatDate } from '../../../../../lib/hooks';
-import { de } from '../../../../../lib/mots';
 import { timeAgo } from '../../../../../components/document-request-list';
 import { FenetreDocument } from '../../../../../components/fenetre-document';
 import { Icon } from '../../../../../components/icons';
@@ -451,7 +450,7 @@ function EtatTraitement({
         </Button>
         {r.pickupContact ? (
           <p className="mt-1 truncate text-[11.5px] text-ink-muted" title={r.pickupContact}>
-            Original auprès {de(r.pickupContact)}
+            Original auprès de {r.pickupContact}
           </p>
         ) : null}
         {r.hrMessage ? <p className="mt-0.5 text-[11.5px] text-ink-muted">{r.hrMessage}</p> : null}
@@ -462,7 +461,7 @@ function EtatTraitement({
   return (
     <div className="min-w-0">
       <p className="truncate font-semibold text-primary" title={r.pickupContact}>
-        Auprès {de(r.pickupContact)}
+        Auprès de {r.pickupContact}
       </p>
       {r.hrMessage ? <p className="mt-0.5 text-[11.5px] text-ink-muted">{r.hrMessage}</p> : null}
     </div>

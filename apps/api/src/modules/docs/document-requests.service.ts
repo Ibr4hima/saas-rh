@@ -806,7 +806,7 @@ export class DocumentRequestsService {
     const accorde = (mot: string) =>
       b ? (b.pluriel ? `${mot}s` : mot) : seul ? accord(mot, seul) : `${mot}s`;
     const demande = b ? deBulletins(b) : seul ? de(seul.nom) : 'de documents';
-    const retrait = `à retirer auprès ${de(e.pickupContact ?? 'la DCH')}`;
+    const retrait = `à retirer auprès de ${e.pickupContact ?? 'la DCH'}`;
     const titres: Partial<Record<DocumentRequestStatus, string>> = {
       processing: `${votre} en préparation`,
       ready:

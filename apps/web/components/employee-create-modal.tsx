@@ -424,7 +424,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             htmlFor="managerId"
             hint={
               directionChoisie
-                ? `Les agents ${uniteAvecArticle('de', directionChoisie)}, et le directeur général.`
+                ? `Les agents ${uniteAvecArticle('de', directionChoisie)}, et le DG.`
                 : 'Renseignez d’abord la direction.'
             }
           >

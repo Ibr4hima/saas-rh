@@ -22,7 +22,7 @@ import { Modal } from '../../../../components/modal';
 import { StatutAbsence } from '../../../../components/statut-absence';
 import { dureeAbsence, periodeAbsence, resumeVisas } from '../../../../lib/absences';
 import { api, ApiError } from '../../../../lib/api';
-import { compte, de } from '../../../../lib/mots';
+import { compte } from '../../../../lib/mots';
 
 /* ————————————————————————————————————————————————————————————————
    Les congés de l'équipe : ce que le n+1 vise.
@@ -94,8 +94,8 @@ export default function CongesEquipePage() {
         ton: 'ok',
         texte:
           v.decision === 'approved'
-            ? `Retour ${de(v.demande.employeeName)} confirmé.`
-            : `Retour ${de(v.demande.employeeName)} refusé.`,
+            ? `Retour de ${v.demande.employeeName} confirmé.`
+            : `Retour de ${v.demande.employeeName} refusé.`,
       });
       await rafraichir();
     },

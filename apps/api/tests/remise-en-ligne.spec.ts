@@ -302,7 +302,7 @@ describe('ce que voit l’agent', () => {
     await service.deposer(rh, id, fichier(PDF, 'domiciliation.pdf'));
     await service.batchAdvance(rh, { ids: [id], status: 'ready', pickupContact: 'Ibrahima Ba' });
     expect(await titresDe(awaUserId)).toEqual([
-      'Votre domiciliation bancaire est déposée dans votre espace, l’original à retirer auprès d’Ibrahima Ba',
+      'Votre domiciliation bancaire est déposée dans votre espace, l’original à retirer auprès de Ibrahima Ba',
     ]);
   });
 

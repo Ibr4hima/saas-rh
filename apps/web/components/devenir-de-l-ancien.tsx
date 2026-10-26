@@ -9,7 +9,6 @@ import {
   type OrgUnitView,
 } from '@teranga/contracts';
 import { cn, Field, Input, Select } from '@teranga/ui';
-import { de } from '../lib/mots';
 import { libelleResponsable, n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { ChoixUnite, directionDe } from './choix-unite';
 
@@ -152,7 +151,7 @@ export function DevenirDeLAncien({
   return (
     <div className="flex flex-col gap-3">
       <p id={`${idPrefix}-question`} className="text-[13px] font-semibold text-ink">
-        Statut {de(ancien.nom)}
+        Statut de {ancien.nom}
       </p>
       <div
         role="radiogroup"
@@ -257,7 +256,7 @@ export function DevenirDeLAncien({
             </Field>
             {lu.remplace ? (
               <Field
-                label={`Nouveau poste ${de(lu.remplace.managerShortName ?? '')}`}
+                label={`Nouveau poste de ${lu.remplace.managerShortName ?? ''}`}
                 htmlFor={`${idPrefix}-poste-remplace`}
                 required
               >

@@ -437,7 +437,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
                   : impose
                     ? 'Le responsable d’une unité relève de l’unité au-dessus de la sienne.'
                     : direction
-                      ? `Les agents ${uniteAvecArticle('de', { name: direction, unitType: 'direction' }, direction)}, et le directeur général.`
+                      ? `Les agents ${uniteAvecArticle('de', { name: direction, unitType: 'direction' }, direction)}, et le DG.`
                       : 'Affectez d’abord l’agent à une direction.'
             }
           >

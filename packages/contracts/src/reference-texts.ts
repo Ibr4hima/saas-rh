@@ -23,6 +23,25 @@ export const REFERENCE_TEXT_TITLES: Record<ReferenceTextSlug, string> = {
   'reglement-interieur': 'Règlement intérieur',
 };
 
+/**
+ * L'article de chaque texte, tel qu'on le nomme dans une phrase : « le Code
+ * du travail ». Il se fixe texte par texte, comme on le dit couramment,
+ * plutôt que d'une règle tirée du titre.
+ */
+export const REFERENCE_TEXT_ARTICLES: Record<ReferenceTextSlug, string> = {
+  'code-du-travail': 'le',
+  'reglement-interieur': 'le',
+};
+
+/**
+ * Le titre d'un texte avec son article : « le Code du travail ». `null` pour
+ * un texte dont l'article n'est pas fixé.
+ */
+export function texteDeReferenceAvecArticle(texte: { slug: string; title: string }): string | null {
+  const article = (REFERENCE_TEXT_ARTICLES as Partial<Record<string, string>>)[texte.slug];
+  return article ? `${article} ${texte.title}` : null;
+}
+
 export interface ReferenceArticleView {
   id: string;
   /** Le numéro tel qu'il s'écrit : « premier » pour 1, sinon le nombre. */

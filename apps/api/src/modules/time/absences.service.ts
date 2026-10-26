@@ -1774,7 +1774,7 @@ export class AbsencesService {
     await notifier(tx, d.tenantId, directeur.userId, {
       type: 'delegation',
       sujet: 'dch.delegations',
-      title: `${leLa(a)}${a.nom} ${de(d.nom)} est ${accord('validé', a)} : plus personne pour ${delegations} ${duAu(du, au)}`,
+      title: `${leLa(a)}${a.nom} de ${d.nom} est ${accord('validé', a)} : plus personne pour ${delegations} ${duAu(du, au)}`,
       link: '/moi/delegations',
       dedupeKey: `continuite:${requestId}`,
     });

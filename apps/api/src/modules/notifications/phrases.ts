@@ -139,7 +139,10 @@ export const leLa = (n: Nom) => (voyelle(n.nom) ? 'L’' : n.feminin ? 'La ' : '
 /** « approuvé », « approuvée ». */
 export const accord = (mot: string, n: Pick<Nom, 'feminin'>) => (n.feminin ? `${mot}e` : mot);
 
-/** « d’attestation », « de bulletin », « d’Awa Diop ». */
+/**
+ * « d’attestation », « de bulletin », « d’avril ». Jamais devant un nom de
+ * personne, qui s'écrit après « de » sans élision : « de Awa Diop ».
+ */
 export const de = (mot: string) => (/^[aeiouyéèêâîôû]/i.test(mot) ? `d’${mot}` : `de ${mot}`);
 
 /**

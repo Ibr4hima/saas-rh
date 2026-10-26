@@ -28,13 +28,5 @@ export function accorde(n: number, participe: string, feminin = false): string {
   return `${participe}${feminin ? 'e' : ''}${n > 1 ? 's' : ''}`;
 }
 
-/**
- * « de Moussa Ndiaye », « d’Awa Diop », « d’Yves Faye » : l'élision devant une
- * voyelle. Un y suivi d'une voyelle se prononce comme une consonne : « de
- * Youssou Diouf », « de Yacine Sow ».
- */
-export const de = (mot: string) =>
-  /^(?:[aeiouéèêëâäîïôöùûü]|y(?![aeiouéèêëâäîïôöùûü]))/iu.test(mot) ? `d’${mot}` : `de ${mot}`;
-
 /** La première lettre en capitale, en tête de phrase : « dans la DCH » devient « Dans la DCH ». */
 export const majuscule = (texte: string) => texte.charAt(0).toUpperCase() + texte.slice(1);

@@ -7,7 +7,7 @@ import { Button, Field, Input, Select, Textarea } from '@teranga/ui';
 import { dureeAbsence, periodeAbsence } from '../lib/absences';
 import { api, ApiError } from '../lib/api';
 import { formatDate } from '../lib/hooks';
-import { compte, de } from '../lib/mots';
+import { compte } from '../lib/mots';
 import { Modal } from './modal';
 
 /* ────────────────────────────────────────────────────────────────
@@ -329,7 +329,7 @@ export function FenetreAnnulation({
     <Modal
       open
       onClose={onClose}
-      title={sienne ? 'Annuler mon congé' : `Annuler le congé ${de(r.employeeName)}`}
+      title={sienne ? 'Annuler mon congé' : `Annuler le congé de ${r.employeeName}`}
       subtitle={periodeDe(r)}
       maxWidth="max-w-md"
       footer={

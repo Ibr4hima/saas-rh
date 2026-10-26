@@ -9,7 +9,6 @@ import {
 import { problem } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
 import { frDate } from '../acces/appels';
-import { de } from '../notifications/phrases';
 import { pasSurSoi } from '../acces/dch';
 import { SOMMET } from './chaine';
 import { enActivite } from './en-activite';
@@ -186,8 +185,8 @@ export async function inscrireLaPassation(tx: Tx, user: SessionUser, p: Passatio
       problem(
         422,
         'org.poste_de_l_ancien_requis',
-        `Indiquez le nouveau poste ${de(nom)}`,
-        `Indiquez le nouveau poste ${de(nom)}, qui quitte ${
+        `Indiquez le nouveau poste de ${nom}`,
+        `Indiquez le nouveau poste de ${nom}, qui quitte ${
           p.place === 'adjoint' ? 'la direction générale adjointe' : 'la tête de l’unité'
         }.`,
       );

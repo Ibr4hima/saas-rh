@@ -194,7 +194,7 @@ describe('la saisie', () => {
       ),
     );
     expect(textes).toContain('Prénom et nom : Monsieur Mouhamadou Moustapha Lamine DOS SANTOS');
-    expect(textes).toContain('Filiation : Fils d’El Hadji et de Ndèye Fatou Sow');
+    expect(textes).toContain('Filiation : Fils de El Hadji et de Ndèye Fatou Sow');
   });
 
   it('le lieu et l’adresse prennent une capitale à chaque mot, la formation et le poste à la première lettre', () => {
@@ -218,14 +218,14 @@ describe('la saisie', () => {
     );
   });
 
-  it('la filiation s’élide devant une voyelle, pas devant un y consonne', () => {
+  it('la filiation ne s’élide pas devant un prénom', () => {
     const filiation = (f: Partial<FicheStagiaire>) =>
       blocQuiCommencePar(contrat(f), 'Filiation : ');
     expect(filiation({ perePrenom: 'Ousmane', merePrenom: 'Aminata', mereNom: 'Ba' })).toBe(
-      'Filiation : Fille d’Ousmane et d’Aminata Ba',
+      'Filiation : Fille de Ousmane et de Aminata Ba',
     );
     expect(filiation({ perePrenom: 'Youssou', merePrenom: 'Yvonne', mereNom: 'Diatta' })).toBe(
-      'Filiation : Fille de Youssou et d’Yvonne Diatta',
+      'Filiation : Fille de Youssou et de Yvonne Diatta',
     );
   });
 });

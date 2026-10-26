@@ -46,9 +46,9 @@ describe('les mots des notifications', () => {
   });
 
   it('élide devant une voyelle', () => {
-    expect(de('Awa Diop')).toBe('d’Awa Diop');
+    expect(de('avril 2026')).toBe('d’avril 2026');
     expect(de('attestation de travail')).toBe('d’attestation de travail');
-    expect(de('Mme Fatou Sall')).toBe('de Mme Fatou Sall');
+    expect(de('bulletin de salaire')).toBe('de bulletin de salaire');
   });
 
   it('nomme un type d’absence dans une phrase', () => {

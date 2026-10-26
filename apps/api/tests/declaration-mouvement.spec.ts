@@ -305,7 +305,7 @@ describe('la déclaration', () => {
     expect(t).toEqual([
       'Nom : DIOP | Prénom(s) : Awa Marie',
       'Née le : 12 mars 1990 à Dakar | Pays : Sénégal | Nationalité : Sénégalaise',
-      'Fille de Moussa et d’Aïssatou Sall',
+      'Fille de Moussa et de Aïssatou Sall',
       'Adresse : Cité Keur Gorgui, Dakar',
       'Carte d’identité n° 2 751 1990 12345 | Délivrée à : Dakar',
       'Par : Directeur Général de la Sûreté Nationale',
@@ -341,7 +341,7 @@ describe('la déclaration', () => {
     expect(t).toContain(
       'Né le : 12 mars 1990 à Dakar | Pays : Sénégal | Nationalité : Sénégalaise',
     );
-    expect(t).toContain('Fils d’Ibrahima et d’Aïssatou Sall');
+    expect(t).toContain('Fils de Ibrahima et de Aïssatou Sall');
     expect(t).toContain(
       'N° d’immatriculation à la CSS : 1234567 | N° d’immatriculation à l’IPRES : 89012345',
     );
