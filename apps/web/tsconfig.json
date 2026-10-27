@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  // Les DEUX répertoires de types y figurent, et il faut les y laisser.
+  // Next réécrit ce fichier au démarrage dès qu'il n'y trouve pas le sien —
+  // `.next/types` après `build`, `.next-dev/types` après `dev` (cf. distDir
+  // dans next.config.ts). N'en garder qu'un, c'est le voir revenir à la
+  // première commande, et faire échouer le « git pull » de tous les autres.
+  // Les avoir tous les deux est le point d'équilibre : plus rien à ajouter,
+  // donc plus de réécriture. `exclude` neutralise ensuite `.next-dev`, pour
+  // que la compilation de production ne relise pas les types du serveur de
+  // développement — c'est lui qui fait foi, `include` ne fait que taire Next.
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    ".next-dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", ".next-dev"]
+}

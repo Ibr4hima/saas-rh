@@ -1,0 +1,189 @@
+import { sql, type SQL } from 'drizzle-orm';
+import {
+  AGENTS_DE_LA_CIBLE_MAX,
+  CIBLES_DES_DOCUMENTS,
+  horsCible,
+  REQUESTABLE_DOC_LABELS,
+  type AgentDeLaCible,
+  type CibleDuDocument,
+  type ContractType,
+  type DocumentAvecAgent,
+  type DocumentDemandable,
+  type EmployeeStatus,
+  type Gender,
+  type HorsCible,
+  type SituationDeLAgent,
+} from '@teranga/contracts';
+import { problem } from '../../common/problem';
+import type { Tx } from '../../db/tenant-db';
+import { rechercheDesAgents } from '../people/recherche';
+
+/*
+ * La cible de chaque document (ADR-0130, ADR-0137) : les agents que
+ * « Générer des documents » propose, les documents qu'un agent demande, et le
+ * refus pour un autre. La règle vit au contrat, partagée avec les pages ; ici
+ * se lit, au dossier, la situation de chaque agent.
+ */
+
+type Ligne = {
+  id: string;
+  employee_number: string;
+  given_name: string;
+  family_name: string;
+  position_title: string | null;
+  status: string;
+  contrat: string | null;
+  stage: boolean;
+  genre: string | null;
+  age: number | null;
+};
+
+/** Les dossiers retenus par `filtre`, et leur situation, par nom. */
+async function lireLesSituations(tx: Tx, filtre: SQL): Promise<Ligne[]> {
+  const { rows } = await tx.execute<Ligne>(sql`
+    SELECT e.id, e.employee_number, p.given_name, p.family_name, e.status,
+           -- Le poste en cours, sinon le prochain ; pour un dossier inactif, le dernier.
+           (SELECT a.position_title FROM assignments a
+             WHERE a.employee_id = e.id
+             ORDER BY a.validity @> CURRENT_DATE DESC, lower(a.validity) DESC
+             LIMIT 1) AS position_title,
+           -- Le contrat qui fait foi : le dernier commencé, au dernier jour
+           -- d'un dossier inactif (comme le certificat de travail le lit).
+           (SELECT c.contract_type FROM contracts c
+             WHERE c.employee_id = e.id
+               AND c.start_date <= CASE WHEN e.status = 'active' THEN CURRENT_DATE
+                 ELSE COALESCE(e.fin_activite,
+                               (SELECT max(pi.dernier_jour) FROM periodes_inactivite pi
+                                 WHERE pi.employee_id = e.id AND pi.reprise_le IS NULL),
+                               (e.archived_at AT TIME ZONE 'UTC')::date - 1,
+                               CURRENT_DATE) END
+             ORDER BY c.start_date DESC, c.created_at DESC LIMIT 1) AS contrat,
+           EXISTS (SELECT 1 FROM contracts c
+                    WHERE c.employee_id = e.id AND c.contract_type = 'stage'
+                      AND c.start_date <= CURRENT_DATE) AS stage,
+           p.gender AS genre,
+           date_part('year', age(CURRENT_DATE, p.birth_date))::int AS age
+      FROM employees e
+      JOIN persons p ON p.id = e.person_id
+     WHERE ${filtre}
+     ORDER BY p.family_name, p.given_name, e.id`);
+  return rows;
+}
+
+const situationDe = (l: Ligne): SituationDeLAgent => ({
+  enActivite: l.status === 'active',
+  contrat: l.contrat as ContractType | null,
+  stage: l.stage,
+  genre: l.genre as Gender | null,
+  age: l.age,
+});
+
+/**
+ * Les agents de la cible d'un document qui répondent à la recherche, par nom.
+ * Son propre dossier ne se propose pas : personne ne génère pour soi.
+ */
+export async function agentsDeLaCible(
+  tx: Tx,
+  doc: DocumentAvecAgent,
+  q: string,
+  userId: string,
+): Promise<AgentDeLaCible[]> {
+  const cible = CIBLES_DES_DOCUMENTS[doc];
+  // Un premier tri en base, que la règle refait : le statut, le genre.
+  const filtres = [
+    sql`p.user_id IS DISTINCT FROM ${userId}`,
+    rechercheDesAgents(q),
+    cible.dossiers === 'en_activite'
+      ? sql`e.status = 'active'`
+      : cible.dossiers === 'inactifs'
+        ? sql`e.status <> 'active'`
+        : null,
+    cible.genre ? sql`p.gender = ${cible.genre}` : null,
+  ].filter((f): f is SQL => f !== null);
+  const lignes = await lireLesSituations(tx, sql.join(filtres, sql` AND `));
+  return lignes
+    .map((l) => ({ l, situation: situationDe(l) }))
+    .filter(({ situation }) => horsCible(cible, situation) === null)
+    .slice(0, AGENTS_DE_LA_CIBLE_MAX)
+    .map(({ l, situation }) => ({
+      id: l.id,
+      employeeNumber: l.employee_number,
+      givenName: l.given_name,
+      familyName: l.family_name,
+      positionTitle: l.position_title,
+      status: l.status as EmployeeStatus,
+      situation,
+    }));
+}
+
+/** La situation du dossier d'un agent ; null : pas de dossier. */
+export async function situationDuDossier(
+  tx: Tx,
+  employeeId: string,
+): Promise<SituationDeLAgent | null> {
+  const [ligne] = await lireLesSituations(tx, sql`e.id = ${employeeId}`);
+  return ligne ? situationDe(ligne) : null;
+}
+
+/** Le refus, en le disant : le titre nomme le document, le détail la règle. */
+export function refuserHorsCible(
+  doc: DocumentDemandable,
+  cible: CibleDuDocument,
+  s: SituationDeLAgent,
+  raison: HorsCible,
+): never {
+  const libelle = REQUESTABLE_DOC_LABELS[doc];
+  // « CDI », « CDD » : les contrats que la cible admet.
+  const contrats = (cible.contrats ?? []).map((c) => c.toUpperCase());
+  const [titre, detail] = {
+    not_active: [
+      `${libelle} : dossier inactif`,
+      'Ce document est réservé aux agents en activité. Pour un agent qui a quitté l’organisation, établissez un certificat de travail.',
+    ],
+    en_activite: [
+      `${libelle} : dossier en activité`,
+      'Le certificat de travail est délivré au départ de l’agent. Pour un agent en activité, établissez une attestation de travail.',
+    ],
+    stage: [
+      `${libelle} : contrat de stage`,
+      'Ce document nécessite un contrat de travail. Pour un stagiaire, établissez une attestation de stage.',
+    ],
+    contrat: [
+      contrats.length === 1
+        ? `${libelle} : pas de ${contrats[0]}`
+        : `${libelle} : ni ${contrats.join(' ni ')}`,
+      `Ce document nécessite un ${contrats.join(' ou un ')} en cours.`,
+    ],
+    sans_stage: [
+      `${libelle} : aucun stage au dossier`,
+      'L’attestation de stage nécessite un stage déjà commencé, enregistré dans le dossier.',
+    ],
+    genre: [
+      `${libelle} : non applicable à cet agent`,
+      cible.genre === 'female'
+        ? 'Ce document concerne uniquement les agents de sexe féminin.'
+        : 'Ce document concerne uniquement les agents de sexe masculin.',
+    ],
+    age: [
+      s.age === null
+        ? `${libelle} : date de naissance manquante`
+        : `${libelle} : moins de ${cible.ageMin} ans`,
+      `Ce document est proposé à partir de ${cible.ageMin} ans, d’après la date de naissance du dossier.`,
+    ],
+  }[raison] as [string, string];
+  problem(422, `documents.${raison}`, titre, detail);
+}
+
+/** Le document ne se génère que pour un agent de sa cible ; sinon, le refus. */
+export async function exigerLaCible(
+  tx: Tx,
+  doc: DocumentAvecAgent,
+  employeeId: string,
+): Promise<void> {
+  const [ligne] = await lireLesSituations(tx, sql`e.id = ${employeeId}`);
+  if (!ligne) problem(404, 'people.employee_not_found', 'Employé introuvable');
+  const cible = CIBLES_DES_DOCUMENTS[doc];
+  const situation = situationDe(ligne);
+  const raison = horsCible(cible, situation);
+  if (raison) refuserHorsCible(doc, cible, situation, raison);
+}

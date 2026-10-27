@@ -1,0 +1,337 @@
+'use client';
+
+import { useState, type ChangeEvent, type ReactNode } from 'react';
+import {
+  cniGroupee,
+  majusculesDesLieux,
+  majusculesInitiales,
+  premiereMajuscule,
+} from '@teranga/contracts';
+import { Button, Card, CardTitle, cn, Field, Input, Select } from '@teranga/ui';
+import { champDeChiffres } from '../lib/chiffres';
+import { formatDate } from '../lib/hooks';
+import { champDuMontant } from '../lib/montant';
+import { Icon } from './icons';
+
+/*
+   Les pièces des fiches que la DCH renseigne pour un document sans agent
+   (ADR-0094, ADR-0098, ADR-0100, ADR-0102, ADR-0106) : le contrat de stage,
+   les contrats de travail, les décisions de disponibilité, la domiciliation
+   bancaire, la déclaration de mouvement du travailleur. Les mêmes champs s'y
+   saisissent de la même façon, en sections d'un seul bloc, le
+   « Préremplissage » (ADR-0121).
+*/
+
+/** Le cadre des champs de la page, celui de ses listes déroulantes. */
+export const CADRE = 'h-9 rounded-controle px-3 text-[12.5px] font-medium text-ink-strong';
+
+/**
+ * Une section du préremplissage : son intitulé, puis ses champs, en deux
+ * colonnes dès que la largeur le permet ; une seule sur un téléphone. Les
+ * sections se suivent dans le bloc, séparées d'un filet.
+ */
+export function Groupe({ titre, children }: { titre: string; children: ReactNode }) {
+  return (
+    <section className="border-t border-line-soft px-5 pt-4 pb-5">
+      <h3 className="mb-3.5 text-[13.5px] font-bold text-ink-strong">{titre}</h3>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3.5 sm:grid-cols-2">{children}</div>
+    </section>
+  );
+}
+
+/**
+ * Le bloc « Préremplissage » : tout ce que la DCH saisit pour un document,
+ * en sections, et « Valider » au pied. Le document ne se génère qu'à la
+ * validation. Validé, le bloc se replie à la hauteur de celui du choix du
+ * document, 68 px, et « Modifier » le rouvre sur ce qui avait été saisi : les
+ * sections restent montées, cachées, et gardent tout.
+ */
+export function Preremplissage({
+  valide,
+  pret,
+  onValider,
+  onModifier,
+  children,
+}: {
+  valide: boolean;
+  /** Tout est saisi : « Valider » s'ouvre. */
+  pret: boolean;
+  onValider: () => void;
+  onModifier: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Card>
+      {/* Replié, il prend la forme du bloc du choix du document : sur
+          téléphone, l'intitulé au-dessus et le bouton sur toute la largeur. */}
+      <div
+        className={cn(
+          'flex px-5 py-4',
+          valide ? 'flex-col gap-3 sm:flex-row sm:items-center sm:gap-5' : 'items-center gap-5',
+        )}
+      >
+        <CardTitle className="min-w-0 flex-1">Préremplissage</CardTitle>
+        {valide ? (
+          <Button variant="secondary" className="h-9 w-full sm:w-auto" onClick={onModifier}>
+            <Icon name="edit" size={15} />
+            Modifier
+          </Button>
+        ) : (
+          // Sur écran large, la ligne du titre garde sa hauteur, ouverte ou repliée.
+          <span aria-hidden className="hidden h-9 sm:block" />
+        )}
+      </div>
+      <div hidden={valide}>
+        {children}
+        <div className="flex justify-end border-t border-line-soft px-5 py-4">
+          <Button className="h-9 px-5" disabled={!pret} onClick={onValider}>
+            Valider
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Les champs de texte d'une fiche : leur identifiant, leur valeur, leur
+ * frappe ; ceux qui posent leurs capitales à la frappe, sans que le curseur
+ * bouge.
+ */
+export function champsDeTexte<T>(id: string, valeur: T, poser: (champ: Partial<T>) => void) {
+  const texte = (champ: keyof T & string, max?: number) => ({
+    id: `${id}-${champ}`,
+    value: String(valeur[champ] ?? ''),
+    maxLength: max,
+    onChange: (e: ChangeEvent<HTMLInputElement>) =>
+      poser({ [champ]: e.target.value } as Partial<T>),
+    className: CADRE,
+  });
+  /**
+   * `aLaFin` : la règle entière, posée quand on quitte le champ, si la frappe
+   * en a laissé une part en attente.
+   */
+  const avecCapitales = (
+    champ: keyof T & string,
+    max: number,
+    capitales: (texte: string) => string,
+    clavier: 'words' | 'sentences',
+    aLaFin: (texte: string) => string = capitales,
+  ) => ({
+    ...texte(champ, max),
+    autoCapitalize: clavier,
+    onChange: (e: ChangeEvent<HTMLInputElement>) => {
+      const saisi = e.target;
+      const corrige = capitales(saisi.value);
+      if (corrige !== saisi.value) {
+        const { selectionStart, selectionEnd } = saisi;
+        saisi.value = corrige;
+        saisi.setSelectionRange(selectionStart, selectionEnd);
+      }
+      poser({ [champ]: corrige } as Partial<T>);
+    },
+    onBlur: (e: ChangeEvent<HTMLInputElement>) => {
+      const fini = aLaFin(e.target.value);
+      if (fini !== e.target.value) poser({ [champ]: fini } as Partial<T>);
+    },
+  });
+  return {
+    texte,
+    /** Un prénom, un nom : « dos santos » s'écrit « Dos Santos ». */
+    nomPropre: (champ: keyof T & string, max = 80) =>
+      avecCapitales(champ, max, majusculesInitiales, 'words'),
+    /** Un lieu, une adresse : « patte d’oie » s'écrit « Patte d’Oie ». */
+    lieu: (champ: keyof T & string, max: number) =>
+      avecCapitales(
+        champ,
+        max,
+        (t) => majusculesDesLieux(t, { enCours: true }),
+        'words',
+        majusculesDesLieux,
+      ),
+    /** Une formation, un poste : « assistante archiviste » s'écrit « Assistante archiviste ». */
+    intitule: (champ: keyof T & string, max: number) =>
+      avecCapitales(champ, max, premiereMajuscule, 'sentences'),
+  };
+}
+
+/** Une règle que Zod dit enfreinte : son code, le champ qu'elle vise, son message. */
+type Probleme = { code: string; path: readonly PropertyKey[]; message: string };
+
+/**
+ * Les règles qu'enfreint une fiche, champ par champ (ADR-0133) : une date
+ * dans l'avenir, une fin avant son début. `problemes` : ce que Zod dit des
+ * champs ; `croisees` : les règles qui lient deux dates, que Zod tait tant
+ * qu'une liste de la fiche n'est pas choisie. Un champ vide se tait :
+ * « Valider » attend déjà qu'il soit rempli. `fiche` : ce qui part à l'API ;
+ * un champ imbriqué se nomme par son chemin (« visa.le »).
+ */
+export function reglesEnfreintes(
+  fiche: unknown,
+  problemes: readonly Probleme[] | undefined,
+  croisees: Record<string, string> = {},
+): Record<string, string> {
+  const rempli = (chemin: readonly PropertyKey[]) => {
+    const valeur = chemin.reduce<unknown>(
+      (v, cle) =>
+        v !== null && typeof v === 'object' ? (v as Record<PropertyKey, unknown>)[cle] : undefined,
+      fiche,
+    );
+    return !(
+      valeur === undefined ||
+      valeur === '' ||
+      (Array.isArray(valeur) && valeur.length === 0)
+    );
+  };
+  const erreurs: Record<string, string> = {};
+  for (const p of problemes ?? []) {
+    if (p.code === 'custom' && rempli(p.path)) erreurs[p.path.map(String).join('.')] ??= p.message;
+  }
+  for (const [chemin, message] of Object.entries(croisees)) {
+    if (rempli(chemin.split('.'))) erreurs[chemin] ??= message;
+  }
+  return erreurs;
+}
+
+/** Madame ou Monsieur. */
+export function ChampDeLaCivilite({
+  id,
+  civilite,
+  onSaisir,
+}: {
+  id: string;
+  civilite: '' | 'madame' | 'monsieur';
+  onSaisir: (civilite: 'madame' | 'monsieur') => void;
+}) {
+  return (
+    <Field label="Civilité" htmlFor={id} required>
+      <Select
+        id={id}
+        aria-label="Civilité"
+        value={civilite}
+        onChange={(e) => onSaisir(e.target.value as 'madame' | 'monsieur')}
+        className={CADRE}
+      >
+        <option value="" hidden>
+          Choisir
+        </option>
+        <option value="madame">Madame</option>
+        <option value="monsieur">Monsieur</option>
+      </Select>
+    </Field>
+  );
+}
+
+/**
+ * Le numéro de la CNI, groupé à la frappe comme sur la carte : « 1 234 0000
+ * 12345 ». Quitté incomplet, il le dit.
+ */
+export function ChampDeLaCNI({
+  id,
+  cni,
+  onSaisir,
+}: {
+  id: string;
+  cni: string;
+  onSaisir: (cni: string) => void;
+}) {
+  const [quitte, setQuitte] = useState(false);
+  const champ = champDeChiffres({ chiffres: cni, max: 13, grouper: cniGroupee, onSaisir });
+  const incomplet = quitte && cni.length > 0 && cni.length < 13;
+  return (
+    <Field
+      label="N° de la CNI"
+      htmlFor={id}
+      required
+      error={incomplet ? 'Treize chiffres attendus' : undefined}
+    >
+      <Input
+        {...champ}
+        id={id}
+        aria-invalid={incomplet || undefined}
+        onBlur={() => setQuitte(true)}
+        className={cn(CADRE, 'tabular-nums', incomplet && 'border-danger')}
+      />
+    </Field>
+  );
+}
+
+/**
+ * Une durée en mois, à choisir ; la fin qui s'en déduit s'écrit dessous :
+ * « Fin du stage : 18 nov. 2025 ».
+ */
+export function ChampDeLaDuree({
+  id,
+  libelle,
+  mois,
+  max,
+  fin,
+  onSaisir,
+}: {
+  id: string;
+  libelle: string;
+  mois: string;
+  max: number;
+  /** « Fin du stage » et la date, quand le début et la durée sont connus. */
+  fin: { libelle: string; date: string } | null;
+  onSaisir: (mois: string) => void;
+}) {
+  return (
+    <Field
+      label={libelle}
+      htmlFor={id}
+      required
+      hint={fin ? `${fin.libelle} : ${formatDate(fin.date)}` : undefined}
+    >
+      <Select
+        id={id}
+        aria-label={libelle}
+        value={mois}
+        onChange={(e) => onSaisir(e.target.value)}
+        className={CADRE}
+      >
+        <option value="" hidden>
+          Choisir
+        </option>
+        {Array.from({ length: max }, (_, i) => i + 1).map((m) => (
+          <option key={m} value={m}>
+            {m} mois
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
+/** Un montant en francs CFA, les milliers séparés à la frappe. */
+export function ChampDuMontant({
+  id,
+  libelle,
+  montant,
+  zeroPermis = false,
+  indication,
+  onSaisir,
+}: {
+  id: string;
+  libelle: string;
+  montant: number | null;
+  /** Zéro se saisit : un sursalaire peut être nul. */
+  zeroPermis?: boolean;
+  indication?: string;
+  onSaisir: (montant: number | null) => void;
+}) {
+  const champ = champDuMontant(montant, onSaisir, { zeroPermis });
+  return (
+    <Field label={libelle} htmlFor={id} required hint={indication}>
+      <div className="relative">
+        <Input {...champ} id={id} className={cn(CADRE, 'pr-14 tabular-nums')} />
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-[11.5px] font-semibold text-ink-muted"
+        >
+          FCFA
+        </span>
+      </div>
+    </Field>
+  );
+}
