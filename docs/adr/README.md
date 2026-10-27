@@ -29,7 +29,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0021](0021-passage-de-minuit.md)                     | Le passage de minuit                                                                    | acceptée, précisée par 0067                 |
 | [0022](0022-mot-de-passe-oublie.md)                   | Mot de passe oublié : un lien par courriel, valable une heure, qui sert une fois        | acceptée                                    |
 | [0023](0023-defense-en-profondeur.md)                 | Défense en profondeur : pièces chiffrées, origines, en-têtes                            | acceptée                                    |
-| [0024](0024-inactivite-et-revue-des-droits.md)        | Déconnexion après trois jours d'inactivité, revue des droits d'accès                    | acceptée, règle des réponses levée par 0070 |
+| [0024](0024-inactivite-et-revue-des-droits.md)        | Déconnexion après trois jours d'inactivité, revue des droits d'accès                    | acceptée, modifiée (0070, 0157)             |
 | [0025](0025-gestion-des-acces-deleguee.md)            | La gestion des accès se délègue                                                         | acceptée, précisée par 0109 et 0125         |
 | [0026](0026-fiche-objectifs-en-trois-parties.md)      | La fiche d'objectifs en trois parties : cases, formations à suivre, commentaires        | remplacée par ADR-0149                      |
 | [0027](0027-formations-a-suivre-en-badges.md)         | Les formations à suivre en badges, atteintes au certificat                              | remplacée par ADR-0149                      |
@@ -162,3 +162,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0154](0154-le-n2-rend-la-grille-au-n1.md)            | Le N+2 rend la grille au N+1, qui seul l'envoie à la DCH                                | acceptée, en partie remplacée : 0156        |
 | [0155](0155-grille-du-personnel-non-cadre.md)         | La grille du personnel non cadre : huit critères notés sur 10, un relevé sur 170        | acceptée                                    |
 | [0156](0156-reprise-de-la-grille-au-n2.md)            | Chez le N+2, le N+1 attend l'avis ou reprend la grille avant de l'envoyer à la DCH      | acceptée                                    |
+| [0157](0157-cadre-ou-non-cadre-sur-soi.md)            | Cadre ou non cadre, la seule chose qu'on règle sur son propre dossier                   | acceptée                                    |

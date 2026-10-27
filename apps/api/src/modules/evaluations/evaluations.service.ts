@@ -261,9 +261,45 @@ export class EvaluationsService {
           aujourdhui,
           sql`(${evaluable(sql`e`)} OR g.id IS NOT NULL)`,
           null,
-          peut(user, 'personnel.gerer') ? user.userId : null,
+          peut(user, 'personnel.gerer'),
         ),
       };
+    });
+  }
+
+  /**
+   * Cadre ou non cadre, depuis le suivi : la colonne de la fiche de l'agent.
+   * Qui gère le personnel le dit pour tout dossier en activité, le sien
+   * compris : c'est la seule chose qu'on règle sur son propre dossier, et
+   * elle ne donne aucun droit. Le reste de sa fiche passe toujours par
+   * quelqu'un d'autre (ADR-0157).
+   */
+  async choisirLePersonnel(
+    user: SessionUser,
+    employeeId: string,
+    personnel: Personnel,
+  ): Promise<void> {
+    if (!peut(user, 'personnel.gerer'))
+      problem(403, 'auth.forbidden', 'Vous n’avez pas les droits nécessaires pour cette action');
+    await this.db.withTenant(this.ctx(user), async (tx) => {
+      const [dossier] = await tx
+        .select({ status: t.employees.status })
+        .from(t.employees)
+        .where(eq(t.employees.id, employeeId))
+        .limit(1);
+      if (!dossier) problem(404, 'people.employee_not_found', 'Employé introuvable');
+      if (dossier.status !== 'active') {
+        problem(
+          422,
+          'people.dossier_inactif',
+          'Ce dossier est inactif',
+          'La fiche d’un agent inactif ne peut pas être modifiée : réactivez d’abord le dossier.',
+        );
+      }
+      await tx
+        .update(t.employees)
+        .set({ personnel, updatedAt: new Date() })
+        .where(eq(t.employees.id, employeeId));
     });
   }
 
@@ -275,11 +311,11 @@ export class EvaluationsService {
     filtre: ReturnType<typeof sql>,
     moi: string | null,
     /**
-     * Le compte de qui lit le suivi en gérant le personnel : cadre ou non
-     * cadre se change alors depuis la ligne, comme sur la fiche, sauf sur son
-     * propre dossier et sur un dossier inactif. null : en lecture seule.
+     * Qui lit le suivi gère le personnel : cadre ou non cadre se change alors
+     * depuis la ligne de tout dossier en activité, le sien compris
+     * (ADR-0157). false : en lecture seule.
      */
-    gestionnaire: string | null = null,
+    gestion = false,
   ): Promise<LigneDEvaluation[]> {
     const { rows } = await tx.execute<{
       employee_id: string;
@@ -310,8 +346,7 @@ export class EvaluationsService {
                 JOIN org_units x ON x.id = rr.id
                WHERE rr.unit_type = 'direction' ORDER BY rr.prof LIMIT 1) AS direction,
              e.personnel,
-             (${gestionnaire}::uuid IS NOT NULL AND e.status = 'active'
-              AND p.user_id IS DISTINCT FROM ${gestionnaire}::uuid) AS personnel_modifiable,
+             (${gestion}::boolean AND e.status = 'active') AS personnel_modifiable,
              g.etat,
              (g.etat = 'brouillon' AND g.renvoyee_le IS NOT NULL) AS renvoyee,
              CASE WHEN g.n2_employee_id = ${moi} AND g.etat IN ('chez_n2', 'validee_n2', 'terminee')

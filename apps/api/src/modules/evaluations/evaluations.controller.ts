@@ -17,12 +17,14 @@ import type { Response } from 'express';
 import {
   anneeDeGrilleSchema,
   anneeDEvaluationSchema,
+  choisirLePersonnelSchema,
   commenterGrilleSchema,
   enregistrerGrilleSchema,
   periodeEvaluationSchema,
   renvoyerGrilleSchema,
   validerGrilleSchema,
   type AnneeDEvaluation,
+  type ChoisirLePersonnelInput,
   type CommenterGrilleInput,
   type EnregistrerGrilleInput,
   type PeriodeEvaluationInput,
@@ -80,6 +82,17 @@ export class EvaluationsController {
     @Query(new ZodValidationPipe(anneeDEvaluationSchema)) q: AnneeDEvaluation,
   ) {
     return this.evaluations.suivi(req.sessionUser, q.annee);
+  }
+
+  /** Cadre ou non cadre, depuis le suivi, son propre dossier compris (ADR-0157). */
+  @Put('personnel/:employeeId')
+  @HttpCode(204)
+  async choisirLePersonnel(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Body(new ZodValidationPipe(choisirLePersonnelSchema)) body: ChoisirLePersonnelInput,
+  ) {
+    await this.evaluations.choisirLePersonnel(req.sessionUser, employeeId, body.personnel);
   }
 
   @Get('moi')

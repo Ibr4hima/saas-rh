@@ -1077,16 +1077,31 @@ describe('la DCH', () => {
       (await evaluations.suivi(qui)).lignes.find((l) => l.nom === nom);
     // Sans gérer le personnel, la colonne se lit seulement.
     expect((await ligne(session('ndeye'), 'Ousmane Fall'))?.personnelModifiable).toBe(false);
+    expect(
+      await codeOf(() => evaluations.choisirLePersonnel(session('ndeye'), agents.ousmane, 'cadre')),
+    ).toBe('auth.forbidden');
     expect((await ligne(gestion, 'Ousmane Fall'))?.personnelModifiable).toBe(true);
-    // Pas sur son propre dossier, comme sur la fiche.
-    expect((await ligne(gestion, 'Ndèye Faye'))?.personnelModifiable).toBe(false);
+    await evaluations.choisirLePersonnel(gestion, agents.ousmane, 'non_cadre');
+    expect((await ligne(gestion, 'Ousmane Fall'))?.personnel).toBe('non_cadre');
+    await raw(`UPDATE employees SET personnel = NULL WHERE id = $1`, [agents.ousmane]);
+    // Son propre dossier aussi : c'est la seule chose qu'on y règle soi-même (ADR-0157).
+    expect((await ligne(gestion, 'Ndèye Faye'))?.personnelModifiable).toBe(true);
+    await evaluations.choisirLePersonnel(gestion, agents.ndeye, 'non_cadre');
+    expect((await ligne(gestion, 'Ndèye Faye'))?.personnel).toBe('non_cadre');
+    await evaluations.choisirLePersonnel(gestion, agents.ndeye, 'cadre');
     // Pas sur un dossier inactif, dont la grille reste au suivi.
     await raw(`UPDATE employees SET status = 'archived' WHERE id = $1`, [agents.moussa]);
     try {
       expect((await ligne(gestion, 'Moussa Ndiaye'))?.personnelModifiable).toBe(false);
+      expect(
+        await codeOf(() => evaluations.choisirLePersonnel(gestion, agents.moussa, 'non_cadre')),
+      ).toBe('people.dossier_inactif');
     } finally {
       await raw(`UPDATE employees SET status = 'active' WHERE id = $1`, [agents.moussa]);
     }
+    expect(await codeOf(() => evaluations.choisirLePersonnel(gestion, randomUUID(), 'cadre'))).toBe(
+      'people.employee_not_found',
+    );
     // Dans l'équipe du N+1, jamais.
     expect(
       (await evaluations.equipe(session('awa'))).lignes.every((l) => !l.personnelModifiable),

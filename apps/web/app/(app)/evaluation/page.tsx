@@ -113,12 +113,13 @@ export default function EvaluationPage() {
       api<SuiviDesEvaluations>(`/evaluations/suivi${demandee ? `?annee=${demandee}` : ''}`),
     placeholderData: (precedent) => precedent,
   });
-  // Cadre ou non cadre : la même modification que sur la fiche de l'agent.
-  // La ligne change tout de suite ; un refus la remet comme elle était.
+  // Cadre ou non cadre : la colonne de la fiche de l'agent, sa propre ligne
+  // comprise (ADR-0157). La ligne change tout de suite ; un refus la remet
+  // comme elle était.
   const [erreurPersonnel, setErreurPersonnel] = useState<string | null>(null);
   const changerPersonnel = useMutation({
     mutationFn: ({ employeeId, personnel }: { employeeId: string; personnel: Personnel }) =>
-      api(`/employees/${employeeId}`, { method: 'PATCH', body: { employee: { personnel } } }),
+      api(`/evaluations/personnel/${employeeId}`, { method: 'PUT', body: { personnel } }),
     onMutate: async ({ employeeId, personnel }) => {
       setErreurPersonnel(null);
       await qc.cancelQueries({ queryKey: cleDuSuivi });
@@ -376,9 +377,10 @@ export default function EvaluationPage() {
 
 /**
  * Cadre ou non cadre, dans la ligne d'un agent. Qui gère le personnel le
- * choisit dans la liste, pour un dossier en activité qui n'est pas le sien ;
- * sinon, il se lit. Tant que rien n'est choisi, « À renseigner » reste en
- * évidence ; une fois le choix fait, il quitte la liste.
+ * choisit dans la liste, pour tout dossier en activité, le sien compris
+ * (ADR-0157) ; sinon, la colonne se lit seulement. Tant que rien n'est
+ * choisi, « À renseigner » reste en évidence ; une fois le choix fait, il
+ * quitte la liste.
  */
 function ChoixDuPersonnel({
   ligne: l,

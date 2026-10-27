@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { MOIS_DE_L_ANNEE } from './document-requests';
-import type { Personnel } from './employees';
+import { personnelSchema, type Personnel } from './employees';
 import { texteBrut, texteRicheSchema, texteRicheVide } from './texte-riche';
 
 /* ────────────────────────────────────────────────────────────────
@@ -641,6 +641,13 @@ export const commenterGrilleSchema = z.object({
 });
 export type CommenterGrilleInput = z.infer<typeof commenterGrilleSchema>;
 
+/**
+ * Cadre ou non cadre, choisi dans le suivi de la DCH : la même colonne que
+ * sur la fiche de l'agent, son propre dossier compris (ADR-0157).
+ */
+export const choisirLePersonnelSchema = z.object({ personnel: personnelSchema });
+export type ChoisirLePersonnelInput = z.infer<typeof choisirLePersonnelSchema>;
+
 // ──────────────────────────────────────────────── la période
 
 export const periodeEvaluationSchema = z
@@ -800,7 +807,8 @@ export interface LigneDEvaluation {
   /**
    * Dans le suivi de la DCH : la personne qui lit peut dire ici si l'agent
    * est cadre ou non cadre, comme sur sa fiche. Il faut gérer le personnel,
-   * et le dossier doit être en activité et ne pas être le sien.
+   * et le dossier doit être en activité. Son propre dossier aussi : c'est la
+   * seule chose qu'on y règle soi-même (ADR-0157).
    */
   personnelModifiable: boolean;
   ouEnEst: OuEnEst;

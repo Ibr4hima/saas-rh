@@ -1728,6 +1728,11 @@ describe('on ne contourne pas le système : rien sur soi-même', () => {
     expect(
       await codeOf(() => people.update(s, awa.employeeId, { person: { phone: '770000001' } })),
     ).toBe('acces.son_propre_dossier');
+    // Cadre ou non cadre non plus : sur son dossier, cela se règle seulement
+    // depuis le suivi des évaluations (ADR-0157).
+    expect(
+      await codeOf(() => people.update(s, awa.employeeId, { employee: { personnel: 'cadre' } })),
+    ).toBe('acces.son_propre_dossier');
     await people.update(s, moussa.employeeId, { person: { phone: '770000002' } });
     expect((await people.detail(s, awa.employeeId)).soi).toBe(true);
     expect((await people.detail(s, moussa.employeeId)).soi).toBe(false);
