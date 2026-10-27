@@ -19,6 +19,7 @@ import {
   besoinsDeFormation,
   CRITERES_CADRE,
   CRITERES_NON_CADRE,
+  dateAbregee,
   dateEnLettres,
   FORMATIONS,
   LIBELLES_OU_EN_EST,
@@ -115,9 +116,9 @@ export function anneeDeLAdresse(valeur: string | null): number | null {
 /** « 4 décembre 2026 » : la date d'une étape, en lettres. */
 export const leEnLettres = (iso: string) => dateEnLettres(iso.slice(0, 10));
 
-/** « Du 1er au 31 décembre 2026 », ou rien sans période. */
+/** « Du 25 oct. au 31 déc. 2026 », le mois abrégé, ou rien sans période. */
 export const periodeEnTete = (p: PeriodeEvaluation | null) =>
-  p ? majuscule(periodeDEvaluationEnLettres(p)) : null;
+  p ? majuscule(periodeDEvaluationEnLettres(p, dateAbregee)) : null;
 
 /** Où en est une grille, d'après sa vue. */
 export function ouEnEstDe(vue: Pick<VueDeGrille, 'etat' | 'renvoi'>): OuEnEst {

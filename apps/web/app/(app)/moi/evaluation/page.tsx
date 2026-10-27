@@ -3,7 +3,12 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { LIMITES_DE_LA_GRILLE, type MesEvaluations, type VueDeGrille } from '@teranga/contracts';
+import {
+  dateAbregee,
+  LIMITES_DE_LA_GRILLE,
+  type MesEvaluations,
+  type VueDeGrille,
+} from '@teranga/contracts';
 import { Button, Card, CardTitle, EmptyState, Field, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
 import { EnTete, Repere } from '../../../../components/fiche';
@@ -118,7 +123,7 @@ export default function MonEvaluationPage() {
         reperes={
           <>
             <Repere
-              label="Étape"
+              label="Statut"
               valeur={
                 vue.etat === 'chez_agent'
                   ? 'À valider'
@@ -131,7 +136,7 @@ export default function MonEvaluationPage() {
             <Repere label="Évaluateur (N+1)" valeur={vue.evaluateur} />
             <Repere
               label="Reçue le"
-              valeur={vue.dates.envoyeeLe ? leEnLettres(vue.dates.envoyeeLe) : null}
+              valeur={vue.dates.envoyeeLe ? dateAbregee(vue.dates.envoyeeLe.slice(0, 10)) : null}
             />
             <Repere label="Période" valeur={periodeEnTete(vue.periode)} />
           </>

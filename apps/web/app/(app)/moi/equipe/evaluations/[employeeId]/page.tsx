@@ -10,6 +10,7 @@ import {
   ceQuiManque,
   champsTropLongs,
   dateEnLettres,
+  LIBELLES_PERSONNEL,
   LIMITES_DE_LA_GRILLE,
   type ContenuDeGrille,
   type EvaluationsDeLEquipe,
@@ -123,7 +124,7 @@ export default function GrilleDEvaluationPage({
   );
 }
 
-/** La carte de tête : l'agent, sa grille, l'étape, la période. */
+/** La carte de tête : l'agent, sa grille, son statut, la période. */
 function TeteDeLaGrille({ vue }: { vue: VueDeGrille }) {
   const o = ouEnEstDe(vue);
   const aCommenter = vue.role === 'n2' && vue.etat === 'chez_n2';
@@ -137,16 +138,12 @@ function TeteDeLaGrille({ vue }: { vue: VueDeGrille }) {
           <Repere
             label="Grille"
             valeur={
-              aRenseigner
-                ? 'Cadre ou non-cadre à renseigner'
-                : vue.modele === 'non_cadre'
-                  ? 'Personnel non cadre'
-                  : 'Personnel cadre'
+              aRenseigner ? 'Cadre ou non-cadre à renseigner' : LIBELLES_PERSONNEL[vue.modele]
             }
             ton={aRenseigner ? 'attente' : undefined}
           />
           <Repere
-            label="Étape"
+            label="Statut"
             valeur={aCommenter ? 'À commenter' : libelleDeLEtape(o)}
             ton={tonDeLEtape(o, vue.role === 'n2') === 'orange' ? 'attente' : undefined}
           />

@@ -858,17 +858,50 @@ export function dateEnLettres(date: string, avecAnnee = true): string {
   return avecAnnee ? `${jour} ${date.slice(0, 4)}` : jour;
 }
 
-/** « du 1er au 31 décembre 2026 », « du 15 décembre 2026 au 31 janvier 2027 ». */
-export function periodeDEvaluationEnLettres(p: { du: string; au: string }): string {
-  if (p.du === p.au) return `le ${dateEnLettres(p.du)}`;
+/** Les mois abrégés, comme les écrit l'usage (et Intl) : « janv. », « sept. ». */
+const MOIS_ABREGES = [
+  'janv.',
+  'févr.',
+  'mars',
+  'avr.',
+  'mai',
+  'juin',
+  'juil.',
+  'août',
+  'sept.',
+  'oct.',
+  'nov.',
+  'déc.',
+] as const;
+
+/**
+ * « 25 oct. 2026 », ou « 1er déc. » sans l'année : une date ISO, le mois
+ * abrégé. Les espaces sont insécables : une date ne se coupe pas en fin de
+ * ligne.
+ */
+export function dateAbregee(date: string, avecAnnee = true): string {
+  const [mois = 1, j = 1] = date.slice(5, 10).split('-').map(Number);
+  const jour = `${j === 1 ? '1er' : j} ${MOIS_ABREGES[mois - 1]}`;
+  return avecAnnee ? `${jour} ${date.slice(0, 4)}` : jour;
+}
+
+/**
+ * « du 1er au 31 décembre 2026 », « du 15 décembre 2026 au 31 janvier 2027 » ;
+ * avec `dateAbregee`, « du 25 oct. au 31 déc. 2026 ».
+ */
+export function periodeDEvaluationEnLettres(
+  p: { du: string; au: string },
+  ecrire: (date: string, avecAnnee?: boolean) => string = dateEnLettres,
+): string {
+  if (p.du === p.au) return `le ${ecrire(p.du)}`;
   const memeAnnee = p.du.slice(0, 4) === p.au.slice(0, 4);
   const memeMois = memeAnnee && p.du.slice(5, 7) === p.au.slice(5, 7);
   const debut = memeMois
     ? Number(p.du.slice(8, 10)) === 1
       ? '1er'
       : String(Number(p.du.slice(8, 10)))
-    : dateEnLettres(p.du, !memeAnnee);
-  return `du ${debut} au ${dateEnLettres(p.au)}`;
+    : ecrire(p.du, !memeAnnee);
+  return `du ${debut} au ${ecrire(p.au)}`;
 }
 
 /**
