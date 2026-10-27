@@ -1465,12 +1465,15 @@ function etapesDe(vue: VueDeGrille): Etape[] {
   if (d.envoyeeN2Le) {
     etapes.push({
       cle: 'n2',
+      // Reprise au N+2 avant son avis, elle est revenue au N+1 (ADR-0156).
       titre: d.valideeN2Le
         ? `Validée par le N+2${n2}`
-        : e === 'chez_n2'
-          ? `Chez le N+2${n2}`
-          : `Envoyée au N+2${n2}`,
-      le: d.valideeN2Le ?? d.envoyeeN2Le,
+        : d.repriseN2Le
+          ? `Reprise au N+2${n2}`
+          : e === 'chez_n2'
+            ? `Chez le N+2${n2}`
+            : `Envoyée au N+2${n2}`,
+      le: d.valideeN2Le ?? d.repriseN2Le ?? d.envoyeeN2Le,
       etat: e === 'chez_n2' ? 'en_cours' : 'faite',
       mot: d.valideeN2Le ? vue.commentairesN2 : undefined,
     });

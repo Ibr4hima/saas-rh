@@ -673,7 +673,8 @@ export interface VueDeLaPeriode {
 /**
  * Les étapes d'une grille : chez le N+1 (brouillon), chez l'agent, de
  * retour au N+1 une fois validée par l'agent, chez le N+2 s'il y a lieu, de
- * retour au N+1 une fois validée par le N+2 (ADR-0154), à la DCH.
+ * retour au N+1 une fois validée par le N+2 (ADR-0154), à la DCH. Le N+1
+ * qui reprend la grille au N+2 la retrouve validée par l'agent (ADR-0156).
  */
 export const ETATS_DE_GRILLE = [
   'brouillon',
@@ -725,6 +726,8 @@ export interface ActionsSurLaGrille {
   renvoyer: boolean;
   valider: boolean;
   transmettreAuN2: boolean;
+  /** Le N+1 reprend la grille au N+2, qui ne l'a pas encore validée (ADR-0156). */
+  reprendreAuN2: boolean;
   terminer: boolean;
   commenter: boolean;
   pdf: boolean;
@@ -778,6 +781,8 @@ export interface VueDeGrille {
     envoyeeLe: string | null;
     valideeAgentLe: string | null;
     envoyeeN2Le: string | null;
+    /** Le N+1 l'a reprise au N+2 avant son avis ; null si elle est repartie depuis. */
+    repriseN2Le: string | null;
     valideeN2Le: string | null;
     termineeLe: string | null;
   };

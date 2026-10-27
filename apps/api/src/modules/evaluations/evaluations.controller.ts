@@ -166,6 +166,16 @@ export class EvaluationsController {
     return this.evaluations.transmettre(req.sessionUser, employeeId, annee);
   }
 
+  @Post('grilles/:employeeId/:annee/reprise-n2')
+  @HttpCode(200)
+  reprendreAuN2(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Param('annee', ANNEE) annee: number,
+  ) {
+    return this.evaluations.reprendreAuN2(req.sessionUser, employeeId, annee);
+  }
+
   @Post('grilles/:employeeId/:annee/dch')
   @HttpCode(200)
   terminer(

@@ -846,7 +846,7 @@ describe('le circuit', () => {
     await evaluations.envoyer(session('awa'), agents.moussa, ANNEE);
   });
 
-  it('l’agent valide ; le N+1 l’envoie au N+2, puis à la DCH sans attendre', async () => {
+  it('l’agent valide ; chez le N+2, le N+1 attend ou reprend la grille avant la DCH', async () => {
     const validee = await evaluations.valider(
       session('moussa'),
       agents.moussa,
@@ -881,12 +881,56 @@ describe('le circuit', () => {
     );
     expect(ligne).toMatchObject({ enN2: true, ouEnEst: 'chez_n2', n1: 'Awa Diop' });
 
-    // Le N+2 ne bloque pas : le N+1 l'envoie à la DCH à tout moment.
-    const terminee = await evaluations.terminer(session('awa'), agents.moussa, ANNEE);
-    expect(terminee.etat).toBe('terminee');
+    // Chez le N+2, pas d'envoi à la DCH : le N+1 attend, ou reprend la grille.
+    const attente = await evaluations.grille(session('awa'), agents.moussa, ANNEE);
+    expect(attente.actions).toMatchObject({
+      terminer: false,
+      reprendreAuN2: true,
+      transmettreAuN2: false,
+    });
+    expect(await codeOf(() => evaluations.terminer(session('awa'), agents.moussa, ANNEE))).toBe(
+      'evaluations.chez_n2',
+    );
+    // Le N+2 ne la reprend pas : c'est au N+1.
+    expect(
+      await codeOf(() => evaluations.reprendreAuN2(session('mariama'), agents.moussa, ANNEE)),
+    ).not.toBe('AUCUNE ERREUR');
+
+    const reprise = await evaluations.reprendreAuN2(session('awa'), agents.moussa, ANNEE);
+    expect(reprise.etat).toBe('validee_agent');
+    expect(reprise.dates.repriseN2Le).not.toBeNull();
+    expect(reprise.actions).toMatchObject({
+      terminer: true,
+      transmettreAuN2: true,
+      reprendreAuN2: false,
+    });
+    // Le N+2 ne la lit plus ; son appel s'en va, une notification annonce la reprise.
+    expect(await codeOf(() => evaluations.grille(session('mariama'), agents.moussa, ANNEE))).toBe(
+      'evaluations.hors_perimetre',
+    );
     expect(await titres('mariama')).not.toContain(
       `Awa Diop vous a envoyé la grille d’évaluation ${ANNEE} de Moussa Ndiaye`,
     );
+    const repriseAnnoncee = `Awa Diop a repris la grille d’évaluation ${ANNEE} de Moussa Ndiaye`;
+    expect(await titres('mariama')).toContain(repriseAnnoncee);
+    expect((await evaluations.equipe(session('mariama'))).lignes.map((l) => l.nom)).not.toContain(
+      'Moussa Ndiaye',
+    );
+    // L'appel revient au N+1.
+    expect(await titres('awa')).toContain(`Moussa Ndiaye a validé sa grille d’évaluation ${ANNEE}`);
+
+    // Elle peut repartir au N+2, et revenir encore.
+    const deNouveau = await evaluations.transmettre(session('awa'), agents.moussa, ANNEE);
+    expect(deNouveau.etat).toBe('chez_n2');
+    expect(deNouveau.dates.repriseN2Le).toBeNull();
+    expect((await evaluations.grille(session('mariama'), agents.moussa, ANNEE)).role).toBe('n2');
+    await evaluations.reprendreAuN2(session('awa'), agents.moussa, ANNEE);
+    expect((await titres('mariama')).filter((t) => t === repriseAnnoncee)).toHaveLength(2);
+
+    // Reprise, elle part à la DCH.
+    const terminee = await evaluations.terminer(session('awa'), agents.moussa, ANNEE);
+    expect(terminee.etat).toBe('terminee');
+    expect(terminee.dates.repriseN2Le).not.toBeNull();
     expect(await titres('moussa')).toContain(
       `Votre grille d’évaluation ${ANNEE} est transmise à la DCH`,
     );
@@ -937,7 +981,11 @@ describe('le circuit', () => {
       await codeOf(() => evaluations.terminer(session('mariama'), agents.khady, ANNEE)),
     ).not.toBe('AUCUNE ERREUR');
     const chezN1 = await evaluations.grille(session('awa'), agents.khady, ANNEE);
-    expect(chezN1.actions).toMatchObject({ terminer: true, transmettreAuN2: false });
+    expect(chezN1.actions).toMatchObject({
+      terminer: true,
+      transmettreAuN2: false,
+      reprendreAuN2: false,
+    });
     const terminee = await evaluations.terminer(session('awa'), agents.khady, ANNEE);
     expect(terminee.etat).toBe('terminee');
     expect(terminee.commentairesN2).toBe('Une année solide.');

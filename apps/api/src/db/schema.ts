@@ -912,6 +912,8 @@ export const evaluationGrilles = pgTable('evaluation_grilles', {
   n2EmployeeId: uuid('n2_employee_id'),
   n2Identite: jsonb('n2_identite'),
   envoyeeN2Le: timestamp('envoyee_n2_le', { withTimezone: true }),
+  /** Le N+1 a repris la grille au N+2, qui ne l'avait pas validée (0125). */
+  repriseN2Le: timestamp('reprise_n2_le', { withTimezone: true }),
   commentairesN2: text('commentaires_n2'),
   valideeN2Le: timestamp('validee_n2_le', { withTimezone: true }),
   termineeLe: timestamp('terminee_le', { withTimezone: true }),

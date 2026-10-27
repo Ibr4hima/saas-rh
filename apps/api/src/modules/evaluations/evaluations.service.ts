@@ -54,7 +54,8 @@ import { grilleDuPersonnelNonCadre } from './grille-non-cadre';
    · le N+1 d'aujourd'hui remplit la grille de chaque agent de son équipe,
      celle du personnel cadre ou celle du personnel non cadre, selon sa
      fiche (ADR-0155), une fois la période ouverte ; l'envoie à l'agent,
-     puis à la DCH ou d'abord au N+2 ;
+     puis à la DCH ou d'abord au N+2 ; tant que la grille attend l'avis du
+     N+2, le N+1 peut la reprendre (ADR-0156) ;
    · l'agent la lit, sans la partie réservée à la hiérarchie, la valide ou
      la renvoie ;
    · le N+2 qui l'a reçue la lit en entier, la commente et la valide ;
@@ -320,8 +321,9 @@ export class EvaluationsService {
                           JOIN persons pm ON pm.id = m.person_id WHERE m.id = e.manager_employee_id)
              END AS n1,
              g.n2_employee_id, e.manager_employee_id AS manager,
-             (coalesce(g.terminee_le, g.validee_n2_le, g.envoyee_n2_le, g.validee_agent_le,
-                       g.renvoyee_le, g.envoyee_le, g.updated_at) AT TIME ZONE 'UTC')::date::text AS le
+             (coalesce(g.terminee_le, g.validee_n2_le, g.reprise_n2_le, g.envoyee_n2_le,
+                       g.validee_agent_le, g.renvoyee_le, g.envoyee_le,
+                       g.updated_at) AT TIME ZONE 'UTC')::date::text AS le
         FROM employees e
         JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
         LEFT JOIN assignments a ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
@@ -549,7 +551,7 @@ export class EvaluationsService {
     });
   }
 
-  /** Le N+1 envoie la grille validée au N+2. */
+  /** Le N+1 envoie la grille validée au N+2, une première fois ou après l'avoir reprise. */
   async transmettre(user: SessionUser, employeeId: string, annee: number): Promise<VueDeGrille> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const c = await this.contexte(tx, user, employeeId, annee);
@@ -560,6 +562,7 @@ export class EvaluationsService {
         n2EmployeeId: n2.id,
         n2Identite: { nom: n2.nom, prenom: n2.prenom, fonction: n2.poste },
         envoyeeN2Le: new Date(),
+        repriseN2Le: null,
       });
       const nom = nomComplet(c.agent.prenom, c.agent.nom);
       await tenirLesAppels(
@@ -580,15 +583,43 @@ export class EvaluationsService {
   }
 
   /**
-   * Le N+1 envoie la grille à la DCH : validée par l'agent, validée par le
-   * N+2, ou chez le N+2, sans l'attendre s'il le faut. Seul le N+1 l'envoie
-   * (ADR-0154). Ses appels s'en vont ; l'agent est prévenu.
+   * Le N+1 reprend la grille au N+2, qui ne l'a pas encore validée
+   * (ADR-0156) : elle revient au N+1, validée par l'agent, et part ensuite à
+   * la DCH, ou de nouveau au N+2. L'appel du N+2 laisse la place à celui du
+   * N+1 ; une notification annonce la reprise au N+2.
+   */
+  async reprendreAuN2(user: SessionUser, employeeId: string, annee: number): Promise<VueDeGrille> {
+    return this.db.withTenant(this.ctx(user), async (tx) => {
+      const c = await this.contexte(tx, user, employeeId, annee);
+      this.exiger(c, 'reprendreAuN2');
+      const g = c.grille!;
+      await this.passer(tx, g, ['chez_n2'], { etat: 'validee_agent', repriseN2Le: new Date() });
+      await reconcilierLesGrilles(tx, employeeId);
+      const n2 = g.n2EmployeeId ? await this.compteDe(tx, g.n2EmployeeId) : null;
+      if (n2) {
+        await notifier(tx, user.tenantId, n2, {
+          type: 'evaluation',
+          sujet: 'equipe.evaluations',
+          title: `${c.evaluateur ?? 'Le N+1'} a repris la grille d’évaluation ${annee} de ${nomComplet(c.agent.prenom, c.agent.nom)}`,
+          // Une clé par envoi : la grille peut repartir au N+2, et revenir encore.
+          dedupeKey: `${prefixeDeLaGrille(employeeId, annee)}:reprise-n2:${iso(g.envoyeeN2Le)}`,
+        });
+      }
+      return this.vue(tx, await this.contexte(tx, user, employeeId, annee));
+    });
+  }
+
+  /**
+   * Le N+1 envoie la grille à la DCH : validée par l'agent, ou validée par le
+   * N+2. Chez le N+2, le N+1 attend l'avis du N+2, ou reprend d'abord la
+   * grille (ADR-0156). Seul le N+1 l'envoie (ADR-0154). Ses appels s'en
+   * vont ; une notification l'annonce à l'agent.
    */
   async terminer(user: SessionUser, employeeId: string, annee: number): Promise<VueDeGrille> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const c = await this.contexte(tx, user, employeeId, annee);
       this.exiger(c, 'terminer');
-      await this.passer(tx, c.grille!, ['validee_agent', 'chez_n2', 'validee_n2'], {
+      await this.passer(tx, c.grille!, ['validee_agent', 'validee_n2'], {
         etat: 'terminee',
         termineeLe: new Date(),
       });
@@ -843,7 +874,8 @@ export class EvaluationsService {
       renvoyer: c.role === 'agent' && e === 'chez_agent',
       valider: c.role === 'agent' && e === 'chez_agent',
       transmettreAuN2: c.n1Courant && e === 'validee_agent' && Boolean(n2?.userId),
-      terminer: c.n1Courant && (e === 'validee_agent' || e === 'chez_n2' || e === 'validee_n2'),
+      reprendreAuN2: c.n1Courant && e === 'chez_n2',
+      terminer: c.n1Courant && (e === 'validee_agent' || e === 'validee_n2'),
       commenter: c.role === 'n2' && e === 'chez_n2',
       pdf: c.role === 'n1' || c.role === 'n2' || (c.role === 'dch' && e === 'terminee'),
     };
@@ -856,6 +888,14 @@ export class EvaluationsService {
         403,
         'evaluations.pdf_reserve',
         'Le PDF de la grille est réservé à la hiérarchie et à la DCH',
+      );
+    }
+    if (action === 'terminer' && c.n1Courant && c.grille?.etat === 'chez_n2') {
+      problem(
+        409,
+        'evaluations.chez_n2',
+        'La grille est chez le N+2',
+        'Attendez son avis, ou reprenez la grille avant de l’envoyer à la DCH.',
       );
     }
     if (action === 'enregistrer' || action === 'envoyer') {
@@ -962,6 +1002,7 @@ export class EvaluationsService {
         envoyeeLe: iso(g?.envoyeeLe ?? null),
         valideeAgentLe: iso(g?.valideeAgentLe ?? null),
         envoyeeN2Le: c.role === 'agent' ? null : iso(g?.envoyeeN2Le ?? null),
+        repriseN2Le: c.role === 'agent' ? null : iso(g?.repriseN2Le ?? null),
         valideeN2Le: c.role === 'agent' ? null : iso(g?.valideeN2Le ?? null),
         termineeLe: iso(g?.termineeLe ?? null),
       },
@@ -1003,6 +1044,14 @@ export class EvaluationsService {
       SELECT p.given_name || ' ' || p.family_name AS nom
         FROM employees e JOIN persons p ON p.id = e.person_id WHERE e.id = ${employeeId}`);
     return rows[0]?.nom ?? null;
+  }
+
+  /** Le compte relié au dossier d'un agent ; null : sans compte. */
+  private async compteDe(tx: Tx, employeeId: string): Promise<string | null> {
+    const { rows } = await tx.execute<{ user_id: string | null }>(sql`
+      SELECT p.user_id FROM employees e JOIN persons p ON p.id = e.person_id
+       WHERE e.id = ${employeeId} AND p.deleted_at IS NULL`);
+    return rows[0]?.user_id ?? null;
   }
 
   /** Le dossier d'agent actif relié au compte. */

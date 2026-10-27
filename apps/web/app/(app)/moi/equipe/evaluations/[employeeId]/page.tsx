@@ -48,9 +48,11 @@ import { usePageTitle } from '../../../../../../components/page-title';
    Le N+1 la remplit, section par section, comme on prépare un document
    généré : « Valider » la replie et montre le PDF tel qu'il s'imprimera,
    puis elle part à l'agent. Revenue validée, le N+1 l'envoie au N+2, au
-   choix, et à la DCH à tout moment : le N+2 n'est jamais un passage
-   obligé. Le N+2 qui l'a reçue la lit, la commente et la valide. Tous voient
-   le circuit : qui l'a eue, quand, et ce qu'en ont dit l'agent et le N+2.
+   choix, ou à la DCH. Chez le N+2, le N+1 attend son avis, ou reprend la
+   grille pour l'envoyer à la DCH (ADR-0156) : le N+2 n'est jamais un
+   passage obligé. Le N+2 qui l'a reçue la lit, la commente et la valide.
+   Tous voient le circuit : qui l'a eue, quand, et ce qu'en ont dit l'agent
+   et le N+2.
 */
 
 export default function GrilleDEvaluationPage({
@@ -381,14 +383,15 @@ function Remplissage({ vue }: { vue: VueDeGrille }) {
 /**
  * La grille partie du N+1 : le circuit, les gestes de l'étape, et le PDF.
  * Le N+1 la reprend tant que l'agent ne l'a pas validée ; validée, elle part
- * au N+2 ou à la DCH, au choix du N+1, et à la DCH à tout moment quand elle
- * est chez le N+2. Le N+2 la commente et la valide : elle revient au N+1,
- * qui seul l'envoie à la DCH (ADR-0154).
+ * au N+2 ou à la DCH, au choix du N+1. Chez le N+2, le N+1 attend son avis
+ * ou reprend la grille, qui revient au N+1 validée par l'agent (ADR-0156).
+ * Le N+2 la commente et la valide : elle revient au N+1, qui seul l'envoie à
+ * la DCH (ADR-0154).
  */
 function SuiviDeLaGrille({ vue }: { vue: VueDeGrille }) {
   const qc = useQueryClient();
   const [commentaires, setCommentaires] = useState(vue.commentairesN2);
-  const [confirmer, setConfirmer] = useState<'dch' | 'n2' | null>(null);
+  const [confirmer, setConfirmer] = useState<'dch' | 'n2' | 'reprise-n2' | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const a = vue.actions;
   useGardeDeSaisie(a.commenter && commentaires.trim() !== '');
@@ -408,7 +411,7 @@ function SuiviDeLaGrille({ vue }: { vue: VueDeGrille }) {
     onError: (e) => setErreur(messageDe(e)),
   });
   const enCours = (route: string) => geste.isPending && geste.variables?.route === route;
-  const gestes = a.reprendre || a.transmettreAuN2 || a.terminer || a.commenter;
+  const gestes = a.reprendre || a.transmettreAuN2 || a.reprendreAuN2 || a.terminer || a.commenter;
 
   return (
     <>
@@ -454,6 +457,12 @@ function SuiviDeLaGrille({ vue }: { vue: VueDeGrille }) {
                 Envoyer au N+2
               </Button>
             ) : null}
+            {a.reprendreAuN2 ? (
+              <Button variant="secondary" onClick={() => setConfirmer('reprise-n2')}>
+                <Icon name="replay" size={15} />
+                Reprendre au N+2
+              </Button>
+            ) : null}
             {a.terminer ? (
               <Button onClick={() => setConfirmer('dch')}>
                 <Icon name="task_alt" size={15} />
@@ -485,9 +494,21 @@ function SuiviDeLaGrille({ vue }: { vue: VueDeGrille }) {
           onConfirmer={() => geste.mutate({ route: 'dch' })}
           onClose={() => setConfirmer(null)}
         >
-          La grille d’évaluation {vue.annee} de {vue.agent.nom} sera envoyée à la DCH
-          {vue.etat === 'chez_n2' ? ', sans attendre les commentaires du N+2' : ''}. Elle ne pourra
-          plus être modifiée.
+          La grille d’évaluation {vue.annee} de {vue.agent.nom} sera envoyée à la DCH. Elle ne
+          pourra plus être modifiée.
+        </Confirmation>
+      ) : null}
+      {confirmer === 'reprise-n2' ? (
+        <Confirmation
+          titre="Reprendre la grille au N+2 ?"
+          libelle="Reprendre"
+          enCours={enCours('reprise-n2')}
+          erreur={erreur}
+          onConfirmer={() => geste.mutate({ route: 'reprise-n2' })}
+          onClose={() => setConfirmer(null)}
+        >
+          {vue.n2?.nom ?? 'Le N+2'} ne pourra plus la commenter. Vous pourrez ensuite l’envoyer à la
+          DCH.
         </Confirmation>
       ) : null}
       {confirmer === 'n2' ? (
