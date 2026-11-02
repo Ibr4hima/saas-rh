@@ -324,7 +324,8 @@ describe('la création', () => {
       work_email: 'a.diop@apix.sn',
       hired_on: '2024-03-01',
       entree_au_mois: false,
-      position_title: "Chargé d'études",
+      // Agent1 est une femme : le poste s'accorde.
+      position_title: "Chargée d'études",
       org_unit_id: unites.dch,
       contract_type: 'cdi',
       contrat_le: '2024-03-01',

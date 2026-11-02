@@ -810,6 +810,8 @@ const ACCENTS: Record<string, string> = Object.fromEntries(
     'caissière',
     'carrière',
     'carrières',
+    'catégorie',
+    'catégories',
     'chargé',
     'chargée',
     'chargées',
@@ -827,6 +829,7 @@ const ACCENTS: Record<string, string> = Object.fromEntries(
     'contrôleurs',
     'contrôleuse',
     'coopération',
+    'coursière',
     'création',
     'cuisinière',
     'cybersécurité',
@@ -841,6 +844,8 @@ const ACCENTS: Record<string, string> = Object.fromEntries(
     'développeurs',
     'développeuse',
     'données',
+    'échelle',
+    'échelon',
     'économie',
     'économique',
     'économiques',
@@ -852,6 +857,7 @@ const ACCENTS: Record<string, string> = Object.fromEntries(
     'électricité',
     'électrique',
     'électronique',
+    'électroniques',
     'énergétique',
     'énergie',
     'entité',
@@ -866,7 +872,9 @@ const ACCENTS: Record<string, string> = Object.fromEntries(
     'éthique',
     'étude',
     'études',
+    'évaluateur',
     'évaluation',
+    'évaluatrice',
     'événement',
     'événementiel',
     'événements',
@@ -886,6 +894,7 @@ const ACCENTS: Record<string, string> = Object.fromEntries(
     'géographie',
     'géographique',
     'géomatique',
+    'hiérarchie',
     'hiérarchique',
     'hôtesse',
     'hygiène',
@@ -901,11 +910,13 @@ const ACCENTS: Record<string, string> = Object.fromEntries(
     'intérieure',
     'intérimaire',
     'interprète',
+    'libération',
     'marché',
     'marchés',
     'matériel',
     'matériels',
     'mécanicien',
+    'mécanicienne',
     'mécaniciens',
     'mécanique',
     'médecin',
@@ -933,6 +944,7 @@ const ACCENTS: Record<string, string> = Object.fromEntries(
     'opérations',
     'opératrice',
     'opératrices',
+    'pétrole',
     'pôle',
     'président',
     'présidente',
@@ -1047,6 +1059,8 @@ const SIGLES_COURANTS = [
   'UEMOA',
   'CEDEAO',
   'OHADA',
+  'ZFID',
+  'ORFA',
 ];
 
 /**
@@ -1309,42 +1323,265 @@ const MOTS_COURTS = new Set([
 ]);
 
 /** Un mot d'intitulé écrit en capitales, tel qu'on l'écrit dans une phrase. */
-function motDIntitule(m: string, garder: ReadonlySet<string>, sigleCourt: boolean): string {
+function motDIntitule(m: string, garder: ReadonlySet<string>): string {
   const haut = m.toUpperCase();
   if (garder.has(haut)) return haut;
   // « NIVEAU III » : un chiffre romain reste en capitales.
   if (/^[IVX]{2,4}$/.test(haut)) return haut;
+  // « ES » est un « des » écorné.
+  if (m === 'ES') return 'des';
   // Aucun mot français ne triple une lettre : « PORTEFEUILLLE ».
   const bas = m.toLowerCase().replace(/(\p{L})\1{2,}/gu, '$1$1');
   const cle = squelette(bas);
   if (MOTS_SANS_ACCENT.has(cle)) return bas;
   const connu = ACCENTS[cle] ?? VILLES_D_UN_MOT.get(cle) ?? motCorrige(cle);
   if (connu) return connu;
-  if (sigleCourt && cle.length <= 3 && !MOTS_COURTS.has(cle)) return haut;
+  if (cle.length <= 3 && !MOTS_COURTS.has(cle)) return haut;
   return bas;
 }
 
 /**
- * Un intitulé de poste ou d'unité tel qu'on l'écrit : « CHARGE D'ETUDES »
- * devient Chargé d'études. La première lettre en capitale, les sigles connus
- * en capitales, les villes avec la leur, le reste en minuscules avec ses
- * accents ; une faute de frappe sur un mot connu est corrigée, et
- * l'apostrophe perdue revient (« D ENTREPRISE », d’entreprise). Pour un nom
- * d'unité, `sigleCourt` garde en capitales les mots courts inconnus
- * (« BCE »). Un intitulé déjà écrit en minuscules et capitales est gardé.
+ * Les abréviations d'un intitulé tenu à la main, développées avant la mise
+ * en forme : « CHEF DEPART. TECHNIQUE », « CHARGE DES SYST. ELEC DE GESTION
+ * DES MARCHES PCS. », « SPV APIX.SA ».
  */
-export function intitule(
-  brut: string,
-  sigles: ReadonlySet<string> = new Set(),
-  { sigleCourt = false }: { sigleCourt?: boolean } = {},
-): string {
+function sansAbreviationsDIntitule(t: string): string {
+  return t
+    .replace(/(^|\s)(?:DEPART|DEPT|DPT)\.\s*/gi, '$1DÉPARTEMENT ')
+    .replace(/(^|\s)(?:DEPT|DPT)(?=\s|$)/gi, '$1DÉPARTEMENT')
+    .replace(/(^|\s)(DES|LES)\s+SYST\.?\s+ELEC\.?(?=\s|$)/gi, '$1$2 SYSTÈMES ÉLECTRONIQUES')
+    .replace(/(^|\s)SYST\.?\s+ELEC\.?(?=\s|$)/gi, '$1SYSTÈME ÉLECTRONIQUE')
+    .replace(/(^|\s)(DES|LES)\s+SYST\.(?=\s|$)/gi, '$1$2 SYSTÈMES')
+    .replace(/(^|\s)SYST\.(?=\s|$)/gi, '$1SYSTÈME')
+    .replace(/[\s.]+$/, '');
+}
+
+/** Les villes de plusieurs mots : « SAINT LOUIS » s'écrit Saint-Louis. */
+const VILLES_DE_PLUSIEURS_MOTS = VILLES.filter(([nom]) => /[\s-]/.test(nom)).map(
+  ([nom]): [RegExp, string] => [
+    new RegExp(`(^|[\\s(])${squelette(nom).split(' ').join('[\\s-]+')}(?=$|[\\s),.;:])`, 'gi'),
+    nom,
+  ],
+);
+
+/** Les villes, pour « bureau régional de Kaolack » : des lettres, des espaces et des tirets. */
+const NOMS_DE_VILLES = VILLES.map(([nom]) => nom).join('|');
+
+/**
+ * Les expressions d'un intitulé qui s'écrivent d'une seule façon : la
+ * passation des marchés, les relations presse, le chauffeur-coursier, le
+ * back-office, le chef du bureau régional de Kaolack.
+ */
+const EXPRESSIONS: [RegExp, string][] = [
+  [/\bpassation (?:de |des )?marchés\b/g, 'passation des marchés'],
+  [/\brelation presse\b/g, 'relations presse'],
+  [/\bchauffeur[\s-]+coursier\b/g, 'chauffeur-coursier'],
+  [/\bback office\b/g, 'back-office'],
+  [/\bchef (bureau|centre|département|pôle|service)\b/g, 'chef du $1'],
+  [new RegExp(`\\b(régionale?) ((?:${NOMS_DE_VILLES}))(?=$|[\\s),.;:])`, 'gu'), '$1 de $2'],
+  [/\b(régionale?) de ([AEIOUYÉÈ])/gu, '$1 d’$2'],
+];
+
+/**
+ * Un intitulé de poste ou d'unité tel qu'on l'écrit : « CHARGE D'ETUDES »
+ * devient Chargé d'études. La première lettre en capitale, les sigles en
+ * capitales (connus, ou de trois lettres au plus quand ce ne sont pas des
+ * mots : « SERVICE BCE », « PROJET TER »), les villes avec la leur, le reste
+ * en minuscules avec ses accents. Une faute de frappe sur un mot connu est
+ * corrigée, les abréviations sont développées, et l'apostrophe perdue
+ * revient (« D ENTREPRISE », d’entreprise). Un intitulé déjà écrit en
+ * minuscules et capitales est gardé.
+ */
+export function intitule(brut: string, sigles: ReadonlySet<string> = new Set()): string {
   const t = brut.replace(/\s+/g, ' ').trim();
   if (!enCapitales(t)) return t;
   const garder = new Set([...SIGLES_COURANTS, ...[...sigles].map((s) => s.toUpperCase())]);
-  const rendu = t
-    .replace(/\p{L}+/gu, (m) => motDIntitule(m, garder, sigleCourt))
-    .replace(/(^|[\s(])([dl]) (?=[aeiouyhàâäéèêëîïôöûüœ])/giu, '$1$2’');
+  let rendu = sansAbreviationsDIntitule(t)
+    .replace(/\p{L}+/gu, (m) => motDIntitule(m, garder))
+    .replace(/(^|[\s(])([dl]) (?=[aeiouyhàâäéèêëîïôöûüœ])/giu, '$1$2’')
+    // « CATEGORIE A » garde sa lettre ; ailleurs, « A » a perdu son accent.
+    .replace(
+      /\b(catégorie|classe|échelle|grade|groupe|hiérarchie|niveau) ([a-z])\b/giu,
+      (_, mot: string, lettre: string) => `${mot} ${lettre.toUpperCase()}`,
+    )
+    .replace(/(^|\s)a(?=\s)/g, '$1à')
+    // « APIX.SA » : la forme de la société, derrière son sigle.
+    .replace(/\b([A-Z]{2,})[.\s]sa\b/g, '$1 SA')
+    // « PLI SUD » : un point cardinal derrière un sigle nomme un lieu.
+    .replace(
+      /\b([A-Z]{2,}) (sud|nord|est|ouest|centre)\b/g,
+      (_, sigle: string, point: string) =>
+        `${sigle} ${point.charAt(0).toUpperCase()}${point.slice(1)}`,
+    );
+  for (const [motif, juste] of VILLES_DE_PLUSIEURS_MOTS) {
+    rendu = rendu.replace(motif, (_, avant: string) => `${avant}${juste}`);
+  }
+  for (const [motif, juste] of EXPRESSIONS) rendu = rendu.replace(motif, juste);
   return rendu.charAt(0).toUpperCase() + rendu.slice(1);
+}
+
+/* ─────────────────── L'intitulé, accordé à la personne ─────────────────── */
+
+/**
+ * Les métiers et leur féminin : « Assistant RH » devient Assistante RH pour
+ * une femme, « Assistante de direction » Assistant de direction pour un
+ * homme. « Agent » reste tel quel.
+ */
+const METIERS: [string, string][] = [
+  ['administrateur', 'administratrice'],
+  ['assistant', 'assistante'],
+  ['attaché', 'attachée'],
+  ['auditeur', 'auditrice'],
+  ['caissier', 'caissière'],
+  ['chauffeur', 'chauffeuse'],
+  ['chauffeur-coursier', 'chauffeuse-coursière'],
+  ['chef', 'cheffe'],
+  ['conseiller', 'conseillère'],
+  ['consultant', 'consultante'],
+  ['contrôleur', 'contrôleuse'],
+  ['coordinateur', 'coordinatrice'],
+  ['coordonnateur', 'coordonnatrice'],
+  ['coursier', 'coursière'],
+  ['cuisinier', 'cuisinière'],
+  ['développeur', 'développeuse'],
+  ['directeur', 'directrice'],
+  ['électricien', 'électricienne'],
+  ['gardien', 'gardienne'],
+  ['infirmier', 'infirmière'],
+  ['informaticien', 'informaticienne'],
+  ['ingénieur', 'ingénieure'],
+  ['mécanicien', 'mécanicienne'],
+  ['monteur', 'monteuse'],
+  ['opérateur', 'opératrice'],
+  ['président', 'présidente'],
+  ['rédacteur', 'rédactrice'],
+  ['superviseur', 'superviseure'],
+  ['technicien', 'technicienne'],
+  ['trésorier', 'trésorière'],
+];
+
+/**
+ * Les mots qui s'accordent seulement quand ils suivent le métier : « Ingénieur
+ * financier », mais « Chef de marché financier ».
+ */
+const ACCORDS: [string, string][] = [
+  ['adjoint', 'adjointe'],
+  ['administratif', 'administrative'],
+  ['chargé', 'chargée'],
+  ['commercial', 'commerciale'],
+  ['délégué', 'déléguée'],
+  ['évaluateur', 'évaluatrice'],
+  ['financier', 'financière'],
+  ['général', 'générale'],
+  ['principal', 'principale'],
+  ['régional', 'régionale'],
+  ['spécial', 'spéciale'],
+];
+
+/** Les mots qui ne changent pas au féminin : l'accord continue après eux. */
+const EPICENES = new Set([
+  'analyste',
+  'archiviste',
+  'comptable',
+  'documentaliste',
+  'économiste',
+  'électrique',
+  'gestionnaire',
+  'graphiste',
+  'informatique',
+  'interne',
+  'juridique',
+  'juriste',
+  'logistique',
+  'manager',
+  'réceptionniste',
+  'responsable',
+  'sanitaire',
+  'secrétaire',
+  'sociologue',
+  'spécialiste',
+  'stagiaire',
+  'standardiste',
+  'technique',
+]);
+
+/** Après eux, le mot qui suit parle d'autre chose : « Assistant du directeur ». */
+const MOTS_DE_LIAISON = new Set([
+  'à',
+  'au',
+  'aux',
+  'avec',
+  'd',
+  'de',
+  'des',
+  'du',
+  'en',
+  'l',
+  'la',
+  'le',
+  'les',
+  'par',
+  'pour',
+  'sur',
+]);
+
+const formes = (paires: [string, string][]) =>
+  new Map(
+    paires.flatMap(([m, f]): [string, [string, string]][] => [
+      [m, [m, f]],
+      [f, [m, f]],
+    ]),
+  );
+const FORMES_METIERS = formes(METIERS);
+const FORMES_ACCORDS = formes(ACCORDS);
+
+/**
+ * L'intitulé accordé au genre de la personne : le métier et les mots qui
+ * s'accordent avec ce métier, pas ce qui qualifie autre chose. Sans genre
+ * connu, la majorité des mots de l'intitulé décide (« Conseiller spéciale
+ * chargée » devient Conseillère spéciale chargée).
+ */
+export function accorderAuGenre(titre: string, genre?: Gender | null): string {
+  const jetons = titre.split(/(\p{L}+(?:-\p{L}+)*)/u);
+  // Les mots qui portent un genre, et à quelle place : le genre se décide d'abord.
+  const places: { i: number; paire: [string, string]; forme: 'm' | 'f' }[] = [];
+  let actif = true;
+  let apresLien = false;
+  for (let i = 1; i < jetons.length; i += 2) {
+    const mot = jetons[i]!.toLowerCase();
+    if (MOTS_DE_LIAISON.has(mot)) {
+      actif = false;
+      apresLien = true;
+      continue;
+    }
+    const metier = FORMES_METIERS.get(mot);
+    const accord = FORMES_ACCORDS.get(mot);
+    if (metier && !apresLien) {
+      places.push({ i, paire: metier, forme: mot === metier[0] ? 'm' : 'f' });
+      actif = true;
+    } else if (accord && actif) {
+      places.push({ i, paire: accord, forme: mot === accord[0] ? 'm' : 'f' });
+    } else if (mot !== 'et' && !EPICENES.has(mot) && jetons[i] !== jetons[i]!.toUpperCase()) {
+      actif = false;
+    }
+    if (mot !== 'et') apresLien = false;
+  }
+  if (places.length === 0) return titre;
+  let cible: 'm' | 'f';
+  if (genre === 'female') cible = 'f';
+  else if (genre === 'male') cible = 'm';
+  else {
+    const f = places.filter((p) => p.forme === 'f').length;
+    const m = places.length - f;
+    if (f === m) return titre;
+    cible = f > m ? 'f' : 'm';
+  }
+  for (const p of places) {
+    const juste = p.paire[cible === 'm' ? 0 : 1];
+    const avant = jetons[p.i]!;
+    jetons[p.i] = /^\p{Lu}/u.test(avant) ? juste.charAt(0).toUpperCase() + juste.slice(1) : juste;
+  }
+  return jetons.join('');
 }
 
 /* ───────────────────────── Personnes ───────────────────────── */

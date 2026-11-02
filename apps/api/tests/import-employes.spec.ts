@@ -10,6 +10,7 @@ import {
   type LigneLue,
 } from '../src/modules/people/import-employes';
 import {
+  accorderAuGenre,
   cleDeNom,
   entreeDepuisAnciennete,
   intitule,
@@ -448,6 +449,76 @@ describe('les noms et les intitulés', () => {
     expect(intitule('RECOUVREMEN')).toBe('Recouvremen');
   });
 
+  it('écrit sans faute les intitulés du fichier de la DCH', () => {
+    // Sigles courts, abréviations, « à » et « des » écornés.
+    expect(intitule("CHARGE D'APPUI AU PROJET TER")).toBe("Chargé d'appui au projet TER");
+    expect(intitule("CHARGE D'APPUI A LA CREATION D'ENTREPRISE")).toBe(
+      "Chargé d'appui à la création d'entreprise",
+    );
+    expect(intitule('CHARGE DES SYST. ELEC DE GESTION DES MARCHES PCS.')).toBe(
+      'Chargé des systèmes électroniques de gestion des marchés PCS',
+    );
+    expect(intitule('CHEF  DEPART. TECHNIQUE')).toBe('Chef du département technique');
+    expect(intitule("DIRECTEUR DU GUICHET UNIQUE ET ES PLATEFORMES LOCALES D'INVESTISSEMENT")).toBe(
+      "Directeur du guichet unique et des plateformes locales d'investissement",
+    );
+    expect(intitule('PMO - CHARGE DE MISSION DG')).toBe('PMO - chargé de mission DG');
+    expect(intitule('CONSEILLER SPECIAL COORDONNATEUR SPV APIX.SA')).toBe(
+      'Conseiller spécial coordonnateur SPV APIX SA',
+    );
+    // Fautes de frappe et accents.
+    expect(intitule('ASISTANT RH')).toBe('Assistant RH');
+    expect(intitule('INGENEUR ELECTRIQUE')).toBe('Ingénieur électrique');
+    expect(intitule("COORDONNATEUR PLATEFORME LOCALE D'INVESTISSMENT DE SALY")).toBe(
+      "Coordonnateur plateforme locale d'investissement de Saly",
+    );
+    expect(intitule('CHEF DE MARCHE PETROLE ET GAZ')).toBe('Chef de marché pétrole et gaz');
+    // Lieux, et sigles de plus de trois lettres.
+    expect(intitule('COORDONNATUR PLI SAINT LOUIS')).toBe('Coordonnateur PLI Saint-Louis');
+    expect(intitule('COORDONNATEUR PLI SUD')).toBe('Coordonnateur PLI Sud');
+    expect(intitule('COORDONNATEUR ZFID')).toBe('Coordonnateur ZFID');
+    // Une seule façon d'écrire une même expression.
+    expect(intitule('ASSISTANT PASSATION MARCHES')).toBe('Assistant passation des marchés');
+    expect(intitule('SPECIALISTE EN PASSATION DE MARCHES')).toBe(
+      'Spécialiste en passation des marchés',
+    );
+    expect(intitule('CONSEILLER TECHNIQUE CHARGE  DE RELATION PRESSE')).toBe(
+      'Conseiller technique chargé de relations presse',
+    );
+    expect(intitule('CHAUFFEUR COURSIER')).toBe('Chauffeur-coursier');
+    expect(intitule("CHARGE D'INSTRUCTION BACK OFFICE")).toBe("Chargé d'instruction back-office");
+    expect(intitule('CHEF BUREAU REGIONAL KAOLACK')).toBe('Chef du bureau régional de Kaolack');
+    expect(intitule('CHEF SERVICE LOGISTIQUE')).toBe('Chef du service logistique');
+    // La lettre d'une catégorie reste une lettre.
+    expect(intitule('CADRE DE CATEGORIE A')).toBe('Cadre de catégorie A');
+  });
+
+  it('accorde l’intitulé au genre de la personne, « Agent » excepté', () => {
+    expect(accorderAuGenre('Assistant RH', 'female')).toBe('Assistante RH');
+    expect(accorderAuGenre('Assistante administrative', 'male')).toBe('Assistant administratif');
+    expect(accorderAuGenre('Conseiller spécial coordonnateur SPV APIX SA', 'female')).toBe(
+      'Conseillère spéciale coordonnatrice SPV APIX SA',
+    );
+    expect(accorderAuGenre('Ingénieur financier', 'female')).toBe('Ingénieure financière');
+    expect(accorderAuGenre("Opérateur d'images monteur", 'female')).toBe(
+      "Opératrice d'images monteuse",
+    );
+    expect(accorderAuGenre('Agent administratif', 'female')).toBe('Agent administratif');
+    // Ce qui suit « de » parle d'autre chose que de la personne.
+    expect(accorderAuGenre('Assistant du directeur général', 'female')).toBe(
+      'Assistante du directeur général',
+    );
+    expect(accorderAuGenre('Chef de marché financier', 'female')).toBe(
+      'Cheffe de marché financier',
+    );
+    expect(accorderAuGenre('Ingénieur génie civil', 'female')).toBe('Ingénieure génie civil');
+    // Sans genre connu, la majorité des mots de l'intitulé décide.
+    expect(accorderAuGenre('Conseiller spéciale chargée des nouveaux projets', null)).toBe(
+      'Conseillère spéciale chargée des nouveaux projets',
+    );
+    expect(accorderAuGenre("Chargé d'études", null)).toBe("Chargé d'études");
+  });
+
   it('garde les villes, les chiffres romains et l’apostrophe perdue', () => {
     expect(intitule('CHEF DE PROJET ZES DIASS')).toBe('Chef de projet ZES Diass');
     expect(intitule('AGENT DE NIVEAU III')).toBe('Agent de niveau III');
@@ -506,6 +577,35 @@ describe('ce que dit le poste', () => {
       type: 'service',
       nom: 'QUALITE',
     });
+  });
+
+  it('reconnaît le poste malgré une faute ou une abréviation', () => {
+    expect(natureDuPoste('CHEF DE DPARTEMENT INTELLIGENCE ECONOMIQUE')).toEqual({
+      nature: 'chef',
+      type: 'department',
+      nom: 'INTELLIGENCE ECONOMIQUE',
+    });
+    expect(natureDuPoste('CHEF  DEPART. TECHNIQUE')).toEqual({
+      nature: 'chef',
+      type: 'department',
+      nom: 'TECHNIQUE',
+    });
+    // « Services » n'est pas une faute pour « service ».
+    expect(natureDuPoste('CHEF DU DEPARTEMENT SERVICES AUX INVESTISSEURS')).toEqual({
+      nature: 'chef',
+      type: 'department',
+      nom: 'SERVICES AUX INVESTISSEURS',
+    });
+    const guichet = natureDuPoste(
+      "DIRECTEUR DU GUICHET UNIQUE ET ES PLATEFORMES LOCALES D'INVESTISSEMENT",
+    );
+    expect(guichet).toMatchObject({ nature: 'directeur' });
+    expect(
+      designeLaDirection(guichet.nature === 'directeur' ? guichet.precision : null, {
+        nom: 'Direction du Guichet Unique et des Plateformes Locales d’Investissement',
+        sigle: 'DGUPLI',
+      }),
+    ).toBe(true);
   });
 
   it('reconnaît le DG, le DGA, les directeurs, et laisse les adjoints à leur poste', () => {
@@ -656,6 +756,19 @@ describe('une ligne du fichier', () => {
     expect(l.entree).toEqual({ iso: '2004-03-01', auMois: false });
     expect(l.corrections.filter((c) => c.colonne === "Date d'entrée")).toEqual([]);
     expect(l.avertissements).toEqual([]);
+  });
+
+  it('accorde le poste au sexe de la personne', () => {
+    const l = lue({
+      ...MOUSSA,
+      Sexe: 'F',
+      'Situation Matrimoniale': 'Célibataire',
+      "Nom de l'épouse 1": null,
+      "Nom de l'épouse 2": null,
+      "Nombre d'épouse ": null,
+      'Poste occupé ': 'ASISTANT RH',
+    });
+    expect(l.poste?.intitule).toBe('Assistante RH');
   });
 
   it('prend « NA », « N/A » ou « - » pour une case vide, sans avertissement', () => {

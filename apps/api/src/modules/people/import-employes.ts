@@ -15,9 +15,11 @@ import {
 import type { z } from 'zod';
 import type { CelluleXlsx } from '../../common/xlsx';
 import {
+  accorderAuGenre,
   adresse,
   ancienneteDe,
   dateLisible,
+  distance,
   entreeDepuisAnciennete,
   intitule,
   lireAnciennete,
@@ -280,6 +282,8 @@ const MOTS_VIDES = new Set([
   'a',
   'au',
   'aux',
+  // « ET ES PLATEFORMES » : un « des » écorné.
+  'es',
 ]);
 
 /**
@@ -314,7 +318,8 @@ function nomDansLePoste(brut: string, s: string, reste: string[]): string | null
   garde = garde.filter(Boolean);
   if (garde.length === 0) return null;
   const places = motsEtPlaces(brut);
-  if (places.map((p) => p.mot).join(' ') !== tous.join(' ')) return garde.join(' ');
+  // Les mots corrigés (« DPARTEMENT ») gardent leur place : seul leur nombre compte.
+  if (places.length !== tous.length) return garde.join(' ');
   const premier = places[tous.length - reste.length]!;
   const dernier = places[tous.length - reste.length + garde.length - 1]!;
   let nom = brut.slice(premier.debut, dernier.fin).trim();
@@ -328,8 +333,34 @@ function nomDansLePoste(brut: string, s: string, reste: string[]): string | null
   return nom || null;
 }
 
+/** Les mots qui disent la nature d'un poste : une faute de frappe ne doit pas la cacher. */
+const MOTS_DU_POSTE = [
+  'adjoint',
+  'adjointe',
+  'departement',
+  'directeur',
+  'directrice',
+  'general',
+  'generale',
+  'responsable',
+  'secretaire',
+  'service',
+];
+
+/**
+ * Un mot du poste, sa faute de frappe corrigée : « DPARTEMENT » est
+ * département, « DEPART. » aussi. Une lettre près, jamais dans les deux
+ * dernières (« services » reste services).
+ */
+function motDuPoste(m: string): string {
+  if (m === 'depart') return 'departement';
+  if (m.length < 6 || MOTS_DU_POSTE.includes(m)) return m;
+  const proches = MOTS_DU_POSTE.filter((k) => k.slice(-2) === m.slice(-2) && distance(k, m) === 1);
+  return proches.length === 1 ? proches[0]! : m;
+}
+
 export function natureDuPoste(brut: string): NaturePoste {
-  const s = squelette(brut);
+  const s = squelette(brut).split(' ').map(motDuPoste).join(' ');
   const mots = s.split(' ');
   if (/^(directeur|directrice) generale? adjointe?$/.test(s) || s === 'dga') {
     return { nature: 'dga' };
@@ -405,7 +436,7 @@ export function nomDUnite(
   nom: string,
   sigles: ReadonlySet<string> = new Set(),
 ): string {
-  const propre = intitule(nom.toUpperCase(), sigles, { sigleCourt: true });
+  const propre = intitule(nom.toUpperCase(), sigles);
   return `${type === 'department' ? 'Département' : 'Service'} ${propre}`.slice(0, 120);
 }
 
@@ -746,7 +777,10 @@ export function lireLigne(
 
   const posteBrut = texte(lire('poste'));
   const poste = posteBrut
-    ? { intitule: intitule(posteBrut, ctx.sigles), nature: natureDuPoste(posteBrut) }
+    ? {
+        intitule: accorderAuGenre(intitule(posteBrut, ctx.sigles), personne.gender),
+        nature: natureDuPoste(posteBrut),
+      }
     : null;
 
   // ─── Le contrat : un CDD a sa date de fin, un CDI n'en a pas.
