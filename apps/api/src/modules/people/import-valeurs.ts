@@ -462,6 +462,36 @@ export function lireCourrielPro(v: CelluleXlsx | undefined): Lecture<string> {
   return { erreur: `L’adresse professionnelle doit se terminer par @${DOMAINE_COURRIEL_PRO}` };
 }
 
+/**
+ * Un montant en francs CFA, tel que la DCH l'écrit : 26000, « 26 000 »,
+ * « 26.000 FCFA ». Les séparateurs de milliers et l'unité tombent.
+ */
+export function lireMontant(v: CelluleXlsx | undefined): Lecture<number> {
+  if (v === null || v === undefined || v instanceof Date) return null;
+  if (typeof v === 'number') {
+    return Number.isFinite(v) && v >= 0 && v <= 1e9
+      ? ok(Math.round(v))
+      : { erreur: `« ${v} » n’est pas un montant` };
+  }
+  const brut = String(v).trim();
+  if (!brut) return null;
+  const chiffres = brut
+    .replace(/\s|\u00a0|\u202f/g, '')
+    .replace(/(?:f\.?cfa|xof|francs?|f)$/i, '')
+    .replace(/[.,](?=\d{3}(?:$|[.,]))/g, '')
+    .replace(',', '.');
+  const n = Number(chiffres);
+  if (!chiffres || !Number.isFinite(n) || n < 0 || n > 1e9) {
+    return { erreur: `« ${brut} » n’est pas un montant` };
+  }
+  return ok(Math.round(n));
+}
+
+/** Un montant pour l'écran : 26 000 F CFA. */
+export function montantLisible(n: number): string {
+  return `${n.toLocaleString('fr-FR').replace(/\u202f|\u00a0/g, ' ')} F CFA`;
+}
+
 /** Un nombre entier positif : enfants, épouses. « néant » et « aucun » valent 0. */
 export function lireEntier(v: CelluleXlsx | undefined, max: number): Lecture<number> {
   const brut = texte(v);

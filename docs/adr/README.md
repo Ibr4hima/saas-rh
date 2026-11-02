@@ -164,6 +164,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0156](0156-reprise-de-la-grille-au-n2.md)            | Chez le N+2, le N+1 attend l'avis ou reprend la grille avant de l'envoyer à la DCH      | acceptée                                    |
 | [0157](0157-cadre-ou-non-cadre-sur-soi.md)            | Cadre ou non cadre, la seule chose qu'on règle sur son propre dossier                   | acceptée                                    |
 | [0158](0158-la-fiche-recoit-le-fichier-de-la-dch.md)  | La fiche reçoit tout ce que la DCH tient sur chaque agent, la rémunération à part       | acceptée                                    |
-| [0159](0159-l-import-lit-le-fichier-de-la-dch.md)     | L'import lit le fichier de la DCH : corrections, réimport, postes et N+1 par leur nom   | acceptée                                    |
+| [0159](0159-l-import-lit-le-fichier-de-la-dch.md)     | L'import lit le fichier de la DCH : corrections, réimport, postes et N+1 par leur nom   | acceptée, précisée par 0162                 |
 | [0160](0160-l-import-ecrit-les-unites-sans-faute.md)  | L'import écrit les unités sans faute, lit « 01-mars-04 » et prend « NA » pour vide      | acceptée, précisée par 0161                 |
 | [0161](0161-les-intitules-de-poste-sans-faute.md)     | Les intitulés de poste sortent de l'import sans faute, accordés au sexe de la personne  | acceptée                                    |
+| [0162](0162-import-de-la-prime-de-transport.md)       | L'import reprend la prime de transport du fichier de la DCH sur la fiche                | acceptée                                    |

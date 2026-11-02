@@ -61,6 +61,7 @@ const COLONNES = [
   "Date d'entrée",
   'Date de fin (si CDD)',
   'Ancienneté (années)',
+  'Prime de transport',
 ] as const;
 
 type Ligne = Partial<Record<(typeof COLONNES)[number], string | number>>;
@@ -575,6 +576,31 @@ describe('le N+1 par son nom', () => {
       AGENT(2, { 'Responsable Fonctionnel': 'Oumar Seck' }),
     ]);
     expect((await fiche('102'))?.fonctionnel).toBe('Oumar Seck');
+  });
+});
+
+describe('la prime de transport', () => {
+  it('se reprend sur la fiche, puis se met à jour au réimport', async () => {
+    await importer([AGENT(1, { 'Prime de transport': 26000 })]);
+    const prime = async () =>
+      (
+        await raw(
+          `SELECT r.prime_transport FROM remunerations r JOIN employees e ON e.id = r.employee_id
+            WHERE e.tenant_id = $1 AND e.employee_number = '101'`,
+          [tenantId],
+        )
+      ).rows[0]?.prime_transport;
+    expect(await prime()).toBe(26000);
+    const r = await importer([AGENT(1, { 'Prime de transport': '30 000' })]);
+    expect(ligne(r, 2).changements).toContainEqual({
+      champ: 'Prime de transport',
+      avant: '26 000 F CFA',
+      apres: '30 000 F CFA',
+    });
+    expect(await prime()).toBe(30000);
+    // Une case vide n'efface rien.
+    await importer([AGENT(1)]);
+    expect(await prime()).toBe(30000);
   });
 });
 

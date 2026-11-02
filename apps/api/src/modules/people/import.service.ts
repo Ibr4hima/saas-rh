@@ -40,6 +40,7 @@ import {
   cleDeNom,
   dateLisible,
   LIBELLES_SEXE,
+  montantLisible,
   nomComparable,
   nomsProches,
   rapprocher,
@@ -232,6 +233,8 @@ interface Dossier {
   nbAffectations: number;
   contrat: { type: string; fin: string | null } | null;
   nbContrats: number;
+  /** La prime de transport de la fiche, lue seulement avec l'accès aux données sensibles. */
+  primeTransport: number | null;
 }
 
 interface Unite {
@@ -513,7 +516,9 @@ class Passe {
              a.id AS aff_id, a.position_title, a.org_unit_id, a.responsable,
              (SELECT count(*)::int FROM assignments x WHERE x.employee_id = e.id) AS nb_aff,
              c.contract_type, c.end_date,
-             (SELECT count(*)::int FROM contracts y WHERE y.employee_id = e.id) AS nb_contrats
+             (SELECT count(*)::int FROM contracts y WHERE y.employee_id = e.id) AS nb_contrats,
+             (SELECT rm.prime_transport FROM remunerations rm
+               WHERE rm.employee_id = e.id LIMIT 1) AS prime_transport
         FROM employees e
         JOIN persons p ON p.id = e.person_id
         LEFT JOIN LATERAL (
@@ -588,6 +593,7 @@ class Passe {
         nbAffectations: Number(r.nb_aff ?? 0),
         contrat: r.contract_type ? { type: r.contract_type as string, fin: s('end_date') } : null,
         nbContrats: Number(r.nb_contrats ?? 0),
+        primeTransport: (r.prime_transport as number | null) ?? null,
       };
     });
   }
@@ -1266,9 +1272,21 @@ class Passe {
         noter(champ, d.emploi[cle], nouveau);
       }
     }
+    // La rémunération : ce que le fichier en donne, la prime de transport.
+    const remuneration: NonNullable<UpdateEmployeeInput['remuneration']> = {};
+    const prime = this.remunerationPermise(p)?.primeTransport;
+    if (prime !== undefined && prime !== d.primeTransport) {
+      remuneration.primeTransport = prime;
+      noter(
+        'Prime de transport',
+        d.primeTransport === null ? null : montantLisible(d.primeTransport),
+        montantLisible(prime),
+      );
+    }
     p.patch = {
       ...(Object.keys(personne).length > 0 ? { person: personne } : {}),
       ...(Object.keys(emploi).length > 0 ? { employee: emploi } : {}),
+      ...(Object.keys(remuneration).length > 0 ? { remuneration } : {}),
     };
 
     // L'affectation : compléter ce qui manque, corriger l'intitulé, jamais muter.
@@ -1471,6 +1489,23 @@ class Passe {
     }
   }
 
+  /**
+   * La rémunération que le fichier donne, si qui importe a l'accès aux
+   * données sensibles ; sinon l'aperçu dit qu'elle n'est pas reprise.
+   */
+  private remunerationPermise(p: Plan): Plan['lue']['remuneration'] | null {
+    const r = p.lue.remuneration;
+    if (Object.keys(r).length === 0) return null;
+    if (peut(this.user, 'personnel.sensible')) return r;
+    if (!p.rapport.avertissements.some((a) => a.colonne === p.lue.colonne('primeTransport'))) {
+      p.rapport.avertissements.push({
+        colonne: p.lue.colonne('primeTransport'),
+        texte: 'Réservée à l’accès aux données sensibles : non importée',
+      });
+    }
+    return null;
+  }
+
   private async ecrireLesDossiers(lesquels: (p: Plan) => boolean): Promise<void> {
     for (const p of this.plans) {
       if (p.rapport.etat === 'erreur' || !lesquels(p)) continue;
@@ -1483,9 +1518,11 @@ class Passe {
             texte: 'Poste manquant : agent importé sans affectation',
           });
         }
+        const remuneration = this.remunerationPermise(p);
         const entree: CreateEmployeeInput = {
           person: { givenName: l.prenom, familyName: l.nom, ...l.personne },
           employee: { employeeNumber: p.matricule, hiredOn: l.entree.iso, ...l.emploi },
+          ...(remuneration ? { remuneration } : {}),
           ...(l.contrat
             ? {
                 contract: {

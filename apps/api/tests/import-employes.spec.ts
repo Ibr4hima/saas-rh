@@ -19,6 +19,7 @@ import {
   lireCourrielPro,
   lireDate,
   lireLien,
+  lireMontant,
   lirePays,
   lireRegion,
   lireSexe,
@@ -212,6 +213,13 @@ describe('les intitulés du fichier de la DCH', () => {
     expect(correspondre(ENTETES_DCH, []).nonImportees).toEqual([]);
   });
 
+  it('reprend la prime de transport : elle n’est plus une colonne non reprise', () => {
+    const ligne = ENTETES_DCH.map((h) => (h === 'Prime de transport' ? 26000 : null));
+    const r = correspondre(ENTETES_DCH, [ligne]);
+    expect(r.nonImportees).toEqual([]);
+    expect(r.colonnes.primeTransport).toBe(ENTETES_DCH.indexOf('Prime de transport'));
+  });
+
   it('accepte l’ancienneté à la place de la date d’entrée, pas l’absence des deux', () => {
     expect(correspondre(['Matricule', 'Prénom', 'Nom', 'Ancienneté']).manquantes).toEqual([]);
     expect(correspondre(['Matricule', 'Prénom']).manquantes).toEqual(['Nom', 'Date d’entrée']);
@@ -274,6 +282,16 @@ describe('les dates', () => {
       valeur: { iso: '2004-03-01', auMois: true },
     });
     expect(lireDate('31-avr.-04', AUJOURDHUI)).toHaveProperty('erreur');
+  });
+
+  it('lit un montant en francs CFA, séparateurs et unité compris', () => {
+    expect(lireMontant(26000)).toEqual({ valeur: 26000, corrige: false });
+    expect(lireMontant('26 000')).toMatchObject({ valeur: 26000 });
+    expect(lireMontant('26.000 FCFA')).toMatchObject({ valeur: 26000 });
+    expect(lireMontant('26000 F CFA')).toMatchObject({ valeur: 26000 });
+    expect(lireMontant('0')).toMatchObject({ valeur: 0 });
+    expect(lireMontant('vingt mille')).toEqual({ erreur: '« vingt mille » n’est pas un montant' });
+    expect(lireMontant('-5')).toHaveProperty('erreur');
   });
 
   it('déduit de l’ancienneté le mois d’entrée, pas le jour', () => {
@@ -756,6 +774,18 @@ describe('une ligne du fichier', () => {
     expect(l.entree).toEqual({ iso: '2004-03-01', auMois: false });
     expect(l.corrections.filter((c) => c.colonne === "Date d'entrée")).toEqual([]);
     expect(l.avertissements).toEqual([]);
+  });
+
+  it('reprend la prime de transport, et écarte un montant qui ne se lit pas', () => {
+    expect(lue({ ...MOUSSA, 'Prime de transport': '26 000' }).remuneration).toEqual({
+      primeTransport: 26000,
+    });
+    expect(lue(MOUSSA).remuneration).toEqual({});
+    const l = lue({ ...MOUSSA, 'Prime de transport': 'forfait' });
+    expect(l.remuneration).toEqual({});
+    expect(l.avertissements).toEqual([
+      { colonne: 'Prime de transport', texte: '« forfait » n’est pas un montant : non importé' },
+    ]);
   });
 
   it('accorde le poste au sexe de la personne', () => {

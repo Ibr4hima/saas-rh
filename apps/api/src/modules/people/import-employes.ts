@@ -30,6 +30,7 @@ import {
   lireDate,
   lireEntier,
   lireLien,
+  lireMontant,
   lirePays,
   lireRegion,
   lireSexe,
@@ -97,7 +98,8 @@ export type Champ =
   | 'sortie'
   | 'motifSortie'
   | 'anciennete'
-  | 'categorie';
+  | 'categorie'
+  | 'primeTransport';
 
 /**
  * Les intitulés du fichier de la DCH, et les autres façons de les écrire.
@@ -167,6 +169,7 @@ const INTITULES: Record<Champ, string[]> = {
   motifSortie: ['Motif de sortie'],
   anciennete: ['Ancienneté (années)', 'Ancienneté'],
   categorie: ['Catégorie socio-professionnelle', 'Catégorie'],
+  primeTransport: ['Prime de transport'],
 };
 
 /** Lues sans être reprises : elles se calculent (âge, ancienneté) ou se déduisent. */
@@ -174,8 +177,8 @@ const SANS_OBJET = ['N°', 'No', 'Nom complet', 'Âge', 'Nationalité'];
 
 /**
  * Pas reprises par l'import : la filiation attend la DCH, la rémunération
- * et la banque se saisissent sur la fiche (ADR-0158). L'aperçu les nomme
- * quand elles portent des valeurs.
+ * et la banque se saisissent sur la fiche (ADR-0158), sauf la prime de
+ * transport (ADR-0162). L'aperçu les nomme quand elles portent des valeurs.
  */
 const NON_IMPORTEES = [
   'Fils/Fille',
@@ -183,7 +186,6 @@ const NON_IMPORTEES = [
   'Sursalaire',
   'Prime d’ancienneté',
   'Brut social',
-  'Prime de transport',
   'Salaire brut',
   'Nombre de part sociale',
   'Nombre de parts',
@@ -471,6 +473,11 @@ export interface EmploiLu {
   categorie?: string;
 }
 
+/** Ce que l'import reprend de la rémunération : la prime de transport (ADR-0162). */
+export interface RemunerationLue {
+  primeTransport?: number;
+}
+
 export interface LigneLue {
   ligne: number;
   matricule: string;
@@ -478,6 +485,7 @@ export interface LigneLue {
   nom: string;
   personne: PersonneLue;
   emploi: EmploiLu;
+  remuneration: RemunerationLue;
   /** La date d'entrée, au jour près ou au mois. */
   entree: { iso: string; auMois: boolean };
   poste: { intitule: string; nature: NaturePoste } | null;
@@ -775,6 +783,9 @@ export function lireLigne(
   emploi.projet = texte(lire('projet'));
   emploi.categorie = texte(lire('categorie'));
 
+  const remuneration: RemunerationLue = {};
+  remuneration.primeTransport = prendre('primeTransport', lireMontant(lire('primeTransport')));
+
   const posteBrut = texte(lire('poste'));
   const poste = posteBrut
     ? {
@@ -838,6 +849,7 @@ export function lireLigne(
       nom,
       personne: sansVides(personneValide),
       emploi: sansVides(emploiValide),
+      remuneration: sansVides(remuneration),
       entree,
       poste,
       direction: texte(lire('direction')) ?? null,
