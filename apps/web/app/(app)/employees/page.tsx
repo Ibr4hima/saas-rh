@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import type {
+  BilanDuVidage,
   EmployeeBatchResult,
   EmployeeListItem,
   EmployeeListPage,
@@ -61,6 +62,7 @@ import {
 
 /** Ce qu'on tape pour confirmer un effacement — court, mais pas cliquable. */
 const MOT_DE_CONFIRMATION = 'SUPPRIMER';
+const MOT_DU_VIDAGE = 'VIDER';
 
 /**
  * Quinze lignes par page.
@@ -97,6 +99,17 @@ export default function EmployeesPage() {
   // La liste s'ouvre aussi à la paie, l'import non : il écrit des dossiers.
   const me = useMe();
   const peutImporter = peut(me.data, 'personnel.gerer');
+  // Vider l'import (ADR-0165) : l'administrateur seul, quand l'import a
+  // laissé de quoi vider.
+  const estAdmin = me.data?.role === 'admin';
+  const vidage = useQuery({
+    queryKey: ['vidage'],
+    queryFn: () => api<BilanDuVidage>('/employees/vidage'),
+    enabled: estAdmin,
+  });
+  const aVider = vidage.data
+    ? vidage.data.dossiers + vidage.data.unites - vidage.data.unitesGardees > 0
+    : false;
   // L'ouverture passe par l'URL (?nouveau) : le bouton de la barre supérieure
   // est un lien, la fenêtre se partage, et le bouton Retour la referme au lieu
   // de quitter la liste.
@@ -112,7 +125,7 @@ export default function EmployeesPage() {
     ongletInitial === 'archived' ? 'contractEnd' : 'recent',
   );
   const [dir, setDir] = useState<Sens>('desc');
-  const [panneau, setPanneau] = useState<'supprimer' | null | 'desactiver'>(null);
+  const [panneau, setPanneau] = useState<'supprimer' | null | 'desactiver' | 'vider'>(null);
   // L'import ne passe PAS par l'URL, contrairement à la création : on y arrive
   // avec un fichier en main, et un lien partagé rouvrirait une fenêtre vide.
   const [importOuvert, setImportOuvert] = useState(false);
@@ -311,6 +324,17 @@ export default function EmployeesPage() {
               >
                 <Icon name="upload_file" size={15} />
                 Importer
+              </Button>
+            ) : null}
+            {estAdmin && aVider && onglet === 'active' && choisis.length === 0 ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-8"
+                onClick={() => setPanneau('vider')}
+              >
+                <Icon name="delete" size={15} />
+                Vider l’import
               </Button>
             ) : null}
 
@@ -521,6 +545,21 @@ export default function EmployeesPage() {
         />
       ) : null}
 
+      {panneau === 'vider' && vidage.data ? (
+        <ViderModal
+          bilan={vidage.data}
+          onClose={() => setPanneau(null)}
+          onFini={async () => {
+            setPanneau(null);
+            sel.vider();
+            for (const cle of ['employees', 'dashboard', 'org-units', 'hierarchie-controle']) {
+              await queryClient.invalidateQueries({ queryKey: [cle] });
+            }
+            await queryClient.invalidateQueries({ queryKey: ['vidage'] });
+          }}
+        />
+      ) : null}
+
       {bilanLot ? (
         <Modal
           open
@@ -693,6 +732,117 @@ function SupprimerModal({
           value={saisie}
           onChange={(e) => setSaisie(e.target.value)}
           placeholder={MOT_DE_CONFIRMATION}
+        />
+      </ModalSection>
+    </Modal>
+  );
+}
+
+/**
+ * Vider l'import (ADR-0165) : l'administrateur efface ce que l'import a créé,
+ * pour recommencer. Comme pour une suppression définitive, on dit ce qui
+ * part et ce qui reste, et on demande un mot à taper.
+ */
+function ViderModal({
+  bilan,
+  onClose,
+  onFini,
+}: {
+  bilan: BilanDuVidage;
+  onClose: () => void;
+  onFini: () => void | Promise<void>;
+}) {
+  const [saisie, setSaisie] = useState('');
+  const [erreur, setErreur] = useState<string | null>(null);
+  const vider = useMutation({
+    mutationFn: () => api<BilanDuVidage>('/employees/vidage', { method: 'POST' }),
+    onSuccess: onFini,
+    onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Le vidage a échoué.'),
+  });
+  const s = (n: number) => (n > 1 ? 's' : '');
+  const unites = bilan.unites - bilan.unitesGardees;
+  const part = [
+    `${bilan.dossiers} dossier${s(bilan.dossiers)} créé${s(bilan.dossiers)} par l’import, avec leurs contrats, affectations, rémunérations, congés et documents`,
+    bilan.comptes > 0
+      ? `${bilan.comptes} compte${s(bilan.comptes)} d’agent${s(bilan.comptes)} et leur accès au portail`
+      : null,
+    unites > 0 ? `${unites} unité${s(unites)} créée${s(unites)} par l’import` : null,
+  ].filter((l): l is string => l !== null);
+  const reste = [
+    'Les comptes administrateurs',
+    'Les directions, et les unités et dossiers créés à la main',
+    bilan.unitesGardees > 0
+      ? `${bilan.unitesGardees} unité${s(bilan.unitesGardees)} créée${s(bilan.unitesGardees)} par l’import, qui contien${bilan.unitesGardees > 1 ? 'nent' : 't'} des dossiers, des unités ou des offres créés à la main`
+      : null,
+    'Les réglages, l’Academy et le recrutement',
+  ].filter((l): l is string => l !== null);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Vider l’import ?"
+      subtitle="Cette action ne peut pas être annulée."
+      maxWidth="max-w-lg"
+      footer={
+        <>
+          {erreur ? (
+            <p
+              role="alert"
+              className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+            >
+              {erreur}
+            </p>
+          ) : null}
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button
+            variant="danger"
+            disabled={saisie.trim().toUpperCase() !== MOT_DU_VIDAGE}
+            loading={vider.isPending}
+            onClick={() => {
+              setErreur(null);
+              vider.mutate();
+            }}
+          >
+            Vider l’import
+          </Button>
+        </>
+      }
+    >
+      <ModalSection title="Ce qui sera supprimé">
+        <ul className="flex flex-col gap-1.5 text-[12.5px] text-ink">
+          {part.map((l) => (
+            <li key={l} className="flex items-start gap-2">
+              <Icon name="close" size={14} className="mt-0.5 shrink-0 text-danger" />
+              <span>{l}</span>
+            </li>
+          ))}
+        </ul>
+      </ModalSection>
+
+      <ModalSection title="Ce qui reste">
+        <ul className="flex flex-col gap-1.5 text-[12.5px] text-ink">
+          {reste.map((l) => (
+            <li key={l} className="flex items-start gap-2">
+              <Icon name="check" size={14} className="mt-0.5 shrink-0 text-ink-muted" />
+              <span>{l}</span>
+            </li>
+          ))}
+        </ul>
+      </ModalSection>
+
+      <ModalSection title="Confirmation">
+        <label htmlFor="vidage" className="mb-2 block text-[12.5px] font-medium text-ink-strong">
+          Tapez <span className="font-mono font-bold">{MOT_DU_VIDAGE}</span> pour confirmer
+        </label>
+        <Input
+          id="vidage"
+          autoComplete="off"
+          value={saisie}
+          onChange={(e) => setSaisie(e.target.value)}
+          placeholder={MOT_DU_VIDAGE}
         />
       </ModalSection>
     </Modal>

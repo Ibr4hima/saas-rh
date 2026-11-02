@@ -99,6 +99,8 @@ export const orgUnits = pgTable('org_units', {
   adjointEmployeeId: uuid('adjoint_employee_id'),
   /** La direction qui traite les demandes du personnel (la DCH) — une seule. */
   directionDuPersonnel: boolean('direction_du_personnel').notNull().default(false),
+  /** Créée par l'import : « Vider l'import » la retire (0127). */
+  creeParLImport: boolean('cree_par_l_import').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -211,6 +213,8 @@ export const employees = pgTable('employees', {
   matriculeProvisoire: boolean('matricule_provisoire').notNull().default(false),
   /** L'entrée n'est connue qu'au mois : hiredOn en est le 1er (0126). */
   entreeAuMois: boolean('entree_au_mois').notNull().default(false),
+  /** Créé par l'import : « Vider l'import » l'efface (0127). */
+  creeParLImport: boolean('cree_par_l_import').notNull().default(false),
 });
 
 /**

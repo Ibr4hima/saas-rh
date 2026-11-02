@@ -12,6 +12,7 @@ import {
   posteDAdjoint,
   posteDeResponsable,
   ribGroupe,
+  type BilanDuVidage,
   type CandidatImport,
   type ChoixImport,
   type CreateEmployeeInput,
@@ -183,6 +184,70 @@ export class ImportEmployesService {
     }
   }
 
+  /**
+   * « Vider l'import » (ADR-0165) : les dossiers que l'import a créés, avec
+   * tout ce qui s'y rattache, et les unités qu'il a créées. L'administrateur
+   * seul ; sans `appliquer`, le bilan de ce qui partirait.
+   */
+  async vider(user: SessionUser, appliquer: boolean): Promise<BilanDuVidage> {
+    if (user.role !== 'admin') {
+      problem(
+        403,
+        'import.vidage_reserve',
+        'Réservé à l’administrateur',
+        'Seul l’administrateur peut vider l’import.',
+      );
+    }
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      if (appliquer) await verrouillerLaChaine(tx);
+      const { rows } = await tx.execute<{
+        dossiers: number;
+        comptes: number;
+        unites: number;
+        gardees: number;
+      }>(sql`
+        WITH ${UNITES_DE_L_IMPORT}
+        SELECT
+          (SELECT count(*) FROM employees WHERE cree_par_l_import)::int AS dossiers,
+          (SELECT count(DISTINCT p.user_id) FROM employees e
+             JOIN persons p ON p.id = e.person_id
+            WHERE e.cree_par_l_import AND p.user_id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM user_tenant_memberships m
+                               WHERE m.user_id = p.user_id AND m.role = 'admin'))::int AS comptes,
+          (SELECT count(DISTINCT racine) FROM sous)::int AS unites,
+          (SELECT count(*) FROM retenues)::int AS gardees`);
+      const r = rows[0]!;
+      const bilan: BilanDuVidage = {
+        dossiers: r.dossiers,
+        comptes: r.comptes,
+        unites: r.unites,
+        unitesGardees: r.gardees,
+      };
+      if (!appliquer) return bilan;
+
+      const { rows: dossiers } = await tx.execute<{ id: string }>(
+        sql`SELECT id FROM employees WHERE cree_par_l_import`,
+      );
+      await this.people.effacerLesDossiers(
+        tx,
+        user,
+        dossiers.map((d) => d.id),
+      );
+      // Les dossiers partis, une unité ne tient plus qu'à ce qui a été saisi
+      // à la main. Supprimée comme dans l'organigramme : l'historique des
+      // affectations closes reste lisible.
+      await tx.execute(sql`
+        WITH ${UNITES_DE_L_IMPORT}
+        UPDATE org_units
+           SET deleted_at = now(), manager_employee_id = NULL,
+               adjoint_employee_id = NULL, updated_at = now()
+         WHERE id IN (SELECT racine FROM sous)
+           AND id NOT IN (SELECT racine FROM retenues)`);
+      await reconcilierLeCircuit(tx, user.tenantId);
+      return bilan;
+    });
+  }
+
   private lire(fichier: Buffer) {
     try {
       return lirePremiereFeuille(fichier);
@@ -192,6 +257,30 @@ export class ImportEmployesService {
     }
   }
 }
+
+/**
+ * Les unités que l'import a créées (`sous` : chacune, et ce qu'elle porte), et
+ * celles qui doivent rester (`retenues`) : une unité saisie à la main dessous,
+ * l'affectation en cours d'un dossier saisi à la main, une offre d'emploi
+ * ouverte. Une unité retenue garde aussi celles qui la portent.
+ */
+const UNITES_DE_L_IMPORT = sql`
+  RECURSIVE sous (racine, id) AS (
+    SELECT o.id, o.id FROM org_units o
+     WHERE o.cree_par_l_import AND o.deleted_at IS NULL
+    UNION ALL
+    SELECT s.racine, c.id FROM sous s
+      JOIN org_units c ON c.parent_id = s.id AND c.deleted_at IS NULL
+  ),
+  retenues AS (
+    SELECT DISTINCT s.racine FROM sous s JOIN org_units u ON u.id = s.id
+     WHERE NOT u.cree_par_l_import
+        OR EXISTS (SELECT 1 FROM assignments a JOIN employees e ON e.id = a.employee_id
+                    WHERE a.org_unit_id = u.id AND NOT e.cree_par_l_import
+                      AND (upper_inf(a.validity) OR upper(a.validity) > CURRENT_DATE))
+        OR EXISTS (SELECT 1 FROM job_postings j
+                    WHERE j.org_unit_id = u.id AND j.status <> 'closed')
+  )`;
 
 /* ───────────────────────── Ce que la base contient ───────────────────────── */
 
@@ -1536,11 +1625,12 @@ class Passe {
         continue;
       }
       const r = await this.essayer((sp) =>
-        this.organigramme.creerDansLaTransaction(sp, this.user, {
-          name: u.nom,
-          unitType: u.type,
-          parentId,
-        }),
+        this.organigramme.creerDansLaTransaction(
+          sp,
+          this.user,
+          { name: u.nom, unitType: u.type, parentId },
+          { creeParLImport: true },
+        ),
       );
       if ('erreur' in r) {
         echouee(u, r.erreur);
@@ -1638,7 +1728,11 @@ class Passe {
           this.people.create(
             this.user,
             entree,
-            { matriculeProvisoire: p.provisoire, entreeAuMois: l.entree.auMois },
+            {
+              matriculeProvisoire: p.provisoire,
+              entreeAuMois: l.entree.auMois,
+              creeParLImport: true,
+            },
             sp,
           ),
         );

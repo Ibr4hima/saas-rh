@@ -258,11 +258,15 @@ export class OrgUnitsService {
     );
   }
 
-  /** La création, dans la transaction de l'appelant : l'import qui crée un département (ADR-0159). */
+  /**
+   * La création, dans la transaction de l'appelant : l'import qui crée un
+   * département (ADR-0159), et y pose sa marque (ADR-0165).
+   */
   async creerDansLaTransaction(
     tx: Tx,
     user: SessionUser,
     input: CreateOrgUnitInput,
+    marques: { creeParLImport?: boolean } = {},
   ): Promise<{ id: string }> {
     const id = uuidv7();
     this.assertShortNameAllowed(input.unitType, input.shortName ?? null);
@@ -277,6 +281,7 @@ export class OrgUnitsService {
         unitType: input.unitType,
         parentId: input.parentId || null,
         shortName: input.shortName ?? null,
+        creeParLImport: marques.creeParLImport ?? false,
       });
     } catch (err) {
       if (pgCode(err) === '23505') mapUniqueViolation(err);

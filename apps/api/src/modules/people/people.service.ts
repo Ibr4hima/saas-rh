@@ -481,8 +481,15 @@ export class PeopleService {
   async create(
     user: SessionUser,
     input: CreateEmployeeInput,
-    /** Ce que seul l'import pose : un matricule provisoire, une entrée connue au mois. */
-    marques: { matriculeProvisoire?: boolean; entreeAuMois?: boolean } = {},
+    /**
+     * Ce que seul l'import pose : un matricule provisoire, une entrée connue
+     * au mois, et sa marque, que « Vider l'import » retrouve (ADR-0165).
+     */
+    marques: {
+      matriculeProvisoire?: boolean;
+      entreeAuMois?: boolean;
+      creeParLImport?: boolean;
+    } = {},
     /** La transaction de l'import, qui joue tout puis annule en aperçu (ADR-0159). */
     dans?: Tx,
   ): Promise<CreateEmployeeResult> {
@@ -533,6 +540,7 @@ export class PeopleService {
           responsableFonctionnelId: input.employee.responsableFonctionnelId ?? null,
           matriculeProvisoire: marques.matriculeProvisoire ?? false,
           entreeAuMois: marques.entreeAuMois ?? false,
+          creeParLImport: marques.creeParLImport ?? false,
           customFields: input.employee.customFields ?? {},
         });
         if (input.remuneration) {
@@ -2375,6 +2383,45 @@ export class PeopleService {
         aRevoir: nouvellesAnomalies(avant, await lireLaChaine(tx)),
       };
     });
+  }
+
+  /**
+   * Effacer des dossiers dans la transaction de l'appelant, sans les
+   * garde-fous d'une suppression à la main : « Vider l'import » (ADR-0165)
+   * efface tout ce que l'import a créé, responsables et N+1 compris. Chaque
+   * dossier part comme à la suppression, journal compris. Les comptes des
+   * administrateurs restent ; ceux des agents se ferment.
+   */
+  async effacerLesDossiers(tx: Tx, user: SessionUser, ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await verrouillerLaChaine(tx);
+    // Une unité ne garde pas pour responsable, ni pour adjoint, un dossier
+    // qui s'en va.
+    await tx
+      .update(t.orgUnits)
+      .set({ managerEmployeeId: null, updatedAt: new Date() })
+      .where(inArray(t.orgUnits.managerEmployeeId, ids));
+    await tx
+      .update(t.orgUnits)
+      .set({ adjointEmployeeId: null, updatedAt: new Date() })
+      .where(inArray(t.orgUnits.adjointEmployeeId, ids));
+    const admins = new Set(
+      (
+        await tx
+          .select({ userId: t.userTenantMemberships.userId })
+          .from(t.userTenantMemberships)
+          .where(eq(t.userTenantMemberships.role, 'admin'))
+      ).map((m) => m.userId),
+    );
+    const detaches = new Set<string>();
+    for (const c of await this.chargerCibles(tx, ids)) {
+      const compte = c.userId && !admins.has(c.userId) ? c.userId : null;
+      for (const id of await this.effacer(tx, user, { ...c, userId: compte })) detaches.add(id);
+    }
+    // Qui reste sans N+1 relève d'office du responsable de sa direction.
+    const journal: ChangementRattachement[] = [];
+    for (const id of detaches) await rattacherDOffice(tx, journal, id);
+    await this.faireSuivre(tx, user.tenantId, journal);
   }
 
   /** Les dossiers visés, avec de quoi les nommer dans un message d'erreur. */

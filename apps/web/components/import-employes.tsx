@@ -120,6 +120,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
         await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
         await queryClient.invalidateQueries({ queryKey: ['org-units'] });
         await queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
+        await queryClient.invalidateQueries({ queryKey: ['vidage'] });
       }
     } catch (err) {
       if (envoi !== dernierEnvoi.current) return;

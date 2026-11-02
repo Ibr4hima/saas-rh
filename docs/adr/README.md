@@ -170,3 +170,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0162](0162-import-de-la-prime-de-transport.md)       | L'import reprend la prime de transport du fichier de la DCH sur la fiche                | acceptée, précisée par 0163                 |
 | [0163](0163-l-import-reprend-la-remuneration.md)      | L'import reprend la rémunération, la banque, l'IPRES et la filiation du fichier         | acceptée                                    |
 | [0164](0164-type-de-contrat-deduit.md)                | Un type de contrat vide se déduit de la date de fin : un CDD avec, un CDI sans          | acceptée                                    |
+| [0165](0165-vider-l-import.md)                        | L'administrateur peut vider l'import pour recommencer : ce que l'import a créé, seul    | acceptée                                    |

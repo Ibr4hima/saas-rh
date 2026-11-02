@@ -116,6 +116,22 @@ export class PeopleController {
     );
   }
 
+  /**
+   * « Vider l'import » (ADR-0165) : le bilan de ce qui partirait, puis le
+   * vidage. L'administrateur seul : le service le vérifie.
+   */
+  @Get('employees/vidage')
+  @Peut('personnel.gerer')
+  bilanDuVidage(@Req() req: AuthenticatedRequest) {
+    return this.imports.vider(req.sessionUser, false);
+  }
+
+  @Post('employees/vidage')
+  @Peut('personnel.gerer')
+  viderLImport(@Req() req: AuthenticatedRequest) {
+    return this.imports.vider(req.sessionUser, true);
+  }
+
   @Post('employees')
   @Peut('personnel.gerer')
   createEmployee(

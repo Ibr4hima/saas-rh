@@ -132,6 +132,21 @@ export interface DesignationImport {
   nom: string;
 }
 
+/**
+ * « Vider l'import » (ADR-0165) : ce que le vidage supprime, ou a supprimé.
+ * L'administrateur seul le voit et le lance.
+ */
+export interface BilanDuVidage {
+  /** Les dossiers que l'import a créés, actifs ou inactifs. */
+  dossiers: number;
+  /** Les comptes de ces agents, fermés avec leur dossier. Ceux des administrateurs restent. */
+  comptes: number;
+  /** Les unités que l'import a créées. */
+  unites: number;
+  /** Parmi elles, celles qui restent : une unité, un dossier ou une offre saisis à la main y tiennent. */
+  unitesGardees: number;
+}
+
 export interface RapportImportEmployes {
   /** Le nom de l'onglet lu : la DCH voit qu'on a lu le bon. */
   feuille: string;
