@@ -860,8 +860,19 @@ export function lireLigne(
 
   // ─── Le contrat : un CDD a sa date de fin, un CDI n'en a pas.
   let contrat: LigneLue['contrat'] = null;
-  const type = prendre('contrat', lireContrat(lire('contrat')), (t) => t.toUpperCase());
+  const typeLu = lireContrat(lire('contrat'));
+  let type = prendre('contrat', typeLu, (t) => t.toUpperCase());
   const finLue = lireDate(lire('finCdd'), ctx.aujourdhui);
+  if (typeLu === null) {
+    // Le type manque : la DCH ne tient que des CDI et des CDD, et la date de
+    // fin ne se remplit que pour un CDD (ADR-0164).
+    type = finLue ? 'cdd' : 'cdi';
+    corrections.push({
+      colonne: colonne('contrat'),
+      lu: '',
+      retenu: type === 'cdd' ? 'CDD, d’après la date de fin' : 'CDI, sans date de fin',
+    });
+  }
   if (type === 'cdi') {
     contrat = { type, fin: null };
     if (finLue) ecarter('finCdd', 'Un CDI n’a pas de date de fin');

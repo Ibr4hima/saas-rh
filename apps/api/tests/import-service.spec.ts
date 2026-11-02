@@ -734,6 +734,15 @@ describe('le réimport', () => {
     expect(await fiche('101')).toMatchObject({ region: 'dakar', personnel: 'cadre' });
   });
 
+  it('donne son contrat au dossier qui n’en a pas, déduit quand le fichier ne le dit pas', async () => {
+    // Le premier import d'un fichier sans type de contrat n'en créait pas.
+    await importer([AGENT(1, { 'Type de contrat': undefined })]);
+    await raw(`DELETE FROM contracts WHERE tenant_id = $1`, [tenantId]);
+    const r = await importer([AGENT(1, { 'Type de contrat': undefined })]);
+    expect(ligne(r, 2).changements).toContainEqual({ champ: 'Contrat', avant: null, apres: 'CDI' });
+    expect(await fiche('101')).toMatchObject({ contract_type: 'cdi', contrat_le: '2024-03-01' });
+  });
+
   it('n’efface rien avec une case vide', async () => {
     await importer([AGENT(1, { 'Region ': 'Thiès' })]);
     const r = await importer([AGENT(1, { 'Region ': undefined })]);

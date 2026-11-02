@@ -804,6 +804,23 @@ describe('une ligne du fichier', () => {
     ]);
   });
 
+  it('déduit le contrat que le fichier ne dit pas : un CDD avec une date de fin, un CDI sinon', () => {
+    const cdi = lue({ ...MOUSSA, 'Type de contrat': null });
+    expect(cdi.contrat).toEqual({ type: 'cdi', fin: null });
+    expect(cdi.corrections).toContainEqual({
+      colonne: 'Type de contrat',
+      lu: '',
+      retenu: 'CDI, sans date de fin',
+    });
+    const cdd = lue({ ...MOUSSA, 'Type de contrat': null, 'Date de fin (si CDD)': '31/12/2027' });
+    expect(cdd.contrat).toEqual({ type: 'cdd', fin: '2027-12-31' });
+    expect(cdd.corrections).toContainEqual({
+      colonne: 'Type de contrat',
+      lu: '',
+      retenu: 'CDD, d’après la date de fin',
+    });
+  });
+
   it('reprend toute la rémunération, la banque, le RIB et l’IPRES', () => {
     const l = lue({
       ...MOUSSA,
