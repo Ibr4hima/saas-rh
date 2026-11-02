@@ -27,6 +27,7 @@ const admin = { userId: adminUserId, tenantId, role: 'admin' } as SessionUser;
 
 let ownerPool: Pool;
 let db: TenantDb;
+let crypto: EncryptionService;
 let imports: ImportEmployesService;
 const unites: Record<'dg' | 'dfc' | 'dch' | 'dsid', string> = {
   dg: '',
@@ -170,7 +171,7 @@ beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 3 });
   db = new TenantDb();
-  const crypto = new EncryptionService();
+  crypto = new EncryptionService();
   imports = new ImportEmployesService(db, new PeopleService(db, crypto), crypto);
   await raw(
     `INSERT INTO users (id, email, password_hash, given_name, family_name)
@@ -601,6 +602,112 @@ describe('la prime de transport', () => {
     // Une case vide n'efface rien.
     await importer([AGENT(1)]);
     expect(await prime()).toBe(30000);
+  });
+});
+
+describe('la rémunération, la banque, l’IPRES et la filiation', () => {
+  /** Le fichier entier compte soixante colonnes : celles-ci suffisent. */
+  const ENTETES = [
+    'Matricule',
+    'Prénom',
+    'Nom',
+    'Sexe',
+    'Poste occupé ',
+    'Statut',
+    'Direction',
+    'Type de contrat',
+    "Date d'entrée",
+    'Fils/Fille',
+    'Salaire de base ',
+    'Sursalaire ',
+    'Nombre de part Sociale',
+    'Banque',
+    "Relevé d'Identité Bancaire",
+    'Domiciliation',
+    'Numero IPRES',
+  ];
+  const AWA = (plus: Record<string, string | number> = {}) =>
+    ({
+      ...AGENT(1),
+      'Fils/Fille': 'Fille de Moussa Diop et de Awa Sarr',
+      'Salaire de base ': 450000,
+      'Sursalaire ': '50 000',
+      'Nombre de part Sociale': '1,5',
+      Banque: 'CBAO',
+      "Relevé d'Identité Bancaire": 'SN012 01201 036182616901 96',
+      Domiciliation: 'Agence Plateau',
+      'Numero IPRES': '1234567',
+      ...plus,
+    }) as Ligne;
+  const envoyer = (l: Ligne, appliquer = true, user: SessionUser = admin) =>
+    imports.importer(user, fichier([l], ENTETES), appliquer);
+  const enBase = async () =>
+    (
+      await raw(
+        `SELECT r.salaire_de_base, r.sursalaire, r.nombre_de_parts::text AS parts, r.banque,
+                r.rib_chiffre, r.domiciliation, r.numero_ipres,
+                p.prenom_du_pere, p.prenom_de_la_mere, p.nom_de_la_mere
+           FROM employees e JOIN persons p ON p.id = e.person_id
+           LEFT JOIN remunerations r ON r.employee_id = e.id
+          WHERE e.tenant_id = $1 AND e.employee_number = '101'`,
+        [tenantId],
+      )
+    ).rows[0] as Record<string, unknown>;
+
+  it('se reprennent sur la fiche, puis se mettent à jour au réimport', async () => {
+    await envoyer(AWA());
+    const f = await enBase();
+    expect(f).toMatchObject({
+      salaire_de_base: 450000,
+      sursalaire: 50000,
+      parts: '1.5',
+      banque: 'cbao',
+      domiciliation: 'Agence Plateau',
+      numero_ipres: '1234567',
+      prenom_du_pere: 'Moussa',
+      prenom_de_la_mere: 'Awa',
+      nom_de_la_mere: 'Sarr',
+    });
+    expect(crypto.decrypt(f.rib_chiffre as string)).toBe('SN0120120103618261690196');
+
+    expect(ligne(await envoyer(AWA(), false), 2).etat).toBe('inchange');
+    const r = await envoyer(
+      AWA({
+        'Salaire de base ': 500000,
+        Banque: 'Ecobank',
+        "Relevé d'Identité Bancaire": 'SN0120120103618261690197',
+        'Fils/Fille': 'Fille de Moussa et de Awa Ndiaye',
+      }),
+    );
+    expect(ligne(r, 2).changements).toEqual([
+      { champ: 'Nom de la mère', avant: 'Sarr', apres: 'Ndiaye' },
+      { champ: 'Salaire de base', avant: '450 000 F CFA', apres: '500 000 F CFA' },
+      { champ: 'Banque', avant: 'CBAO', apres: 'Ecobank' },
+      {
+        champ: 'RIB',
+        avant: 'SN012 01201 036182616901 96',
+        apres: 'SN012 01201 036182616901 97',
+      },
+    ]);
+    expect(await enBase()).toMatchObject({ salaire_de_base: 500000, banque: 'ecobank' });
+  });
+
+  it('attendent l’accès aux données sensibles : l’aperçu nomme leurs colonnes', async () => {
+    const gestion = { ...admin, role: 'employee', capacites: ['personnel.gerer'] } as SessionUser;
+    const r = await envoyer(AWA(), true, gestion);
+    expect(r.colonnesNonImportees).toEqual([
+      'Salaire de base',
+      'Sursalaire',
+      'Nombre de part Sociale',
+      'Banque',
+      "Relevé d'Identité Bancaire",
+      'Domiciliation',
+      'Numero IPRES',
+    ]);
+    expect(ligne(r, 2).avertissements).toEqual([]);
+    // La filiation n'est pas une donnée sensible : elle s'importe.
+    expect(await enBase()).toMatchObject({ salaire_de_base: null, prenom_du_pere: 'Moussa' });
+    expect((await envoyer(AWA(), false)).colonnesNonImportees).toEqual([]);
   });
 });
 

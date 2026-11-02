@@ -1,9 +1,12 @@
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import {
+  BANQUES,
   DOMAINE_COURRIEL_PRO,
   LIBELLES_REGION,
   NATIONALITY_LABELS,
+  NOMBRES_DE_PARTS,
   REGIONS,
+  type CodeDeBanque,
   type Gender,
   type LienDeParente,
   type MaritalStatus,
@@ -490,6 +493,150 @@ export function lireMontant(v: CelluleXlsx | undefined): Lecture<number> {
 /** Un montant pour l'écran : 26 000 F CFA. */
 export function montantLisible(n: number): string {
   return `${n.toLocaleString('fr-FR').replace(/\u202f|\u00a0/g, ' ')} F CFA`;
+}
+
+/** Le nombre de parts : de 1 à 5, par demi-part. « 2,5 » et « 2.5 parts » valent 2,5. */
+export function lireParts(v: CelluleXlsx | undefined): Lecture<number> {
+  const brut = texte(v);
+  if (!brut) return null;
+  const n =
+    typeof v === 'number'
+      ? v
+      : Number(
+          brut
+            .toLowerCase()
+            .replace(/\s*parts?$/, '')
+            .replace(/\s/g, '')
+            .replace(',', '.'),
+        );
+  return (NOMBRES_DE_PARTS as readonly number[]).includes(n)
+    ? ok(n)
+    : { erreur: `« ${brut} » n’est pas un nombre de parts (de 1 à 5, par demi-part)` };
+}
+
+/**
+ * Les autres façons d'écrire une banque de la liste : le sigle, le nom en
+ * entier, le groupe, l'ancien nom (la CNCAS est devenue La Banque Agricole).
+ */
+const AUTRES_NOMS_DES_BANQUES: Partial<Record<CodeDeBanque, string[]>> = {
+  bci: ['Banque Commerciale Internationale'],
+  bgfibank: ['BGFI'],
+  bimao: ['Banque des Institutions Mutualistes d’Afrique de l’Ouest'],
+  bnde: ['Banque Nationale pour le Développement Économique'],
+  boa: ['Bank of Africa'],
+  bsic: ['Banque Sahélo-Saharienne pour l’Investissement et le Commerce'],
+  banque_islamique: ['BIS'],
+  banque_habitat: ['BHS'],
+  cbao: ['Attijariwafa bank', 'CBAO Attijariwafa bank', 'CBAO Groupe Attijariwafa bank'],
+  coris_bank: ['Coris Bank International'],
+  fbnbank: ['FBN Bank', 'First Bank'],
+  banque_agricole: ['LBA', 'CNCAS'],
+  banque_outarde: ['LBO'],
+  sunu_bank: ['SUNU'],
+  uba: ['United Bank for Africa'],
+};
+
+const OPTIONS_BANQUES: Option<CodeDeBanque>[] = BANQUES.map((b) => ({
+  valeur: b.code,
+  // « Banque Islamique du Sénégal » s'écrit aussi « Banque Islamique ».
+  cles: [b.nom, b.nom.replace(/^La /, '').replace(/(?: du)? Sénégal$/, '')],
+  alias: AUTRES_NOMS_DES_BANQUES[b.code] ?? [],
+}));
+
+/**
+ * Une banque de la liste de la DCH (ADR-0102), par son nom ou son sigle,
+ * fautes de frappe comprises. « Ecobank Sénégal » ou « UBA SA » désignent
+ * Ecobank et UBA.
+ */
+export function lireBanque(v: CelluleXlsx | undefined): Lecture<CodeDeBanque> {
+  const brut = texte(v);
+  if (!brut) return null;
+  const r = rapprocher(brut, OPTIONS_BANQUES);
+  if (r) return ok(r.valeur, r.corrige);
+  const court = brut
+    .replace(/\s+(?:du\s+)?s[ée]n[ée]gal\b/giu, '')
+    .replace(/\s+s\.?\s?a\.?$/i, '')
+    .trim();
+  const sansPays = court && court !== brut ? rapprocher(court, OPTIONS_BANQUES) : null;
+  return sansPays
+    ? ok(sansPays.valeur, true)
+    : { erreur: `« ${brut} » n’est pas une banque de la liste` };
+}
+
+/**
+ * Le RIB : « SN », puis vingt-deux chiffres, sans les espaces. Le « SN »
+ * oublié revient, et un IBAN (SN, deux chiffres de contrôle, puis le RIB)
+ * donne son RIB.
+ */
+export function lireRib(v: CelluleXlsx | undefined): Lecture<string> {
+  if (typeof v === 'number') {
+    return { erreur: 'Excel garde ce RIB comme un nombre, et en a perdu des chiffres' };
+  }
+  const brut = texte(v);
+  if (!brut) return null;
+  const s = brut.toUpperCase().replace(/[\s.\-/]/g, '');
+  if (/^SN\d{22}$/.test(s)) return ok(s);
+  if (/^\d{22}$/.test(s)) return ok(`SN${s}`, true);
+  const iban = /^SN\d{2}(SN\d{22})$/.exec(s);
+  if (iban) return ok(iban[1]!, true);
+  return { erreur: `« ${brut} » n’est pas un RIB (SN, puis 22 chiffres)` };
+}
+
+/** La filiation : le prénom du père, le prénom et le nom de la mère. */
+export interface Filiation {
+  prenomDuPere: string;
+  prenomDeLaMere?: string;
+  nomDeLaMere?: string;
+}
+
+/**
+ * La filiation, comme l'état civil l'écrit : « Fils de Moussa et de Awa
+ * Diop », « Moussa Ndiaye et Awa Diop », « Moussa / Awa Diop ». Le père
+ * vient d'abord, par son prénom seul : son nom de famille est celui de
+ * l'agent. Puis la mère, son prénom et son nom. Un seul nom est celui du
+ * père.
+ * « Fils » ou « Fille » seul ne dit rien de plus que le sexe : la case
+ * compte pour vide.
+ */
+export function lireFiliation(
+  v: CelluleXlsx | undefined,
+  nomDeFamille: string,
+): Lecture<Filiation> {
+  const brut = texte(v);
+  if (!brut) return null;
+  if (['fils', 'fille', 'fils fille'].includes(squelette(brut))) return null;
+  const de = /^(?:de\s+|d['’]\s*)/iu;
+  const noms = brut
+    .replace(/^(?:fils|fille)(?:\s*\/\s*fille)?\s+/iu, '')
+    .replace(de, '')
+    .split(/\s+et\s+|\s*[/&;,+]\s*|\s+-\s+/iu)
+    .map((n) => nomDePersonne(n.replace(de, '')))
+    .filter(Boolean);
+  if (noms.length === 0 || noms.length > 2) {
+    return {
+      erreur: `« ${brut} » ne se lit pas (le père, puis la mère, séparés par « et »)`,
+    };
+  }
+  const [pere, mere] = noms as [string, string | undefined];
+  // Le nom de famille du père est celui de l'agent : seul le prénom reste.
+  const motsDuPere = pere.split(' ');
+  const motsDuNom = nomDeFamille.split(' ');
+  const finit =
+    motsDuPere.length > motsDuNom.length &&
+    squelette(motsDuPere.slice(-motsDuNom.length).join(' ')) === squelette(nomDeFamille);
+  const filiation: Filiation = {
+    prenomDuPere: finit ? motsDuPere.slice(0, -motsDuNom.length).join(' ') : pere,
+  };
+  if (mere) {
+    const mots = mere.split(' ');
+    if (mots.length === 1) {
+      filiation.prenomDeLaMere = mere;
+    } else {
+      filiation.prenomDeLaMere = mots.slice(0, -1).join(' ');
+      filiation.nomDeLaMere = mots.at(-1)!;
+    }
+  }
+  return ok(filiation);
 }
 
 /** Un nombre entier positif : enfants, épouses. « néant » et « aucun » valent 0. */

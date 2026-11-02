@@ -1,10 +1,14 @@
 import {
+  banqueDe,
   employeeFieldsSchema,
   LIBELLES_LIEN_DE_PARENTE,
   LIBELLES_REGION,
   MAX_EPOUSES,
   personFieldsSchema,
+  remunerationSchema,
+  ribGroupe,
   type AvertissementImport,
+  type CodeDeBanque,
   type CorrectionImport,
   type Gender,
   type LienDeParente,
@@ -23,16 +27,20 @@ import {
   entreeDepuisAnciennete,
   intitule,
   lireAnciennete,
+  lireBanque,
   lireCni,
   lireContrat,
   lireCourriel,
   lireCourrielPro,
   lireDate,
   lireEntier,
+  lireFiliation,
   lireLien,
   lireMontant,
+  lireParts,
   lirePays,
   lireRegion,
+  lireRib,
   lireSexe,
   lireSituation,
   lireStatut,
@@ -66,6 +74,7 @@ export type Champ =
   | 'naissance'
   | 'lieuNaissance'
   | 'pays'
+  | 'filiation'
   | 'cni'
   | 'situation'
   | 'epouse1'
@@ -99,7 +108,41 @@ export type Champ =
   | 'motifSortie'
   | 'anciennete'
   | 'categorie'
-  | 'primeTransport';
+  | Montant
+  | 'autresAvantages'
+  | 'nombreDeParts'
+  | 'banque'
+  | 'rib'
+  | 'domiciliation'
+  | 'numeroIpres';
+
+/** Les montants de la rémunération, en francs CFA, dans l'ordre de la fiche. */
+export const MONTANTS = [
+  'salaireDeBase',
+  'sursalaire',
+  'primeAnciennete',
+  'brutSocial',
+  'primeTransport',
+  'salaireBrut',
+  'carburant',
+  'forfaitTelephone',
+  'indemniteSujetion',
+] as const;
+type Montant = (typeof MONTANTS)[number];
+
+/**
+ * La rémunération, la banque et l'IPRES : réservées à l'accès aux données
+ * sensibles (ADR-0158).
+ */
+export const CHAMPS_DE_LA_REMUNERATION: Champ[] = [
+  ...MONTANTS,
+  'autresAvantages',
+  'nombreDeParts',
+  'banque',
+  'rib',
+  'domiciliation',
+  'numeroIpres',
+];
 
 /**
  * Les intitulés du fichier de la DCH, et les autres façons de les écrire.
@@ -114,6 +157,7 @@ const INTITULES: Record<Champ, string[]> = {
   naissance: ['Date de naissance', 'Né(e) le'],
   lieuNaissance: ['Lieu de naissance', 'Ville de naissance'],
   pays: ['Pays', 'Pays de naissance'],
+  filiation: ['Fils/Fille', 'Fils ou fille de', 'Filiation'],
   cni: ['Numéro CNI', 'N° CNI', 'CNI'],
   situation: ['Situation matrimoniale', 'Situation familiale'],
   epouse1: ['Nom de l’épouse 1', 'Épouse 1'],
@@ -169,37 +213,31 @@ const INTITULES: Record<Champ, string[]> = {
   motifSortie: ['Motif de sortie'],
   anciennete: ['Ancienneté (années)', 'Ancienneté'],
   categorie: ['Catégorie socio-professionnelle', 'Catégorie'],
+  salaireDeBase: ['Salaire de base'],
+  sursalaire: ['Sursalaire'],
+  primeAnciennete: ['Prime d’ancienneté'],
+  brutSocial: ['Brut social'],
   primeTransport: ['Prime de transport'],
+  salaireBrut: ['Salaire brut'],
+  carburant: ['Carburant', 'Indemnité de carburant'],
+  forfaitTelephone: ['Forfait téléphone', 'Forfait téléphonique'],
+  indemniteSujetion: ['Indemnité de sujétion', 'Indemnités de sujétion'],
+  autresAvantages: ['Autres avantages'],
+  nombreDeParts: [
+    'Nombre de parts',
+    'Nombre de part',
+    'Nombre de part sociale',
+    'Nombre de parts sociales',
+    'Nombre de parts fiscales',
+  ],
+  banque: ['Banque'],
+  rib: ['Relevé d’identité bancaire', 'RIB'],
+  domiciliation: ['Domiciliation', 'Domiciliation bancaire'],
+  numeroIpres: ['Numéro IPRES', 'N° IPRES', 'IPRES'],
 };
 
 /** Lues sans être reprises : elles se calculent (âge, ancienneté) ou se déduisent. */
 const SANS_OBJET = ['N°', 'No', 'Nom complet', 'Âge', 'Nationalité'];
-
-/**
- * Pas reprises par l'import : la filiation attend la DCH, la rémunération
- * et la banque se saisissent sur la fiche (ADR-0158), sauf la prime de
- * transport (ADR-0162). L'aperçu les nomme quand elles portent des valeurs.
- */
-const NON_IMPORTEES = [
-  'Fils/Fille',
-  'Salaire de base',
-  'Sursalaire',
-  'Prime d’ancienneté',
-  'Brut social',
-  'Salaire brut',
-  'Nombre de part sociale',
-  'Nombre de parts',
-  'Carburant',
-  'Forfait téléphone',
-  'Indemnités de sujétion',
-  'Indemnité de sujétion',
-  'Autres avantages',
-  'Banque',
-  'Relevé d’identité bancaire',
-  'RIB',
-  'Domiciliation',
-  'Numéro IPRES',
-];
 
 /** Sans ces colonnes, aucune ligne ne peut s'importer. */
 const OBLIGATOIRES: Champ[] = ['matricule', 'prenom', 'nom', 'entree'];
@@ -210,27 +248,35 @@ export interface Correspondance {
   intitules: Partial<Record<Champ, string>>;
   inconnues: string[];
   manquantes: string[];
-  nonImportees: string[];
+}
+
+/** Les intitulés des colonnes que le fichier remplit, parmi ces champs. */
+export function colonnesRemplies(
+  corr: Correspondance,
+  donnees: CelluleXlsx[][],
+  champs: Champ[],
+): string[] {
+  return champs
+    .filter((c) => {
+      const i = corr.colonnes[c];
+      return i !== undefined && donnees.some((l) => texte(l[i]) !== undefined && !sansObjet(l[i]));
+    })
+    .map((c) => corr.intitules[c]!);
 }
 
 /** Où se trouve chaque champ : on cherche les intitulés, on ne se fie pas à l'ordre. */
-export function correspondre(
-  entetes: CelluleXlsx[],
-  donnees: CelluleXlsx[][] = [],
-): Correspondance {
+export function correspondre(entetes: CelluleXlsx[]): Correspondance {
   const index = new Map<string, Champ>();
   for (const [champ, variantes] of Object.entries(INTITULES) as [Champ, string[]][]) {
     for (const v of variantes) index.set(squelette(v), champ);
   }
   const sansObjet = new Set(SANS_OBJET.map(squelette));
-  const nonImportees = new Set(NON_IMPORTEES.map(squelette));
 
   const r: Correspondance = {
     colonnes: {},
     intitules: {},
     inconnues: [],
     manquantes: [],
-    nonImportees: [],
   };
   entetes.forEach((brut, i) => {
     const t = texte(brut);
@@ -245,10 +291,6 @@ export function correspondre(
       return;
     }
     if (sansObjet.has(s)) return;
-    if (nonImportees.has(s)) {
-      if (donnees.some((ligne) => texte(ligne[i]) !== undefined)) r.nonImportees.push(t);
-      return;
-    }
     r.inconnues.push(t);
   });
   r.manquantes = OBLIGATOIRES.filter((c) => r.colonnes[c] === undefined)
@@ -462,6 +504,9 @@ export interface PersonneLue {
   emergencyContactName?: string;
   emergencyContactPhone?: string;
   lienContactUrgence?: LienDeParente;
+  prenomDuPere?: string;
+  prenomDeLaMere?: string;
+  nomDeLaMere?: string;
 }
 
 export interface EmploiLu {
@@ -473,10 +518,14 @@ export interface EmploiLu {
   categorie?: string;
 }
 
-/** Ce que l'import reprend de la rémunération : la prime de transport (ADR-0162). */
-export interface RemunerationLue {
-  primeTransport?: number;
-}
+/** La rémunération, la banque et l'IPRES, tels que le fichier les donne (ADR-0163). */
+export type RemunerationLue = Partial<Record<Montant | 'nombreDeParts', number>> & {
+  autresAvantages?: string;
+  banque?: CodeDeBanque;
+  rib?: string;
+  domiciliation?: string;
+  numeroIpres?: string;
+};
 
 export interface LigneLue {
   ligne: number;
@@ -547,12 +596,16 @@ const COLONNE_DU_CHAMP: Record<string, Champ> = {
   emergencyContactName: 'urgenceNom',
   emergencyContactPhone: 'urgenceTel',
   lienContactUrgence: 'lien',
+  prenomDuPere: 'filiation',
+  prenomDeLaMere: 'filiation',
+  nomDeLaMere: 'filiation',
   workEmail: 'emailPro',
   workPhone: 'telPro',
   personnel: 'statut',
   lieuDeTravail: 'lieuTravail',
   projet: 'projet',
   categorie: 'categorie',
+  ...Object.fromEntries(CHAMPS_DE_LA_REMUNERATION.map((c) => [c, c])),
 };
 
 /**
@@ -702,6 +755,8 @@ export function lireLigne(
     personne.birthDate = prendre('naissance', naissance, (d) => dateLisible(d.iso))?.iso;
   }
   personne.birthPlace = prendre('pays', lirePays(lire('pays')));
+  const filiation = prendre('filiation', lireFiliation(lire('filiation'), nom));
+  if (filiation) Object.assign(personne, filiation);
   const lieu = texte(lire('lieuNaissance'));
   if (lieu) {
     const ville = nomDeVille(lieu);
@@ -783,8 +838,17 @@ export function lireLigne(
   emploi.projet = texte(lire('projet'));
   emploi.categorie = texte(lire('categorie'));
 
+  // ─── La rémunération, la banque et l'IPRES.
   const remuneration: RemunerationLue = {};
-  remuneration.primeTransport = prendre('primeTransport', lireMontant(lire('primeTransport')));
+  for (const c of MONTANTS) remuneration[c] = prendre(c, lireMontant(lire(c)));
+  remuneration.nombreDeParts = prendre('nombreDeParts', lireParts(lire('nombreDeParts')), (n) =>
+    n.toLocaleString('fr-FR'),
+  );
+  remuneration.banque = prendre('banque', lireBanque(lire('banque')), (b) => banqueDe(b).nom);
+  remuneration.rib = prendre('rib', lireRib(lire('rib')), ribGroupe);
+  remuneration.autresAvantages = texte(lire('autresAvantages'));
+  remuneration.domiciliation = texte(lire('domiciliation'));
+  remuneration.numeroIpres = texte(lire('numeroIpres'));
 
   const posteBrut = texte(lire('poste'));
   const poste = posteBrut
@@ -840,6 +904,13 @@ export function lireLigne(
     colonne,
     avertissements,
   );
+  const remunerationValide = selonLaFiche(
+    remunerationSchema,
+    remuneration,
+    {},
+    colonne,
+    avertissements,
+  );
 
   return {
     ok: {
@@ -849,7 +920,7 @@ export function lireLigne(
       nom,
       personne: sansVides(personneValide),
       emploi: sansVides(emploiValide),
-      remuneration: sansVides(remuneration),
+      remuneration: sansVides(remunerationValide),
       entree,
       poste,
       direction: texte(lire('direction')) ?? null,

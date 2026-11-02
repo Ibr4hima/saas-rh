@@ -488,7 +488,8 @@ function Compte({
       ) : null}
       {rapport.colonnesNonImportees.length > 0 ? (
         <Remarque>
-          Non importées, à saisir sur la fiche : {rapport.colonnesNonImportees.join(', ')}.
+          Non importées, réservées à l’accès aux données sensibles :{' '}
+          {rapport.colonnesNonImportees.join(', ')}.
         </Remarque>
       ) : null}
 

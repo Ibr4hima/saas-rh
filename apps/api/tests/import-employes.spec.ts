@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { CelluleXlsx } from '../src/common/xlsx';
 import { lirePremiereFeuille, XlsxIllisible } from '../src/common/xlsx';
 import {
+  CHAMPS_DE_LA_REMUNERATION,
+  colonnesRemplies,
   correspondre,
   designeLaDirection,
   lireLigne,
@@ -14,14 +16,18 @@ import {
   cleDeNom,
   entreeDepuisAnciennete,
   intitule,
+  lireBanque,
   lireCni,
   lireContrat,
   lireCourrielPro,
   lireDate,
+  lireFiliation,
   lireLien,
   lireMontant,
+  lireParts,
   lirePays,
   lireRegion,
+  lireRib,
   lireSexe,
   lireSituation,
   lireStatut,
@@ -207,17 +213,27 @@ describe('les intitulés du fichier de la DCH', () => {
     expect(r.intitules.region).toBe('Region');
   });
 
-  it('nomme les colonnes non reprises seulement quand elles portent des valeurs', () => {
-    const ligne = ENTETES_DCH.map((h) => (h === 'Banque' ? 'CBAO' : null));
-    expect(correspondre(ENTETES_DCH, [ligne]).nonImportees).toEqual(['Banque']);
-    expect(correspondre(ENTETES_DCH, []).nonImportees).toEqual([]);
+  it('reconnaît la filiation, la rémunération, la banque et l’IPRES', () => {
+    const place = (h: string) => ENTETES_DCH.indexOf(h);
+    expect(correspondre(ENTETES_DCH).colonnes).toMatchObject({
+      filiation: place('Fils/Fille'),
+      salaireDeBase: place('Salaire de base '),
+      primeAnciennete: place("Prime d'ancienneté"),
+      primeTransport: place('Prime de transport'),
+      nombreDeParts: place('Nombre de part Sociale'),
+      indemniteSujetion: place('Indemnités de sujetion'),
+      rib: place("Relevé d'Identité Bancaire"),
+      numeroIpres: place('Numero IPRES'),
+    });
   });
 
-  it('reprend la prime de transport : elle n’est plus une colonne non reprise', () => {
-    const ligne = ENTETES_DCH.map((h) => (h === 'Prime de transport' ? 26000 : null));
-    const r = correspondre(ENTETES_DCH, [ligne]);
-    expect(r.nonImportees).toEqual([]);
-    expect(r.colonnes.primeTransport).toBe(ENTETES_DCH.indexOf('Prime de transport'));
+  it('nomme les colonnes de la rémunération que le fichier remplit, « NA » compté pour vide', () => {
+    const corr = correspondre(ENTETES_DCH);
+    const ligne = ENTETES_DCH.map((h) =>
+      h === 'Banque' ? 'CBAO' : h === 'Sursalaire ' ? 'NA' : null,
+    );
+    expect(colonnesRemplies(corr, [ligne], CHAMPS_DE_LA_REMUNERATION)).toEqual(['Banque']);
+    expect(colonnesRemplies(corr, [], CHAMPS_DE_LA_REMUNERATION)).toEqual([]);
   });
 
   it('accepte l’ancienneté à la place de la date d’entrée, pas l’absence des deux', () => {
@@ -788,6 +804,85 @@ describe('une ligne du fichier', () => {
     ]);
   });
 
+  it('reprend toute la rémunération, la banque, le RIB et l’IPRES', () => {
+    const l = lue({
+      ...MOUSSA,
+      'Salaire de base ': 450000,
+      'Sursalaire ': '50 000',
+      "Prime d'ancienneté": 12000,
+      'Brut social': 512000,
+      'Prime de transport': 26000,
+      'Salaire brut': 538000,
+      'Nombre de part Sociale': '2,5',
+      'Carburant ': '100.000 FCFA',
+      'Forfait Téléphone': 25000,
+      'Indemnités de sujetion': 30000,
+      'Autres avantages': 'Logement de fonction',
+      Banque: 'CBAO',
+      "Relevé d'Identité Bancaire": 'SN012 01201 036182616901 96',
+      Domiciliation: 'Agence Plateau',
+      'Numero IPRES': 1234567,
+    });
+    expect(l.remuneration).toEqual({
+      salaireDeBase: 450000,
+      sursalaire: 50000,
+      primeAnciennete: 12000,
+      brutSocial: 512000,
+      primeTransport: 26000,
+      salaireBrut: 538000,
+      carburant: 100000,
+      forfaitTelephone: 25000,
+      indemniteSujetion: 30000,
+      nombreDeParts: 2.5,
+      banque: 'cbao',
+      rib: 'SN0120120103618261690196',
+      autresAvantages: 'Logement de fonction',
+      domiciliation: 'Agence Plateau',
+      numeroIpres: '1234567',
+    });
+    // Rien à corriger, rien d'écarté : la même ligne que sans la rémunération.
+    expect(l.corrections).toEqual(lue(MOUSSA).corrections);
+    expect(l.avertissements).toEqual(lue(MOUSSA).avertissements);
+  });
+
+  it('montre la banque et le RIB corrigés, et écarte ce qui ne se lit pas', () => {
+    const l = lue({
+      ...MOUSSA,
+      Banque: 'Ecobank Sénégal',
+      "Relevé d'Identité Bancaire": '0120120103618261690196',
+      'Nombre de part Sociale': 6,
+      'Numero IPRES': 'x'.repeat(31),
+    });
+    expect(l.remuneration).toEqual({ banque: 'ecobank', rib: 'SN0120120103618261690196' });
+    expect(l.corrections).toEqual(
+      expect.arrayContaining([
+        { colonne: 'Banque', lu: 'Ecobank Sénégal', retenu: 'Ecobank' },
+        {
+          colonne: "Relevé d'Identité Bancaire",
+          lu: '0120120103618261690196',
+          retenu: 'SN012 01201 036182616901 96',
+        },
+      ]),
+    );
+    expect(l.avertissements.map((a) => a.colonne)).toEqual([
+      'Nombre de part Sociale',
+      'Numero IPRES',
+    ]);
+  });
+
+  it('lit la filiation sur la fiche : le prénom du père, le prénom et le nom de la mère', () => {
+    expect(
+      lue({ ...MOUSSA, 'Fils/Fille': "Fils de Mamadou Ndiaye et d'Aminata Sow" }).personne,
+    ).toMatchObject({ prenomDuPere: 'Mamadou', prenomDeLaMere: 'Aminata', nomDeLaMere: 'Sow' });
+    const l = lue({ ...MOUSSA, 'Fils/Fille': 'Mamadou et Awa Diop et Fatou Sow' });
+    expect(l.personne.prenomDuPere).toBeUndefined();
+    expect(l.avertissements).toContainEqual({
+      colonne: 'Fils/Fille',
+      texte:
+        '« Mamadou et Awa Diop et Fatou Sow » ne se lit pas (le père, puis la mère, séparés par « et ») : non importé',
+    });
+  });
+
   it('accorde le poste au sexe de la personne', () => {
     const l = lue({
       ...MOUSSA,
@@ -934,5 +1029,61 @@ describe('une ligne du fichier', () => {
     const l = lue({ ...MOUSSA, 'Date de naissance': '01/01/2020' });
     expect(l.personne.birthDate).toBeUndefined();
     expect(l.avertissements[0]?.colonne).toBe('Date de naissance');
+  });
+});
+
+describe('la banque, le RIB, les parts et la filiation', () => {
+  it('reconnaît la banque à son nom, à son sigle ou à son ancien nom', () => {
+    expect(lireBanque('CBAO')).toEqual({ valeur: 'cbao', corrige: false });
+    expect(lireBanque('Banque Islamique')).toEqual({ valeur: 'banque_islamique', corrige: false });
+    expect(lireBanque('BHS')).toEqual({ valeur: 'banque_habitat', corrige: true });
+    expect(lireBanque('cncas')).toEqual({ valeur: 'banque_agricole', corrige: true });
+    expect(lireBanque('UBA SA')).toEqual({ valeur: 'uba', corrige: true });
+    expect(lireBanque('ECOBANQ')).toEqual({ valeur: 'ecobank', corrige: true });
+    expect(lireBanque('Banque')).toEqual({ erreur: '« Banque » n’est pas une banque de la liste' });
+  });
+
+  it('lit le RIB avec ou sans espaces, complète le SN, et tire le RIB d’un IBAN', () => {
+    const rib = 'SN0120120103618261690196';
+    expect(lireRib('SN012 01201 036182616901 96')).toEqual({ valeur: rib, corrige: false });
+    expect(lireRib('012012010361826169 0196')).toEqual({ valeur: rib, corrige: true });
+    expect(lireRib('SN08 SN01 2012 0103 6182 6169 0196')).toEqual({ valeur: rib, corrige: true });
+    expect(lireRib(120120103618261690196)).toEqual({
+      erreur: 'Excel garde ce RIB comme un nombre, et en a perdu des chiffres',
+    });
+    expect(lireRib('SN012 0120')).toEqual({
+      erreur: '« SN012 0120 » n’est pas un RIB (SN, puis 22 chiffres)',
+    });
+  });
+
+  it('lit le nombre de parts, par demi-part', () => {
+    expect(lireParts(2)).toEqual({ valeur: 2, corrige: false });
+    expect(lireParts('1,5 part')).toEqual({ valeur: 1.5, corrige: false });
+    expect(lireParts('3.5 parts')).toEqual({ valeur: 3.5, corrige: false });
+    expect(lireParts(6)).toEqual({
+      erreur: '« 6 » n’est pas un nombre de parts (de 1 à 5, par demi-part)',
+    });
+  });
+
+  it('lit la filiation comme l’état civil l’écrit, le père d’abord', () => {
+    expect(lireFiliation('Fils de Mamadou Ndiaye et de Awa Diop', 'Ndiaye')).toEqual({
+      valeur: { prenomDuPere: 'Mamadou', prenomDeLaMere: 'Awa', nomDeLaMere: 'Diop' },
+      corrige: false,
+    });
+    expect(lireFiliation('MAMADOU ET NDEYE FATOU SOW', 'Ndiaye')).toEqual({
+      valeur: { prenomDuPere: 'Mamadou', prenomDeLaMere: 'Ndeye Fatou', nomDeLaMere: 'Sow' },
+      corrige: false,
+    });
+    expect(lireFiliation('Mamadou / Awa', 'Ndiaye')).toEqual({
+      valeur: { prenomDuPere: 'Mamadou', prenomDeLaMere: 'Awa' },
+      corrige: false,
+    });
+    // Un seul nom : celui du père.
+    expect(lireFiliation('Fille de Mamadou', 'Ndiaye')).toEqual({
+      valeur: { prenomDuPere: 'Mamadou' },
+      corrige: false,
+    });
+    // « Fils » seul ne dit que le sexe.
+    expect(lireFiliation('Fils', 'Ndiaye')).toBeNull();
   });
 });

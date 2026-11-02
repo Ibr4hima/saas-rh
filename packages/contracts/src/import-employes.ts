@@ -139,7 +139,7 @@ export interface RapportImportEmployes {
   colonnesInconnues: string[];
   /** Colonnes indispensables absentes du fichier : rien ne peut être importé. */
   colonnesManquantes: string[];
-  /** Colonnes remplies que l'import ne reprend pas (rémunération, banque…). */
+  /** Colonnes remplies que l'import ne reprend pas : la rémunération, sans l'accès aux données sensibles. */
   colonnesNonImportees: string[];
   lignes: LigneImport[];
   unitesCreees: UniteCreeeImport[];

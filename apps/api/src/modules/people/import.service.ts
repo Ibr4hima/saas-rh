@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import {
+  banqueDe,
   CHOIX_AUCUN,
   estSecretariatGeneral,
   LIBELLES_LIEN_DE_PARENTE,
@@ -10,6 +11,7 @@ import {
   peut,
   posteDAdjoint,
   posteDeResponsable,
+  ribGroupe,
   type CandidatImport,
   type ChoixImport,
   type CreateEmployeeInput,
@@ -18,6 +20,7 @@ import {
   type RapportImportEmployes,
   type SessionUser,
   type UpdateEmployeeInput,
+  type VueRemuneration,
 } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
 import { problem, ProblemException } from '../../common/problem';
@@ -27,10 +30,13 @@ import { reconcilierLeCircuit } from '../time/visas';
 import { directionDeLUnite, rattacherDOffice, SOMMET, verrouillerLaChaine } from './chaine';
 import { contratEchu } from './en-activite';
 import {
+  CHAMPS_DE_LA_REMUNERATION,
   cleDUnite,
+  colonnesRemplies,
   correspondre,
   designeLaDirection,
   lireLigne,
+  MONTANTS,
   nomDUnite,
   type Correspondance,
   type LigneLue,
@@ -124,12 +130,15 @@ export class ImportEmployesService {
     if (donnees.length > MAX_LIGNES) {
       problem(422, 'import.trop_long', `Le fichier dépasse ${MAX_LIGNES} lignes`);
     }
-    const corr = correspondre(entetes, donnees);
+    const corr = correspondre(entetes);
     const vide: RapportImportEmployes = {
       feuille: feuille.nom,
       colonnesInconnues: corr.inconnues,
       colonnesManquantes: corr.manquantes,
-      colonnesNonImportees: corr.nonImportees,
+      // La rémunération ne s'importe qu'avec l'accès aux données sensibles.
+      colonnesNonImportees: peut(user, 'personnel.sensible')
+        ? []
+        : colonnesRemplies(corr, donnees, CHAMPS_DE_LA_REMUNERATION),
       lignes: [],
       unitesCreees: [],
       designations: [],
@@ -216,6 +225,9 @@ interface Dossier {
     emergencyContactName: string | null;
     emergencyContactPhone: string | null;
     lienContactUrgence: string | null;
+    prenomDuPere: string | null;
+    prenomDeLaMere: string | null;
+    nomDeLaMere: string | null;
   };
   hiredOn: string;
   entreeAuMois: boolean;
@@ -233,9 +245,25 @@ interface Dossier {
   nbAffectations: number;
   contrat: { type: string; fin: string | null } | null;
   nbContrats: number;
-  /** La prime de transport de la fiche, lue seulement avec l'accès aux données sensibles. */
-  primeTransport: number | null;
+  /**
+   * La rémunération de la fiche, pour comparer. Elle ne se compare qu'avec
+   * l'accès aux données sensibles, et le RIB ne se déchiffre qu'alors.
+   */
+  remuneration: VueRemuneration;
 }
+
+/** Les montants comme la fiche les nomme, pour l'aperçu des changements. */
+const LIBELLES_DES_MONTANTS: Record<(typeof MONTANTS)[number], string> = {
+  salaireDeBase: 'Salaire de base',
+  sursalaire: 'Sursalaire',
+  primeAnciennete: 'Prime d’ancienneté',
+  brutSocial: 'Brut social',
+  primeTransport: 'Prime de transport',
+  salaireBrut: 'Salaire brut',
+  carburant: 'Carburant',
+  forfaitTelephone: 'Forfait téléphone',
+  indemniteSujetion: 'Indemnité de sujétion',
+};
 
 interface Unite {
   id: string;
@@ -510,6 +538,7 @@ class Passe {
              p.lieu_de_naissance, p.marital_status, p.epouses, p.nombre_enfants,
              p.personal_email, p.phone, p.address_line, p.ville, p.region,
              p.emergency_contact_name, p.emergency_contact_phone, p.lien_contact_urgence,
+             p.prenom_du_pere, p.prenom_de_la_mere, p.nom_de_la_mere,
              e.hired_on::text AS hired_on, e.entree_au_mois, e.work_email, e.work_phone,
              e.personnel, e.lieu_de_travail, e.projet, e.categorie,
              e.manager_employee_id, e.responsable_fonctionnel_id,
@@ -517,8 +546,10 @@ class Passe {
              (SELECT count(*)::int FROM assignments x WHERE x.employee_id = e.id) AS nb_aff,
              c.contract_type, c.end_date,
              (SELECT count(*)::int FROM contracts y WHERE y.employee_id = e.id) AS nb_contrats,
-             (SELECT rm.prime_transport FROM remunerations rm
-               WHERE rm.employee_id = e.id LIMIT 1) AS prime_transport
+             rm.salaire_de_base, rm.sursalaire, rm.prime_anciennete, rm.brut_social,
+             rm.prime_transport, rm.salaire_brut, rm.carburant, rm.forfait_telephone,
+             rm.indemnite_sujetion, rm.autres_avantages, rm.nombre_de_parts::float8 AS nombre_de_parts,
+             rm.banque, rm.rib_chiffre, rm.domiciliation, rm.numero_ipres
         FROM employees e
         JOIN persons p ON p.id = e.person_id
         LEFT JOIN LATERAL (
@@ -530,9 +561,21 @@ class Passe {
           SELECT cv.contract_type, cv.end_date::text AS end_date
             FROM contracts cv WHERE cv.employee_id = e.id
            ORDER BY cv.start_date DESC, cv.created_at DESC LIMIT 1) c ON true
+        LEFT JOIN LATERAL (
+          SELECT * FROM remunerations r WHERE r.employee_id = e.id LIMIT 1) rm ON true
        WHERE p.deleted_at IS NULL`);
+    const sensible = peut(this.user, 'personnel.sensible');
     this.dossiers = rows.map((r) => {
       const s = (k: string) => (r[k] as string | null | undefined) ?? null;
+      const n = (k: string) => (r[k] as number | null | undefined) ?? null;
+      let rib: string | null = null;
+      if (sensible && typeof r.rib_chiffre === 'string') {
+        try {
+          rib = this.crypto.decrypt(r.rib_chiffre);
+        } catch {
+          rib = null;
+        }
+      }
       let cni: string | null = null;
       if (typeof r.national_id_encrypted === 'string') {
         try {
@@ -569,6 +612,9 @@ class Passe {
           emergencyContactName: s('emergency_contact_name'),
           emergencyContactPhone: s('emergency_contact_phone'),
           lienContactUrgence: s('lien_contact_urgence'),
+          prenomDuPere: s('prenom_du_pere'),
+          prenomDeLaMere: s('prenom_de_la_mere'),
+          nomDeLaMere: s('nom_de_la_mere'),
         },
         hiredOn: r.hired_on as string,
         entreeAuMois: Boolean(r.entree_au_mois),
@@ -593,7 +639,23 @@ class Passe {
         nbAffectations: Number(r.nb_aff ?? 0),
         contrat: r.contract_type ? { type: r.contract_type as string, fin: s('end_date') } : null,
         nbContrats: Number(r.nb_contrats ?? 0),
-        primeTransport: (r.prime_transport as number | null) ?? null,
+        remuneration: {
+          salaireDeBase: n('salaire_de_base'),
+          sursalaire: n('sursalaire'),
+          primeAnciennete: n('prime_anciennete'),
+          brutSocial: n('brut_social'),
+          primeTransport: n('prime_transport'),
+          salaireBrut: n('salaire_brut'),
+          carburant: n('carburant'),
+          forfaitTelephone: n('forfait_telephone'),
+          indemniteSujetion: n('indemnite_sujetion'),
+          autresAvantages: s('autres_avantages'),
+          nombreDeParts: n('nombre_de_parts'),
+          banque: s('banque') as VueRemuneration['banque'],
+          rib,
+          domiciliation: s('domiciliation'),
+          numeroIpres: s('numero_ipres'),
+        },
       };
     });
   }
@@ -1132,6 +1194,9 @@ class Passe {
       ['addressLine', 'Adresse'],
       ['ville', 'Ville'],
       ['emergencyContactName', 'Personne à contacter en cas d’urgence'],
+      ['prenomDuPere', 'Prénom du père'],
+      ['prenomDeLaMere', 'Prénom de la mère'],
+      ['nomDeLaMere', 'Nom de la mère'],
     ] as const) {
       const nouveau = v[cle];
       if (nouveau && differe(nouveau, avant[cle])) {
@@ -1272,16 +1337,50 @@ class Passe {
         noter(champ, d.emploi[cle], nouveau);
       }
     }
-    // La rémunération : ce que le fichier en donne, la prime de transport.
+    // La rémunération, la banque et l'IPRES.
     const remuneration: NonNullable<UpdateEmployeeInput['remuneration']> = {};
-    const prime = this.remunerationPermise(p)?.primeTransport;
-    if (prime !== undefined && prime !== d.primeTransport) {
-      remuneration.primeTransport = prime;
-      noter(
-        'Prime de transport',
-        d.primeTransport === null ? null : montantLisible(d.primeTransport),
-        montantLisible(prime),
-      );
+    const r = this.remunerationPermise(p);
+    const fiche = d.remuneration;
+    if (r) {
+      for (const cle of MONTANTS) {
+        const nouveau = r[cle];
+        const ancien = fiche[cle];
+        if (nouveau !== undefined && nouveau !== ancien) {
+          remuneration[cle] = nouveau;
+          noter(
+            LIBELLES_DES_MONTANTS[cle],
+            ancien === null ? null : montantLisible(ancien),
+            montantLisible(nouveau),
+          );
+        }
+      }
+      if (r.nombreDeParts !== undefined && r.nombreDeParts !== fiche.nombreDeParts) {
+        remuneration.nombreDeParts = r.nombreDeParts;
+        noter(
+          'Nombre de parts',
+          fiche.nombreDeParts === null ? null : fiche.nombreDeParts.toLocaleString('fr-FR'),
+          r.nombreDeParts.toLocaleString('fr-FR'),
+        );
+      }
+      if (r.banque && r.banque !== fiche.banque) {
+        remuneration.banque = r.banque;
+        noter('Banque', fiche.banque ? banqueDe(fiche.banque).nom : null, banqueDe(r.banque).nom);
+      }
+      if (r.rib && r.rib !== fiche.rib) {
+        remuneration.rib = r.rib;
+        noter('RIB', fiche.rib ? ribGroupe(fiche.rib) : null, ribGroupe(r.rib));
+      }
+      for (const [cle, champ] of [
+        ['autresAvantages', 'Autres avantages'],
+        ['domiciliation', 'Domiciliation'],
+        ['numeroIpres', 'Numéro IPRES'],
+      ] as const) {
+        const nouveau = r[cle];
+        if (nouveau && differe(nouveau, fiche[cle])) {
+          remuneration[cle] = nouveau;
+          noter(champ, fiche[cle], nouveau);
+        }
+      }
     }
     p.patch = {
       ...(Object.keys(personne).length > 0 ? { person: personne } : {}),
@@ -1491,19 +1590,12 @@ class Passe {
 
   /**
    * La rémunération que le fichier donne, si qui importe a l'accès aux
-   * données sensibles ; sinon l'aperçu dit qu'elle n'est pas reprise.
+   * données sensibles ; sinon, l'aperçu nomme ses colonnes, non importées.
    */
   private remunerationPermise(p: Plan): Plan['lue']['remuneration'] | null {
     const r = p.lue.remuneration;
-    if (Object.keys(r).length === 0) return null;
-    if (peut(this.user, 'personnel.sensible')) return r;
-    if (!p.rapport.avertissements.some((a) => a.colonne === p.lue.colonne('primeTransport'))) {
-      p.rapport.avertissements.push({
-        colonne: p.lue.colonne('primeTransport'),
-        texte: 'Réservée à l’accès aux données sensibles : non importée',
-      });
-    }
-    return null;
+    if (Object.keys(r).length === 0 || !peut(this.user, 'personnel.sensible')) return null;
+    return r;
   }
 
   private async ecrireLesDossiers(lesquels: (p: Plan) => boolean): Promise<void> {
