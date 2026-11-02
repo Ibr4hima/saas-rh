@@ -2,57 +2,49 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
-import type {
-  InviterPlusieursResult,
-  LigneImport,
-  RapportImportEmployes,
+import {
+  CHOIX_AUCUN,
+  type ChoixImport,
+  type InviterPlusieursResult,
+  type LigneImport,
+  type RapportImportEmployes,
 } from '@teranga/contracts';
-import { Badge, Button, Checkbox, cn, Table, TBody, Td, Th, THead, Tr } from '@teranga/ui';
+import { Badge, Button, Checkbox, cn, Select, Table, TBody, Td, Th, THead, Tr } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { compte } from '../lib/mots';
 import { Icon } from './icons';
 import { Modal, ModalSection } from './modal';
+import { Onglets } from './onglets';
 import { Pagination, usePagination } from './pagination';
 
-/* ————————————————————————————————————————————————————————————————
-   Importer l'effectif depuis le classeur du RH.
+/* ────────────────────────────────────────────────────────────────
+   Importer le fichier du personnel de la DCH (ADR-0159).
 
-   Saisir trois cents dossiers à la main, c'est trois cents fois quinze
-   champs. Le fichier existe déjà — il est tenu à jour depuis des années —,
-   et c'est lui qui doit remplir la plateforme.
+   Trois temps : on dépose, on lit ce que l'import fera, on applique.
+   L'aperçu joue l'import en entier puis l'annule : ce qu'il annonce, refus
+   compris, est ce que l'import fera. Le compte rendu est le même tableau
+   avant et après, relu avec le résultat de chaque ligne.
 
-   ——— On montre AVANT d'écrire
-
-   Trois temps : on dépose, on LIT ce que la plateforme a compris, on
-   applique. Le temps du milieu n'est pas une politesse : un import qui
-   écrirait d'emblée trois cents dossiers à partir d'une colonne mal lue
-   demanderait trois cents corrections. L'aperçu ne touche pas la base — le
-   serveur lit, traduit, vérifie et rend son compte rendu.
-
-   Le compte rendu est le MÊME tableau avant et après : ce qu'on a approuvé
-   est ce qu'on relit, avec le résultat de chaque ligne. Une ligne refusée
-   nomme sa ligne du fichier ET sa colonne, parce que la correction se fait
-   dans le tableur, pas ici.
-   ———————————————————————————————————————————————————————————————— */
+   Un nom de N+1 porté par deux personnes se départage ici, avant l'import :
+   une fois tous les noms départagés, l'aperçu se rejoue et montre les
+   rattachements retenus.
+   ──────────────────────────────────────────────────────────────── */
 
 type Etape = 'depot' | 'apercu' | 'fait';
+type Filtre = 'toutes' | LigneImport['etat'];
 
-const TONS: Record<LigneImport['etat'], 'teal' | 'orange' | 'rouge'> = {
+const TONS: Record<LigneImport['etat'], 'teal' | 'bleu' | 'gris' | 'rouge'> = {
   'a-creer': 'teal',
-  ignore: 'orange',
+  'a-modifier': 'bleu',
+  inchange: 'gris',
   erreur: 'rouge',
 };
 
-/**
- * Le mot de l'état — et il change de temps une fois l'import appliqué.
- *
- * Le même tableau se relit après coup : une ligne qui annoncerait encore « À
- * créer » sous un compte rendu disant « 10 dossiers créés » ferait douter de
- * ce qui a réellement été écrit.
- */
+/** Le mot de l'état : il change de temps une fois l'import appliqué. */
 function motDeLEtat(etat: LigneImport['etat'], applique: boolean): string {
-  if (etat === 'a-creer') return applique ? 'Créé' : 'À créer';
-  return etat === 'ignore' ? 'Ignorée' : 'Erreur';
+  if (etat === 'a-creer') return applique ? 'Créée' : 'À créer';
+  if (etat === 'a-modifier') return applique ? 'Modifiée' : 'À modifier';
+  return etat === 'inchange' ? 'Inchangée' : 'Erreur';
 }
 
 export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
@@ -63,36 +55,40 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [survol, setSurvol] = useState(false);
-  // Après l'import, l'invitation au portail : ceux qui ont une adresse
-  // professionnelle sont cochés d'office ; on décoche, ou l'on coche les
-  // autres.
-  const [choix, setChoix] = useState<Set<string>>(new Set());
+  // Les homonymes départagés, renvoyés avec le fichier à chaque envoi.
+  const [departages, setDepartages] = useState<Record<string, string>>({});
+  // Après l'import, l'invitation au portail des fiches créées.
+  const [invitations, setInvitations] = useState<Set<string>>(new Set());
   const [invites, setInvites] = useState<InviterPlusieursResult | null>(null);
-  const crees = (rapport?.lignes ?? []).filter((l): l is LigneImport & { employeeId: string } =>
-    Boolean(l.employeeId),
+  const creees = (rapport?.lignes ?? []).filter(
+    (l): l is LigneImport & { employeeId: string } => l.etat === 'a-creer' && Boolean(l.employeeId),
   );
 
-  const envoyer = async (f: File, apercu: boolean) => {
+  const envoyer = async (f: File, apercu: boolean, choix: Record<string, string>) => {
     setEnCours(true);
     setErreur(null);
     try {
-      const r = await api<RapportImportEmployes>(`/employees/import${apercu ? '?apercu=1' : ''}`, {
+      const parametres = new URLSearchParams();
+      if (apercu) parametres.set('apercu', '1');
+      if (Object.keys(choix).length > 0) parametres.set('choix', JSON.stringify(choix));
+      const suite = parametres.toString();
+      const r = await api<RapportImportEmployes>(`/employees/import${suite ? `?${suite}` : ''}`, {
         method: 'POST',
         body: f,
       });
       setRapport(r);
       setEtape(apercu ? 'apercu' : 'fait');
       if (!apercu) {
-        setChoix(
-          new Set(r.lignes.filter((l) => l.employeeId && l.emailPro).map((l) => l.employeeId!)),
+        setInvitations(
+          new Set(
+            r.lignes
+              .filter((l) => l.etat === 'a-creer' && l.employeeId && l.emailPro)
+              .map((l) => l.employeeId!),
+          ),
         );
-      }
-      if (!apercu) {
         await queryClient.invalidateQueries({ queryKey: ['employees'] });
         await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
         await queryClient.invalidateQueries({ queryKey: ['org-units'] });
-        // Dix dossiers importés sans n+1, c'est dix anomalies de plus : le
-        // bandeau doit le dire avant qu'on quitte l'écran.
         await queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
       }
     } catch (err) {
@@ -102,15 +98,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
     }
   };
 
-  /**
-   * Ce qu'on refuse SANS demander au serveur.
-   *
-   * Le sélecteur de fichiers filtre déjà sur `.xlsx`, mais un glisser-déposer
-   * ne filtre rien : on y traîne un PDF, un .csv, un dossier entier. Deux
-   * douze-mégaoctets de PDF qui partent pour revenir en 422 sont deux
-   * douze-mégaoctets de réseau perdus, et la réponse arrive une demi-minute
-   * plus tard sur une connexion ordinaire.
-   */
+  /** Ce qu'on refuse sans demander au serveur : un fichier qui n'est pas un .xlsx, ou trop lourd. */
   const choisir = (f: File | null) => {
     if (!f) return;
     if (!/\.xlsx$/i.test(f.name)) {
@@ -128,10 +116,23 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
       );
     }
     setFichier(f);
-    void envoyer(f, true);
+    setDepartages({});
+    void envoyer(f, true, {});
+  };
+
+  const restants = (choix: Record<string, string>) =>
+    (rapport?.choix ?? []).filter((c) => !(choix[c.cle] ?? c.retenu)).length;
+  // L'aperçu se rejoue une fois tous les noms départagés, pas à chaque choix :
+  // sur trois cents agents, il prend quelques secondes.
+  const departager = (cle: string, candidat: string) => {
+    const suite = { ...departages, [cle]: candidat };
+    setDepartages(suite);
+    if (fichier && restants(suite) === 0) void envoyer(fichier, true, suite);
   };
 
   const bloquant = rapport !== null && rapport.colonnesManquantes.length > 0;
+  const aDepartager = restants(departages);
+  const aEcrire = rapport ? rapport.aCreer + rapport.aModifier : 0;
 
   const inviter = async () => {
     setEnCours(true);
@@ -140,7 +141,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
       setInvites(
         await api<InviterPlusieursResult>('/portail/invitations', {
           method: 'POST',
-          body: { ids: [...choix] },
+          body: { ids: [...invitations] },
         }),
       );
     } catch (err) {
@@ -149,7 +150,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
       setEnCours(false);
     }
   };
-  const proposerLesInvitations = etape === 'fait' && crees.length > 0 && !invites;
+  const proposerLesInvitations = etape === 'fait' && creees.length > 0 && !invites;
 
   return (
     <Modal
@@ -160,17 +161,13 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
         etape === 'depot' ? (
           'Le fichier Excel du personnel tenu par la DCH.'
         ) : (
-          // La feuille est NOMMÉE : le classeur en porte souvent plusieurs
-          // (« Actifs », « Départs », « Brouillon »), et la RH doit voir
-          // laquelle a été lue avant d'approuver l'écriture.
+          // La feuille est nommée : un classeur en porte souvent plusieurs.
           <p className="mt-0.5 truncate text-xs text-ink-muted">
             {fichier?.name}
             {rapport ? ` · feuille « ${rapport.feuille} »` : ''}
           </p>
         )
       }
-      // Sept colonnes depuis que le responsable s'y trouve : quatre pouces de
-      // plus, et les noms cessent de se couper en deux lignes.
       maxWidth="max-w-5xl"
       footer={
         etape === 'apercu' && rapport ? (
@@ -180,12 +177,10 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
             </Button>
             <Button
               loading={enCours}
-              disabled={rapport.aCreer === 0 || bloquant}
-              onClick={() => fichier && void envoyer(fichier, false)}
+              disabled={aEcrire === 0 || bloquant || aDepartager > 0}
+              onClick={() => fichier && void envoyer(fichier, false, departages)}
             >
-              {rapport.aCreer === 0
-                ? 'Aucun dossier à importer'
-                : `Importer ${compte(rapport.aCreer, 'dossier')}`}
+              {aEcrire === 0 ? 'Rien à importer' : `Importer ${compte(aEcrire, 'fiche')}`}
             </Button>
           </>
         ) : proposerLesInvitations ? (
@@ -193,8 +188,12 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
             <Button variant="secondary" onClick={onClose}>
               Plus tard
             </Button>
-            <Button loading={enCours} disabled={choix.size === 0} onClick={() => void inviter()}>
-              {choix.size === 0 ? 'Inviter' : `Inviter ${compte(choix.size, 'agent')}`}
+            <Button
+              loading={enCours}
+              disabled={invitations.size === 0}
+              onClick={() => void inviter()}
+            >
+              {invitations.size === 0 ? 'Inviter' : `Inviter ${compte(invitations.size, 'agent')}`}
             </Button>
           </>
         ) : (
@@ -251,54 +250,51 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
 
           <ModalSection title="Ce que le fichier doit contenir">
             <p className="text-[12.5px] leading-relaxed text-ink">
-              Une ligne par agent, et une première ligne d’intitulés. Quatre colonnes sont
-              indispensables : <b>Prénom</b>, <b>Nom</b>, <b>Matricule</b>, <b>Début du contrat</b>{' '}
-              ; les autres colonnes sont importées si elles sont présentes.
+              Une ligne par agent, et une première ligne d’intitulés, dans l’ordre que vous voulez.
+              Quatre colonnes sont indispensables : <b>Matricule</b>, <b>Prénom</b>, <b>Nom</b> et{' '}
+              <b>Date d’entrée</b> (ou <b>Ancienneté</b>).
             </p>
             <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
-              Les intitulés sont reconnus sans tenir compte des accents ni des majuscules, et
-              l’ordre des colonnes n’a pas d’importance. La direction peut être indiquée par son
-              acronyme (« DCH ») ou par son nom complet. Rien n’est enregistré avant que vous ne
-              validiez l’aperçu.
-            </p>
-            <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
-              Une colonne <b>Matricule du responsable</b> indique le N+1 de chaque agent, quel que
-              soit l’ordre des lignes. Sans cette colonne, chaque agent a pour N+1 le responsable de
-              sa direction. Dans une direction sans responsable, l’agent est importé sans N+1 et ne
-              pourra pas être évalué tant qu’un N+1 n’est pas désigné.
-            </p>
-            <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
-              Une colonne <b>Personnel</b> (Cadre ou Non-cadre) détermine la grille d’évaluation de
-              chaque agent.
+              Un matricule déjà connu met sa fiche à jour : l’aperçu liste chaque changement, et une
+              case vide n’efface rien. Rien n’est enregistré avant que vous ne validiez l’aperçu.
             </p>
           </ModalSection>
         </>
       ) : null}
 
-      {etape === 'fait' && crees.length > 0 ? (
-        <InvitationsDuLot crees={crees} choix={choix} setChoix={setChoix} invites={invites} />
+      {etape === 'fait' && creees.length > 0 ? (
+        <InvitationsDuLot
+          creees={creees}
+          choix={invitations}
+          setChoix={setInvitations}
+          invites={invites}
+        />
       ) : null}
-      {etape !== 'depot' && rapport ? <Compte rapport={rapport} /> : null}
+      {etape !== 'depot' && rapport ? (
+        <Compte
+          rapport={rapport}
+          enCours={enCours}
+          departages={departages}
+          departager={etape === 'apercu' ? departager : null}
+        />
+      ) : null}
     </Modal>
   );
 }
 
-/**
- * Les dossiers créés, à inviter au portail : tous d'un coup, ou ceux qu'on
- * coche. Une fois parties, ce qui est parti et ce qui ne l'a pas pu.
- */
+/** Les fiches créées, à inviter au portail : toutes d'un coup, ou celles qu'on coche. */
 function InvitationsDuLot({
-  crees,
+  creees,
   choix,
   setChoix,
   invites,
 }: {
-  crees: (LigneImport & { employeeId: string })[];
+  creees: (LigneImport & { employeeId: string })[];
   choix: Set<string>;
   setChoix: (s: Set<string>) => void;
   invites: InviterPlusieursResult | null;
 }) {
-  const invitables = crees.filter((l) => l.emailPro);
+  const invitables = creees.filter((l) => l.emailPro);
   const tous = invitables.length > 0 && invitables.every((l) => choix.has(l.employeeId));
   const basculer = (id: string, oui: boolean) => {
     const s = new Set(choix);
@@ -340,7 +336,7 @@ function InvitationsDuLot({
           Inviter tous les agents importés
         </label>
         <ul className="max-h-[14rem] divide-y divide-line-soft overflow-auto">
-          {crees.map((l) => {
+          {creees.map((l) => {
             const adresse = l.emailPro ?? null;
             return (
               <li key={l.employeeId}>
@@ -374,69 +370,113 @@ function InvitationsDuLot({
   );
 }
 
-/** Le compte rendu : les totaux d'abord, le détail ensuite. */
-function Compte({ rapport }: { rapport: RapportImportEmployes }) {
+/** Le compte rendu : les totaux, ce qui reste à départager, puis le détail ligne par ligne. */
+function Compte({
+  rapport,
+  enCours,
+  departages,
+  departager,
+}: {
+  rapport: RapportImportEmployes;
+  enCours: boolean;
+  departages: Record<string, string>;
+  departager: ((cle: string, candidat: string) => void) | null;
+}) {
+  const [filtre, setFiltre] = useState<Filtre>('toutes');
   const bloquant = rapport.colonnesManquantes.length > 0;
-  const { tranche, barre } = usePagination(rapport.lignes);
+  const lignes =
+    filtre === 'toutes' ? rapport.lignes : rapport.lignes.filter((l) => l.etat === filtre);
+  const { tranche, barre } = usePagination(lignes);
+  const a = rapport.applique;
+
+  if (bloquant) {
+    return (
+      <p
+        role="alert"
+        className="rounded-bloc bg-danger-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-danger"
+      >
+        <b>Ce fichier ne peut pas être importé.</b> Colonne
+        {rapport.colonnesManquantes.length > 1 ? 's' : ''} absente
+        {rapport.colonnesManquantes.length > 1 ? 's' : ''} : {rapport.colonnesManquantes.join(', ')}
+        . Ajoutez-les à la première ligne du classeur.
+      </p>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      {bloquant ? (
-        <p
-          role="alert"
-          className="rounded-bloc bg-danger-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-danger"
-        >
-          <b>Ce fichier ne peut pas être importé.</b> Colonne
-          {rapport.colonnesManquantes.length > 1 ? 's' : ''} absente
-          {rapport.colonnesManquantes.length > 1 ? 's' : ''} :{' '}
-          {rapport.colonnesManquantes.join(', ')}. Ajoutez-les à la première ligne du classeur.
-        </p>
-      ) : (
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-          <Chiffre
-            valeur={rapport.applique ? rapport.crees : rapport.aCreer}
-            libelle={rapport.applique ? 'dossiers créés' : 'dossiers à créer'}
-            ton="success"
-          />
-          <Chiffre valeur={rapport.ignores} libelle="lignes ignorées" ton="neutre" />
-          <Chiffre valeur={rapport.erreurs} libelle="lignes en erreur" ton="danger" />
-          {/* L'orange pour les deux chiffres qui laissent du travail : ces
-              agents entrent sans direction ou sans n+1, et quelqu'un devra
-              les rattacher. Sans n+1, ces agents ne pourront d'ailleurs pas
-              être évalués. Une ligne ignorée, elle, n'attend
-              rien — le dossier existe déjà et reste intact. */}
-          <Chiffre valeur={rapport.sansUnite} libelle="sans direction" ton="warning" />
-          <Chiffre valeur={rapport.sansResponsable} libelle="sans N+1" ton="warning" />
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+        <Chiffre
+          valeur={rapport.aCreer}
+          libelle={a ? 'fiches créées' : 'fiches à créer'}
+          ton="success"
+        />
+        <Chiffre
+          valeur={rapport.aModifier}
+          libelle={a ? 'fiches modifiées' : 'fiches à modifier'}
+          ton="neutre"
+        />
+        <Chiffre valeur={rapport.inchanges} libelle="fiches inchangées" ton="neutre" />
+        <Chiffre valeur={rapport.erreurs} libelle="lignes en erreur" ton="danger" />
+        {/* L'orange pour ce qui laisse du travail : sans N+1, un agent ne
+            peut pas être évalué. */}
+        <Chiffre valeur={rapport.sansN1} libelle="sans N+1" ton="warning" />
+      </div>
+
+      {departager && rapport.choix.length > 0 ? (
+        <Departages
+          choix={rapport.choix}
+          enCours={enCours}
+          departages={departages}
+          departager={departager}
+        />
+      ) : null}
+
+      <Organigramme rapport={rapport} />
 
       {rapport.colonnesInconnues.length > 0 ? (
-        <p className="text-[12px] leading-relaxed text-ink-muted">
-          <Icon name="error" size={13} className="mr-1 inline align-[-2px]" />
+        <Remarque>
           {compte(rapport.colonnesInconnues.length, 'colonne')} du fichier n’
           {rapport.colonnesInconnues.length > 1 ? 'ont' : 'a'} pas d’équivalent et{' '}
           {rapport.colonnesInconnues.length > 1 ? 'sont ignorées' : 'est ignorée'} :{' '}
           {rapport.colonnesInconnues.join(', ')}.
-        </p>
+        </Remarque>
+      ) : null}
+      {rapport.colonnesNonImportees.length > 0 ? (
+        <Remarque>
+          Non importées, à saisir sur la fiche : {rapport.colonnesNonImportees.join(', ')}.
+        </Remarque>
       ) : null}
 
       {rapport.lignes.length > 0 ? (
-        // Quinze lignes par page ; le tableau défile encore quand des
-        // avertissements allongent les lignes.
         <>
-          <div className="max-h-[22rem] overflow-auto rounded-bloc border border-line-soft">
+          <Onglets
+            label="Filtrer les lignes"
+            className="self-start overflow-x-auto"
+            courant={filtre}
+            onChange={(c) => setFiltre(c as Filtre)}
+            onglets={[
+              { cle: 'toutes', label: 'Toutes', compte: rapport.total },
+              { cle: 'a-creer', label: a ? 'Créées' : 'À créer', compte: rapport.aCreer },
+              {
+                cle: 'a-modifier',
+                label: a ? 'Modifiées' : 'À modifier',
+                compte: rapport.aModifier,
+              },
+              { cle: 'inchange', label: 'Inchangées', compte: rapport.inchanges },
+              { cle: 'erreur', label: 'En erreur', compte: rapport.erreurs },
+            ]}
+          />
+          <div className="max-h-[24rem] overflow-auto rounded-bloc border border-line-soft">
             <Table>
               <THead>
                 <tr>
                   <Th className="w-14 text-right">Ligne</Th>
                   <Th>Matricule</Th>
                   <Th>Nom</Th>
-                  {/* Sous 768 px, le poste et la direction sortent : c'est
-                    l'ÉTAT qu'on vient lire, et il ne doit pas se trouver hors
-                    de l'écran. Le motif d'un abrégé introuvable le nomme de
-                    toute façon en clair. */}
                   <Th className="hidden md:table-cell">Poste</Th>
-                  <Th className="hidden md:table-cell">Direction</Th>
-                  <Th className="hidden lg:table-cell">Responsable</Th>
+                  <Th className="hidden md:table-cell">Unité</Th>
+                  <Th className="hidden lg:table-cell">N+1</Th>
                   <Th>État</Th>
                 </tr>
               </THead>
@@ -447,88 +487,29 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
                       <Td className="text-right font-mono text-[11.5px] text-ink-muted tabular-nums">
                         {l.ligne}
                       </Td>
-                      <Td className="font-mono text-[11.5px] whitespace-nowrap">{l.matricule}</Td>
+                      <Td className="font-mono text-[11.5px] whitespace-nowrap">
+                        {l.matricule}
+                        {l.matriculeProvisoire ? (
+                          <span className="ml-1.5 font-sans text-[10.5px] font-semibold text-accent-text">
+                            provisoire
+                          </span>
+                        ) : null}
+                      </Td>
                       <Td className="font-semibold text-ink-strong">{l.nom}</Td>
                       <Td className="hidden text-ink-muted md:table-cell">{l.poste}</Td>
-                      <Td className="hidden whitespace-nowrap md:table-cell">
-                        {l.uniteResolue ? (
-                          <span title={l.uniteResolue}>{l.uniteAbrege ?? l.uniteResolue}</span>
-                        ) : l.uniteAbrege ? (
-                          // L'abrégé s'allume quand il laisse un dossier sans
-                          // rattachement, pas sur une ligne qu'on n'écrit pas.
-                          <span
-                            className={cn(l.etat === 'a-creer' && 'text-accent-text')}
-                            title={l.etat === 'a-creer' ? 'Acronyme inconnu' : undefined}
-                          >
-                            {l.uniteAbrege}
-                          </span>
-                        ) : null}
-                      </Td>
-                      {/* Le n+1 : le nom quand le matricule a été retrouvé, le
-                        matricule en orange quand il ne l'a pas été : c'est
-                        alors lui qu'on corrige dans le tableur. */}
-                      <Td className="hidden whitespace-nowrap lg:table-cell">
-                        {l.responsableResolu ? (
-                          <span title={l.responsable ?? undefined}>{l.responsableResolu}</span>
-                        ) : l.responsable ? (
-                          // Le matricule ne s'allume que si le rattachement
-                          // MANQUERA vraiment : sur une ligne ignorée, rien
-                          // n'est écrit et il n'y a donc rien en attente.
-                          <span
-                            className={cn(
-                              'font-mono text-[11.5px]',
-                              l.etat === 'a-creer' && 'text-accent-text',
-                            )}
-                          >
-                            {l.responsable}
-                          </span>
-                        ) : null}
-                      </Td>
+                      <Td className="hidden whitespace-nowrap md:table-cell">{l.unite}</Td>
+                      <Td className="hidden whitespace-nowrap lg:table-cell">{l.responsable}</Td>
                       <Td>
-                        <span className="flex flex-col items-start gap-1">
-                          <Badge tone={TONS[l.etat]}>{motDeLEtat(l.etat, rapport.applique)}</Badge>
-                          {/* Le motif tient dans la colonne quand l'écran est
-                            large ; sous 768 px il passe à la ligne suivante,
-                            en pleine largeur. Serré dans un cinquième de
-                            390 px, il se hachait sur huit lignes. */}
-                          {l.motif ? (
-                            <span className="hidden text-[11px] leading-snug text-ink-muted md:inline">
-                              {l.colonne ? <b>{l.colonne} : </b> : null}
-                              {l.motif}
-                            </span>
-                          ) : null}
-                          {l.avertissements.map((a, i) => (
-                            <span
-                              key={`${a.colonne}-${i}`}
-                              className="hidden text-[11px] leading-snug text-ink-muted md:inline"
-                            >
-                              <b>{a.colonne} : </b>
-                              {a.texte}
-                            </span>
-                          ))}
-                        </span>
+                        <Badge tone={TONS[l.etat]}>{motDeLEtat(l.etat, a)}</Badge>
                       </Td>
                     </Tr>
-                    {l.motif || l.avertissements.length > 0 ? (
-                      <tr className="md:hidden">
-                        {/* `display:flex` sur un <td> lui fait perdre son
-                          `colspan` : la cellule cesse de couvrir les quatre
-                          colonnes et le texte se tasse dans la largeur de la
-                          première. La pile vit donc DANS la cellule. */}
-                        <td colSpan={4} className="px-4 pb-3">
-                          <span className="flex flex-col gap-1 text-[11px] leading-snug text-ink-muted">
-                            {l.motif ? (
-                              <span>
-                                {l.colonne ? <b>{l.colonne} : </b> : null}
-                                {l.motif}
-                              </span>
-                            ) : null}
-                            {l.avertissements.map((a, i) => (
-                              <span key={`${a.colonne}-${i}`}>
-                                <b>{a.colonne} : </b>
-                                {a.texte}
-                              </span>
-                            ))}
+                    {aDesDetails(l) ? (
+                      // Le détail court sous la ligne, sur toute la largeur : dans
+                      // la colonne de l'état, il se hachait sur dix lignes.
+                      <tr>
+                        <td colSpan={7} className="px-4 pt-0 pb-3.5">
+                          <span className="flex flex-col gap-1 md:pl-14">
+                            <Details ligne={l} />
                           </span>
                         </td>
                       </tr>
@@ -542,6 +523,142 @@ function Compte({ rapport }: { rapport: RapportImportEmployes }) {
         </>
       ) : null}
     </div>
+  );
+}
+
+const aDesDetails = (l: LigneImport) =>
+  Boolean(l.motif) ||
+  l.changements.length > 0 ||
+  l.corrections.length > 0 ||
+  l.avertissements.length > 0;
+
+/** Sous une ligne : le refus, les changements, les corrections, ce qui manquera. */
+function Details({ ligne: l }: { ligne: LigneImport }) {
+  const texte = 'text-[11.5px] leading-snug';
+  return (
+    <>
+      {l.motif ? (
+        <span className={cn(texte, 'text-ink')}>
+          {l.colonne ? <b>{l.colonne} : </b> : null}
+          {l.motif}
+        </span>
+      ) : null}
+      {l.changements.map((c, i) => (
+        <span key={`c-${i}`} className={cn(texte, 'text-ink')}>
+          <b>{c.champ} : </b>
+          {c.avant ? `${c.avant} → ` : ''}
+          {c.apres}
+        </span>
+      ))}
+      {l.corrections.map((c, i) => (
+        <span key={`r-${i}`} className={cn(texte, 'text-ink-muted')}>
+          <b>{c.colonne} : </b>
+          {c.lu ? `« ${c.lu} »` : 'case vide'} → {c.retenu}
+        </span>
+      ))}
+      {l.avertissements.map((a, i) => (
+        <span key={`a-${i}`} className={cn(texte, 'text-ink-muted')}>
+          <b>{a.colonne} : </b>
+          {a.texte}
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** Les noms portés par plusieurs personnes : on choisit, puis l'aperçu se rejoue. */
+function Departages({
+  choix,
+  enCours,
+  departages,
+  departager,
+}: {
+  choix: ChoixImport[];
+  enCours: boolean;
+  departages: Record<string, string>;
+  departager: (cle: string, candidat: string) => void;
+}) {
+  return (
+    <ModalSection title="À départager">
+      <ul className="flex flex-col gap-3">
+        {choix.map((c) => (
+          <li key={c.cle} className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-4">
+            <span className="min-w-0 flex-1 text-[12.5px] text-ink">
+              <b>« {c.nom} »</b>
+              <span className="text-ink-muted">
+                {' '}
+                · {c.role === 'n1' ? 'N+1' : 'Responsable fonctionnel'} ·{' '}
+                {c.lignes.length > 1 ? 'lignes' : 'ligne'} {c.lignes.join(', ')}
+              </span>
+            </span>
+            <Select
+              aria-label={`Qui est « ${c.nom} »`}
+              className="sm:w-[22rem]"
+              disabled={enCours}
+              value={departages[c.cle] ?? c.retenu ?? ''}
+              onChange={(e) => departager(c.cle, e.target.value)}
+            >
+              <option value="" disabled>
+                Choisir la personne
+              </option>
+              {c.candidats.map((x) => (
+                <option key={x.cle} value={x.cle}>
+                  {`${x.nom} · ${x.detail}`}
+                </option>
+              ))}
+              <option value={CHOIX_AUCUN}>Aucune de ces personnes</option>
+            </Select>
+          </li>
+        ))}
+      </ul>
+    </ModalSection>
+  );
+}
+
+/** Les unités que l'import crée, et les responsables qu'il désigne. */
+function Organigramme({ rapport }: { rapport: RapportImportEmployes }) {
+  const a = rapport.applique;
+  if (rapport.unitesCreees.length === 0 && rapport.designations.length === 0) return null;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {rapport.unitesCreees.length > 0 ? (
+        <div className="rounded-bloc border border-line-soft px-3.5 py-2.5">
+          <p className="text-[11.5px] font-bold text-ink-muted">
+            {a ? 'Unités créées' : 'Unités à créer'}
+          </p>
+          <ul className="mt-1.5 flex flex-col gap-1 text-[12.5px] text-ink">
+            {rapport.unitesCreees.map((u) => (
+              <li key={`${u.parent}-${u.nom}`}>
+                {u.nom} <span className="text-ink-muted">· {u.parent}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {rapport.designations.length > 0 ? (
+        <div className="rounded-bloc border border-line-soft px-3.5 py-2.5">
+          <p className="text-[11.5px] font-bold text-ink-muted">
+            {a ? 'Responsables désignés' : 'Responsables à désigner'}
+          </p>
+          <ul className="mt-1.5 flex flex-col gap-1 text-[12.5px] text-ink">
+            {rapport.designations.map((d) => (
+              <li key={`${d.poste}-${d.nom}`}>
+                {d.poste} <span className="text-ink-muted">· {d.nom}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Remarque({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[12px] leading-relaxed text-ink-muted">
+      <Icon name="error" size={13} className="mr-1 inline align-[-2px]" />
+      {children}
+    </p>
   );
 }
 

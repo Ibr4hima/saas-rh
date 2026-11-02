@@ -1,565 +1,768 @@
-import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import {
-  createEmployeeSchema,
-  NATIONALITY_LABELS,
-  type ContractType,
-  type CreateEmployeeInput,
+  employeeFieldsSchema,
+  LIBELLES_LIEN_DE_PARENTE,
+  LIBELLES_REGION,
+  MAX_EPOUSES,
+  personFieldsSchema,
+  type AvertissementImport,
+  type CorrectionImport,
   type Gender,
-  type IdDocumentType,
+  type LienDeParente,
   type MaritalStatus,
   type Personnel,
-  type AvertissementImport,
+  type Region,
 } from '@teranga/contracts';
+import type { z } from 'zod';
 import type { CelluleXlsx } from '../../common/xlsx';
-import { frDate } from '../notifications/phrases';
+import {
+  adresse,
+  ancienneteDe,
+  dateLisible,
+  entreeDepuisAnciennete,
+  intitule,
+  lireAnciennete,
+  lireCni,
+  lireContrat,
+  lireCourriel,
+  lireCourrielPro,
+  lireDate,
+  lireEntier,
+  lireLien,
+  lirePays,
+  lireRegion,
+  lireSexe,
+  lireSituation,
+  lireStatut,
+  lireTelephone,
+  nomDePersonne,
+  nomDeVille,
+  squelette,
+  texte,
+  type Lecture,
+} from './import-valeurs';
 
-/* ————————————————————————————————————————————————————————————————
-   Du fichier du RH au dossier de la plateforme.
+/* ────────────────────────────────────────────────────────────────
+   Du fichier du personnel de la DCH à la fiche (ADR-0159).
 
-   La RH tient son effectif dans un classeur : vingt-trois colonnes en
-   français, des dates au format du pays, « Homme » et « Femme » écrits en
-   toutes lettres, la direction désignée par son abrégé. La plateforme, elle,
-   attend des énumérations anglaises, des dates ISO, des numéros en E.164 et
-   des identifiants d'unité. Toute la traduction est ici, dans un module PUR :
-   aucune écriture, aucune base — ce qui le rend testable ligne par ligne.
+   Le fichier compte soixante colonnes. Ce module dit où se trouve chacune,
+   puis lit une ligne : il la rend prête pour la fiche, ou il la refuse en
+   disant pourquoi. Aucune écriture, aucune base : il se teste ligne par
+   ligne.
 
-   Le principe de lecture : on est TOLÉRANT sur la forme, JAMAIS sur le fond.
-   L'intitulé « Prénom » se reconnaît écrit « prenom » ou « PRÉNOM », une date
-   passe qu'elle soit une vraie date du tableur ou du texte, et un matricule
-   entouré d'espaces est nettoyé. Mais un sexe écrit « H » n'est pas deviné,
-   et une ligne sans matricule ne crée rien : mieux vaut une ligne signalée
-   qu'un dossier inventé.
-   ———————————————————————————————————————————————————————————————— */
+   Une ligne n'est refusée que si le matricule, le prénom, le nom ou la date
+   d'entrée manquent ou ne se lisent pas. Ailleurs, une valeur fausse est
+   écartée et signalée, et le reste de la ligne est importé.
+   ──────────────────────────────────────────────────────────────── */
 
-/** Les clés internes, dans l'ordre où le fichier type les présente. */
-type Champ =
+export type Champ =
+  | 'matricule'
   | 'prenom'
   | 'nom'
   | 'sexe'
-  | 'situation'
   | 'naissance'
-  | 'paysNaissance'
-  | 'piece'
-  | 'numeroPiece'
-  | 'delivrance'
-  | 'expiration'
-  | 'indicatif'
-  | 'telephone'
-  | 'emailPersonnel'
-  | 'adresse'
-  | 'matricule'
-  | 'contrat'
-  | 'debutContrat'
-  | 'duree'
+  | 'lieuNaissance'
+  | 'pays'
+  | 'cni'
+  | 'situation'
+  | 'epouse1'
+  | 'epouse2'
+  | 'epouse3'
+  | 'epouse4'
+  | 'nbEpouses'
+  | 'enfants'
+  | 'emailPerso'
   | 'emailPro'
-  | 'indicatifPro'
-  | 'telephonePro'
+  | 'tel'
+  | 'telPro'
+  | 'adresse'
+  | 'ville'
+  | 'region'
+  | 'urgenceNom'
+  | 'urgenceTel'
+  | 'lien'
   | 'poste'
-  | 'personnel'
-  | 'unite'
-  | 'responsable';
+  | 'n1'
+  | 'fonctionnel'
+  | 'statut'
+  | 'direction'
+  | 'departement'
+  | 'lieuTravail'
+  | 'projet'
+  | 'contrat'
+  | 'entree'
+  | 'finCdd'
+  | 'sortie'
+  | 'motifSortie'
+  | 'anciennete'
+  | 'categorie';
 
 /**
- * Les intitulés attendus, et leurs variantes admises.
- *
- * Le premier de chaque liste est celui du fichier type — c'est lui qu'on
- * écrit dans le modèle à télécharger. Les suivants couvrent ce qu'on trouve
- * en vrai : un classeur repris d'année en année perd ses accents, gagne des
- * abréviations, et personne ne devrait refaire sa mise en forme pour importer.
+ * Les intitulés du fichier de la DCH, et les autres façons de les écrire.
+ * Ils se comparent sans accents, sans casse ni ponctuation : « Region » vaut
+ * « Région », et l'ordre des colonnes ne compte pas.
  */
 const INTITULES: Record<Champ, string[]> = {
+  matricule: ['Matricule', 'N° matricule'],
   prenom: ['Prénom', 'Prénoms'],
   nom: ['Nom', 'Nom de famille'],
   sexe: ['Sexe', 'Genre'],
-  situation: ['Situation matrimoniale', 'Situation familiale', 'État civil'],
   naissance: ['Date de naissance', 'Né(e) le'],
-  paysNaissance: ['Pays de naissance', 'Lieu de naissance'],
-  piece: ["Pièce d'identité", 'Type de pièce', "Type de pièce d'identité"],
-  numeroPiece: ['Numéro de la pièce', 'Numéro de pièce', 'CNI', 'NINEA'],
-  delivrance: ['Date de délivrance', 'Délivrée le'],
-  expiration: ["Date d'expiration", 'Expire le'],
-  indicatif: ['Indicatif téléphone', 'Indicatif'],
-  telephone: ['Téléphone', 'Téléphone personnel', 'Portable'],
-  emailPersonnel: ['Email personnel', 'Adresse email personnelle'],
-  adresse: ['Adresse', 'Adresse personnelle', 'Domicile'],
-  matricule: ['Matricule', 'N° matricule'],
-  contrat: ['Type de contrat', 'Contrat'],
-  debutContrat: ['Début du contrat', 'Date de début', "Date d'embauche"],
-  duree: ['Durée (mois)', 'Durée', 'Durée en mois'],
-  emailPro: ['Email professionnel', 'Email pro', 'Adresse email professionnelle'],
-  indicatifPro: ['Indicatif téléphone professionnel', 'Indicatif pro'],
-  telephonePro: ['Téléphone professionnel', 'Téléphone pro', 'Poste téléphonique'],
-  poste: ['Poste', 'Fonction', 'Intitulé du poste'],
-  // Cadre ou non : la grille d'évaluation de l'agent en dépend (ADR-0149).
-  personnel: ['Personnel', 'Cadre ou non-cadre', 'Catégorie de personnel'],
-  unite: ['Direction affectée', 'Direction', 'Unité', 'Service'],
-  // Le n+1 se désigne par son MATRICULE, pas par son nom : deux homonymes
-  // existent dans toute agence de trois cents personnes, et un nom mal
-  // orthographié ne se rattache à personne. Le matricule, lui, est unique et
-  // déjà dans la colonne d'à côté.
-  responsable: [
-    'Matricule du responsable',
-    'Matricule responsable',
-    'Responsable hiérarchique',
-    'Matricule du supérieur',
-    'Supérieur hiérarchique',
-    'N+1',
+  lieuNaissance: ['Lieu de naissance', 'Ville de naissance'],
+  pays: ['Pays', 'Pays de naissance'],
+  cni: ['Numéro CNI', 'N° CNI', 'CNI'],
+  situation: ['Situation matrimoniale', 'Situation familiale'],
+  epouse1: ['Nom de l’épouse 1', 'Épouse 1'],
+  epouse2: ['Nom de l’épouse 2', 'Épouse 2'],
+  epouse3: ['Nom de l’épouse 3', 'Épouse 3'],
+  epouse4: ['Nom de l’épouse 4', 'Épouse 4'],
+  nbEpouses: ['Nombre d’épouses', 'Nombre d’épouse', 'Nombre épouses'],
+  enfants: ['Nombre d’enfants', 'Nombre enfants'],
+  emailPerso: [
+    'Adresse mail personnelle',
+    'Adresse mail personnel',
+    'Email personnel',
+    'Adresse email personnelle',
   ],
+  emailPro: [
+    'Adresse mail professionnelle',
+    'Adresse mail professionnel',
+    'Email professionnel',
+    'Adresse email professionnelle',
+  ],
+  tel: [
+    'Numéro de tel personnel',
+    'Numéro de téléphone personnel',
+    'Téléphone personnel',
+    'Téléphone',
+  ],
+  telPro: [
+    'Numéro de tel professionnel',
+    'Numéro de téléphone professionnel',
+    'Téléphone professionnel',
+  ],
+  adresse: ['Adresse physique', 'Adresse'],
+  ville: ['Ville'],
+  region: ['Région'],
+  urgenceNom: ['Personne à contacter en cas d’urgence', 'Contact d’urgence'],
+  urgenceTel: [
+    'Numéro Tel de la personne à contacter en cas d’urgence',
+    'Téléphone du contact d’urgence',
+  ],
+  lien: ['Lien de parenté avec le contact', 'Lien de parenté'],
+  poste: ['Poste occupé', 'Poste', 'Fonction'],
+  n1: ['Responsable hiérarchique (N+1)', 'Responsable hiérarchique', 'N+1'],
+  fonctionnel: ['Responsable fonctionnel'],
+  statut: ['Statut', 'Cadre ou non cadre'],
+  direction: ['Direction'],
+  departement: ['Département'],
+  lieuTravail: ['Lieu de travail'],
+  projet: ['Projet'],
+  contrat: ['Type de contrat', 'Contrat'],
+  entree: ['Date d’entrée', 'Date d’embauche'],
+  finCdd: ['Date de fin (si CDD)', 'Date de fin', 'Date de fin du contrat'],
+  sortie: ['Date de sortie'],
+  motifSortie: ['Motif de sortie'],
+  anciennete: ['Ancienneté (années)', 'Ancienneté'],
+  categorie: ['Catégorie socio-professionnelle', 'Catégorie'],
 };
 
-/** Sans ces quatre colonnes, aucune ligne ne peut créer de dossier. */
-const OBLIGATOIRES: Champ[] = ['prenom', 'nom', 'matricule', 'debutContrat'];
+/** Lues sans être reprises : elles se calculent (âge, ancienneté) ou se déduisent. */
+const SANS_OBJET = ['N°', 'No', 'Nom complet', 'Âge', 'Nationalité'];
 
 /**
- * Deux intitulés se comparent sur leur SQUELETTE : minuscules, sans accents,
- * sans ponctuation, espaces réduits. « N° matricule », « No Matricule » et
- * « n matricule » désignent la même colonne, et c'est tout ce qui compte.
+ * Pas reprises par l'import : la filiation attend la DCH, la rémunération
+ * et la banque se saisissent sur la fiche (ADR-0158). L'aperçu les nomme
+ * quand elles portent des valeurs.
  */
-export function normaliserIntitule(texte: string): string {
-  return texte
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
+const NON_IMPORTEES = [
+  'Fils/Fille',
+  'Salaire de base',
+  'Sursalaire',
+  'Prime d’ancienneté',
+  'Brut social',
+  'Prime de transport',
+  'Salaire brut',
+  'Nombre de part sociale',
+  'Nombre de parts',
+  'Carburant',
+  'Forfait téléphone',
+  'Indemnités de sujétion',
+  'Indemnité de sujétion',
+  'Autres avantages',
+  'Banque',
+  'Relevé d’identité bancaire',
+  'RIB',
+  'Domiciliation',
+  'Numéro IPRES',
+];
+
+/** Sans ces colonnes, aucune ligne ne peut s'importer. */
+const OBLIGATOIRES: Champ[] = ['matricule', 'prenom', 'nom', 'entree'];
+
+export interface Correspondance {
+  colonnes: Partial<Record<Champ, number>>;
+  /** L'intitulé tel que le fichier l'écrit : c'est lui qu'on cite. */
+  intitules: Partial<Record<Champ, string>>;
+  inconnues: string[];
+  manquantes: string[];
+  nonImportees: string[];
 }
 
-const VOCABULAIRE_SEXE: Record<string, Gender> = {
-  homme: 'male',
-  masculin: 'male',
-  m: 'male',
-  femme: 'female',
-  feminin: 'female',
-  f: 'female',
-};
-
-const VOCABULAIRE_SITUATION: Record<string, MaritalStatus> = {
-  celibataire: 'single',
-  marie: 'married',
-  mariee: 'married',
-  divorce: 'divorced',
-  divorcee: 'divorced',
-  veuf: 'widowed',
-  veuve: 'widowed',
-};
-
-const VOCABULAIRE_PIECE: Record<string, IdDocumentType> = {
-  'carte nationale d identite': 'cni',
-  cni: 'cni',
-  'carte d identite': 'cni',
-  'carte nationale d identite cedeao': 'cni',
-  passeport: 'passport',
-  passport: 'passport',
-};
-
-const VOCABULAIRE_CONTRAT: Record<string, ContractType> = {
-  cdi: 'cdi',
-  cdd: 'cdd',
-  stage: 'stage',
-  stagiaire: 'stage',
-  consultant: 'consultant',
-  consultance: 'consultant',
-  prestataire: 'consultant',
-  detachement: 'detachement',
-  detache: 'detachement',
-};
-
-const VOCABULAIRE_PERSONNEL: Record<string, Personnel> = {
-  cadre: 'cadre',
-  cadres: 'cadre',
-  'non cadre': 'non_cadre',
-  'non cadres': 'non_cadre',
-  noncadre: 'non_cadre',
-};
-
-/** Les noms de pays en français, comme le formulaire les écrit. */
-const PAYS_PAR_NOM = (() => {
-  const noms = new Intl.DisplayNames(['fr'], { type: 'region' });
-  const table = new Map<string, string>();
-  for (const code of Object.keys(NATIONALITY_LABELS)) {
-    const nom = noms.of(code);
-    if (nom && nom !== code) table.set(normaliserIntitule(nom), nom);
+/** Où se trouve chaque champ : on cherche les intitulés, on ne se fie pas à l'ordre. */
+export function correspondre(
+  entetes: CelluleXlsx[],
+  donnees: CelluleXlsx[][] = [],
+): Correspondance {
+  const index = new Map<string, Champ>();
+  for (const [champ, variantes] of Object.entries(INTITULES) as [Champ, string[]][]) {
+    for (const v of variantes) index.set(squelette(v), champ);
   }
-  return table;
-})();
+  const sansObjet = new Set(SANS_OBJET.map(squelette));
+  const nonImportees = new Set(NON_IMPORTEES.map(squelette));
 
-/* ————————————————— Lecture d'une cellule ————————————————— */
-
-function texte(v: CelluleXlsx): string | undefined {
-  if (v === null || v === undefined) return undefined;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  const t = String(v).trim();
-  return t === '' ? undefined : t;
+  const r: Correspondance = {
+    colonnes: {},
+    intitules: {},
+    inconnues: [],
+    manquantes: [],
+    nonImportees: [],
+  };
+  entetes.forEach((brut, i) => {
+    const t = texte(brut);
+    if (!t) return;
+    const s = squelette(t);
+    const champ = index.get(s);
+    if (champ) {
+      if (r.colonnes[champ] === undefined) {
+        r.colonnes[champ] = i;
+        r.intitules[champ] = t;
+      }
+      return;
+    }
+    if (sansObjet.has(s)) return;
+    if (nonImportees.has(s)) {
+      if (donnees.some((ligne) => texte(ligne[i]) !== undefined)) r.nonImportees.push(t);
+      return;
+    }
+    r.inconnues.push(t);
+  });
+  r.manquantes = OBLIGATOIRES.filter((c) => r.colonnes[c] === undefined)
+    // Sans la date d'entrée, l'ancienneté la remplace : la colonne suffit.
+    .filter((c) => !(c === 'entree' && r.colonnes.anciennete !== undefined))
+    .map((c) => INTITULES[c][0]!);
+  return r;
 }
 
-/**
- * Une date, quelle que soit la façon dont le tableur l'a gardée.
- *
- * Le classeur type donne de vraies dates ; un fichier repris à la main donne
- * du texte, et pas toujours dans le même sens. « 12/04/1990 » se lit donc
- * jour-mois-année — la convention d'ici, celle du tableur français — et
- * « 1990-04-12 » se lit comme l'ISO qu'il est. Ce qui reste ambigu est
- * REFUSÉ : une date d'embauche mal lue décale une ancienneté de dix ans.
- */
-function date(v: CelluleXlsx): { iso: string } | { erreur: string } | undefined {
-  if (v === null || v === undefined || v === '') return undefined;
-  if (v instanceof Date) return { iso: v.toISOString().slice(0, 10) };
-  const t = String(v).trim();
-  if (t === '') return undefined;
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
-  const fr = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t);
-  if (!iso && !fr) {
+/* ───────────────────────── Le poste ───────────────────────── */
+
+/** Ce que dit un intitulé de poste de la place de l'agent dans l'organigramme. */
+export type NaturePoste =
+  | { nature: 'dg' }
+  | { nature: 'dga' }
+  | { nature: 'sg' }
+  /** « Directeur financier et comptable » : la suite doit nommer la direction. */
+  | { nature: 'directeur'; precision: string | null }
+  /** « Chef de département Digitalisation » : le nom de l'unité, s'il est donné. */
+  | { nature: 'chef'; type: 'department' | 'service'; nom: string | null }
+  | { nature: 'agent' };
+
+const MOTS_VIDES = new Set([
+  'de',
+  'du',
+  'des',
+  'la',
+  'le',
+  'les',
+  'l',
+  'd',
+  'et',
+  'a',
+  'au',
+  'aux',
+]);
+
+export function natureDuPoste(brut: string): NaturePoste {
+  const s = squelette(brut);
+  const mots = s.split(' ');
+  if (/^(directeur|directrice) generale? adjointe?$/.test(s) || s === 'dga') {
+    return { nature: 'dga' };
+  }
+  // Un adjoint ne dirige pas l'unité : « Chef de service adjoint ».
+  if (mots.includes('adjoint') || mots.includes('adjointe')) return { nature: 'agent' };
+  if (/^(directeur|directrice) generale?$/.test(s) || s === 'dg') return { nature: 'dg' };
+  if (/^secretaire generale?$/.test(s) || s === 'sg') return { nature: 'sg' };
+  const chef =
+    /^(?:chef|cheffe|responsable)(?: (?:de la|de|du|des|d))? (departement|dept|dpt|service)(?: (.*))?$/.exec(
+      s,
+    );
+  if (chef) {
+    const reste = (chef[2] ?? '').split(' ').filter(Boolean);
+    while (reste.length > 0 && MOTS_VIDES.has(reste[0]!)) reste.shift();
     return {
-      erreur: `« ${t} » n’est pas une date reconnue (format attendu : 12/04/1990 ou 1990-04-12)`,
+      nature: 'chef',
+      type: chef[1] === 'service' ? 'service' : 'department',
+      nom: reste.length > 0 ? reste.join(' ') : null,
     };
   }
-  const [a, m, j] = iso
-    ? [Number(iso[1]), Number(iso[2]), Number(iso[3])]
-    : [Number(fr![3]), Number(fr![2]), Number(fr![1])];
-  // Le jour doit exister dans son mois : un 31 avril, un 29 février d'une
-  // année ordinaire, ne deviennent pas le 1er mai ou le 1er mars.
-  const jour = new Date(Date.UTC(a, m - 1, j));
-  if (jour.getUTCFullYear() !== a || jour.getUTCMonth() !== m - 1 || jour.getUTCDate() !== j) {
-    return { erreur: `« ${t} » n’est pas une date valide` };
+  const dir = /^(?:directeur|directrice)(?: (.*))?$/.exec(s);
+  if (dir) {
+    const reste = (dir[1] ?? '').split(' ').filter((m) => m && !MOTS_VIDES.has(m));
+    return { nature: 'directeur', precision: reste.length > 0 ? reste.join(' ') : null };
   }
-  return { iso: jour.toISOString().slice(0, 10) };
+  return { nature: 'agent' };
+}
+
+/** Les racines des mots d'un nom : « financier » et « Financière » ont la même. */
+function racines(t: string): string[] {
+  return squelette(t)
+    .split(' ')
+    .filter((m) => m && !MOTS_VIDES.has(m) && m !== 'direction')
+    .map((m) => m.slice(0, 5));
 }
 
 /**
- * Le numéro, tel que la plateforme le stocke.
- *
- * L'indicatif et le numéro local vivent dans deux colonnes ; on les recolle
- * et on laisse libphonenumber trancher — la même bibliothèque que le
- * formulaire de saisie, pour qu'un numéro importé et un numéro tapé
- * s'écrivent pareil. Le zéro de tête est une règle PAR PAYS (il disparaît en
- * France, il reste en Côte d'Ivoire) : on ne la réécrit pas à la main.
+ * La suite d'un « Directeur… » désigne-t-elle cette direction ? « financier
+ * et comptable » désigne la Direction Financière et Comptable, « de la DFC »
+ * aussi ; « de projet » ne désigne aucune direction.
  */
-function telephone(indicatif: CelluleXlsx, local: CelluleXlsx): string | undefined {
-  const brutLocal = texte(local);
-  if (!brutLocal) return undefined;
-  const brutIndicatif = texte(indicatif);
-  const complet = brutIndicatif
-    ? `${brutIndicatif.startsWith('+') ? '' : '+'}${brutIndicatif} ${brutLocal}`
-    : brutLocal;
-  const analyse = parsePhoneNumberFromString(complet, 'SN');
-  if (analyse) return analyse.number;
-  // Numéro non reconnu : on garde ce qui est écrit plutôt que de le perdre —
-  // la fiche l'affichera tel quel et la RH corrigera.
-  return complet;
+export function designeLaDirection(
+  precision: string | null,
+  direction: { nom: string; sigle: string | null },
+): boolean {
+  if (!precision) return true;
+  if (direction.sigle && squelette(precision) === squelette(direction.sigle)) return true;
+  const lues = racines(precision);
+  const siennes = new Set(racines(direction.nom));
+  return lues.length > 0 && lues.every((r) => siennes.has(r));
 }
 
-/**
- * La fin d'un contrat à durée déterminée, déduite de sa durée en mois.
- *
- * Le dernier jour est la VEILLE du jour anniversaire : un contrat de douze
- * mois commencé le 20 mai 2024 s'achève le 19 mai 2025. C'est la lecture d'un
- * terme exprimé en mois, et c'est aussi ce que la plateforme entend par « fin
- * de contrat » — la date affichée est le dernier jour travaillé.
- *
- * Le 31 d'un mois qui n'en compte que trente ne déborde pas sur le mois
- * suivant : on retient le dernier jour du mois atteint.
- */
-export function finDeContrat(debutIso: string, mois: number): string {
-  const [a, m, j] = debutIso.split('-').map(Number) as [number, number, number];
-  const cible = new Date(Date.UTC(a, m - 1 + mois, j));
-  // Débordement : le 31 janvier + 1 mois donnerait le 3 mars.
-  if (cible.getUTCDate() !== j) cible.setUTCDate(0);
-  cible.setUTCDate(cible.getUTCDate() - 1);
-  return cible.toISOString().slice(0, 10);
+/** La clé d'un nom d'unité : « Département Études » et « ETUDES » ont la même. */
+export function cleDUnite(nom: string): string {
+  return squelette(nom)
+    .split(' ')
+    .filter(
+      (m) =>
+        m &&
+        !MOTS_VIDES.has(m) &&
+        !['departement', 'dept', 'dpt', 'service', 'direction'].includes(m),
+    )
+    .join(' ');
 }
 
-/* ————————————————— La conversion d'une ligne ————————————————— */
+/** Le nom d'une unité à créer : « Département Digitalisation », « Service Qualité ». */
+export function nomDUnite(
+  type: 'department' | 'service',
+  nom: string,
+  sigles: ReadonlySet<string> = new Set(),
+): string {
+  const propre = intitule(nom.toUpperCase(), sigles);
+  return `${type === 'department' ? 'Département' : 'Service'} ${propre}`.slice(0, 120);
+}
 
-export interface LigneConvertie {
+/* ───────────────────────── Une ligne ───────────────────────── */
+
+export interface PersonneLue {
+  gender?: Gender;
+  birthDate?: string;
+  birthPlace?: string;
+  lieuDeNaissance?: string;
+  nationalId?: string;
+  idDocumentType?: 'cni';
+  maritalStatus?: MaritalStatus;
+  epouses?: string[];
+  nombreEnfants?: number;
+  personalEmail?: string;
+  phone?: string;
+  addressLine?: string;
+  ville?: string;
+  region?: Region;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  lienContactUrgence?: LienDeParente;
+}
+
+export interface EmploiLu {
+  workEmail?: string;
+  workPhone?: string;
+  personnel?: Personnel;
+  lieuDeTravail?: string;
+  projet?: string;
+  categorie?: string;
+}
+
+export interface LigneLue {
+  ligne: number;
   matricule: string;
+  prenom: string;
   nom: string;
-  poste: string | null;
-  /** L'abrégé écrit dans le fichier, à résoudre contre l'organigramme. */
-  uniteAbrege: string | null;
-  /** Le matricule du n+1 écrit dans le fichier, à résoudre contre l'effectif. */
-  responsableMatricule: string | null;
-  /** Ce qui ne bloque pas la création mais que la RH doit lire. */
+  personne: PersonneLue;
+  emploi: EmploiLu;
+  /** La date d'entrée, au jour près ou au mois. */
+  entree: { iso: string; auMois: boolean };
+  poste: { intitule: string; nature: NaturePoste } | null;
+  /** Le sigle ou le nom de la direction, tel que le fichier l'écrit. */
+  direction: string | null;
+  departement: string | null;
+  contrat: { type: 'cdi' | 'cdd'; fin: string | null } | null;
+  /** Les noms du N+1 et du responsable fonctionnel, tels que le fichier les écrit. */
+  n1: string | null;
+  fonctionnel: string | null;
+  corrections: CorrectionImport[];
   avertissements: AvertissementImport[];
-  /** Prête à passer à la création de dossier, orgUnitId non résolu. */
-  entree: Omit<CreateEmployeeInput, 'assignment'> & {
-    assignment?: { positionTitle: string; startDate: string };
-  };
+  /** L'intitulé d'une colonne, tel que le fichier l'écrit. */
+  colonne: (champ: Champ) => string;
 }
 
 export interface LigneRefusee {
+  ligne: number;
   matricule: string | null;
   nom: string | null;
   motif: string;
   colonne: string | null;
 }
 
-export type Correspondance = Partial<Record<Champ, number>>;
-
-/**
- * Où se trouve chaque champ dans la ligne d'en-tête.
- *
- * On ne se fie pas à l'ORDRE des colonnes : une colonne insérée au milieu du
- * fichier ne doit pas décaler tout l'import. On cherche les intitulés.
- */
-export function correspondre(entetes: CelluleXlsx[]): {
-  colonnes: Correspondance;
-  inconnues: string[];
-  manquantes: string[];
-} {
-  const index = new Map<string, Champ>();
-  for (const [champ, variantes] of Object.entries(INTITULES) as [Champ, string[]][]) {
-    for (const v of variantes) index.set(normaliserIntitule(v), champ);
-  }
-
-  const colonnes: Correspondance = {};
-  const inconnues: string[] = [];
-  entetes.forEach((brut, i) => {
-    const t = texte(brut);
-    if (!t) return;
-    const champ = index.get(normaliserIntitule(t));
-    if (!champ) inconnues.push(t);
-    else if (colonnes[champ] === undefined) colonnes[champ] = i;
-  });
-
-  const manquantes = OBLIGATOIRES.filter((c) => colonnes[c] === undefined).map(
-    (c) => INTITULES[c][0]!,
-  );
-  return { colonnes, inconnues, manquantes };
+export interface ContexteDeLecture {
+  /** Le jour de l'import, pour l'ancienneté. */
+  aujourdhui: string;
+  /** Les sigles des directions : ils restent en capitales dans les intitulés. */
+  sigles: ReadonlySet<string>;
 }
 
-/** Le premier intitulé d'un champ — celui qu'on cite dans un message. */
-const nomColonne = (champ: Champ): string => INTITULES[champ][0]!;
+const enAnnees = (n: number) =>
+  `${n.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} an${n >= 2 ? 's' : ''}`;
+const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`;
+
+const SITUATION_LISIBLE: Record<MaritalStatus, string> = {
+  single: 'Célibataire',
+  married: 'Marié(e)',
+  divorced: 'Divorcé(e)',
+  widowed: 'Veuf ou veuve',
+};
+
+/** La colonne d'où vient chaque champ de la fiche, pour les messages du schéma. */
+const COLONNE_DU_CHAMP: Record<string, Champ> = {
+  gender: 'sexe',
+  birthDate: 'naissance',
+  birthPlace: 'pays',
+  lieuDeNaissance: 'lieuNaissance',
+  nationalId: 'cni',
+  idDocumentType: 'cni',
+  maritalStatus: 'situation',
+  epouses: 'nbEpouses',
+  nombreEnfants: 'enfants',
+  personalEmail: 'emailPerso',
+  phone: 'tel',
+  addressLine: 'adresse',
+  ville: 'ville',
+  region: 'region',
+  emergencyContactName: 'urgenceNom',
+  emergencyContactPhone: 'urgenceTel',
+  lienContactUrgence: 'lien',
+  workEmail: 'emailPro',
+  workPhone: 'telPro',
+  personnel: 'statut',
+  lieuDeTravail: 'lieuTravail',
+  projet: 'projet',
+  categorie: 'categorie',
+};
 
 /**
- * Une ligne du fichier, en dossier à créer — ou en refus expliqué.
- *
- * Les refus nomment TOUJOURS la colonne : la RH corrige dans son tableur, et
- * « ligne 7, colonne Sexe » se retrouve, là où « donnée invalide » ne se
- * cherche pas.
+ * Les règles de la fiche, les mêmes qu'à la saisie (une date de naissance
+ * de moins de quinze ans, un texte trop long) : ce qu'elles refusent est
+ * écarté et signalé, le reste passe.
  */
-export function convertirLigne(
-  valeurs: CelluleXlsx[],
-  colonnes: Correspondance,
-): { ok: LigneConvertie } | { refus: LigneRefusee } {
-  const lire = (champ: Champ): CelluleXlsx => {
-    const i = colonnes[champ];
-    return i === undefined ? null : (valeurs[i] ?? null);
-  };
-  const lireTexte = (champ: Champ) => texte(lire(champ));
-
-  const prenom = lireTexte('prenom');
-  const nom = lireTexte('nom');
-  // Un matricule s'écrit en capitales, quelle que soit la frappe du classeur.
-  const matricule = lireTexte('matricule')?.toUpperCase();
-  const nomComplet = [prenom, nom].filter(Boolean).join(' ') || null;
-
-  const refus = (motif: string, colonne: Champ | null): { refus: LigneRefusee } => ({
-    refus: {
-      matricule: matricule ?? null,
-      nom: nomComplet,
-      motif,
-      colonne: colonne && nomColonne(colonne),
-    },
-  });
-
-  if (!prenom) return refus('Le prénom manque', 'prenom');
-  if (!nom) return refus('Le nom manque', 'nom');
-  if (!matricule) return refus('Le matricule manque', 'matricule');
-
-  const debut = date(lire('debutContrat'));
-  if (!debut) return refus('La date de début du contrat manque', 'debutContrat');
-  if ('erreur' in debut) return refus(debut.erreur, 'debutContrat');
-
-  // Les dates facultatives : une erreur de FORME se signale, une absence non.
-  const dates: Partial<Record<'naissance' | 'delivrance' | 'expiration', string>> = {};
-  for (const champ of ['naissance', 'delivrance', 'expiration'] as const) {
-    const d = date(lire(champ));
-    if (d === undefined) continue;
-    if ('erreur' in d) return refus(d.erreur, champ);
-    dates[champ] = d.iso;
-  }
-
-  const sexeBrut = lireTexte('sexe');
-  const sexe = sexeBrut ? VOCABULAIRE_SEXE[normaliserIntitule(sexeBrut)] : undefined;
-  if (sexeBrut && !sexe) return refus(`« ${sexeBrut} » n’est ni Homme ni Femme`, 'sexe');
-
-  const situationBrute = lireTexte('situation');
-  const situation = situationBrute
-    ? VOCABULAIRE_SITUATION[normaliserIntitule(situationBrute)]
-    : undefined;
-  if (situationBrute && !situation) {
-    return refus(
-      `« ${situationBrute} » n’est pas une situation matrimoniale reconnue (attendu Célibataire, Marié(e), Divorcé(e) ou Veuf/Veuve)`,
-      'situation',
-    );
-  }
-
-  const pieceBrute = lireTexte('piece');
-  const piece = pieceBrute ? VOCABULAIRE_PIECE[normaliserIntitule(pieceBrute)] : undefined;
-  if (pieceBrute && !piece) {
-    return refus(
-      `« ${pieceBrute} » n’est pas un type de pièce connu (attendu Carte Nationale d'Identité ou Passeport)`,
-      'piece',
-    );
-  }
-
-  const numeroPiece = lireTexte('numeroPiece');
-  // La règle du produit, appliquée ici pour la dire AVANT l'écriture : un
-  // numéro sans type n'est pas exploitable, et l'API le refuserait sans
-  // pouvoir nommer la ligne du fichier.
-  if (numeroPiece && !piece) {
-    return refus('Le numéro de pièce est indiqué sans le type de pièce', 'piece');
-  }
-  // Une pièce périmée ne fait pas perdre l'agent, mais n'entre pas au
-  // dossier : le formulaire la refuse, l'import aussi. Le dossier se crée
-  // sans elle ; l'agent déposera la nouvelle, que la DCH vérifiera.
-  const avertissements: AvertissementImport[] = [];
-  const perimee = Boolean(dates.expiration && dates.expiration <= aujourdhui());
-  if (perimee) {
+function selonLaFiche<T extends object>(
+  schema: z.ZodType,
+  valeurs: T,
+  fixes: Record<string, unknown>,
+  colonne: (c: Champ) => string,
+  avertissements: AvertissementImport[],
+): T {
+  const v: Record<string, unknown> = { ...(valeurs as Record<string, unknown>) };
+  for (let essai = 0; essai < 20; essai++) {
+    const r = schema.safeParse({ ...fixes, ...v });
+    if (r.success) {
+      const propre = r.data as Record<string, unknown>;
+      return Object.fromEntries(Object.keys(v).map((k) => [k, propre[k]])) as T;
+    }
+    const issue = r.error.issues[0];
+    const champ = String(issue?.path[0] ?? '');
+    if (!(champ in v)) break;
+    delete v[champ];
+    if (champ === 'nationalId' || champ === 'idDocumentType') {
+      delete v.nationalId;
+      delete v.idDocumentType;
+    }
+    const c = COLONNE_DU_CHAMP[champ];
     avertissements.push({
-      colonne: nomColonne('expiration'),
-      texte: `Pièce d’identité expirée depuis le ${frDate(dates.expiration!)} : elle n’a pas été importée et doit être renouvelée`,
+      colonne: c ? colonne(c) : champ,
+      texte: `${issue?.message ?? 'Valeur refusée'} : non importé`,
     });
   }
+  return v as T;
+}
 
-  const paysBrut = lireTexte('paysNaissance');
-  const pays = paysBrut ? PAYS_PAR_NOM.get(normaliserIntitule(paysBrut)) : undefined;
-  if (paysBrut && !pays) return refus(`Pays inconnu : « ${paysBrut} »`, 'paysNaissance');
+/** Les champs restés vides ne partent pas : une case vide n'efface rien. */
+function sansVides<T extends object>(o: T): T {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
+}
 
-  const contratBrut = lireTexte('contrat');
-  const contrat = contratBrut ? VOCABULAIRE_CONTRAT[normaliserIntitule(contratBrut)] : undefined;
-  if (contratBrut && !contrat) {
-    return refus(`« ${contratBrut} » n’est pas un type de contrat connu`, 'contrat');
-  }
-
-  const dureeBrute = lire('duree');
-  let fin: string | undefined;
-  if (dureeBrute !== null && dureeBrute !== '' && dureeBrute !== undefined) {
-    const mois = Number(String(dureeBrute).replace(',', '.'));
-    if (!Number.isInteger(mois) || mois <= 0 || mois > 600) {
-      return refus(`« ${String(dureeBrute)} » n’est pas une durée en mois entiers`, 'duree');
-    }
-    if (contrat === 'cdi') {
-      // Le classeur type le dit dans sa note de colonne : la durée ne
-      // concerne que les CDD et les stages. Une durée sur un CDI est une
-      // erreur de saisie, pas une fin de contrat à inventer.
-      return refus('Un CDI n’a pas de durée', 'duree');
-    }
-    fin = finDeContrat(debut.iso, mois);
-  }
-  if ((contrat === 'cdd' || contrat === 'stage') && !fin) {
-    return refus('Indiquez la durée en mois du CDD ou du stage', 'duree');
-  }
-
-  const personnelBrut = lireTexte('personnel');
-  const personnel = personnelBrut
-    ? VOCABULAIRE_PERSONNEL[normaliserIntitule(personnelBrut)]
-    : undefined;
-  if (personnelBrut && !personnel) {
-    return refus(`« ${personnelBrut} » n’est ni Cadre ni Non-cadre`, 'personnel');
-  }
-
-  const emailPersonnel = lireTexte('emailPersonnel');
-  const emailPro = lireTexte('emailPro');
-  const poste = lireTexte('poste') ?? null;
-
-  const entree = {
-    person: {
-      givenName: prenom,
-      familyName: nom,
-      ...(sexe ? { gender: sexe } : {}),
-      ...(dates.naissance ? { birthDate: dates.naissance } : {}),
-      ...(pays ? { birthPlace: pays } : {}),
-      ...(situation ? { maritalStatus: situation } : {}),
-      ...(perimee
-        ? {}
-        : {
-            ...(numeroPiece ? { nationalId: numeroPiece } : {}),
-            ...(piece ? { idDocumentType: piece } : {}),
-            ...(dates.delivrance ? { idDocumentIssuedOn: dates.delivrance } : {}),
-            ...(dates.expiration ? { idDocumentExpiresOn: dates.expiration } : {}),
-          }),
-      ...(emailPersonnel ? { personalEmail: emailPersonnel } : {}),
-      ...(telephone(lire('indicatif'), lire('telephone'))
-        ? { phone: telephone(lire('indicatif'), lire('telephone')) }
-        : {}),
-      ...(lireTexte('adresse') ? { addressLine: lireTexte('adresse') } : {}),
-    },
-    employee: {
-      employeeNumber: matricule,
-      // Première embauche : la date du contrat fait l'entrée dans
-      // l'organisation. Le fichier n'en distingue pas deux.
-      hiredOn: debut.iso,
-      ...(emailPro ? { workEmail: emailPro } : {}),
-      ...(telephone(lire('indicatifPro'), lire('telephonePro'))
-        ? { workPhone: telephone(lire('indicatifPro'), lire('telephonePro')) }
-        : {}),
-      ...(personnel ? { personnel } : {}),
-    },
-    ...(contrat
-      ? {
-          contract: {
-            contractType: contrat,
-            startDate: debut.iso,
-            ...(fin ? { endDate: fin } : {}),
-          },
-        }
-      : {}),
-    ...(poste ? { assignment: { positionTitle: poste, startDate: debut.iso } } : {}),
+/**
+ * Une ligne du fichier, prête pour la fiche, ou refusée en disant pourquoi.
+ * Les refus et les valeurs écartées nomment la colonne : la DCH corrige dans
+ * son tableur.
+ */
+export function lireLigne(
+  numero: number,
+  valeurs: CelluleXlsx[],
+  corr: Correspondance,
+  ctx: ContexteDeLecture,
+): { ok: LigneLue } | { refus: LigneRefusee } {
+  const lire = (c: Champ): CelluleXlsx => {
+    const i = corr.colonnes[c];
+    return i === undefined ? null : (valeurs[i] ?? null);
   };
+  const colonne = (c: Champ) => corr.intitules[c] ?? INTITULES[c][0]!;
+  const corrections: CorrectionImport[] = [];
+  const avertissements: AvertissementImport[] = [];
+  const ecarter = (c: Champ, motif: string) =>
+    avertissements.push({ colonne: colonne(c), texte: `${motif} : non importé` });
+  /** La valeur lue ; la correction notée, l'erreur écartée. */
+  function prendre<T>(c: Champ, l: Lecture<T>, lisible: (v: T) => string = String): T | undefined {
+    if (!l) return undefined;
+    if ('erreur' in l) {
+      ecarter(c, l.erreur);
+      return undefined;
+    }
+    if (l.corrige) {
+      corrections.push({
+        colonne: colonne(c),
+        lu: texte(lire(c)) ?? '',
+        retenu: lisible(l.valeur),
+      });
+    }
+    return l.valeur;
+  }
 
-  // Les contrôles du formulaire de création, les mêmes : ce qu'il refuse,
-  // l'import le refuse aussi, en nommant la colonne.
-  const verdict = createEmployeeSchema.safeParse(entree);
-  if (!verdict.success) {
-    const [issue] = verdict.error.issues;
+  const matricule = texte(lire('matricule'))?.toUpperCase();
+  const prenomBrut = texte(lire('prenom'));
+  const nomBrut = texte(lire('nom'));
+  const prenom = prenomBrut ? nomDePersonne(prenomBrut) : undefined;
+  const nom = nomBrut ? nomDePersonne(nomBrut) : undefined;
+  const refus = (motif: string, c: Champ | null) => ({
+    refus: {
+      ligne: numero,
+      matricule: matricule ?? null,
+      nom: [prenom, nom].filter(Boolean).join(' ') || null,
+      motif,
+      colonne: c && colonne(c),
+    },
+  });
+  if (!matricule) return refus('Le matricule manque', 'matricule');
+  if (!prenom) return refus('Le prénom manque', 'prenom');
+  if (!nom) return refus('Le nom manque', 'nom');
+
+  // ─── La date d'entrée : la date, sinon l'ancienneté, au mois près.
+  const entreeLue = lireDate(lire('entree'), ctx.aujourdhui);
+  const anciennete = lireAnciennete(lire('anciennete'));
+  const annees = anciennete && !('erreur' in anciennete) ? anciennete.valeur : null;
+  let entree: { iso: string; auMois: boolean };
+  if (entreeLue && !('erreur' in entreeLue)) {
+    entree = { iso: entreeLue.valeur.iso, auMois: entreeLue.valeur.auMois };
+    if (entreeLue.corrige) {
+      corrections.push({
+        colonne: colonne('entree'),
+        lu: texte(lire('entree')) ?? '',
+        retenu: dateLisible(entree.iso, entree.auMois),
+      });
+    }
+    if (annees !== null && !entree.auMois) {
+      const calculee = Math.round(ancienneteDe(entree.iso, ctx.aujourdhui) * 10) / 10;
+      if (Math.abs(calculee - annees) > 1) {
+        avertissements.push({
+          colonne: colonne('anciennete'),
+          texte: `${enAnnees(annees)} dans le fichier, ${enAnnees(calculee)} d’après la date d’entrée : la date d’entrée est retenue`,
+        });
+      }
+    }
+  } else if (annees !== null) {
+    const iso = entreeDepuisAnciennete(annees, ctx.aujourdhui);
+    entree = { iso, auMois: true };
+    corrections.push({
+      colonne: colonne('entree'),
+      lu: texte(lire('entree')) ?? '',
+      retenu: `${dateLisible(iso, true)}, d’après l’ancienneté (${enAnnees(annees)})`,
+    });
+  } else {
     return refus(
-      issue?.message ?? 'Valeur invalide',
-      COLONNE_DU_CHAMP[issue?.path.join('.') ?? ''] ?? null,
+      entreeLue && 'erreur' in entreeLue
+        ? entreeLue.erreur
+        : 'La date d’entrée manque, et l’ancienneté aussi',
+      'entree',
     );
   }
+
+  // ─── La personne.
+  const personne: PersonneLue = {};
+  personne.gender = prendre('sexe', lireSexe(lire('sexe')), (g) => (g === 'male' ? 'M' : 'F'));
+  const naissance = lireDate(lire('naissance'), ctx.aujourdhui);
+  if (naissance && !('erreur' in naissance) && naissance.valeur.auMois) {
+    ecarter('naissance', 'Le mois et l’année ne suffisent pas');
+  } else {
+    personne.birthDate = prendre('naissance', naissance, (d) => dateLisible(d.iso))?.iso;
+  }
+  personne.birthPlace = prendre('pays', lirePays(lire('pays')));
+  const lieu = texte(lire('lieuNaissance'));
+  if (lieu) {
+    const ville = nomDeVille(lieu);
+    if (ville.corrige) {
+      corrections.push({ colonne: colonne('lieuNaissance'), lu: lieu, retenu: ville.valeur });
+    }
+    personne.lieuDeNaissance = ville.valeur;
+  }
+  personne.nationalId = prendre('cni', lireCni(lire('cni')));
+  if (personne.nationalId) personne.idDocumentType = 'cni';
+  personne.maritalStatus = prendre(
+    'situation',
+    lireSituation(lire('situation')),
+    (s) => SITUATION_LISIBLE[s],
+  );
+
+  // Les épouses, pour un homme marié seulement : autant de noms qu'annoncé.
+  const noms = (['epouse1', 'epouse2', 'epouse3', 'epouse4'] as const)
+    .map((c) => texte(lire(c)))
+    .filter((n): n is string => Boolean(n))
+    .map(nomDePersonne);
+  const annoncees = prendre('nbEpouses', lireEntier(lire('nbEpouses'), 10));
+  if (noms.length > 0 || (annoncees ?? 0) > 0) {
+    const nombre = annoncees ?? noms.length;
+    const probleme =
+      personne.gender === 'female'
+        ? 'Épouses renseignées pour une femme'
+        : personne.gender !== 'male'
+          ? 'Épouses renseignées sans le sexe'
+          : !personne.maritalStatus
+            ? 'Épouses renseignées sans la situation matrimoniale'
+            : personne.maritalStatus !== 'married'
+              ? 'Épouses renseignées pour un homme qui n’est pas marié'
+              : nombre > MAX_EPOUSES
+                ? 'Quatre épouses au plus'
+                : nombre !== noms.length
+                  ? `${pluriel(nombre, 'épouse')} annoncée${nombre > 1 ? 's' : ''}, ${pluriel(noms.length, 'nom')}`
+                  : null;
+    if (probleme) {
+      avertissements.push({
+        colonne: colonne('nbEpouses'),
+        texte: `${probleme} : épouses non importées`,
+      });
+    } else {
+      personne.epouses = noms;
+    }
+  }
+  personne.nombreEnfants = prendre('enfants', lireEntier(lire('enfants'), 30));
+  personne.personalEmail = prendre('emailPerso', lireCourriel(lire('emailPerso')));
+  personne.phone = prendre('tel', lireTelephone(lire('tel')));
+  const adresseBrute = texte(lire('adresse'));
+  if (adresseBrute) personne.addressLine = adresse(adresseBrute);
+  const villeBrute = texte(lire('ville'));
+  if (villeBrute) {
+    const ville = nomDeVille(villeBrute);
+    if (ville.corrige) {
+      corrections.push({ colonne: colonne('ville'), lu: villeBrute, retenu: ville.valeur });
+    }
+    personne.ville = ville.valeur;
+  }
+  personne.region = prendre('region', lireRegion(lire('region')), (r) => LIBELLES_REGION[r]);
+  const urgence = texte(lire('urgenceNom'));
+  if (urgence) personne.emergencyContactName = nomDePersonne(urgence);
+  personne.emergencyContactPhone = prendre('urgenceTel', lireTelephone(lire('urgenceTel')));
+  personne.lienContactUrgence = prendre(
+    'lien',
+    lireLien(lire('lien')),
+    (l) => LIBELLES_LIEN_DE_PARENTE[l],
+  );
+
+  // ─── L'emploi.
+  const emploi: EmploiLu = {};
+  emploi.workEmail = prendre('emailPro', lireCourrielPro(lire('emailPro')));
+  emploi.workPhone = prendre('telPro', lireTelephone(lire('telPro')));
+  emploi.personnel = prendre('statut', lireStatut(lire('statut')), (p) =>
+    p === 'cadre' ? 'Cadre' : 'Non cadre',
+  );
+  emploi.lieuDeTravail = texte(lire('lieuTravail'));
+  emploi.projet = texte(lire('projet'));
+  emploi.categorie = texte(lire('categorie'));
+
+  const posteBrut = texte(lire('poste'));
+  const poste = posteBrut
+    ? { intitule: intitule(posteBrut, ctx.sigles), nature: natureDuPoste(posteBrut) }
+    : null;
+
+  // ─── Le contrat : un CDD a sa date de fin, un CDI n'en a pas.
+  let contrat: LigneLue['contrat'] = null;
+  const type = prendre('contrat', lireContrat(lire('contrat')), (t) => t.toUpperCase());
+  const finLue = lireDate(lire('finCdd'), ctx.aujourdhui);
+  if (type === 'cdi') {
+    contrat = { type, fin: null };
+    if (finLue) ecarter('finCdd', 'Un CDI n’a pas de date de fin');
+  } else if (type === 'cdd') {
+    const fin = finLue && !('erreur' in finLue) && !finLue.valeur.auMois ? finLue.valeur.iso : null;
+    if (!fin) {
+      ecarter(
+        'contrat',
+        finLue && 'erreur' in finLue
+          ? `CDD dont la date de fin ne se lit pas (${finLue.erreur})`
+          : 'CDD sans date de fin',
+      );
+    } else if (fin < entree.iso) {
+      ecarter('contrat', 'CDD qui finit avant la date d’entrée');
+    } else {
+      contrat = { type, fin };
+      if (fin < ctx.aujourdhui) {
+        avertissements.push({
+          colonne: colonne('finCdd'),
+          texte: `CDD terminé le ${dateLisible(fin)} : saisissez son renouvellement sur la fiche`,
+        });
+      }
+    }
+  }
+  for (const c of ['sortie', 'motifSortie'] as const) {
+    if (texte(lire(c))) ecarter(c, 'La sortie se saisit sur la fiche');
+  }
+
+  const personneValide = selonLaFiche(
+    personFieldsSchema,
+    personne,
+    { givenName: prenom, familyName: nom },
+    colonne,
+    avertissements,
+  );
+  const emploiValide = selonLaFiche(
+    employeeFieldsSchema,
+    emploi,
+    { employeeNumber: matricule, hiredOn: entree.iso },
+    colonne,
+    avertissements,
+  );
 
   return {
     ok: {
+      ligne: numero,
       matricule,
-      nom: `${prenom} ${nom}`,
+      prenom,
+      nom,
+      personne: sansVides(personneValide),
+      emploi: sansVides(emploiValide),
+      entree,
       poste,
-      uniteAbrege: lireTexte('unite') ?? null,
-      responsableMatricule: lireTexte('responsable')?.toUpperCase() ?? null,
+      direction: texte(lire('direction')) ?? null,
+      departement: texte(lire('departement')) ?? null,
+      contrat,
+      n1: texte(lire('n1')) ?? null,
+      fonctionnel: texte(lire('fonctionnel')) ?? null,
+      corrections,
       avertissements,
-      entree: verdict.data as LigneConvertie['entree'],
+      colonne,
     },
   };
-}
-
-/** La colonne du fichier d'où vient chaque champ du dossier. */
-const COLONNE_DU_CHAMP: Record<string, Champ> = {
-  'person.givenName': 'prenom',
-  'person.familyName': 'nom',
-  'person.gender': 'sexe',
-  'person.birthDate': 'naissance',
-  'person.birthPlace': 'paysNaissance',
-  'person.maritalStatus': 'situation',
-  'person.nationalId': 'numeroPiece',
-  'person.idDocumentType': 'piece',
-  'person.idDocumentIssuedOn': 'delivrance',
-  'person.idDocumentExpiresOn': 'expiration',
-  'person.personalEmail': 'emailPersonnel',
-  'person.phone': 'telephone',
-  'person.addressLine': 'adresse',
-  'employee.employeeNumber': 'matricule',
-  'employee.hiredOn': 'debutContrat',
-  'employee.workEmail': 'emailPro',
-  'employee.workPhone': 'telephonePro',
-  'employee.personnel': 'personnel',
-  'contract.contractType': 'contrat',
-  'contract.startDate': 'debutContrat',
-  'contract.endDate': 'duree',
-  'assignment.positionTitle': 'poste',
-  'assignment.startDate': 'debutContrat',
-};
-
-/** Le jour, à Dakar comme à Greenwich : la règle de la fiche. */
-function aujourdhui(): string {
-  return new Date().toISOString().slice(0, 10);
 }

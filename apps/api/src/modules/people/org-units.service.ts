@@ -253,21 +253,30 @@ export class OrgUnitsService {
   }
 
   async create(user: SessionUser, input: CreateOrgUnitInput): Promise<{ id: string }> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      this.creerDansLaTransaction(tx, user, input),
+    );
+  }
+
+  /** La création, dans la transaction de l'appelant : l'import qui crée un département (ADR-0159). */
+  async creerDansLaTransaction(
+    tx: Tx,
+    user: SessionUser,
+    input: CreateOrgUnitInput,
+  ): Promise<{ id: string }> {
     const id = uuidv7();
     this.assertShortNameAllowed(input.unitType, input.shortName ?? null);
     try {
-      await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
-        await verrouillerLaChaine(tx);
-        await this.assertParentAllowed(tx, input.unitType, input.parentId ?? null);
-        if (!input.parentId) await this.assertSommetLibre(tx, null);
-        await tx.insert(t.orgUnits).values({
-          id,
-          tenantId: user.tenantId,
-          name: input.name,
-          unitType: input.unitType,
-          parentId: input.parentId || null,
-          shortName: input.shortName ?? null,
-        });
+      await verrouillerLaChaine(tx);
+      await this.assertParentAllowed(tx, input.unitType, input.parentId ?? null);
+      if (!input.parentId) await this.assertSommetLibre(tx, null);
+      await tx.insert(t.orgUnits).values({
+        id,
+        tenantId: user.tenantId,
+        name: input.name,
+        unitType: input.unitType,
+        parentId: input.parentId || null,
+        shortName: input.shortName ?? null,
       });
     } catch (err) {
       if (pgCode(err) === '23505') mapUniqueViolation(err);

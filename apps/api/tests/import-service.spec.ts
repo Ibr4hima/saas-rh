@@ -1,22 +1,15 @@
 /**
- * L'import d'un classeur, jusqu'à la base.
+ * L'import du fichier du personnel de la DCH, jusqu'à la base (ADR-0159).
  *
- * `import-employes.spec.ts` éprouve la lecture et la traduction — ce que la
- * plateforme COMPREND d'un classeur. Ici, ce qu'elle en FAIT : les dossiers
- * écrits, les rattachements, et les trois règles décidées avec la RH.
- *
- *   1. un matricule déjà présent est ignoré, jamais écrasé ;
- *   2. un abrégé d'unité inconnu crée l'agent sans rattachement ;
- *   3. une ligne fautive n'arrête pas les autres.
- *
- * Le test qui compte le plus est celui de la règle 1 : c'est lui qui interdit
- * qu'un second envoi du même fichier — geste que tout le monde fait un jour —
- * écrase des dossiers enrichis depuis.
+ * `import-employes.spec.ts` éprouve la lecture : ce que la plateforme
+ * comprend du fichier. Ici, ce qu'elle en fait : les fiches créées et mises
+ * à jour, les unités et les responsables que les postes désignent, les N+1
+ * retrouvés par leur nom, et l'aperçu qui joue tout puis annule.
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionUser } from '@teranga/contracts';
+import type { RapportImportEmployes, SessionUser } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -35,114 +28,145 @@ const admin = { userId: adminUserId, tenantId, role: 'admin' } as SessionUser;
 let ownerPool: Pool;
 let db: TenantDb;
 let imports: ImportEmployesService;
-let dchId: string;
+const unites: Record<'dg' | 'dfc' | 'dch' | 'dsid', string> = {
+  dg: '',
+  dfc: '',
+  dch: '',
+  dsid: '',
+};
 
 async function raw(q: string, params: unknown[] = []) {
   return ownerPool.query(q, params as never[]);
 }
 
-/* ——— Le classeur, écrit comme la RH l'écrit ——— */
+/* ─── Le fichier, écrit comme la DCH l'écrit ─── */
 
 const COLONNES = [
+  'Matricule',
   'Prénom',
   'Nom',
-  'Matricule',
-  'Poste',
-  'Direction affectée',
-  'Type de contrat',
-  'Début du contrat',
-  'Durée (mois)',
   'Sexe',
-  'Matricule du responsable',
+  'Date de naissance',
+  'Numero CNI',
+  'Situation Matrimoniale',
+  'Region ',
+  'Adresse mail professionnel ',
+  'Poste occupé ',
+  'Responsable Hierarchique\n(N+1)',
+  'Responsable Fonctionnel',
+  'Statut',
+  'Direction',
+  'Département ',
+  'Type de contrat',
+  "Date d'entrée",
+  'Date de fin (si CDD)',
+  'Ancienneté (années)',
 ] as const;
 
-type Ligne = Partial<Record<(typeof COLONNES)[number], string>>;
+type Ligne = Partial<Record<(typeof COLONNES)[number], string | number>>;
 
-/** Échappe ce qui doit l'être dans une cellule en chaîne littérale. */
 const xml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-
 const COL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-/**
- * Un classeur à partir de lignes nommées.
- *
- * Tout part en `inlineStr`, dates comprises : c'est le cas le plus courant
- * dans un fichier tenu à la main, et la lecture des dates sérielles a déjà
- * ses tests ailleurs. Une valeur absente laisse un TROU dans la ligne, comme
- * un tableur le fait — la cellule n'est pas écrite du tout.
- */
-function classeurDe(lignes: Ligne[], entetes: readonly string[] = COLONNES): Buffer {
-  const ligneXml = (valeurs: (string | undefined)[], r: number) =>
+/** Un classeur : le texte en chaînes, les nombres en nombres, comme Excel les garde. */
+function fichier(lignes: Ligne[], entetes: readonly string[] = COLONNES): Buffer {
+  const rang = (valeurs: (string | number | undefined)[], r: number) =>
     `<row r="${r}">` +
     valeurs
       .map((v, i) =>
-        v === undefined ? '' : `<c r="${COL[i]}${r}" t="inlineStr"><is><t>${xml(v)}</t></is></c>`,
+        v === undefined
+          ? ''
+          : typeof v === 'number'
+            ? `<c r="${COL[i]}${r}" t="n"><v>${v}</v></c>`
+            : `<c r="${COL[i]}${r}" t="inlineStr"><is><t>${xml(v)}</t></is></c>`,
       )
       .join('') +
     `</row>`;
   const corps = lignes.map((l, i) =>
-    ligneXml(
+    rang(
       entetes.map((e) => l[e as keyof Ligne]),
       i + 2,
     ),
   );
-  return classeur(`<sheetData>${ligneXml([...entetes], 1)}${corps.join('')}</sheetData>`);
+  return classeur(`<sheetData>${rang([...entetes], 1)}${corps.join('')}</sheetData>`);
 }
 
 const AGENT = (n: number, plus: Ligne = {}): Ligne => ({
-  Prénom: `Agent${n}`,
-  Nom: 'Diop',
-  Matricule: `APIX-${String(n).padStart(4, '0')}`,
-  Poste: 'Analyste',
-  'Direction affectée': 'DCH',
+  Matricule: String(100 + n),
+  Prénom: `AGENT${n}`,
+  Nom: 'DIOP',
+  Sexe: 'F',
+  'Date de naissance': `0${(n % 9) + 1}/03/1990`,
+  'Poste occupé ': "CHARGE D'ETUDES",
+  Statut: 'Non cadre',
+  Direction: 'DCH',
   'Type de contrat': 'CDI',
-  'Début du contrat': '01/03/2024',
+  "Date d'entrée": '01/03/2024',
   ...plus,
 });
 
-/** Ce que la base porte pour un matricule — le dossier tel qu'il est écrit. */
-async function dossier(matricule: string) {
+const DG: Ligne = {
+  Matricule: '001',
+  Prénom: 'CHEIKH',
+  Nom: 'MBAYE',
+  Sexe: 'M',
+  'Date de naissance': '12/01/1970',
+  'Poste occupé ': 'DIRECTEUR GENERAL',
+  Statut: 'Cadre',
+  Direction: 'DG',
+  'Type de contrat': 'CDI',
+  "Date d'entrée": '01/01/2015',
+};
+
+const importer = (lignes: Ligne[], appliquer = true, choix: Record<string, string> = {}) =>
+  imports.importer(admin, fichier(lignes), appliquer, choix);
+
+const ligne = (r: RapportImportEmployes, n: number) => r.lignes.find((l) => l.ligne === n)!;
+
+/** La fiche telle que la base la porte. */
+async function fiche(matricule: string) {
   const r = await raw(
-    `SELECT p.given_name, p.family_name, p.gender, e.hired_on,
-            a.position_title, a.org_unit_id, c.contract_type, c.start_date, c.end_date,
-            (SELECT rp.given_name || ' ' || rp.family_name
-               FROM employees re JOIN persons rp ON rp.id = re.person_id
-              WHERE re.id = e.manager_employee_id) AS responsable
+    `SELECT e.id, e.employee_number, e.matricule_provisoire, e.hired_on::text AS hired_on,
+            e.entree_au_mois, e.personnel, e.work_email,
+            p.given_name, p.family_name, p.gender, p.region, p.national_id_encrypted,
+            a.position_title, a.org_unit_id, lower(a.validity)::text AS affecte_le,
+            c.contract_type, c.start_date::text AS contrat_le, c.end_date::text AS fin,
+            (SELECT rp.given_name || ' ' || rp.family_name FROM employees re
+               JOIN persons rp ON rp.id = re.person_id WHERE re.id = e.manager_employee_id) AS n1,
+            (SELECT rp.given_name || ' ' || rp.family_name FROM employees re
+               JOIN persons rp ON rp.id = re.person_id
+              WHERE re.id = e.responsable_fonctionnel_id) AS fonctionnel
        FROM employees e
        JOIN persons p ON p.id = e.person_id
-       LEFT JOIN assignments a ON a.employee_id = e.id
+       LEFT JOIN assignments a ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
        LEFT JOIN contracts c ON c.employee_id = e.id
       WHERE e.tenant_id = $1 AND e.employee_number = $2`,
     [tenantId, matricule],
   );
-  return r.rows[0] as
-    | {
-        given_name: string;
-        family_name: string;
-        gender: string | null;
-        hired_on: Date;
-        position_title: string | null;
-        org_unit_id: string | null;
-        contract_type: string | null;
-        start_date: Date | null;
-        end_date: Date | null;
-        responsable: string | null;
-      }
-    | undefined;
+  return r.rows[0] as Record<string, unknown> | undefined;
 }
 
-const jour = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
-
-const compteDossiers = async (): Promise<number> => {
-  const r = await raw(`SELECT count(*)::int AS n FROM employees WHERE tenant_id = $1`, [tenantId]);
+const compte = async (table: string): Promise<number> => {
+  const r = await raw(`SELECT count(*)::int AS n FROM ${table} WHERE tenant_id = $1`, [tenantId]);
   return (r.rows[0] as { n: number }).n;
 };
+
+async function chefDe(uniteId: string) {
+  const r = await raw(
+    `SELECT p.given_name || ' ' || p.family_name AS nom FROM org_units o
+       JOIN employees e ON e.id = o.manager_employee_id JOIN persons p ON p.id = e.person_id
+      WHERE o.id = $1`,
+    [uniteId],
+  );
+  return (r.rows[0] as { nom: string } | undefined)?.nom ?? null;
+}
 
 beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 3 });
   db = new TenantDb();
-  imports = new ImportEmployesService(db, new PeopleService(db, new EncryptionService()));
+  const crypto = new EncryptionService();
+  imports = new ImportEmployesService(db, new PeopleService(db, crypto), crypto);
   await raw(
     `INSERT INTO users (id, email, password_hash, given_name, family_name)
      VALUES ($1,$2,'x','Test','Import')`,
@@ -159,10 +183,20 @@ beforeAll(async () => {
 });
 
 async function vider() {
-  await raw(`UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1`, [tenantId]);
+  await raw(
+    `UPDATE org_units SET manager_employee_id = NULL, adjoint_employee_id = NULL
+              WHERE tenant_id = $1`,
+    [tenantId],
+  );
+  await raw(
+    `UPDATE employees SET manager_employee_id = NULL, responsable_fonctionnel_id = NULL
+              WHERE tenant_id = $1`,
+    [tenantId],
+  );
   for (const table of [
     'assignments',
     'contracts',
+    'remunerations',
     'invitations',
     'notifications',
     'employees',
@@ -176,11 +210,17 @@ async function vider() {
 
 beforeEach(async () => {
   await vider();
-  dchId = randomUUID();
+  unites.dg = randomUUID();
+  unites.dfc = randomUUID();
+  unites.dch = randomUUID();
+  unites.dsid = randomUUID();
   await raw(
-    `INSERT INTO org_units (id, tenant_id, unit_type, name, short_name)
-     VALUES ($1,$2,'direction','Direction du Capital Humain','DCH')`,
-    [dchId, tenantId],
+    `INSERT INTO org_units (id, tenant_id, unit_type, name, short_name, parent_id, created_at)
+     VALUES ($1,$5,'direction','Direction Générale','DG',NULL, now() - interval '1 day'),
+            ($2,$5,'direction','Direction Financière et Comptable','DFC',$1, now()),
+            ($3,$5,'direction','Direction du Capital Humain','DCH',$1, now()),
+            ($4,$5,'direction','Direction des Systèmes d''information et de la Digitalisation','DSID',$1, now())`,
+    [unites.dg, unites.dfc, unites.dch, unites.dsid, tenantId],
   );
 });
 
@@ -194,453 +234,373 @@ afterAll(async () => {
 });
 
 describe('l’aperçu', () => {
-  it('rend le compte rendu SANS rien écrire', async () => {
-    const r = await imports.importer(admin, classeurDe([AGENT(1), AGENT(2)]), false);
+  it('joue l’import puis l’annule : rien n’est écrit', async () => {
+    const r = await importer([DG, AGENT(1), AGENT(2)], false);
     expect(r.applique).toBe(false);
-    expect(r.aCreer).toBe(2);
-    expect(r.crees).toBe(0);
-    expect(await compteDossiers()).toBe(0);
+    expect(r.aCreer).toBe(3);
+    expect(r.designations).toEqual([{ poste: 'Directeur général', nom: 'Cheikh Mbaye' }]);
+    expect(await compte('employees')).toBe(0);
+    expect(await compte('persons')).toBe(0);
+    expect(await chefDe(unites.dg)).toBeNull();
   });
 
-  it('s’arrête sur une colonne obligatoire absente, sans parler des lignes', async () => {
-    const sansMatricule = ['Prénom', 'Nom', 'Poste', 'Début du contrat'] as const;
+  it('dit dès l’aperçu ce que l’écriture refusera', async () => {
+    // Sans DG, une direction ne reçoit pas de directeur : l'organigramme le refuse.
+    const directeur = AGENT(1, {
+      'Poste occupé ': 'DIRECTEUR FINANCIER ET COMPTABLE',
+      Direction: 'DFC',
+    });
+    const r = await importer([directeur], false);
+    expect(ligne(r, 2).avertissements).toContainEqual({
+      colonne: 'Poste occupé',
+      texte:
+        'Désignation impossible : Les responsables de direction ont le DG pour N+1 : le DG doit être désigné en premier.',
+    });
+    expect(r.designations).toEqual([]);
+  });
+
+  it('trouve les intitulés sous un titre, et cite les vraies lignes du tableur', async () => {
+    const titre = `<row r="1"><c r="A1" t="inlineStr"><is><t>PERSONNEL APIX 2026</t></is></c></row>`;
+    const entetes = ['Matricule', 'Prénom', 'Nom', 'Date d’entrée'];
+    const cellule = (v: string, c: number, r: number) =>
+      `<c r="${'ABCD'[c]}${r}" t="inlineStr"><is><t>${v}</t></is></c>`;
+    const rang = (vs: string[], r: number) =>
+      `<row r="${r}">${vs.map((v, i) => cellule(v, i, r)).join('')}</row>`;
     const r = await imports.importer(
       admin,
-      classeurDe([AGENT(1), AGENT(2)], sansMatricule),
-      // Même en mode écriture : une colonne obligatoire absente n'écrit rien.
-      true,
+      classeur(
+        `<sheetData>${titre}${rang(entetes, 3)}${rang(['301', 'AWA', 'DIOP', '01/03/2024'], 4)}` +
+          `${rang(['302', '', 'FALL', '01/03/2024'], 6)}</sheetData>`,
+      ),
+      false,
     );
-    expect(r.colonnesManquantes).toEqual(['Matricule']);
+    expect(r.colonnesManquantes).toEqual([]);
+    expect(r.lignes.map((l) => [l.ligne, l.etat])).toEqual([
+      [4, 'a-creer'],
+      [6, 'erreur'],
+    ]);
+  });
+
+  it('s’arrête sur une colonne indispensable absente', async () => {
+    const r = await imports.importer(
+      admin,
+      fichier([{ Prénom: 'AWA', Nom: 'DIOP' }], ['Prénom', 'Nom']),
+      false,
+    );
+    expect(r.colonnesManquantes).toEqual(['Matricule', 'Date d’entrée']);
     expect(r.lignes).toEqual([]);
-    expect(r.applique).toBe(false);
-    expect(await compteDossiers()).toBe(0);
-  });
-
-  it('signale les colonnes qu’elle ne sait pas lire, et importe quand même', async () => {
-    const avecIntrus = [...COLONNES, 'Groupe sanguin'] as const;
-    const r = await imports.importer(
-      admin,
-      classeurDe([{ ...AGENT(1), 'Groupe sanguin': 'O+' } as Ligne], avecIntrus),
-      true,
-    );
-    expect(r.colonnesInconnues).toEqual(['Groupe sanguin']);
-    expect(r.crees).toBe(1);
   });
 });
 
-describe('l’écriture', () => {
-  it('crée le dossier complet : personne, employé, affectation, contrat', async () => {
-    const r = await imports.importer(
-      admin,
-      classeurDe([AGENT(1, { Sexe: 'Féminin', Prénom: 'Awa' })]),
-      true,
-    );
+describe('la création', () => {
+  it('crée la fiche complète : personne, emploi, contrat, affectation', async () => {
+    const r = await importer([
+      AGENT(1, {
+        'Numero CNI': '2 751 1990 01234',
+        'Situation Matrimoniale': 'Célib',
+        'Region ': 'St Louis',
+        'Adresse mail professionnel ': 'A.Diop@apix.com',
+      }),
+    ]);
     expect(r.applique).toBe(true);
-    expect(r.crees).toBe(1);
-
-    const d = await dossier('APIX-0001');
-    expect(d?.given_name).toBe('Awa');
-    expect(d?.family_name).toBe('Diop');
-    expect(d?.gender).toBe('female');
-    expect(jour(d?.hired_on ?? null)).toBe('2024-03-01');
-    expect(d?.position_title).toBe('Analyste');
-    expect(d?.org_unit_id).toBe(dchId);
-    expect(d?.contract_type).toBe('cdi');
-    expect(jour(d?.start_date ?? null)).toBe('2024-03-01');
-    expect(d?.end_date).toBeNull();
-  });
-
-  it('datte la fin d’un CDD à la VEILLE du jour anniversaire', async () => {
-    await imports.importer(
-      admin,
-      classeurDe([
-        AGENT(1, {
-          'Type de contrat': 'CDD',
-          'Début du contrat': '20/05/2024',
-          'Durée (mois)': '12',
-        }),
+    expect(r.aCreer).toBe(1);
+    expect(ligne(r, 2).corrections).toEqual(
+      expect.arrayContaining([
+        { colonne: 'Region', lu: 'St Louis', retenu: 'Saint-Louis' },
+        { colonne: 'Adresse mail professionnel', lu: 'A.Diop@apix.com', retenu: 'a.diop@apix.sn' },
       ]),
-      true,
     );
-    const d = await dossier('APIX-0001');
-    expect(d?.contract_type).toBe('cdd');
-    expect(jour(d?.end_date ?? null)).toBe('2025-05-19');
+    const f = await fiche('101');
+    expect(f).toMatchObject({
+      given_name: 'Agent1',
+      family_name: 'Diop',
+      gender: 'female',
+      region: 'saint_louis',
+      personnel: 'non_cadre',
+      work_email: 'a.diop@apix.sn',
+      hired_on: '2024-03-01',
+      entree_au_mois: false,
+      position_title: "Chargé d'études",
+      org_unit_id: unites.dch,
+      contract_type: 'cdi',
+      contrat_le: '2024-03-01',
+    });
+    expect(f?.national_id_encrypted).toBeTruthy();
   });
 
-  it('rattache par le NOM COMPLET de la direction, pas seulement par l’abrégé', async () => {
-    await imports.importer(
-      admin,
-      classeurDe([AGENT(1, { 'Direction affectée': 'direction du capital humain' })]),
-      true,
-    );
-    expect((await dossier('APIX-0001'))?.org_unit_id).toBe(dchId);
+  it('déduit de l’ancienneté le mois d’entrée, et le marque', async () => {
+    await importer([AGENT(1, { "Date d'entrée": 'à voir', 'Ancienneté (années)': 2 })]);
+    const f = await fiche('101');
+    expect(f?.entree_au_mois).toBe(true);
+    expect(String(f?.hired_on)).toMatch(/-01$/);
   });
 
-  it('crée l’agent SANS rattachement quand l’abrégé est inconnu, et le signale', async () => {
-    const r = await imports.importer(
-      admin,
-      classeurDe([AGENT(1, { 'Direction affectée': 'DGUPLI' }), AGENT(2)]),
-      true,
-    );
-    expect(r.crees).toBe(2);
-    expect(r.sansUnite).toBe(1);
-    const ligne = r.lignes.find((l) => l.matricule === 'APIX-0001');
-    // Un abrégé inconnu n'est pas un refus : la ligne reste « à créer » et
-    // porte un AVERTISSEMENT — ce qui manquera au dossier, pas pourquoi il
-    // n'existe pas. `motif` est réservé aux lignes refusées ou ignorées.
-    expect(ligne?.motif).toBeNull();
-    expect(ligne?.avertissements).toEqual([
-      {
-        colonne: 'Direction affectée',
-        texte: 'Acronyme absent de l’organigramme : dossier créé sans direction',
-      },
-    ]);
-    expect(ligne?.uniteResolue).toBeNull();
-    expect((await dossier('APIX-0001'))?.org_unit_id).toBeNull();
-    // L'agent entre quand même avec son poste : c'est le dossier qui compte.
-    expect((await dossier('APIX-0001'))?.position_title).toBe('Analyste');
-    expect((await dossier('APIX-0002'))?.org_unit_id).toBe(dchId);
-  });
-});
-
-describe('les doublons', () => {
-  it('ignore un matricule DÉJÀ EN BASE sans toucher au dossier existant', async () => {
-    await imports.importer(admin, classeurDe([AGENT(1)]), true);
-    // Le dossier vit sa vie après l'import : il change de poste.
-    await raw(`UPDATE assignments SET position_title = 'Directrice' WHERE tenant_id = $1`, [
-      tenantId,
-    ]);
-
-    const r = await imports.importer(admin, classeurDe([AGENT(1), AGENT(2)]), true);
-    expect(r.crees).toBe(1);
-    expect(r.ignores).toBe(1);
-    const ignoree = r.lignes.find((l) => l.matricule === 'APIX-0001');
-    expect(ignoree?.etat).toBe('ignore');
-    expect(ignoree?.colonne).toBe('Matricule');
-    expect(ignoree?.motif).toContain('existe déjà');
-    // Le poste n'a pas été réécrit par le second envoi.
-    expect((await dossier('APIX-0001'))?.position_title).toBe('Directrice');
-    expect(await compteDossiers()).toBe(2);
+  it('lit une date d’entrée gardée en nombre par Excel', async () => {
+    const r = await importer([AGENT(1, { "Date d'entrée": 44452 })]);
+    expect((await fiche('101'))?.hired_on).toBe('2021-09-13');
+    expect(ligne(r, 2).corrections).toContainEqual({
+      colonne: "Date d'entrée",
+      lu: '44452',
+      retenu: '13/09/2021',
+    });
   });
 
-  it('dit ce qu’il a COMPRIS de la direction d’une ligne ignorée', async () => {
-    await imports.importer(admin, classeurDe([AGENT(1)]), true);
-    const r = await imports.importer(admin, classeurDe([AGENT(1)]), false);
-    // Le rejeu d'un fichier déjà importé affichait tous ses abrégés comme
-    // introuvables : la résolution se faisait APRÈS le test de doublon.
-    expect(r.lignes[0]?.uniteAbrege).toBe('DCH');
-    expect(r.lignes[0]?.uniteResolue).toBe('Direction du Capital Humain');
-    expect(r.sansUnite).toBe(0);
+  it('donne 50-A et 50-B à un matricule en double, provisoires', async () => {
+    const r = await importer([AGENT(1, { Matricule: '50' }), AGENT(2, { Matricule: '50' })]);
+    expect(r.aCreer).toBe(2);
+    expect(ligne(r, 2).matricule).toBe('50-A');
+    expect(ligne(r, 3)).toMatchObject({ matricule: '50-B', matriculeProvisoire: true });
+    expect((await fiche('50-A'))?.matricule_provisoire).toBe(true);
+    expect((await fiche('50-B'))?.given_name).toBe('Agent2');
   });
 
-  it('ignore la seconde ligne d’un doublon INTERNE au fichier, en nommant la première', async () => {
-    const r = await imports.importer(
-      admin,
-      classeurDe([AGENT(1), AGENT(2), AGENT(1, { Prénom: 'Sosie' })]),
-      true,
-    );
-    expect(r.crees).toBe(2);
-    expect(r.ignores).toBe(1);
-    const sosie = r.lignes.find((l) => l.ligne === 4);
-    expect(sosie?.etat).toBe('ignore');
-    expect(sosie?.motif).toContain('ligne 2');
-    // C'est la PREMIÈRE occurrence qui est entrée.
-    expect((await dossier('APIX-0001'))?.given_name).toBe('Agent1');
-  });
-});
-
-describe('une ligne fautive', () => {
-  it('n’arrête pas les autres, et nomme sa ligne et sa colonne', async () => {
-    const r = await imports.importer(
-      admin,
-      classeurDe([AGENT(1), AGENT(2, { 'Début du contrat': 'le mois dernier' }), AGENT(3)]),
-      true,
-    );
-    expect(r.crees).toBe(2);
+  it('n’arrête pas les autres lignes sur une ligne fautive, et la nomme', async () => {
+    const r = await importer([AGENT(1, { Prénom: undefined }), AGENT(2)]);
     expect(r.erreurs).toBe(1);
-    const fautive = r.lignes.find((l) => l.ligne === 3);
-    expect(fautive?.etat).toBe('erreur');
-    expect(fautive?.colonne).toBe('Début du contrat');
-    expect(await compteDossiers()).toBe(2);
-    expect(await dossier('APIX-0002')).toBeUndefined();
-    expect(await dossier('APIX-0003')).toBeDefined();
+    expect(r.aCreer).toBe(1);
+    expect(ligne(r, 2)).toMatchObject({
+      etat: 'erreur',
+      motif: 'Le prénom manque',
+      colonne: 'Prénom',
+    });
+    expect(await compte('employees')).toBe(1);
   });
 
   it('refuse un fichier qui n’est pas un classeur, sans rien écrire', async () => {
-    const erreur = await imports
-      .importer(admin, Buffer.from('ceci n’est pas une archive zip'), true)
-      .catch((e: unknown) => e);
-    expect(erreur).toBeInstanceOf(ProblemException);
-    expect((erreur as ProblemException).problem.code).toBe('import.illisible');
-    expect(await compteDossiers()).toBe(0);
+    await expect(
+      imports.importer(admin, Buffer.from('nom;prenom\nDiop;Awa'), true),
+    ).rejects.toBeInstanceOf(ProblemException);
+    expect(await compte('employees')).toBe(0);
   });
 });
 
-describe('le responsable hiérarchique', () => {
-  it('rattache à un agent DÉJÀ en base, par son matricule', async () => {
-    const chef = await imports.importer(admin, classeurDe([AGENT(1)]), true);
-    expect(chef.crees).toBe(1);
-
-    const r = await imports.importer(
-      admin,
-      classeurDe([AGENT(2, { 'Matricule du responsable': 'APIX-0001' })]),
-      true,
-    );
-    expect(r.rattaches).toBe(1);
-    expect(r.sansResponsable).toBe(0);
-    expect((await dossier('APIX-0002'))?.responsable).toBe('Agent1 Diop');
-  });
-
-  it('rattache à un agent créé PLUS BAS dans le même fichier', async () => {
-    // Le fichier du RH n'est pas trié : le chef peut venir après ses équipes.
-    const r = await imports.importer(
-      admin,
-      classeurDe([AGENT(1, { 'Matricule du responsable': 'APIX-0009' }), AGENT(9)]),
-      true,
-    );
-    expect(r.crees).toBe(2);
-    expect(r.rattaches).toBe(1);
-    expect((await dossier('APIX-0001'))?.responsable).toBe('Agent9 Diop');
-  });
-
-  it('retrouve le matricule malgré la casse et les séparateurs', async () => {
-    await imports.importer(admin, classeurDe([AGENT(1)]), true);
-    const r = await imports.importer(
-      admin,
-      classeurDe([AGENT(2, { 'Matricule du responsable': ' apix0001 ' })]),
-      true,
-    );
-    expect(r.rattaches).toBe(1);
-    expect((await dossier('APIX-0002'))?.responsable).toBe('Agent1 Diop');
-  });
-
-  it('sans direction affectée, crée le dossier SANS n+1 — l’affectation vient d’abord', async () => {
-    const r = await imports.importer(
-      admin,
-      classeurDe([
-        AGENT(1),
-        AGENT(2, { 'Direction affectée': '', 'Matricule du responsable': 'APIX-0001' }),
-      ]),
-      true,
-    );
-    expect(r.crees).toBe(2);
-    expect(r.rattaches).toBe(0);
-    expect(r.lignes[1]?.avertissements).toEqual([
-      {
-        colonne: 'Matricule du responsable',
-        texte:
-          'Direction manquante : dossier créé sans N+1. Affectez d’abord l’agent à une direction',
-      },
+describe('le poste place l’agent', () => {
+  it('désigne le DG et le directeur, crée le département du chef et l’y met à sa tête', async () => {
+    const chef = AGENT(2, {
+      Prénom: 'FATOU',
+      Nom: 'SALL',
+      'Poste occupé ': 'CHEF DE DEPARTEMENT DIGITALISATION',
+      Statut: 'Cadre',
+      Direction: 'DSID',
+    });
+    const directeur = AGENT(3, {
+      Prénom: 'OUSMANE',
+      Nom: 'FALL',
+      Sexe: 'M',
+      'Poste occupé ': "DIRECTEUR DES SYSTEMES D'INFORMATION",
+      Statut: 'Cadre',
+      Direction: 'DSID',
+    });
+    const agent = AGENT(4, {
+      Direction: 'DSID',
+      'Département ': 'Digitalisation',
+      'Responsable Hierarchique\n(N+1)': 'SALL Fatou',
+    });
+    // Le chef d'abord, le DG en dernier : l'ordre du fichier ne compte pas.
+    const r = await importer([chef, agent, directeur, DG]);
+    expect(r.erreurs).toBe(0);
+    expect(r.unitesCreees).toEqual([{ nom: 'Département Digitalisation', parent: 'DSID' }]);
+    expect(r.designations.map((d) => d.poste)).toEqual([
+      'Directeur général',
+      'Directeur de la DSID',
+      'Cheffe du département Digitalisation',
     ]);
-    expect((await dossier('APIX-0002'))?.responsable).toBeNull();
-  });
-
-  it('crée le dossier SANS n+1 quand le matricule est introuvable, et le dit', async () => {
-    const r = await imports.importer(
-      admin,
-      classeurDe([AGENT(1, { 'Matricule du responsable': 'APIX-9999' })]),
-      true,
-    );
-    expect(r.crees).toBe(1);
-    expect(r.sansResponsable).toBe(1);
-    expect(r.rattaches).toBe(0);
-    const ligne = r.lignes[0];
-    expect(ligne?.etat).toBe('a-creer');
-    expect(ligne?.avertissements).toEqual([
-      {
-        colonne: 'Matricule du responsable',
-        texte: 'Matricule « APIX-9999 » introuvable : dossier créé sans N+1',
-      },
-    ]);
-    expect((await dossier('APIX-0001'))?.responsable).toBeNull();
-  });
-
-  it('refuse qu’un agent soit son propre responsable', async () => {
-    const r = await imports.importer(
-      admin,
-      classeurDe([AGENT(1, { 'Matricule du responsable': 'APIX-0001' })]),
-      true,
-    );
-    expect(r.crees).toBe(1);
-    expect(r.sansResponsable).toBe(1);
-    expect(r.lignes[0]?.avertissements[0]?.texte).toContain('son propre responsable');
-    expect((await dossier('APIX-0001'))?.responsable).toBeNull();
-  });
-
-  it('annonce dès l’aperçu un n+1 inactif, et crée le dossier sans lui', async () => {
-    await imports.importer(admin, classeurDe([AGENT(1)]), true);
-    await raw(`UPDATE employees SET status = 'archived' WHERE employee_number = 'APIX-0001'`);
-    const apercu = await imports.importer(
-      admin,
-      classeurDe([AGENT(2, { 'Matricule du responsable': 'APIX-0001' })]),
-      false,
-    );
-    expect(apercu.rattaches).toBe(0);
-    expect(apercu.lignes[0]?.avertissements[0]?.texte).toContain('est inactif');
-  });
-
-  it('prévient qu’une ligne sans poste ne sera affectée nulle part', async () => {
-    const apercu = await imports.importer(
-      admin,
-      classeurDe([AGENT(3, { Poste: '', 'Matricule du responsable': 'APIX-0001' })]),
-      false,
-    );
-    const textes = apercu.lignes[0]?.avertissements.map((a) => a.texte) ?? [];
-    expect(textes[0]).toContain('Poste manquant');
-    expect(apercu.rattaches).toBe(0);
-  });
-
-  it('garde le dossier quand la RÈGLE DE DIRECTION refuse le rattachement', async () => {
-    // Le n+1 est à la DCH, l'agent à la DIPE : la règle de l'APIX l'interdit.
-    // Le dossier entre quand même — c'est le rattachement qui échoue.
-    const dipe = randomUUID();
-    await raw(
-      `INSERT INTO org_units (id, tenant_id, unit_type, name, short_name, parent_id)
-       VALUES ($1,$2,'direction','Direction de l’Intelligence','DIPE',$3)`,
-      [dipe, tenantId, dchId],
-    );
-    // Un directeur en place à la DCH et à la DIPE : sans tête, le chemin
-    // « rattachement au DG » resterait ouvert et la règle ne mordrait pas.
-    const r1 = await imports.importer(
-      admin,
-      classeurDe([AGENT(1), AGENT(5, { 'Direction affectée': 'DIPE' })]),
-      true,
-    );
-    expect(r1.crees).toBe(2);
-    const chefDCH = (await raw(`SELECT id FROM employees WHERE employee_number = 'APIX-0001'`))
-      .rows[0] as { id: string };
-    const chefDIPE = (await raw(`SELECT id FROM employees WHERE employee_number = 'APIX-0005'`))
-      .rows[0] as { id: string };
-    await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [dchId, chefDCH.id]);
-    await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [dipe, chefDIPE.id]);
-
-    const fichier = classeurDe([
-      AGENT(2, { 'Direction affectée': 'DIPE', 'Matricule du responsable': 'APIX-0001' }),
-    ]);
-    // L'APERÇU le dit déjà, sous la même règle que l'écriture : il n'annonce
-    // pas « rattaché » ce que l'import refusera ensuite.
-    // Et ce qu'il en advient : la direction a sa tête, qui reprend l'agent
-    // d'office (le directeur coiffe sa direction).
-    const apercu = await imports.importer(admin, fichier, false);
-    expect(apercu.rattaches).toBe(1);
-    expect(apercu.lignes[0]?.avertissements[0]?.texte).toContain(
-      'est dans la direction « Direction du Capital Humain », l’agent dans « Direction de l’Intelligence »',
-    );
-    expect(apercu.lignes[0]?.avertissements[0]?.texte).toContain(
-      'N+1 attribué automatiquement, Agent5 Diop',
-    );
-
-    const r = await imports.importer(admin, fichier, true);
-    expect(r.crees).toBe(1);
-    expect(r.sansResponsable).toBe(0);
-    expect(r.lignes[0]?.avertissements).toEqual(apercu.lignes[0]?.avertissements);
-    expect((await dossier('APIX-0002'))?.responsable).toBe('Agent5 Diop');
-  });
-
-  it('cumule DEUX avertissements : direction inconnue et responsable introuvable', async () => {
-    const r = await imports.importer(
-      admin,
-      classeurDe([
-        AGENT(1, { 'Direction affectée': 'XYZ', 'Matricule du responsable': 'APIX-9999' }),
-      ]),
-      false,
-    );
-    expect(r.lignes[0]?.avertissements.map((a) => a.colonne)).toEqual([
-      'Direction affectée',
-      'Matricule du responsable',
-    ]);
-  });
-
-  it('annonce les rattachements DÈS L’APERÇU, sans rien écrire', async () => {
-    const r = await imports.importer(
-      admin,
-      classeurDe([AGENT(1), AGENT(2, { 'Matricule du responsable': 'APIX-0001' })]),
-      false,
-    );
-    expect(r.applique).toBe(false);
-    expect(r.rattaches).toBe(1);
-    expect(r.sansResponsable).toBe(1);
-    expect(r.lignes[1]?.responsableResolu).toBe('Agent1 Diop');
-    expect(await compteDossiers()).toBe(0);
-  });
-
-  it('compte comme sans responsable une colonne laissée vide', async () => {
-    const r = await imports.importer(admin, classeurDe([AGENT(1), AGENT(2)]), true);
-    expect(r.sansResponsable).toBe(2);
-    expect(r.rattaches).toBe(0);
-    expect(r.lignes.every((l) => l.responsable === null)).toBe(true);
-  });
-});
-
-describe('le compte rendu dit ce que la base contient', () => {
-  it('ne compte pas rattaché un agent dont le n+1 du fichier n’a pas pu être créé', async () => {
-    // Le n+1 passe l'aperçu, puis sa création échoue à l'écriture.
-    class PeopleEnPanne extends PeopleService {
-      override create(user: SessionUser, input: Parameters<PeopleService['create']>[1]) {
-        if (input.employee.employeeNumber === 'APIX-0001') throw new Error('Panne');
-        return super.create(user, input);
-      }
-    }
-    const fragile = new ImportEmployesService(db, new PeopleEnPanne(db, new EncryptionService()));
-    const r = await fragile.importer(
-      admin,
-      classeurDe([AGENT(1), AGENT(2, { 'Matricule du responsable': 'APIX-0001' })]),
-      true,
-    );
-    expect(r.crees).toBe(1);
-    expect(r.rattaches).toBe(0);
-    expect(r.sansResponsable).toBe(1);
-    const agent2 = r.lignes.find((l) => l.matricule === 'APIX-0002');
-    expect(agent2?.responsableResolu).toBeNull();
-    expect(agent2?.avertissements.map((a) => a.texte)).toContain(
-      'Le dossier de Agent1 Diop n’a pas pu être créé : N+1 non attribué',
-    );
-  });
-
-  it('crée l’agent dont la pièce est périmée, sans elle, et le signale', async () => {
-    const entetes = [...COLONNES, "Pièce d'identité", 'Numéro de la pièce', "Date d'expiration"];
-    const r = await imports.importer(
-      admin,
-      classeurDe(
-        [
-          {
-            ...AGENT(1),
-            "Pièce d'identité": 'CNI',
-            'Numéro de la pièce': '1199019012345',
-            "Date d'expiration": '01/01/2020',
-          } as Ligne,
-        ],
-        entetes,
-      ),
-      true,
-    );
-    expect(r.crees).toBe(1);
-    expect(r.lignes[0]?.avertissements.map((a) => a.colonne)).toContain("Date d'expiration");
-    // Le formulaire refuse une pièce périmée : l'import ne l'écrit pas non plus.
-    const piece = await raw(
-      `SELECT p.id_document_type AS t, p.national_id_encrypted AS n,
-              p.id_document_expires_on::text AS d
-         FROM employees e JOIN persons p ON p.id = e.person_id
-        WHERE e.tenant_id = $1 AND e.employee_number = 'APIX-0001'`,
+    expect(await chefDe(unites.dg)).toBe('Cheikh Mbaye');
+    expect(await chefDe(unites.dsid)).toBe('Ousmane Fall');
+    const dep = await raw(
+      `SELECT id, unit_type, parent_id FROM org_units WHERE tenant_id = $1 AND name = 'Département Digitalisation'`,
       [tenantId],
     );
-    expect(piece.rows[0]).toEqual({ t: null, n: null, d: null });
+    expect(dep.rows[0]).toMatchObject({ unit_type: 'department', parent_id: unites.dsid });
+    expect(await chefDe((dep.rows[0] as { id: string }).id)).toBe('Fatou Sall');
+    expect(await fiche('104')).toMatchObject({
+      org_unit_id: (dep.rows[0] as { id: string }).id,
+      n1: 'Fatou Sall',
+    });
+    // Le directeur relève du DG, la cheffe de son directeur.
+    expect((await fiche('103'))?.n1).toBe('Cheikh Mbaye');
+    expect((await fiche('102'))?.n1).toBe('Ousmane Fall');
+    expect(ligne(r, 3).responsable).toBe('Fatou Sall');
+  });
+
+  it('ne remplace pas un responsable déjà en place', async () => {
+    await importer([DG]);
+    const r = await importer([
+      AGENT(1, {
+        Prénom: 'MODOU',
+        Nom: 'GUEYE',
+        Sexe: 'M',
+        'Poste occupé ': 'DIRECTEUR GENERAL',
+        Direction: 'DG',
+      }),
+    ]);
+    expect(ligne(r, 2).avertissements).toContainEqual({
+      colonne: 'Poste occupé',
+      texte: 'Cheikh Mbaye dirige déjà DG : désignation non faite',
+    });
+    expect(await chefDe(unites.dg)).toBe('Cheikh Mbaye');
   });
 });
 
-describe('les matricules en capitales', () => {
-  it('écrit en capitales le matricule tapé en minuscules', async () => {
-    await imports.importer(admin, classeurDe([AGENT(1, { Matricule: 'apix-0001' })]), true);
-    expect((await dossier('APIX-0001'))?.given_name).toBe('Agent1');
+describe('le N+1 par son nom', () => {
+  it('demande de qui il s’agit quand deux personnes portent le nom, puis rattache', async () => {
+    const awa1 = AGENT(1, { Prénom: 'AWA', Nom: 'NDIAYE', 'Date de naissance': '01/01/1985' });
+    const awa2 = AGENT(2, { Prénom: 'AWA', Nom: 'NDIAYE', 'Date de naissance': '02/02/1986' });
+    const agent = AGENT(3, { 'Responsable Hierarchique\n(N+1)': 'AWA NDIAYE' });
+    const apercu = await importer([awa1, awa2, agent], false);
+    expect(apercu.choix).toHaveLength(1);
+    const choix = apercu.choix[0]!;
+    expect(choix).toMatchObject({ role: 'n1', nom: 'AWA NDIAYE', lignes: [4], retenu: null });
+    expect(choix.candidats.map((c) => c.cle)).toEqual(['l:2', 'l:3']);
+    expect(ligne(apercu, 4).avertissements).toContainEqual({
+      colonne: 'Responsable Hierarchique (N+1)',
+      texte: '2 personnes s’appellent « AWA NDIAYE » : choisissez laquelle',
+    });
+
+    const r = await importer([awa1, awa2, agent], true, { [choix.cle]: 'l:3' });
+    expect(r.choix[0]?.retenu).toBe('l:3');
+    const n1 = await raw(
+      `SELECT p.birth_date::text AS naissance FROM employees e
+         JOIN employees m ON m.id = e.manager_employee_id JOIN persons p ON p.id = m.person_id
+        WHERE e.tenant_id = $1 AND e.employee_number = '103'`,
+      [tenantId],
+    );
+    expect(n1.rows[0]).toEqual({ naissance: '1986-02-02' });
   });
 
-  it('voit le doublon d’un fichier malgré la casse', async () => {
-    const r = await imports.importer(
-      admin,
-      classeurDe([AGENT(1), AGENT(1, { Prénom: 'Sosie', Matricule: 'apix-0001' })]),
-      true,
+  it('ne redemande pas au réimport le choix déjà fait', async () => {
+    const awa1 = AGENT(1, { Prénom: 'AWA', Nom: 'NDIAYE', 'Date de naissance': '01/01/1985' });
+    const awa2 = AGENT(2, { Prénom: 'AWA', Nom: 'NDIAYE', 'Date de naissance': '02/02/1986' });
+    const agent = AGENT(3, { 'Responsable Hierarchique\n(N+1)': 'AWA NDIAYE' });
+    const apercu = await importer([awa1, awa2, agent], false);
+    await importer([awa1, awa2, agent], true, { [apercu.choix[0]!.cle]: 'l:3' });
+    const r = await importer([awa1, awa2, agent], false);
+    expect(r.choix).toEqual([]);
+    expect(ligne(r, 4)).toMatchObject({ etat: 'inchange', responsable: 'Awa Ndiaye' });
+  });
+
+  it('propose un nom à une faute près, sans le deviner', async () => {
+    const r = await importer(
+      [
+        AGENT(1, { Prénom: 'AWA', Nom: 'NDIAYE' }),
+        AGENT(2, { 'Responsable Hierarchique\n(N+1)': 'AWA NDIAY' }),
+      ],
+      false,
     );
-    expect(r.crees).toBe(1);
-    expect(r.lignes[1]?.etat).toBe('ignore');
+    expect(r.choix[0]?.candidats.map((c) => c.nom)).toEqual(['Awa Ndiaye']);
+    expect(ligne(r, 3).avertissements).toContainEqual({
+      colonne: 'Responsable Hierarchique (N+1)',
+      texte: '« AWA NDIAY » ne se retrouve pas tel quel : choisissez la personne',
+    });
+  });
+
+  it('retient le responsable fonctionnel pour information', async () => {
+    await importer([
+      AGENT(1, { Prénom: 'OUMAR', Nom: 'SECK', Sexe: 'M', Direction: 'DFC' }),
+      AGENT(2, { 'Responsable Fonctionnel': 'Oumar Seck' }),
+    ]);
+    expect((await fiche('102'))?.fonctionnel).toBe('Oumar Seck');
+  });
+});
+
+describe('le réimport', () => {
+  it('ne change rien au second envoi du même fichier', async () => {
+    const lignes = [DG, AGENT(1, { 'Region ': 'Thiès', 'Numero CNI': '2751199001234' }), AGENT(2)];
+    await importer(lignes);
+    const r = await importer(lignes, false);
+    expect(r).toMatchObject({ aCreer: 0, aModifier: 0, inchanges: 3, erreurs: 0 });
+  });
+
+  it('met à jour ce qui change, et le liste', async () => {
+    await importer([AGENT(1, { 'Region ': 'Thiès', Statut: 'Non cadre' })]);
+    const r = await importer([AGENT(1, { 'Region ': 'Dakar', Statut: 'Cadre' })], false);
+    expect(ligne(r, 2)).toMatchObject({
+      etat: 'a-modifier',
+      changements: [
+        { champ: 'Région', avant: 'Thiès', apres: 'Dakar' },
+        { champ: 'Statut', avant: 'Non-cadre', apres: 'Cadre' },
+      ],
+    });
+    expect((await fiche('101'))?.region).toBe('thies');
+    await importer([AGENT(1, { 'Region ': 'Dakar', Statut: 'Cadre' })]);
+    expect(await fiche('101')).toMatchObject({ region: 'dakar', personnel: 'cadre' });
+  });
+
+  it('n’efface rien avec une case vide', async () => {
+    await importer([AGENT(1, { 'Region ': 'Thiès' })]);
+    const r = await importer([AGENT(1, { 'Region ': undefined })]);
+    expect(ligne(r, 2).etat).toBe('inchange');
+    expect((await fiche('101'))?.region).toBe('thies');
+  });
+
+  it('retrouve la fiche provisoire par la personne quand le vrai matricule arrive', async () => {
+    await importer([AGENT(1, { Matricule: '50' }), AGENT(2, { Matricule: '50' })]);
+    // Les lignes ont changé d'ordre, et chacune a son vrai matricule.
+    const r = await importer([AGENT(2, { Matricule: '51' }), AGENT(1, { Matricule: '50' })]);
+    expect(ligne(r, 2).changements).toContainEqual({
+      champ: 'Matricule',
+      avant: '50-B',
+      apres: '51',
+    });
+    expect(ligne(r, 3).changements).toContainEqual({
+      champ: 'Matricule',
+      avant: '50-A',
+      apres: '50',
+    });
+    expect(await fiche('51')).toMatchObject({ given_name: 'Agent2', matricule_provisoire: false });
+    expect(await fiche('50')).toMatchObject({ given_name: 'Agent1', matricule_provisoire: false });
+    expect(await compte('employees')).toBe(2);
+  });
+
+  it('laisse son propre dossier tel quel, et refuse de le modifier', async () => {
+    await importer([DG]);
+    // Le compte qui importe est celui du DG.
+    await raw(`UPDATE persons SET user_id = $1 WHERE tenant_id = $2 AND given_name = 'Cheikh'`, [
+      adminUserId,
+      tenantId,
+    ]);
+    const meme = await importer([DG], false);
+    expect(ligne(meme, 2).etat).toBe('inchange');
+    const change = await importer([{ ...DG, 'Region ': 'Thiès' }], false);
+    expect(ligne(change, 2)).toMatchObject({
+      etat: 'erreur',
+      motif:
+        'Votre propre dossier ne se modifie pas par l’import : une autre personne de la DCH s’en charge',
+    });
+    await raw(`UPDATE persons SET user_id = NULL WHERE tenant_id = $1`, [tenantId]);
+  });
+
+  it('refuse un matricule qui est celui d’une autre personne', async () => {
+    await importer([
+      AGENT(1, { Matricule: '77', Prénom: 'AWA', 'Date de naissance': '01/01/1985' }),
+    ]);
+    const r = await importer([
+      AGENT(2, {
+        Matricule: '77',
+        Prénom: 'MOUSSA',
+        Nom: 'NDIAYE',
+        'Date de naissance': '05/05/1980',
+      }),
+    ]);
+    expect(ligne(r, 2)).toMatchObject({
+      etat: 'erreur',
+      motif: 'Le matricule 77 est celui de Awa Diop sur la plateforme',
+    });
+    expect((await fiche('77'))?.given_name).toBe('Awa');
+  });
+
+  it('précise une date d’entrée connue au mois : le contrat et l’affectation suivent', async () => {
+    await importer([AGENT(1, { "Date d'entrée": undefined, 'Ancienneté (années)': 2 })]);
+    const avant = await fiche('101');
+    const exacte = `${String(avant?.hired_on).slice(0, 8)}17`;
+    const [a, m, j] = exacte.split('-');
+    const r = await importer([AGENT(1, { "Date d'entrée": `${j}/${m}/${a}` })]);
+    expect(ligne(r, 2).changements[0]?.champ).toBe('Date d’entrée');
+    expect(await fiche('101')).toMatchObject({
+      hired_on: exacte,
+      entree_au_mois: false,
+      contrat_le: exacte,
+      affecte_le: exacte,
+    });
   });
 });

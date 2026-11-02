@@ -1,26 +1,43 @@
-import { deflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { classeur, fabriquerXlsx } from './fabrique-xlsx';
+import type { CelluleXlsx } from '../src/common/xlsx';
 import { lirePremiereFeuille, XlsxIllisible } from '../src/common/xlsx';
 import {
-  convertirLigne,
   correspondre,
-  finDeContrat,
-  normaliserIntitule,
+  designeLaDirection,
+  lireLigne,
+  natureDuPoste,
+  nomDUnite,
+  type LigneLue,
 } from '../src/modules/people/import-employes';
+import {
+  cleDeNom,
+  entreeDepuisAnciennete,
+  intitule,
+  lireCni,
+  lireContrat,
+  lireCourrielPro,
+  lireDate,
+  lireLien,
+  lirePays,
+  lireRegion,
+  lireSexe,
+  lireSituation,
+  lireStatut,
+  lireTelephone,
+  nomDePersonne,
+  nomDeVille,
+} from '../src/modules/people/import-valeurs';
+import { classeur } from './fabrique-xlsx';
 
-/* ————————————————————————————————————————————————————————————————
-   L'import d'un fichier d'effectif.
+/* ────────────────────────────────────────────────────────────────
+   L'import du fichier du personnel de la DCH (ADR-0159) : la lecture.
 
-   Ici, la LECTURE et la TRADUCTION : ce que la plateforme comprend d'un
-   classeur, sans toucher à la base. L'écriture des dossiers a son propre
-   fichier, `import-service.spec.ts`.
+   Ici, ce que la plateforme comprend du fichier, sans toucher à la base :
+   les intitulés, les valeurs corrigées, les lignes refusées. L'écriture des
+   dossiers a son propre fichier, `import-service.spec.ts`.
+   ──────────────────────────────────────────────────────────────── */
 
-   Les classeurs sont fabriqués octet par octet par `./fabrique-xlsx` : un
-   .xlsx est une archive zip, et un test qui dépendrait d'un fichier joint au
-   dépôt ne dirait plus rien le jour où quelqu'un le régénère avec un autre
-   tableur.
-   ———————————————————————————————————————————————————————————————— */
+const AUJOURDHUI = '2026-11-02';
 
 describe('lecture d’un classeur .xlsx', () => {
   it('lit une feuille désignée par un chemin ABSOLU dans les relations', () => {
@@ -46,9 +63,9 @@ describe('lecture d’un classeur .xlsx', () => {
     const f = lirePremiereFeuille(
       classeur(
         `<sheetData><row r="1">` +
-          `<c r="A1" s="1" t="n"><v>32975</v></c>` + // format dd/mm/yyyy
-          `<c r="B1" s="2" t="n"><v>32975</v></c>` + // format intégré 14
-          `<c r="C1" s="0" t="n"><v>32975</v></c>` + // aucun format de date
+          `<c r="A1" s="1" t="n"><v>32975</v></c>` +
+          `<c r="B1" s="2" t="n"><v>32975</v></c>` +
+          `<c r="C1" s="0" t="n"><v>32975</v></c>` +
           `</row></sheetData>`,
       ),
     );
@@ -80,6 +97,33 @@ describe('lecture d’un classeur .xlsx', () => {
     expect(f.lignes[0]?.[0]).toBe('Direction du Capital Humain');
   });
 
+  it('ne laisse pas une cellule vide en balise courte avaler la suivante', () => {
+    const f = lirePremiereFeuille(
+      classeur(
+        `<sheetData><row r="1">` +
+          `<c r="A1" t="inlineStr"><is><t>a</t></is></c>` +
+          `<c r="B1" s="3"/>` +
+          `<c r="C1" t="inlineStr"/>` +
+          `<c r="D1" t="inlineStr"><is><t>d</t></is></c>` +
+          `</row></sheetData>`,
+      ),
+    );
+    expect(f.lignes[0]).toEqual(['a', null, '', 'd']);
+  });
+
+  it('garde le numéro des lignes : une ligne omise ou vide ne décale pas les suivantes', () => {
+    const f = lirePremiereFeuille(
+      classeur(
+        `<sheetData>` +
+          `<row r="1"><c r="A1" t="inlineStr"><is><t>un</t></is></c></row>` +
+          `<row r="2" spans="1:3"/>` +
+          `<row r="4"><c r="A4" t="inlineStr"><is><t>quatre</t></is></c></row>` +
+          `</sheetData>`,
+      ),
+    );
+    expect(f.lignes).toEqual([['un'], [], [], ['quatre']]);
+  });
+
   it('refuse ce qui n’est pas une archive', () => {
     expect(() => lirePremiereFeuille(Buffer.from('ceci est un csv;pas un xlsx'))).toThrow(
       XlsxIllisible,
@@ -87,373 +131,559 @@ describe('lecture d’un classeur .xlsx', () => {
   });
 });
 
-describe('correspondance des colonnes', () => {
-  const entetes = [
-    'Prénom',
-    'Nom',
-    'Matricule',
-    'Début du contrat',
-    'Direction affectée',
-    'Salaire brut',
-  ];
+/** Les soixante intitulés du fichier de la DCH, tels qu'il les écrit. */
+export const ENTETES_DCH = [
+  'N°',
+  'Matricule',
+  'Prénom',
+  'Nom',
+  'Nom complet',
+  'Sexe',
+  'Âge',
+  'Date de naissance',
+  'Lieu de naissance',
+  'Pays',
+  'Fils/Fille',
+  'Nationalité',
+  'Numero CNI',
+  'Situation Matrimoniale',
+  "Nom de l'épouse 1",
+  "Nom de l'épouse 2",
+  "Nom de l'épouse 3",
+  "Nom de l'épouse 4",
+  "Nombre d'épouse ",
+  "Nombre d'enfants",
+  'Adresse mail personnel ',
+  'Adresse mail professionnel ',
+  'Numéro de tel personnel',
+  'Numero de tel professionnel',
+  'Adresse physique',
+  'Ville',
+  'Region ',
+  "Personne à contacter en cas d'urgence",
+  "Numero Tel de la personne à contacter en cas d'urgence",
+  'Lien de parenté avec le contact',
+  'Poste occupé ',
+  'Responsable Hierarchique\n(N+1)',
+  'Responsable Fonctionnel',
+  'Statut',
+  'Direction',
+  'Département ',
+  'Lieu de travail',
+  'Projet',
+  'Type de contrat',
+  "Date d'entrée",
+  'Date de fin (si CDD)',
+  'Date de sortie',
+  'Motif de sortie',
+  'Ancienneté (années)',
+  'Catégorie socio -professionnelle',
+  'Salaire de base ',
+  'Sursalaire ',
+  "Prime d'ancienneté",
+  'Brut social',
+  'Prime de transport',
+  'Salaire brut',
+  'Nombre de part Sociale',
+  'Carburant ',
+  'Forfait Téléphone',
+  'Indemnités de sujetion',
+  'Autres avantages',
+  'Banque',
+  "Relevé d'Identité Bancaire",
+  'Domiciliation',
+  'Numero IPRES',
+];
 
-  it('retrouve les colonnes quels que soient accents, casse et ponctuation', () => {
-    const { colonnes } = correspondre(['PRENOM', 'nom', 'N° matricule', "Date d'embauche"]);
-    expect(colonnes.prenom).toBe(0);
-    expect(colonnes.nom).toBe(1);
-    expect(colonnes.matricule).toBe(2);
-    expect(colonnes.debutContrat).toBe(3);
+describe('les intitulés du fichier de la DCH', () => {
+  it('reconnaît les soixante colonnes, espaces, retours à la ligne et accents compris', () => {
+    const r = correspondre(ENTETES_DCH);
+    expect(r.inconnues).toEqual([]);
+    expect(r.manquantes).toEqual([]);
+    expect(r.colonnes.n1).toBe(31);
+    expect(r.colonnes.categorie).toBe(44);
+    expect(r.intitules.region).toBe('Region');
   });
 
-  it('signale les colonnes qu’elle ne sait pas placer, sans s’en offusquer', () => {
-    const { inconnues, manquantes } = correspondre(entetes);
-    expect(inconnues).toEqual(['Salaire brut']);
-    expect(manquantes).toEqual([]);
+  it('nomme les colonnes non reprises seulement quand elles portent des valeurs', () => {
+    const ligne = ENTETES_DCH.map((h) => (h === 'Banque' ? 'CBAO' : null));
+    expect(correspondre(ENTETES_DCH, [ligne]).nonImportees).toEqual(['Banque']);
+    expect(correspondre(ENTETES_DCH, []).nonImportees).toEqual([]);
   });
 
-  it('nomme les colonnes obligatoires absentes', () => {
-    const { manquantes } = correspondre(['Prénom', 'Nom']);
-    expect(manquantes).toEqual(['Matricule', 'Début du contrat']);
+  it('accepte l’ancienneté à la place de la date d’entrée, pas l’absence des deux', () => {
+    expect(correspondre(['Matricule', 'Prénom', 'Nom', 'Ancienneté']).manquantes).toEqual([]);
+    expect(correspondre(['Matricule', 'Prénom']).manquantes).toEqual(['Nom', 'Date d’entrée']);
   });
 
-  it('ne se fie pas à l’ordre : une colonne insérée ne décale rien', () => {
-    const { colonnes } = correspondre([
-      'Matricule',
-      'Service',
-      'Prénom',
-      'Nom',
-      'Début du contrat',
-    ]);
-    expect(colonnes.matricule).toBe(0);
-    expect(colonnes.unite).toBe(1);
-    expect(colonnes.prenom).toBe(2);
-  });
-
-  it('normaliserIntitule réduit au squelette comparable', () => {
-    expect(normaliserIntitule('  Durée (mois)  ')).toBe('duree mois');
-    expect(normaliserIntitule('N° Matricule')).toBe('n matricule');
+  it('signale une colonne qu’elle ne sait pas placer', () => {
+    expect(correspondre([...ENTETES_DCH, 'Groupe sanguin']).inconnues).toEqual(['Groupe sanguin']);
   });
 });
 
-describe('la colonne du responsable hiérarchique', () => {
-  it('reconnaît les intitulés qu’un classeur tenu à la main emploie', () => {
-    for (const intitule of [
-      'Matricule du responsable',
-      'MATRICULE RESPONSABLE',
-      'Responsable hiérarchique',
-      'Matricule du supérieur',
-      'n+1',
+describe('les dates', () => {
+  it('lit le numéro de série d’Excel : 44452 est le 13 septembre 2021', () => {
+    expect(lireDate(44452, AUJOURDHUI)).toEqual({
+      valeur: { iso: '2021-09-13', auMois: false, interpretee: true },
+      corrige: true,
+    });
+    expect(lireDate('44452', AUJOURDHUI)).toMatchObject({ valeur: { iso: '2021-09-13' } });
+  });
+
+  it('lit le texte au format d’ici, en lettres, et l’ISO', () => {
+    expect(lireDate('13/09/2021', AUJOURDHUI)).toMatchObject({
+      valeur: { iso: '2021-09-13' },
+      corrige: false,
+    });
+    expect(lireDate('13-09-21', AUJOURDHUI)).toMatchObject({ valeur: { iso: '2021-09-13' } });
+    expect(lireDate('1er octobre 2020', AUJOURDHUI)).toMatchObject({
+      valeur: { iso: '2020-10-01' },
+    });
+    expect(lireDate('2021-09-13', AUJOURDHUI)).toMatchObject({ valeur: { iso: '2021-09-13' } });
+  });
+
+  it('remet à l’endroit un jour et un mois inversés, et le dit', () => {
+    expect(lireDate('09/13/2021', AUJOURDHUI)).toMatchObject({
+      valeur: { iso: '2021-09-13' },
+      corrige: true,
+    });
+  });
+
+  it('garde un mois seul comme tel, et refuse l’année seule', () => {
+    expect(lireDate('09/2021', AUJOURDHUI)).toMatchObject({
+      valeur: { iso: '2021-09-01', auMois: true },
+    });
+    expect(lireDate('sept. 2021', AUJOURDHUI)).toMatchObject({ valeur: { auMois: true } });
+    expect(lireDate(2015, AUJOURDHUI)).toEqual({
+      erreur: '« 2015 » : l’année seule ne suffit pas',
+    });
+    expect(lireDate('31/04/2021', AUJOURDHUI)).toHaveProperty('erreur');
+  });
+
+  it('déduit de l’ancienneté le mois d’entrée, pas le jour', () => {
+    expect(entreeDepuisAnciennete(5.1, AUJOURDHUI)).toBe('2021-10-01');
+    expect(entreeDepuisAnciennete(0.5, AUJOURDHUI)).toBe('2026-05-01');
+    expect(entreeDepuisAnciennete(1.8, AUJOURDHUI)).toBe('2025-01-01');
+  });
+});
+
+describe('les numéros', () => {
+  it('écrit tout numéro sénégalais avec +221', () => {
+    for (const n of [
+      '771234567',
+      '77 123 45 67',
+      '+221 77 123 45 67',
+      '00221771234567',
+      771234567,
     ]) {
-      const { colonnes, inconnues } = correspondre([
-        'Prénom',
-        'Nom',
-        'Matricule',
-        "Date d'embauche",
-        intitule,
-      ]);
-      expect(inconnues, intitule).toEqual([]);
-      expect(colonnes.responsable, intitule).toBe(4);
+      expect(lireTelephone(n)).toMatchObject({ valeur: '+221771234567' });
     }
+    expect(lireTelephone('33 812 34 56')).toMatchObject({ valeur: '+221338123456' });
   });
 
-  it('rend le matricule du n+1 en capitales, à résoudre plus tard', () => {
-    const { colonnes } = correspondre([
-      'Prénom',
-      'Nom',
-      'Matricule',
-      'Début du contrat',
-      'Matricule du responsable',
-    ]);
-    const r = convertirLigne(['Awa', 'Diop', 'APIX-0002', '01/03/2024', ' apix-0001 '], colonnes);
-    expect('ok' in r && r.ok.responsableMatricule).toBe('APIX-0001');
+  it('refuse un numéro sénégalais qui n’a pas 9 chiffres commençant par 7 ou 3', () => {
+    expect(lireTelephone('77123456')).toEqual({
+      erreur: 'Numéro sénégalais : 9 chiffres, commençant par 7 ou 3',
+    });
+    expect(lireTelephone('571234567')).toHaveProperty('erreur');
   });
 
-  it('ne réclame pas la colonne : elle est facultative', () => {
-    const { manquantes, colonnes } = correspondre([
-      'Prénom',
-      'Nom',
-      'Matricule',
-      'Début du contrat',
-    ]);
-    expect(manquantes).toEqual([]);
-    expect(colonnes.responsable).toBeUndefined();
-    const r = convertirLigne(['Awa', 'Diop', 'APIX-0002', '01/03/2024'], colonnes);
-    expect('ok' in r && r.ok.responsableMatricule).toBeNull();
+  it('garde un numéro étranger valide, et le premier de deux numéros', () => {
+    expect(lireTelephone('+33 6 12 34 56 78')).toMatchObject({ valeur: '+33612345678' });
+    expect(lireTelephone('77 123 45 67 / 76 987 65 43')).toEqual({
+      valeur: '+221771234567',
+      corrige: true,
+    });
+  });
+
+  it('veut 13 chiffres pour la CNI, et dit combien il y en a', () => {
+    expect(lireCni('1 751 1990 01234')).toEqual({ valeur: '1751199001234', corrige: false });
+    expect(lireCni(1751199001234)).toMatchObject({ valeur: '1751199001234' });
+    expect(lireCni('175119900123')).toEqual({ erreur: 'Numéro CNI à 12 chiffres au lieu de 13' });
+  });
+
+  it('corrige le domaine d’une adresse professionnelle, et refuse un autre domaine', () => {
+    expect(lireCourrielPro('A.Diop@APIX.SN')).toEqual({ valeur: 'a.diop@apix.sn', corrige: false });
+    expect(lireCourrielPro('a.diop@apix.com')).toEqual({ valeur: 'a.diop@apix.sn', corrige: true });
+    expect(lireCourrielPro('a.diop@gmail.com')).toEqual({
+      erreur: 'L’adresse professionnelle doit se terminer par @apix.sn',
+    });
   });
 });
 
-describe('fin d’un contrat à durée déterminée', () => {
-  it('douze mois depuis le 20 mai 2024 s’achèvent le 19 mai 2025', () => {
-    expect(finDeContrat('2024-05-20', 12)).toBe('2025-05-19');
+describe('les listes de valeurs', () => {
+  it('ramène la région à l’une des quatorze, fautes et abréviations comprises', () => {
+    expect(lireRegion('St Louis')).toEqual({ valeur: 'saint_louis', corrige: true });
+    expect(lireRegion('St-Louis')).toEqual({ valeur: 'saint_louis', corrige: true });
+    expect(lireRegion('SAINT LOUIS')).toEqual({ valeur: 'saint_louis', corrige: false });
+    expect(lireRegion('Ziginchor')).toEqual({ valeur: 'ziguinchor', corrige: true });
+    expect(lireRegion('THIES')).toEqual({ valeur: 'thies', corrige: false });
+    expect(lireRegion('Rufisque')).toEqual({ valeur: 'dakar', corrige: true });
+    expect(lireRegion('Dakar Plateau')).toEqual({ valeur: 'dakar', corrige: true });
+    expect(lireRegion('Paris')).toHaveProperty('erreur');
   });
 
-  it('trois mois depuis le 3 février 2025 s’achèvent le 2 mai 2025', () => {
-    expect(finDeContrat('2025-02-03', 3)).toBe('2025-05-02');
+  it('lit Cadre et Non cadre sous toutes leurs écritures', () => {
+    for (const s of ['non cadre', 'Non-Cadre', 'NON CADRE', 'noncadre']) {
+      expect(lireStatut(s)).toEqual({ valeur: 'non_cadre', corrige: false });
+    }
+    expect(lireStatut('CADRE')).toEqual({ valeur: 'cadre', corrige: false });
+    expect(lireStatut('non carde')).toEqual({ valeur: 'non_cadre', corrige: true });
+    expect(lireStatut('Agent de maîtrise')).toHaveProperty('erreur');
   });
 
-  it('un mois depuis le 31 janvier ne déborde pas sur mars', () => {
-    // 31 janvier + 1 mois = 28 février (dernier jour atteint), veille = 27.
-    expect(finDeContrat('2025-01-31', 1)).toBe('2025-02-27');
+  it('lit le sexe en M, F ou H, et la situation matrimoniale', () => {
+    expect(lireSexe('M')).toMatchObject({ valeur: 'male' });
+    expect(lireSexe('h')).toMatchObject({ valeur: 'male' });
+    expect(lireSexe('F')).toMatchObject({ valeur: 'female' });
+    expect(lireSexe('X')).toHaveProperty('erreur');
+    expect(lireSituation('célib')).toEqual({ valeur: 'single', corrige: false });
+    expect(lireSituation('MARIE(E)')).toEqual({ valeur: 'married', corrige: false });
+    expect(lireSituation('divorcée')).toEqual({ valeur: 'divorced', corrige: false });
+    expect(lireSituation('veuv')).toEqual({ valeur: 'widowed', corrige: true });
   });
 
-  it('franchit une année bissextile sans dériver', () => {
-    expect(finDeContrat('2023-03-01', 12)).toBe('2024-02-29');
+  it('n’importe que les CDD et les CDI', () => {
+    expect(lireContrat('C.D.I')).toEqual({ valeur: 'cdi', corrige: false });
+    expect(lireContrat('Contrat à durée déterminée')).toEqual({ valeur: 'cdd', corrige: false });
+    expect(lireContrat('Stage')).toEqual({
+      erreur: '« Stage » : seuls les CDD et les CDI s’importent',
+    });
+  });
+
+  it('range le lien de parenté dans la liste, et signale ce qu’elle a traduit', () => {
+    expect(lireLien('AMI')).toEqual({ valeur: 'ami', corrige: false });
+    expect(lireLien('EPOUSE')).toEqual({ valeur: 'conjoint', corrige: true });
+    expect(lireLien('Oncle')).toEqual({ valeur: 'autre', corrige: true });
+  });
+
+  it('prend le pays dans la liste de la plateforme', () => {
+    expect(lirePays('SENEGAL')).toEqual({ valeur: 'Sénégal', corrige: false });
+    expect(lirePays('Sénégalaise')).toEqual({ valeur: 'Sénégal', corrige: true });
+    expect(lirePays('COTE D IVOIRE')).toMatchObject({ valeur: 'Côte d’Ivoire' });
+    expect(lirePays('Wakanda')).toHaveProperty('erreur');
   });
 });
 
-describe('conversion d’une ligne', () => {
-  const ENTETES = [
-    'Prénom',
-    'Nom',
-    'Sexe',
-    'Situation matrimoniale',
-    'Date de naissance',
-    'Pays de naissance',
-    "Pièce d'identité",
-    'Numéro de la pièce',
-    "Date d'expiration",
-    'Indicatif téléphone',
-    'Téléphone',
-    'Email personnel',
-    'Matricule',
-    'Type de contrat',
-    'Début du contrat',
-    'Durée (mois)',
-    'Poste',
-    'Direction affectée',
-  ];
-  const { colonnes } = correspondre(ENTETES);
-  const ligne = (valeurs: Record<string, unknown>): unknown[] =>
-    ENTETES.map((e) => valeurs[e] ?? null);
-
-  const complete = {
-    Prénom: 'Moussa',
-    Nom: 'Diop',
-    Sexe: 'Homme',
-    'Situation matrimoniale': 'Marié',
-    'Date de naissance': new Date(Date.UTC(1990, 3, 12, 12)),
-    'Pays de naissance': 'Sénégal',
-    "Pièce d'identité": "Carte Nationale d'Identité",
-    'Numéro de la pièce': '1199019012345',
-    "Date d'expiration": new Date(Date.UTC(2099, 5, 1, 12)),
-    'Indicatif téléphone': '+221',
-    Téléphone: '77 512 34 56',
-    'Email personnel': 'moussa.diop@gmail.com',
-    Matricule: 'APIX-0001',
-    'Type de contrat': 'CDI',
-    'Début du contrat': new Date(Date.UTC(2023, 0, 9, 12)),
-    Poste: 'Analyste de données',
-    'Direction affectée': 'DIPE',
-  };
-
-  it('traduit les vocabulaires du fichier en ceux du produit', () => {
-    const r = convertirLigne(ligne(complete) as never, colonnes);
-    expect('ok' in r).toBe(true);
-    if (!('ok' in r)) return;
-    expect(r.ok.entree.person.gender).toBe('male');
-    expect(r.ok.entree.person.maritalStatus).toBe('married');
-    expect(r.ok.entree.person.idDocumentType).toBe('cni');
-    expect(r.ok.entree.contract?.contractType).toBe('cdi');
-    expect(r.ok.entree.person.birthDate).toBe('1990-04-12');
-    expect(r.ok.uniteAbrege).toBe('DIPE');
+describe('les noms et les intitulés', () => {
+  it('écrit un nom tout en capitales comme on l’écrit à la main', () => {
+    expect(nomDePersonne('NDEYE FATOU')).toBe('Ndeye Fatou');
+    expect(nomDePersonne("N'DIAYE")).toBe("N'Diaye");
+    expect(nomDePersonne('BA-SECK')).toBe('Ba-Seck');
+    expect(nomDePersonne('Ndèye')).toBe('Ndèye');
   });
 
-  it('compose le téléphone comme la saisie manuelle, en E.164', () => {
-    const r = convertirLigne(ligne(complete) as never, colonnes);
-    if (!('ok' in r)) throw new Error('attendu convertible');
-    expect(r.ok.entree.person.phone).toBe('+221775123456');
+  it('remet les accents d’une ville connue', () => {
+    expect(nomDeVille('THIES')).toEqual({ valeur: 'Thiès', corrige: false });
+    expect(nomDeVille('ST LOUIS')).toEqual({ valeur: 'Saint-Louis', corrige: true });
+    expect(nomDeVille('NIORO DU RIP')).toEqual({ valeur: 'Nioro du Rip', corrige: false });
+    expect(nomDeVille('BAMAKO')).toEqual({ valeur: 'Bamako', corrige: false });
   });
 
-  it('garde le zéro de tête là où le pays l’exige (Côte d’Ivoire)', () => {
-    const r = convertirLigne(
-      ligne({ ...complete, 'Indicatif téléphone': '+225', Téléphone: '07 12 34 56 78' }) as never,
-      colonnes,
+  it('écrit un intitulé de poste avec ses accents et ses sigles', () => {
+    expect(intitule("CHARGE D'ETUDES")).toBe("Chargé d'études");
+    expect(intitule('ASSISTANTE DE DIRECTION')).toBe('Assistante de direction');
+    expect(intitule('RESPONSABLE IT')).toBe('Responsable IT');
+    expect(intitule('AGENT DE SECURITE DE LA DFC', new Set(['DFC']))).toBe(
+      'Agent de sécurité de la DFC',
     );
-    if (!('ok' in r)) throw new Error('attendu convertible');
-    expect(r.ok.entree.person.phone).toBe('+2250712345678');
+    expect(intitule('Assistante de direction')).toBe('Assistante de direction');
   });
 
-  it('écrit le pays avec l’apostrophe du produit, pas celle du fichier', () => {
-    const r = convertirLigne(
-      ligne({ ...complete, 'Pays de naissance': "Côte d'Ivoire" }) as never,
-      colonnes,
+  it('nomme une unité à créer', () => {
+    expect(nomDUnite('department', 'digitalisation')).toBe('Département Digitalisation');
+    expect(nomDUnite('service', 'qualite')).toBe('Service Qualité');
+    expect(nomDUnite('department', 'etudes et strategies')).toBe(
+      'Département Études et stratégies',
     );
-    if (!('ok' in r)) throw new Error('attendu convertible');
-    // Intl écrit « Côte d’Ivoire » avec l'apostrophe typographique : sans
-    // normalisation, une fiche importée et une fiche saisie différeraient.
-    expect(r.ok.entree.person.birthPlace).toBe('Côte d’Ivoire');
   });
 
-  it('déduit la fin d’un CDD de sa durée', () => {
-    const r = convertirLigne(
-      ligne({
-        ...complete,
-        'Type de contrat': 'CDD',
-        'Début du contrat': new Date(Date.UTC(2024, 4, 20, 12)),
-        'Durée (mois)': 12,
-      }) as never,
-      colonnes,
-    );
-    if (!('ok' in r)) throw new Error('attendu convertible');
-    expect(r.ok.entree.contract?.endDate).toBe('2025-05-19');
+  it('reconnaît un nom écrit dans l’autre sens, ou avec sa civilité', () => {
+    expect(cleDeNom('DIOP Awa')).toBe(cleDeNom('Awa Diop'));
+    expect(cleDeNom('Mme Awa DIOP')).toBe(cleDeNom('Awa Diop'));
   });
+});
 
-  it('lit une date écrite à la main au format du pays', () => {
-    const r = convertirLigne(
-      ligne({ ...complete, 'Date de naissance': '12/04/1990' }) as never,
-      colonnes,
-    );
-    if (!('ok' in r)) throw new Error('attendu convertible');
-    expect(r.ok.entree.person.birthDate).toBe('1990-04-12');
-  });
-
-  for (const [cas, modif, motif, colonne] of [
-    ['sans matricule', { Matricule: null }, /matricule manque/i, 'Matricule'],
-    ['sans prénom', { Prénom: null }, /prénom manque/i, 'Prénom'],
-    ['sans date de début', { 'Début du contrat': null }, /date de début/i, 'Début du contrat'],
-    ['au sexe illisible', { Sexe: 'H' }, /ni Homme ni Femme/i, 'Sexe'],
-    [
-      'à la situation inconnue',
-      { 'Situation matrimoniale': 'Pacsé' },
-      /n’est pas une situation matrimoniale reconnue/i,
-      'Situation matrimoniale',
-    ],
-    [
-      'au numéro de pièce sans type',
-      { "Pièce d'identité": null },
-      /sans le type de pièce/i,
-      "Pièce d'identité",
-    ],
-    ['au pays inconnu', { 'Pays de naissance': 'Wakanda' }, /Pays inconnu/i, 'Pays de naissance'],
-    [
-      'à la date illisible',
-      { 'Date de naissance': '32/13/1990' },
-      /pas une date/i,
-      'Date de naissance',
-    ],
-    [
-      'à l’email malformé',
-      { 'Email personnel': 'moussa.diop' },
-      /adresse email/i,
-      'Email personnel',
-    ],
-    ['à la durée sur un CDI', { 'Durée (mois)': 12 }, /CDI n’a pas de durée/i, 'Durée (mois)'],
-    // Les contrôles du formulaire de création, appliqués à l'import.
-    [
-      'au 31 février',
-      { 'Date de naissance': '31/02/1990' },
-      /pas une date valide/i,
-      'Date de naissance',
-    ],
-    [
-      'au 29 février d’une année ordinaire',
-      { 'Début du contrat': '2023-02-29' },
-      /pas une date valide/i,
-      'Début du contrat',
-    ],
-    [
-      'd’une personne de moins de 15 ans',
-      { 'Date de naissance': new Date() },
-      /au moins 15 ans/i,
-      'Date de naissance',
-    ],
-    ['au CDD sans durée', { 'Type de contrat': 'CDD' }, /durée en mois/i, 'Durée (mois)'],
-    [
-      'à la durée en mois non entiers',
-      { 'Type de contrat': 'CDD', 'Durée (mois)': '1,5' },
-      /mois entiers/i,
-      'Durée (mois)',
-    ],
-    [
-      'au contrat de consultant',
-      { 'Type de contrat': 'Consultant' },
-      /CDI, un CDD ou un stage/i,
-      'Type de contrat',
-    ],
-    [
-      'au type de pièce sans numéro',
-      { 'Numéro de la pièce': null },
-      /numéro de la pièce/i,
-      'Numéro de la pièce',
-    ],
-    ['au nom trop long', { Nom: 'N'.repeat(81) }, /80 caractères maximum/i, 'Nom'],
-  ] as [string, Record<string, unknown>, RegExp, string][]) {
-    it(`refuse une ligne ${cas}, en nommant la colonne`, () => {
-      const r = convertirLigne(ligne({ ...complete, ...modif }) as never, colonnes);
-      expect('refus' in r).toBe(true);
-      if (!('refus' in r)) return;
-      expect(r.refus.motif).toMatch(motif);
-      expect(r.refus.colonne).toBe(colonne);
+describe('ce que dit le poste', () => {
+  it('reconnaît les chefs de département et de service, avec le nom de l’unité', () => {
+    expect(natureDuPoste('CHEF DE DEPARTEMENT DIGITALISATION')).toEqual({
+      nature: 'chef',
+      type: 'department',
+      nom: 'digitalisation',
     });
-  }
+    expect(natureDuPoste('CHEF DE SERVICE QUALITE')).toEqual({
+      nature: 'chef',
+      type: 'service',
+      nom: 'qualite',
+    });
+    expect(natureDuPoste('Cheffe du service des moyens généraux')).toEqual({
+      nature: 'chef',
+      type: 'service',
+      nom: 'moyens generaux',
+    });
+    expect(natureDuPoste('CHEF DE SERVICE')).toEqual({
+      nature: 'chef',
+      type: 'service',
+      nom: null,
+    });
+  });
 
-  it('garde l’agent dont la pièce est périmée, sans la reprendre au dossier', () => {
-    const r = convertirLigne(
-      ligne({ ...complete, "Date d'expiration": new Date(Date.UTC(2020, 0, 1, 12)) }) as never,
-      colonnes,
-    );
-    if (!('ok' in r)) throw new Error('attendu convertible');
-    // Le formulaire la refuse : le dossier se crée sans elle.
-    expect(r.ok.entree.person).not.toHaveProperty('idDocumentExpiresOn');
-    expect(r.ok.entree.person).not.toHaveProperty('nationalId');
-    expect(r.ok.entree.person).not.toHaveProperty('idDocumentType');
-    expect(r.ok.avertissements).toEqual([
-      {
-        colonne: "Date d'expiration",
-        texte:
-          'Pièce d’identité expirée depuis le 1er janvier 2020 : elle n’a pas été importée et doit être renouvelée',
-      },
+  it('reconnaît le DG, le DGA, les directeurs, et laisse les adjoints à leur poste', () => {
+    expect(natureDuPoste('DIRECTEUR GENERAL')).toEqual({ nature: 'dg' });
+    expect(natureDuPoste('DIRECTRICE GENERALE ADJOINTE')).toEqual({ nature: 'dga' });
+    expect(natureDuPoste('DIRECTEUR FINANCIER ET COMPTABLE ')).toEqual({
+      nature: 'directeur',
+      precision: 'financier comptable',
+    });
+    expect(natureDuPoste('CHEF DE SERVICE ADJOINT QUALITE')).toEqual({ nature: 'agent' });
+    expect(natureDuPoste('ASSISTANTE DE DIRECTION')).toEqual({ nature: 'agent' });
+  });
+
+  it('ne fait un directeur que de qui nomme sa direction', () => {
+    const dfc = { nom: 'Direction Financière et Comptable', sigle: 'DFC' };
+    expect(designeLaDirection('financier comptable', dfc)).toBe(true);
+    expect(designeLaDirection('financier', dfc)).toBe(true);
+    expect(designeLaDirection('dfc', dfc)).toBe(true);
+    expect(designeLaDirection(null, dfc)).toBe(true);
+    expect(designeLaDirection('projet', dfc)).toBe(false);
+  });
+});
+
+/* ─────────────────────── Une ligne entière ─────────────────────── */
+
+const CORR = correspondre(ENTETES_DCH);
+const contexte = { aujourdhui: AUJOURDHUI, sigles: new Set(['DFC', 'DCH', 'DSID']) };
+const ligne = (v: Record<string, CelluleXlsx>) => ENTETES_DCH.map((h) => v[h] ?? null);
+const lire = (v: Record<string, CelluleXlsx>) => lireLigne(7, ligne(v), CORR, contexte);
+const lue = (v: Record<string, CelluleXlsx>): LigneLue => {
+  const r = lire(v);
+  if (!('ok' in r)) throw new Error(`ligne refusée : ${r.refus.motif}`);
+  return r.ok;
+};
+
+const MOUSSA: Record<string, CelluleXlsx> = {
+  'N°': 1,
+  Matricule: 'apix-0123',
+  Prénom: 'MOUHAMADOU MOUSTAPHA',
+  Nom: 'NDIAYE',
+  'Nom complet': 'MOUHAMADOU MOUSTAPHA NDIAYE',
+  Sexe: 'M',
+  Âge: 41,
+  'Date de naissance': 31213,
+  'Lieu de naissance': 'THIES',
+  Pays: 'SENEGAL',
+  Nationalité: 'Sénégalaise',
+  'Numero CNI': '1 751 1985 01234',
+  'Situation Matrimoniale': 'MARIE',
+  "Nom de l'épouse 1": 'FATOU SARR',
+  "Nom de l'épouse 2": 'AIDA SOW',
+  "Nombre d'épouse ": 2,
+  "Nombre d'enfants": 3,
+  'Adresse mail personnel ': 'Moussa.Ndiaye@Gmail.com',
+  'Adresse mail professionnel ': 'm.ndiaye@apix.sn',
+  'Numéro de tel personnel': '77 123 45 67',
+  'Numero de tel professionnel': 338123456,
+  'Adresse physique': 'CITE KEUR GORGUI VILLA 12',
+  Ville: 'DAKAR',
+  'Region ': 'Dakar',
+  "Personne à contacter en cas d'urgence": 'AWA SARR',
+  "Numero Tel de la personne à contacter en cas d'urgence": '+221 76 987 65 43',
+  'Lien de parenté avec le contact': 'MERE',
+  'Poste occupé ': "CHARGE D'ETUDES",
+  'Responsable Hierarchique\n(N+1)': 'AWA DIOP',
+  'Responsable Fonctionnel': 'OUSMANE FALL',
+  Statut: 'Non Cadre',
+  Direction: 'DCH',
+  'Lieu de travail': 'Siège',
+  Projet: 'Guichet unique',
+  'Type de contrat': 'CDI',
+  "Date d'entrée": 44452,
+  'Ancienneté (années)': 5.1,
+  'Catégorie socio -professionnelle': '5B',
+};
+
+describe('une ligne du fichier', () => {
+  it('donne une fiche complète, avec ses noms et ses numéros écrits comme la fiche les écrit', () => {
+    const l = lue(MOUSSA);
+    expect(l.matricule).toBe('APIX-0123');
+    expect(l.prenom).toBe('Mouhamadou Moustapha');
+    expect(l.nom).toBe('Ndiaye');
+    expect(l.entree).toEqual({ iso: '2021-09-13', auMois: false });
+    expect(l.personne).toEqual({
+      gender: 'male',
+      birthDate: '1985-06-15',
+      birthPlace: 'Sénégal',
+      lieuDeNaissance: 'Thiès',
+      nationalId: '1751198501234',
+      idDocumentType: 'cni',
+      maritalStatus: 'married',
+      epouses: ['Fatou Sarr', 'Aida Sow'],
+      nombreEnfants: 3,
+      personalEmail: 'moussa.ndiaye@gmail.com',
+      phone: '+221771234567',
+      addressLine: 'Cité Keur Gorgui Villa 12',
+      ville: 'Dakar',
+      region: 'dakar',
+      emergencyContactName: 'Awa Sarr',
+      emergencyContactPhone: '+221769876543',
+      lienContactUrgence: 'mere',
+    });
+    expect(l.emploi).toEqual({
+      workEmail: 'm.ndiaye@apix.sn',
+      workPhone: '+221338123456',
+      personnel: 'non_cadre',
+      lieuDeTravail: 'Siège',
+      projet: 'Guichet unique',
+      categorie: '5B',
+    });
+    expect(l.poste).toEqual({ intitule: "Chargé d'études", nature: { nature: 'agent' } });
+    expect(l).toMatchObject({
+      direction: 'DCH',
+      contrat: { type: 'cdi', fin: null },
+      n1: 'AWA DIOP',
+      fonctionnel: 'OUSMANE FALL',
+    });
+    // Les dates gardées en nombres par Excel, lues et montrées ; l'ancienneté concorde.
+    expect(l.corrections).toEqual([
+      { colonne: "Date d'entrée", lu: '44452', retenu: '13/09/2021' },
+      { colonne: 'Date de naissance', lu: '31213', retenu: '15/06/1985' },
+    ]);
+    expect(l.avertissements).toEqual([]);
+  });
+
+  it('refuse une ligne sans matricule, sans prénom ou sans nom, en nommant la colonne', () => {
+    expect(lire({ ...MOUSSA, Matricule: null })).toMatchObject({
+      refus: { motif: 'Le matricule manque', colonne: 'Matricule' },
+    });
+    expect(lire({ ...MOUSSA, Prénom: '  ' })).toMatchObject({
+      refus: { motif: 'Le prénom manque', colonne: 'Prénom' },
+    });
+  });
+
+  it('prend l’ancienneté quand la date d’entrée manque, au mois près', () => {
+    const l = lue({ ...MOUSSA, "Date d'entrée": null });
+    expect(l.entree).toEqual({ iso: '2021-10-01', auMois: true });
+    expect(l.corrections).toContainEqual({
+      colonne: "Date d'entrée",
+      lu: '',
+      retenu: 'oct. 2021, d’après l’ancienneté (5,1 ans)',
+    });
+  });
+
+  it('refuse la ligne sans date d’entrée ni ancienneté', () => {
+    expect(
+      lire({ ...MOUSSA, "Date d'entrée": 'bientôt', 'Ancienneté (années)': null }),
+    ).toMatchObject({
+      refus: { motif: '« bientôt » n’est pas une date', colonne: "Date d'entrée" },
+    });
+  });
+
+  it('retient la date d’entrée quand l’ancienneté la contredit, et le dit', () => {
+    const l = lue({ ...MOUSSA, 'Ancienneté (années)': 9 });
+    expect(l.entree.iso).toBe('2021-09-13');
+    expect(l.avertissements).toContainEqual({
+      colonne: 'Ancienneté (années)',
+      texte:
+        '9 ans dans le fichier, 5,1 ans d’après la date d’entrée : la date d’entrée est retenue',
+    });
+  });
+
+  it('écarte une valeur fausse et importe le reste de la ligne', () => {
+    const l = lue({ ...MOUSSA, 'Numero CNI': '17511985012', 'Region ': 'Paris' });
+    expect(l.personne.nationalId).toBeUndefined();
+    expect(l.personne.region).toBeUndefined();
+    expect(l.personne.phone).toBe('+221771234567');
+    expect(l.avertissements).toEqual([
+      { colonne: 'Numero CNI', texte: 'Numéro CNI à 11 chiffres au lieu de 13 : non importé' },
+      { colonne: 'Region', texte: '« Paris » n’est pas une région du Sénégal : non importé' },
     ]);
   });
 
-  it('écrit le matricule et celui du n+1 en capitales', () => {
-    const r = convertirLigne(ligne({ ...complete, Matricule: ' apix-0007 ' }) as never, colonnes);
-    if (!('ok' in r)) throw new Error('attendu convertible');
-    expect(r.ok.matricule).toBe('APIX-0007');
-    expect(r.ok.entree.employee.employeeNumber).toBe('APIX-0007');
-  });
-
-  it('accepte une ligne réduite au strict nécessaire', () => {
-    const r = convertirLigne(
-      ligne({
-        Prénom: 'Awa',
-        Nom: 'Ndiaye',
-        Matricule: 'APIX-0002',
-        'Début du contrat': '2022-03-14',
-      }) as never,
-      colonnes,
-    );
-    expect('ok' in r).toBe(true);
-    if (!('ok' in r)) return;
-    expect(r.ok.entree.employee.hiredOn).toBe('2022-03-14');
-    expect(r.ok.entree.contract).toBeUndefined();
-    expect(r.ok.entree.assignment).toBeUndefined();
-    expect(r.ok.uniteAbrege).toBeNull();
-  });
-
-  it('lit si l’agent est cadre ou non, pour sa grille d’évaluation', () => {
-    const entetes = ['Prénom', 'Nom', 'Matricule', 'Début du contrat', 'Cadre ou non-cadre'];
-    const { colonnes: c } = correspondre(entetes);
-    const lire = (personnel: string | null) =>
-      convertirLigne(['Awa', 'Ndiaye', 'APIX-0003', '2022-03-14', personnel] as never, c);
-    for (const [ecrit, attendu] of [
-      ['Cadre', 'cadre'],
-      ['NON-CADRE', 'non_cadre'],
-      ['Non cadre', 'non_cadre'],
-    ] as const) {
-      const r = lire(ecrit);
-      if (!('ok' in r)) throw new Error(`« ${ecrit} » : attendu convertible`);
-      expect(r.ok.entree.employee.personnel).toBe(attendu);
-    }
-    const vide = lire(null);
-    if (!('ok' in vide)) throw new Error('attendu convertible');
-    expect(vide.ok.entree.employee).not.toHaveProperty('personnel');
-    const faux = lire('Agent de maîtrise');
-    expect('refus' in faux && faux.refus).toEqual({
-      matricule: 'APIX-0003',
-      nom: 'Awa Ndiaye',
-      motif: '« Agent de maîtrise » n’est ni Cadre ni Non-cadre',
-      colonne: 'Personnel',
+  it('n’importe les épouses que pour un homme marié, autant de noms qu’annoncé', () => {
+    const femme = lue({ ...MOUSSA, Sexe: 'F' });
+    expect(femme.personne.epouses).toBeUndefined();
+    expect(femme.avertissements).toContainEqual({
+      colonne: "Nombre d'épouse",
+      texte: 'Épouses renseignées pour une femme : épouses non importées',
     });
+    const incoherent = lue({ ...MOUSSA, "Nombre d'épouse ": 3 });
+    expect(incoherent.personne.epouses).toBeUndefined();
+    expect(incoherent.avertissements).toContainEqual({
+      colonne: "Nombre d'épouse",
+      texte: '3 épouses annoncées, 2 noms : épouses non importées',
+    });
+    const celibataire = lue({ ...MOUSSA, 'Situation Matrimoniale': 'Célibataire' });
+    expect(celibataire.avertissements[0]?.texte).toBe(
+      'Épouses renseignées pour un homme qui n’est pas marié : épouses non importées',
+    );
+    const sansNombre = lue({ ...MOUSSA, "Nombre d'épouse ": null });
+    expect(sansNombre.personne.epouses).toEqual(['Fatou Sarr', 'Aida Sow']);
+    const femmeSansEpouse = lue({
+      ...MOUSSA,
+      Sexe: 'F',
+      'Situation Matrimoniale': 'Mariée',
+      "Nom de l'épouse 1": null,
+      "Nom de l'épouse 2": null,
+      "Nombre d'épouse ": 0,
+    });
+    expect(femmeSansEpouse.avertissements).toEqual([]);
+  });
+
+  it('veut une date de fin pour un CDD, et pas pour un CDI', () => {
+    const cdd = lue({ ...MOUSSA, 'Type de contrat': 'CDD', 'Date de fin (si CDD)': '31/12/2027' });
+    expect(cdd.contrat).toEqual({ type: 'cdd', fin: '2027-12-31' });
+    const sansFin = lue({ ...MOUSSA, 'Type de contrat': 'CDD' });
+    expect(sansFin.contrat).toBeNull();
+    expect(sansFin.avertissements).toContainEqual({
+      colonne: 'Type de contrat',
+      texte: 'CDD sans date de fin : non importé',
+    });
+    const cdi = lue({ ...MOUSSA, 'Date de fin (si CDD)': '31/12/2027' });
+    expect(cdi.contrat).toEqual({ type: 'cdi', fin: null });
+    expect(cdi.avertissements).toContainEqual({
+      colonne: 'Date de fin (si CDD)',
+      texte: 'Un CDI n’a pas de date de fin : non importé',
+    });
+    const echu = lue({ ...MOUSSA, 'Type de contrat': 'CDD', 'Date de fin (si CDD)': '30/06/2026' });
+    expect(echu.avertissements).toContainEqual({
+      colonne: 'Date de fin (si CDD)',
+      texte: 'CDD terminé le 30/06/2026 : saisissez son renouvellement sur la fiche',
+    });
+  });
+
+  it('laisse la sortie à la fiche', () => {
+    const l = lue({ ...MOUSSA, 'Date de sortie': '01/10/2026', 'Motif de sortie': 'Démission' });
+    expect(l.avertissements).toEqual([
+      { colonne: 'Date de sortie', texte: 'La sortie se saisit sur la fiche : non importé' },
+      { colonne: 'Motif de sortie', texte: 'La sortie se saisit sur la fiche : non importé' },
+    ]);
+  });
+
+  it('montre chaque correction de saisie avant l’import', () => {
+    const l = lue({
+      ...MOUSSA,
+      'Region ': 'Ziginchor',
+      Statut: 'non carde',
+      'Lien de parenté avec le contact': 'Oncle',
+      'Adresse mail professionnel ': 'm.ndiaye@apix.com',
+    });
+    expect(l.corrections).toEqual(
+      expect.arrayContaining([
+        { colonne: 'Region', lu: 'Ziginchor', retenu: 'Ziguinchor' },
+        { colonne: 'Statut', lu: 'non carde', retenu: 'Non cadre' },
+        { colonne: 'Lien de parenté avec le contact', lu: 'Oncle', retenu: 'Autre' },
+        {
+          colonne: 'Adresse mail professionnel',
+          lu: 'm.ndiaye@apix.com',
+          retenu: 'm.ndiaye@apix.sn',
+        },
+      ]),
+    );
+  });
+
+  it('écarte la date de naissance d’une personne de moins de quinze ans', () => {
+    const l = lue({ ...MOUSSA, 'Date de naissance': '01/01/2020' });
+    expect(l.personne.birthDate).toBeUndefined();
+    expect(l.avertissements[0]?.colonne).toBe('Date de naissance');
   });
 });

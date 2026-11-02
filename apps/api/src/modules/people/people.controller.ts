@@ -14,6 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  choixDImportSchema,
   archiveEmployeesSchema,
   corrigerAffectationSchema,
   corrigerContratSchema,
@@ -95,12 +96,16 @@ export class PeopleController {
    */
   @Post('employees/import')
   @Peut('personnel.gerer')
-  importerEmployes(@Req() req: AuthenticatedRequest, @Query('apercu') apercu: string | undefined) {
+  importerEmployes(
+    @Req() req: AuthenticatedRequest,
+    @Query('apercu') apercu: string | undefined,
+    @Query('choix') choix: string | undefined,
+  ) {
     const fichier = (req as unknown as { body?: unknown }).body;
     if (!Buffer.isBuffer(fichier) || fichier.length === 0) {
       problem(415, 'import.corps_absent', 'Envoyez le classeur .xlsx en corps de requête');
     }
-    return this.imports.importer(req.sessionUser, fichier, apercu !== '1');
+    return this.imports.importer(req.sessionUser, fichier, apercu !== '1', lireLesChoix(choix));
   }
 
   @Post('employees')
@@ -322,4 +327,21 @@ export class PeopleController {
   orgUnitMembers(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.orgUnits.members(req.sessionUser, id);
   }
+}
+
+/**
+ * Les homonymes départagés à l'aperçu, en JSON dans l'adresse : la clé du
+ * choix vers le candidat retenu (ADR-0159).
+ */
+function lireLesChoix(brut: string | undefined): Record<string, string> {
+  if (!brut) return {};
+  let valeur: unknown;
+  try {
+    valeur = JSON.parse(brut);
+  } catch {
+    problem(400, 'import.choix_illisibles', 'Les choix envoyés ne se lisent pas');
+  }
+  const r = choixDImportSchema.safeParse(valeur);
+  if (!r.success) problem(400, 'import.choix_illisibles', 'Les choix envoyés ne se lisent pas');
+  return r.data;
 }

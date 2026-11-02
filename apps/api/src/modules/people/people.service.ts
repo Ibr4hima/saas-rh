@@ -240,6 +240,15 @@ export class PeopleService {
     private readonly expediteur?: ExpediteurCourriels,
   ) {}
 
+  /** Dans la transaction donnée, ou dans une transaction à soi. */
+  private dansUneTransaction<T>(
+    user: SessionUser,
+    dans: Tx | undefined,
+    fn: (tx: Tx) => Promise<T>,
+  ): Promise<T> {
+    return dans ? fn(dans) : this.db.withTenant(ctxOf(user), fn);
+  }
+
   /**
    * La liste du personnel : recherche, onglet, filtres, tri, page.
    *
@@ -474,13 +483,15 @@ export class PeopleService {
     input: CreateEmployeeInput,
     /** Ce que seul l'import pose : un matricule provisoire, une entrée connue au mois. */
     marques: { matriculeProvisoire?: boolean; entreeAuMois?: boolean } = {},
+    /** La transaction de l'import, qui joue tout puis annule en aperçu (ADR-0159). */
+    dans?: Tx,
   ): Promise<CreateEmployeeResult> {
     const employeeId = uuidv7();
     const personId = uuidv7();
     let invitation: InvitationAuPassage | null = null;
 
     try {
-      await this.db.withTenant(ctxOf(user), async (tx) => {
+      await this.dansUneTransaction(user, dans, async (tx) => {
         await verrouillerLaChaine(tx);
         if (input.assignment?.orgUnitId) {
           await exigerUniteVivante(tx, input.assignment.orgUnitId);
@@ -933,9 +944,15 @@ export class PeopleService {
     };
   }
 
-  async update(user: SessionUser, id: string, input: UpdateEmployeeInput): Promise<void> {
+  async update(
+    user: SessionUser,
+    id: string,
+    input: UpdateEmployeeInput,
+    /** La transaction de l'import (cf. `create`). */
+    dans?: Tx,
+  ): Promise<void> {
     try {
-      await this.db.withTenant(ctxOf(user), async (tx) => {
+      await this.dansUneTransaction(user, dans, async (tx) => {
         const employee = await this.requireEmployee(tx, id);
         await pasSurSoi(tx, user.userId, [id], 'modifier votre dossier');
         if (employee.status !== 'active') {

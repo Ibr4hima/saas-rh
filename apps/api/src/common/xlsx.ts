@@ -254,10 +254,19 @@ export function lirePremiereFeuille(buf: Buffer): FeuilleXlsx {
   const dates = formatsDate(lire('xl/styles.xml'));
   const lignes: CelluleXlsx[][] = [];
 
-  for (const row of feuille.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
-    if (lignes.length >= MAX_LIGNES) throw new XlsxIllisible('La feuille contient trop de lignes');
+  // Une ligne ou une cellule vide s'écrit aussi en balise courte (`<c r="B3"
+  // s="4"/>`, ce qu'Excel fait de toute case vide mais mise en forme) : la
+  // lecture ne doit pas l'étendre jusqu'à la fermeture de la suivante.
+  for (const row of feuille.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+    // Le numéro de la ligne fait foi : Excel omet les lignes vides, et la
+    // DCH doit retrouver dans son tableur la ligne que le rapport nomme.
+    const numero = Number(/\br="(\d+)"/.exec(row[1] ?? '')?.[1] ?? lignes.length + 1);
+    if (numero > MAX_LIGNES || lignes.length >= MAX_LIGNES) {
+      throw new XlsxIllisible('La feuille contient trop de lignes');
+    }
+    while (lignes.length < numero - 1) lignes.push([]);
     const cellules: CelluleXlsx[] = [];
-    for (const c of row[1]!.matchAll(/<c\b([^>]*)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+    for (const c of (row[2] ?? '').matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
       const attributs = c[1] ?? '';
       const corps = c[2] ?? '';
       const ref = /r="([A-Z]+)/.exec(attributs)?.[1];
