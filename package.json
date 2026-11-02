@@ -15,6 +15,7 @@
     "mail:up": "docker compose up -d mailpit",
     "db:migrate": "pnpm --filter @teranga/api db:migrate",
     "db:reset": "pnpm --filter @teranga/api db:reset",
+    "personnel:vider": "pnpm --filter @teranga/api personnel:vider",
     "format": "prettier --write ."
   },
   "devDependencies": {

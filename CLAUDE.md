@@ -11,6 +11,7 @@ pnpm db:up                # démarre Postgres 16 (docker compose)
 pnpm mail:up              # démarre Mailpit (courriels de dev, http://localhost:8025)
 pnpm db:migrate           # applique les migrations SQL (apps/api/src/db/sql)
 pnpm db:reset             # DÉTRUIT la base puis remigre à neuf (dev/CI seulement)
+pnpm personnel:vider      # efface le personnel d'une organisation (à blanc sans --confirmer)
 pnpm dev                  # api (:3001) + web (:3000)
 pnpm build                # build de tous les paquets (ordre géré par turbo)
 pnpm typecheck            # tsc --noEmit partout
