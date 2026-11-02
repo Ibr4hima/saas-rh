@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CODES_DES_BANQUES, type CodeDeBanque } from './banques';
 import { dateDeNaissanceSchema } from './dates';
 import type { AnomalieHierarchie, ChangementRattachement } from './hierarchie';
 
@@ -418,6 +419,116 @@ export function maritalLabelsFor(gender: string | null | undefined): Record<stri
   };
 }
 
+// ---------- Ce que la DCH tient sur chaque agent (ADR-0158) ----------
+
+/** Les quatorze régions du Sénégal. */
+export const REGIONS = [
+  'dakar',
+  'diourbel',
+  'fatick',
+  'kaffrine',
+  'kaolack',
+  'kedougou',
+  'kolda',
+  'louga',
+  'matam',
+  'saint_louis',
+  'sedhiou',
+  'tambacounda',
+  'thies',
+  'ziguinchor',
+] as const;
+export type Region = (typeof REGIONS)[number];
+export const LIBELLES_REGION: Record<Region, string> = {
+  dakar: 'Dakar',
+  diourbel: 'Diourbel',
+  fatick: 'Fatick',
+  kaffrine: 'Kaffrine',
+  kaolack: 'Kaolack',
+  kedougou: 'Kédougou',
+  kolda: 'Kolda',
+  louga: 'Louga',
+  matam: 'Matam',
+  saint_louis: 'Saint-Louis',
+  sedhiou: 'Sédhiou',
+  tambacounda: 'Tambacounda',
+  thies: 'Thiès',
+  ziguinchor: 'Ziguinchor',
+};
+
+/** Le lien avec la personne à contacter en cas d'urgence. */
+export const LIENS_DE_PARENTE = [
+  'pere',
+  'mere',
+  'conjoint',
+  'frere',
+  'soeur',
+  'enfant',
+  'ami',
+  'autre',
+] as const;
+export type LienDeParente = (typeof LIENS_DE_PARENTE)[number];
+export const LIBELLES_LIEN_DE_PARENTE: Record<LienDeParente, string> = {
+  pere: 'Père',
+  mere: 'Mère',
+  conjoint: 'Conjoint(e)',
+  frere: 'Frère',
+  soeur: 'Sœur',
+  enfant: 'Enfant',
+  ami: 'Ami(e)',
+  autre: 'Autre',
+};
+
+/** Quatre épouses au plus, pour un homme marié seulement. */
+export const MAX_EPOUSES = 4;
+/** Le nombre de parts : de 1 à 5, par demi-part. */
+export const NOMBRES_DE_PARTS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5] as const;
+
+/**
+ * Le domaine des adresses professionnelles. Une seule valeur tant que le
+ * produit sert un seul employeur : le jour où il en sert un second, elle
+ * devient un réglage de l'organisation. L'écran et l'import la lisent ici.
+ */
+export const DOMAINE_COURRIEL_PRO = 'apix.sn';
+
+/**
+ * Un numéro sénégalais : +221 puis 9 chiffres, qui commencent par 7 (mobile)
+ * ou 3 (fixe). Un numéro d'un autre pays garde ses propres règles. null :
+ * le numéro convient.
+ */
+export function erreurDuTelephone(numero: string): string | null {
+  const n = numero.replace(/[\s.-]/g, '');
+  if (!n.startsWith('+221')) return null;
+  return /^\+221[37]\d{8}$/.test(n)
+    ? null
+    : 'Numéro sénégalais : 9 chiffres, commençant par 7 ou 3';
+}
+
+/** Un numéro de CNI : 13 chiffres. null : le numéro convient. */
+export function erreurDeLaCni(numero: string): string | null {
+  return /^\d{13}$/.test(numero.replace(/[\s-]/g, ''))
+    ? null
+    : 'Le numéro de CNI compte 13 chiffres';
+}
+
+/**
+ * Les épouses ne se renseignent que pour un homme marié, quatre au plus.
+ * null : la fiche convient.
+ */
+export function erreurDesEpouses(p: {
+  gender?: string | null;
+  maritalStatus?: string | null;
+  epouses?: readonly string[] | null;
+}): string | null {
+  const n = p.epouses?.length ?? 0;
+  if (n === 0) return null;
+  if (n > MAX_EPOUSES) return 'Quatre épouses au plus';
+  if (p.gender !== 'male' || p.maritalStatus !== 'married') {
+    return 'Les épouses se renseignent pour un homme marié seulement';
+  }
+  return null;
+}
+
 // ---------- Employé : création / mise à jour ----------
 
 export const idDocumentTypeSchema = z.enum(['cni', 'passport']);
@@ -455,6 +566,10 @@ function checkIdDocument(
       message: 'Indiquez le numéro de la pièce',
     });
   }
+  // Le type et le numéro arrivent ensemble : la CNI compte 13 chiffres. En
+  // mise à jour, le serveur le vérifie aussi avec le type déjà enregistré.
+  const cni = p.idDocumentType === 'cni' && p.nationalId ? erreurDeLaCni(p.nationalId) : null;
+  if (cni) ctx.addIssue({ code: 'custom', path: ['nationalId'], message: cni });
   if (
     p.idDocumentIssuedOn &&
     p.idDocumentExpiresOn &&
@@ -475,6 +590,13 @@ function checkIdDocument(
   }
 }
 
+/** Un téléphone facultatif ; sénégalais, il suit la règle du pays. */
+const telephone = optionalTrimmed(30).refine((v) => !v || !erreurDuTelephone(v), {
+  message: 'Numéro sénégalais : 9 chiffres, commençant par 7 ou 3',
+});
+const epousesSchema = z.array(trimmed(120)).max(MAX_EPOUSES, 'Quatre épouses au plus');
+const nombreEnfantsSchema = z.number().int().min(0, 'Un nombre positif').max(30);
+
 export const personFieldsBaseSchema = z.object({
   givenName: trimmed(80),
   familyName: trimmed(80),
@@ -482,6 +604,8 @@ export const personFieldsBaseSchema = z.object({
   birthDate: birthDateSchema.optional(),
   /** Pays de naissance (libellé français, choisi dans la liste). */
   birthPlace: optionalTrimmed(120),
+  /** La ville de naissance. */
+  lieuDeNaissance: optionalTrimmed(120),
   maritalStatus: maritalStatusSchema.optional(),
   nationality: z
     .string()
@@ -494,15 +618,26 @@ export const personFieldsBaseSchema = z.object({
   idDocumentIssuedOn: isoDate.optional(),
   idDocumentExpiresOn: isoDate.optional(),
   personalEmail: z.email().optional(),
-  phone: optionalTrimmed(30),
+  phone: telephone,
   addressLine: optionalTrimmed(200),
+  ville: optionalTrimmed(80),
+  region: z.enum(REGIONS).optional(),
   emergencyContactName: optionalTrimmed(120),
-  emergencyContactPhone: optionalTrimmed(30),
+  emergencyContactPhone: telephone,
+  lienContactUrgence: z.enum(LIENS_DE_PARENTE).optional(),
+  /** La filiation : « Fils de » ou « Fille de ». */
+  prenomDuPere: optionalTrimmed(80),
+  prenomDeLaMere: optionalTrimmed(80),
+  nomDeLaMere: optionalTrimmed(80),
+  epouses: epousesSchema.optional(),
+  nombreEnfants: nombreEnfantsSchema.optional(),
 });
 
-export const personFieldsSchema = personFieldsBaseSchema.superRefine((p, ctx) =>
-  checkIdDocument(p, ctx, true),
-);
+export const personFieldsSchema = personFieldsBaseSchema.superRefine((p, ctx) => {
+  checkIdDocument(p, ctx, true);
+  const epouses = erreurDesEpouses(p);
+  if (epouses) ctx.addIssue({ code: 'custom', path: ['epouses'], message: epouses });
+});
 
 /**
  * Cadre ou non cadre (ADR-0149) : la grille d'évaluation qui revient à
@@ -520,12 +655,96 @@ export const employeeFieldsSchema = z.object({
   employeeNumber: matricule,
   hiredOn: isoDate,
   workEmail: z.email().optional(),
-  workPhone: optionalTrimmed(30),
+  workPhone: telephone,
   /** À qui l'agent rend compte. Absent = personne (un DG n'a pas de manager). */
   managerEmployeeId: optionalUuid,
   personnel: personnelSchema.optional(),
+  lieuDeTravail: optionalTrimmed(120),
+  projet: optionalTrimmed(120),
+  /** La catégorie socio-professionnelle, celle du certificat de travail. */
+  categorie: optionalTrimmed(60),
+  /** Pour information : seul le N+1 valide (ADR-0158). */
+  responsableFonctionnelId: optionalUuid,
   customFields: z.record(z.string(), z.unknown()).optional(),
 });
+
+/**
+ * La rémunération, la banque et l'IPRES : réservées à l'accès aux données
+ * sensibles (ADR-0158). Absent : inchangé ; null : effacé. Montants en francs
+ * CFA.
+ */
+const montant = z.number().int('Un montant entier').min(0, 'Un montant positif').max(1e9);
+export const remunerationSchema = z
+  .object({
+    salaireDeBase: montant.nullable(),
+    sursalaire: montant.nullable(),
+    primeAnciennete: montant.nullable(),
+    brutSocial: montant.nullable(),
+    primeTransport: montant.nullable(),
+    salaireBrut: montant.nullable(),
+    carburant: montant.nullable(),
+    forfaitTelephone: montant.nullable(),
+    indemniteSujetion: montant.nullable(),
+    autresAvantages: z
+      .string()
+      .trim()
+      .max(300)
+      .transform((v) => (v === '' ? null : v))
+      .nullable(),
+    nombreDeParts: z
+      .number()
+      .refine((n) => (NOMBRES_DE_PARTS as readonly number[]).includes(n), {
+        message: 'De 1 à 5 parts, par demi-part',
+      })
+      .nullable(),
+    banque: z.enum(CODES_DES_BANQUES).nullable(),
+    /** Le RIB : « SN », puis vingt-deux chiffres ; chiffré au stockage. */
+    rib: z
+      .string()
+      .transform((v) => v.replace(/\s/g, '').toUpperCase())
+      .transform((v) => (v === '' ? null : v))
+      .pipe(
+        z
+          .string()
+          .regex(/^SN\d{22}$/, 'Le RIB compte 24 caractères, SN compris')
+          .nullable(),
+      )
+      .nullable(),
+    /** L'agence où le compte est domicilié. */
+    domiciliation: z
+      .string()
+      .trim()
+      .max(120)
+      .transform((v) => (v === '' ? null : v))
+      .nullable(),
+    numeroIpres: z
+      .string()
+      .trim()
+      .max(30)
+      .transform((v) => (v === '' ? null : v))
+      .nullable(),
+  })
+  .partial();
+export type RemunerationInput = z.infer<typeof remunerationSchema>;
+
+/** Ce que la fiche montre de la rémunération, à qui a l'accès aux données sensibles. */
+export interface VueRemuneration {
+  salaireDeBase: number | null;
+  sursalaire: number | null;
+  primeAnciennete: number | null;
+  brutSocial: number | null;
+  primeTransport: number | null;
+  salaireBrut: number | null;
+  carburant: number | null;
+  forfaitTelephone: number | null;
+  indemniteSujetion: number | null;
+  autresAvantages: string | null;
+  nombreDeParts: number | null;
+  banque: CodeDeBanque | null;
+  rib: string | null;
+  domiciliation: string | null;
+  numeroIpres: string | null;
+}
 
 /**
  * Un contrat, le premier comme les suivants : un CDI, un CDD ou un stage ;
@@ -618,6 +837,8 @@ export const createEmployeeSchema = z.object({
   employee: employeeFieldsSchema,
   contract: initialContractSchema.optional(),
   assignment: initialAssignmentSchema.optional(),
+  /** Réservée à l'accès aux données sensibles. */
+  remuneration: remunerationSchema.optional(),
   /** Envoyer l'invitation au portail dans la foulée. */
   inviter: z.boolean().optional(),
 });
@@ -637,6 +858,9 @@ const clearableString = (max: number) =>
     .max(max)
     .transform((v) => (v === '' ? null : v))
     .nullable();
+const telephoneEffacable = clearableString(30).refine((v) => !v || !erreurDuTelephone(v), {
+  message: 'Numéro sénégalais : 9 chiffres, commençant par 7 ou 3',
+});
 
 export const updatePersonFieldsSchema = z
   .object({
@@ -658,10 +882,20 @@ export const updatePersonFieldsSchema = z
     idDocumentIssuedOn: isoDate.nullable(),
     idDocumentExpiresOn: isoDate.nullable(),
     personalEmail: z.email().nullable(),
-    phone: clearableString(30),
+    phone: telephoneEffacable,
     addressLine: clearableString(200),
+    ville: clearableString(80),
+    region: z.enum(REGIONS).nullable(),
     emergencyContactName: clearableString(120),
-    emergencyContactPhone: clearableString(30),
+    emergencyContactPhone: telephoneEffacable,
+    lienContactUrgence: z.enum(LIENS_DE_PARENTE).nullable(),
+    lieuDeNaissance: clearableString(120),
+    prenomDuPere: clearableString(80),
+    prenomDeLaMere: clearableString(80),
+    nomDeLaMere: clearableString(80),
+    /** La liste entière ; vide : aucune. */
+    epouses: epousesSchema,
+    nombreEnfants: nombreEnfantsSchema.nullable(),
   })
   .partial()
   // En mise à jour partielle on ne peut pas exiger le type avec le numéro
@@ -674,7 +908,7 @@ export const updateEmployeeFieldsSchema = z
     employeeNumber: matricule,
     hiredOn: isoDate,
     workEmail: z.email().nullable(),
-    workPhone: clearableString(30),
+    workPhone: telephoneEffacable,
     /**
      * Le statut n'est PAS ici : fermer un dossier révoque des sessions et se
      * refuse dans des cas précis (soi-même, dernier administrateur, chef
@@ -685,12 +919,18 @@ export const updateEmployeeFieldsSchema = z
     /** null = plus de manager ; absent = inchangé. */
     managerEmployeeId: z.uuid().nullable(),
     personnel: personnelSchema.nullable(),
+    lieuDeTravail: clearableString(120),
+    projet: clearableString(120),
+    categorie: clearableString(60),
+    responsableFonctionnelId: z.uuid().nullable(),
   })
   .partial();
 
 export const updateEmployeeSchema = z.object({
   person: updatePersonFieldsSchema.optional(),
   employee: updateEmployeeFieldsSchema.optional(),
+  /** Réservée à l'accès aux données sensibles. */
+  remuneration: remunerationSchema.optional(),
 });
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>;
 
@@ -1020,6 +1260,17 @@ export interface EmployeeDetail {
   workPhone: string | null;
   /** Cadre ou non cadre ; null : pas encore dit. */
   personnel: Personnel | null;
+  lieuDeTravail: string | null;
+  projet: string | null;
+  categorie: string | null;
+  /** Pour information : seul le N+1 valide (ADR-0158). */
+  responsableFonctionnel: { id: string; nom: string; matricule: string } | null;
+  /** 50-A, 50-B : à remplacer par le vrai matricule, sans délai. */
+  matriculeProvisoire: boolean;
+  /** L'entrée n'est connue qu'au mois : `hiredOn` en est le 1er. */
+  entreeAuMois: boolean;
+  /** null : réservée à l'accès aux données sensibles. */
+  remuneration: VueRemuneration | null;
   managerId: string | null;
   managerName: string | null;
   /** Le matricule du manager : il le distingue d'un homonyme dans une liste. */
@@ -1053,8 +1304,17 @@ export interface EmployeeDetail {
     personalEmail: string | null;
     phone: string | null;
     addressLine: string | null;
+    ville: string | null;
+    region: Region | null;
     emergencyContactName: string | null;
     emergencyContactPhone: string | null;
+    lienContactUrgence: LienDeParente | null;
+    lieuDeNaissance: string | null;
+    prenomDuPere: string | null;
+    prenomDeLaMere: string | null;
+    nomDeLaMere: string | null;
+    epouses: string[];
+    nombreEnfants: number | null;
   };
   assignments: AssignmentView[];
   contracts: ContractView[];

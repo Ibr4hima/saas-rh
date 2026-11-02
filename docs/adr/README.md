@@ -163,3 +163,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0155](0155-grille-du-personnel-non-cadre.md)         | La grille du personnel non cadre : huit critères notés sur 10, un relevé sur 170        | acceptée                                    |
 | [0156](0156-reprise-de-la-grille-au-n2.md)            | Chez le N+2, le N+1 attend l'avis ou reprend la grille avant de l'envoyer à la DCH      | acceptée                                    |
 | [0157](0157-cadre-ou-non-cadre-sur-soi.md)            | Cadre ou non cadre, la seule chose qu'on règle sur son propre dossier                   | acceptée                                    |
+| [0158](0158-la-fiche-recoit-le-fichier-de-la-dch.md)  | La fiche reçoit tout ce que la DCH tient sur chaque agent, la rémunération à part       | acceptée                                    |

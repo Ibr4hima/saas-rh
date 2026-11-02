@@ -3,14 +3,31 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { EmployeeListItem, EmployeeListPage, OrgUnitView } from '@teranga/contracts';
-import { LIBELLES_PERSONNEL, PERSONNELS, uniteAvecArticle } from '@teranga/contracts';
+import { LIBELLES_PERSONNEL, PERSONNELS, peut, uniteAvecArticle } from '@teranga/contracts';
 import { Button, Checkbox, cn, Field, Input, Select } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { COUNTRIES, composePhone, countryByCode, DEFAULT_COUNTRY } from '../lib/countries';
+import { useMe } from '../lib/hooks';
 import { contractEnd, maritalLabels, maxBirthDate } from '../lib/person';
 import { libelleResponsable, n1DOffice, useResponsablesPossibles } from '../lib/responsables';
 import { formatDate } from '../lib/hooks';
 import { ChoixUnite, directionDe } from './choix-unite';
+import {
+  ChampsDeLAdresse,
+  ChampsDeLaNaissance,
+  ChampsDeLEmploi,
+  COMPLEMENTS_VIDES,
+  complementsACreer,
+  epousesIncompletes,
+  erreurDuRib,
+  REMUNERATION_VIDE,
+  remunerationModifiee,
+  SectionContactDUrgence,
+  SectionFamille,
+  SectionRemuneration,
+  type Complements,
+  type RemunerationSaisie,
+} from './complements-fiche';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
 import { composeWorkEmail, WorkEmailInput } from './work-email-input';
@@ -65,6 +82,12 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   // L'invitation au portail part dans la foulée, à l'adresse professionnelle
   // (sinon personnelle) : on la demande, cochée par défaut.
   const [inviter, setInviter] = useState(true);
+  // Le reste de ce que la DCH tient sur l'agent (ADR-0158) ; la rémunération,
+  // pour qui a l'accès aux données sensibles.
+  const [complements, setComplements] = useState<Complements>(COMPLEMENTS_VIDES);
+  const [remuneration, setRemuneration] = useState<RemunerationSaisie>(REMUNERATION_VIDE);
+  const voitSensible = peut(useMe().data, 'personnel.sensible');
+  const epousesPossibles = gender === 'male' && maritalStatus === 'married';
 
   const orgUnits = useQuery({
     queryKey: ['org-units'],
@@ -106,11 +129,17 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
     (!needsDuration || months > 0) &&
     (!directionChoisie || positionTitle.trim()) &&
     (!idType || idNumber.trim()) &&
-    !idDatesInvalid;
+    !idDatesInvalid &&
+    !(epousesPossibles && epousesIncompletes(complements)) &&
+    !erreurDuRib(remuneration.rib);
 
   const submit = async () => {
     setSaving(true);
     setServerError(null);
+    // Une femme, ou un homme qui n'est pas marié, n'a pas d'épouse déclarée.
+    const plus = complementsACreer(
+      epousesPossibles ? complements : { ...complements, epouses: [] },
+    );
     try {
       await api<{ id: string }>('/employees', {
         method: 'POST',
@@ -129,6 +158,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             personalEmail: personalEmail || undefined,
             phone: composePhone(phoneCountry, phoneLocal),
             addressLine: addressLine || undefined,
+            ...plus.person,
           },
           employee: {
             employeeNumber: employeeNumber.trim().toUpperCase(),
@@ -139,7 +169,11 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             managerEmployeeId: peutChoisirLeN1 && managerId ? managerId : undefined,
             // Une personne en stage n'est pas évaluée sur la grille.
             personnel: contractType !== 'stage' && personnel ? personnel : undefined,
+            ...plus.employee,
           },
+          remuneration: voitSensible
+            ? remunerationModifiee(REMUNERATION_VIDE, remuneration)
+            : undefined,
           assignment: positionTitle.trim()
             ? {
                 positionTitle: positionTitle.trim(),
@@ -251,6 +285,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               ))}
             </Select>
           </Field>
+          <ChampsDeLaNaissance valeur={complements} onChange={setComplements} />
 
           <Field label="Pièce d'identité" htmlFor="idType">
             <Select id="idType" value={idType} onChange={(e) => setIdType(e.target.value)}>
@@ -325,8 +360,16 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               />
             </Field>
           </div>
+          <ChampsDeLAdresse valeur={complements} onChange={setComplements} />
         </ModalGrid>
       </ModalSection>
+
+      <SectionFamille
+        valeur={complements}
+        onChange={setComplements}
+        epousesPossibles={epousesPossibles}
+      />
+      <SectionContactDUrgence valeur={complements} onChange={setComplements} />
 
       <ModalSection title="Emploi">
         <ModalGrid>
@@ -464,8 +507,13 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               </Select>
             </Field>
           )}
+          <ChampsDeLEmploi valeur={complements} onChange={setComplements} />
         </ModalGrid>
       </ModalSection>
+
+      {voitSensible ? (
+        <SectionRemuneration valeur={remuneration} onChange={setRemuneration} />
+      ) : null}
     </Modal>
   );
 }

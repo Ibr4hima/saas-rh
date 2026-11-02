@@ -49,10 +49,19 @@ import { EmployeeDocumentsCard } from './employee-documents-card';
 import { EmployeeEditModal } from './employee-edit-modal';
 import { Telephone } from './telephone';
 import { Donnee, EnTete, Groupe, Peremption, Repere } from './fiche';
+import {
+  CarteEmploi,
+  CarteRemuneration,
+  dateDEntree,
+  DonneesDeLAdresse,
+  DonneesDeNaissance,
+  GroupeContactDUrgence,
+  GroupeFamille,
+} from './fiche-complements';
 import { Icon } from './icons';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { Pagination, usePagination } from './pagination';
-import { contractEnd, ID_DOCUMENT_LABELS, maritalLabels, SEX_LABELS } from '../lib/person';
+import { contractEnd, ID_DOCUMENT_LABELS, SEX_LABELS } from '../lib/person';
 import { formatDate, useMe } from '../lib/hooks';
 import { aujourdhui } from '../lib/temps';
 import type { ConsequencesHierarchie, OrgUnit, OrgUnitView } from '@teranga/contracts';
@@ -109,6 +118,12 @@ function lastDay(exclusiveEnd: string): string {
  * moins d'un mois. Les mois sont ceux du calendrier, comme sur le tableau de
  * bord : quatre ans jour pour jour font « 4 ans ».
  */
+/** « Depuis le 13 sept. 2021 », ou « Depuis sept. 2021 » quand l'entrée n'est connue qu'au mois. */
+function depuisLe(e: EmployeeDetail, iso: string): string {
+  const date = dateDEntree(e, iso);
+  return e.entreeAuMois && iso === e.hiredOn ? `Depuis ${date}` : `Depuis le ${date}`;
+}
+
 function seniority(
   anciennete: NonNullable<EmployeeDetail['anciennete']>,
   jusquAu: string | null,
@@ -311,6 +326,11 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
         sousTitre={
           <>
             <span className="font-mono tracking-tight">{e.employeeNumber}</span>
+            {e.matriculeProvisoire ? (
+              <Badge tone="orange" className="ml-1.5 align-middle">
+                Provisoire
+              </Badge>
+            ) : null}
             {actif && current?.positionTitle ? <> · {current.positionTitle}</> : null}
             {actif && e.personnel ? <> · {LIBELLES_PERSONNEL[e.personnel]}</> : null}
           </>
@@ -387,7 +407,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                   label="Ancienneté"
                   valeur={e.anciennete ? seniority(e.anciennete, null) : null}
                 >
-                  {e.anciennete ? `Depuis le ${formatDate(e.anciennete.depuis)}` : null}
+                  {e.anciennete ? depuisLe(e, e.anciennete.depuis) : null}
                 </Repere>
               )}
             </>
@@ -407,7 +427,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                   label="Ancienneté"
                   valeur={e.anciennete ? seniority(e.anciennete, e.finActivite) : null}
                 >
-                  {e.anciennete ? `Depuis le ${formatDate(e.anciennete.depuis)}` : null}
+                  {e.anciennete ? depuisLe(e, e.anciennete.depuis) : null}
                 </Repere>
               )}
               {/* Parti, on ne le joint plus à l'APIX : son adresse personnelle. */}
@@ -448,16 +468,10 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
             <CardContent className="flex flex-col gap-7 pt-2">
               <Groupe titre="Identité">
                 <Donnee label="Sexe">{e.person.gender ? SEX_LABELS[e.person.gender] : null}</Donnee>
-                <Donnee label="Date de naissance">
-                  {e.person.birthDate ? formatDate(e.person.birthDate) : null}
-                </Donnee>
-                <Donnee label="Pays de naissance">{e.person.birthPlace}</Donnee>
-                <Donnee label="Situation matrimoniale">
-                  {e.person.maritalStatus
-                    ? maritalLabels(e.person.gender)[e.person.maritalStatus]
-                    : null}
-                </Donnee>
+                <DonneesDeNaissance e={e} />
               </Groupe>
+
+              <GroupeFamille e={e} />
 
               <Groupe titre="Pièce d'identité">
                 <Donnee label="Type de pièce d'identité">
@@ -507,9 +521,14 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                 <Donnee label="Adresse" large>
                   {e.person.addressLine}
                 </Donnee>
+                <DonneesDeLAdresse e={e} />
               </Groupe>
+
+              <GroupeContactDUrgence e={e} />
             </CardContent>
           </Card>
+
+          <CarteEmploi e={e} />
 
           <AssignmentsCard
             employeeId={e.id}
@@ -571,7 +590,7 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
                             </span>
                           ) : null}
                         </Td>
-                        <Td>{formatDate(c.startDate)}</Td>
+                        <Td>{dateDEntree(e, c.startDate)}</Td>
                         <Td>{c.endDate ? formatDate(c.endDate) : null}</Td>
                         {peutGerer ? (
                           <Td className="text-right">
@@ -599,6 +618,8 @@ export function FicheEmploye({ id, soi = false }: { id: string; soi?: boolean })
               </>
             )}
           </Card>
+
+          <CarteRemuneration e={e} />
 
           {/* Les grilles d'évaluation transmises à la DCH : l'original au
               dossier, pour qui suit l'évaluation (ADR-0149). */}

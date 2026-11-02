@@ -13,7 +13,7 @@ import type {
 import { LIBELLES_PERSONNEL, PERSONNELS, peut, uniteAvecArticle } from '@teranga/contracts';
 import { Button, Field, Input, Select, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
-import { composePhone, COUNTRIES, splitPhone } from '../lib/countries';
+import { COUNTRIES } from '../lib/countries';
 import { useMe } from '../lib/hooks';
 import { maritalLabels, maxBirthDate } from '../lib/person';
 import {
@@ -22,47 +22,23 @@ import {
   superieurImpose,
   useResponsablesPossibles,
 } from '../lib/responsables';
+import {
+  ChampsDeLAdresse,
+  ChampsDeLaNaissance,
+  ChampsDeLEmploi,
+  ChampTelephone,
+  complementsDe,
+  complementsModifies,
+  epousesIncompletes,
+  erreurDuRib,
+  remunerationDe,
+  remunerationModifiee,
+  SectionContactDUrgence,
+  SectionFamille,
+  SectionRemuneration,
+} from './complements-fiche';
 import { Modal, ModalGrid, ModalSection } from './modal';
-import { PhoneInput } from './phone-input';
 import { composeWorkEmail, localWorkEmail, WorkEmailInput } from './work-email-input';
-
-/**
- * Un téléphone dans ce formulaire.
- *
- * Le champ enregistré par react-hook-form reste la chaîne COMPLÈTE
- * (« +221771234567 ») : c'est elle que le PATCH envoie, et c'est sur elle que
- * `dirtyFields` décide si le champ a bougé. Le pays et le numéro local ne sont
- * qu'un moyen de la saisir — ils vivent donc ici, en état local, et chaque
- * frappe recompose la valeur enregistrée.
- */
-function ChampTelephone({
-  id,
-  stocke,
-  onChange,
-}: {
-  id: string;
-  stocke: string | null;
-  onChange: (valeur: string) => void;
-}) {
-  const depart = splitPhone(stocke);
-  const [pays, setPays] = useState(depart.country);
-  const [local, setLocal] = useState(depart.local);
-  return (
-    <PhoneInput
-      id={id}
-      country={pays}
-      local={local}
-      onCountryChange={(c) => {
-        setPays(c);
-        onChange(composePhone(c, local) ?? '');
-      }}
-      onLocalChange={(v) => {
-        setLocal(v);
-        onChange(composePhone(pays, v) ?? '');
-      }}
-    />
-  );
-}
 
 /**
  * Formulaire à plat (chaînes vides pour « vide »), re-mappé à l'envoi :
@@ -244,6 +220,15 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
   const watchedGender = form.watch('gender');
   const watchedIdType = form.watch('idDocumentType');
   const marital = maritalLabels(watchedGender || undefined);
+  // Le reste de ce que la DCH tient sur l'agent (ADR-0158), tenu à part : il
+  // part en comparant à ce qu'il était, comme les champs du formulaire.
+  const [complementsDepart] = useState(() => complementsDe(employee));
+  const [complements, setComplements] = useState(complementsDepart);
+  const [remunerationDepart] = useState(() => remunerationDe(employee.remuneration));
+  const [remuneration, setRemuneration] = useState(remunerationDepart);
+  const epousesPossibles = watchedGender === 'male' && form.watch('maritalStatus') === 'married';
+  const bloque =
+    (epousesPossibles && epousesIncompletes(complements)) || Boolean(erreurDuRib(remuneration.rib));
 
   const onSubmit = form.handleSubmit(async (v) => {
     setServerError(null);
@@ -261,12 +246,22 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
       }
       return Object.keys(out).length > 0 ? out : undefined;
     };
+    // Une femme, ou un homme qui n'est pas marié, n'a pas d'épouse déclarée.
+    const plus = complementsModifies(
+      complementsDepart,
+      epousesPossibles ? complements : { ...complements, epouses: [] },
+    );
+    const ensemble = (a: Record<string, unknown> | undefined, b: Record<string, unknown>) =>
+      a || Object.keys(b).length > 0 ? { ...a, ...b } : undefined;
     const body: UpdateEmployeeInput = {
-      person: pick(PERSON_KEYS) as UpdateEmployeeInput['person'],
-      employee: pick(EMPLOYEE_KEYS) as UpdateEmployeeInput['employee'],
+      person: ensemble(pick(PERSON_KEYS), plus.person) as UpdateEmployeeInput['person'],
+      employee: ensemble(pick(EMPLOYEE_KEYS), plus.employee) as UpdateEmployeeInput['employee'],
+      remuneration: voitSensible
+        ? remunerationModifiee(remunerationDepart, remuneration)
+        : undefined,
     };
     // Rien de modifié : refermer suffit, inutile d'aller déranger le serveur.
-    if (!body.person && !body.employee) {
+    if (!body.person && !body.employee && !body.remuneration) {
       onClose();
       return;
     }
@@ -302,7 +297,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
           <Button variant="secondary" onClick={onClose}>
             Annuler
           </Button>
-          <Button onClick={onSubmit} loading={form.formState.isSubmitting}>
+          <Button onClick={onSubmit} loading={form.formState.isSubmitting} disabled={bloque}>
             Enregistrer
           </Button>
         </>
@@ -356,6 +351,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               ))}
             </Select>
           </Field>
+          <ChampsDeLaNaissance valeur={complements} onChange={setComplements} />
           <Field label="Pièce d'identité" htmlFor="idDocumentType">
             <Select id="idDocumentType" {...form.register('idDocumentType')}>
               <option value="">—</option>
@@ -403,8 +399,16 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               <Input id="addressLine" {...form.register('addressLine')} />
             </Field>
           </div>
+          <ChampsDeLAdresse valeur={complements} onChange={setComplements} />
         </ModalGrid>
       </ModalSection>
+
+      <SectionFamille
+        valeur={complements}
+        onChange={setComplements}
+        epousesPossibles={epousesPossibles}
+      />
+      <SectionContactDUrgence valeur={complements} onChange={setComplements} />
 
       <ModalSection title="Emploi">
         <ModalGrid>
@@ -412,6 +416,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
             label="Matricule"
             htmlFor="employeeNumber"
             error={errors.employeeNumber?.message}
+            hint={employee.matriculeProvisoire ? 'Matricule provisoire' : undefined}
             required
           >
             <Input
@@ -457,7 +462,13 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
           </Field>
           {/* La date d'embauche, et elle seule : le début d'un contrat se
               corrige sur le contrat, dans le bloc Contrats de la fiche. */}
-          <Field label="Date d’embauche" htmlFor="hiredOn" error={errors.hiredOn?.message} required>
+          <Field
+            label="Date d’embauche"
+            htmlFor="hiredOn"
+            error={errors.hiredOn?.message}
+            hint={employee.entreeAuMois ? 'Connue au mois près' : undefined}
+            required
+          >
             <Input
               id="hiredOn"
               type="date"
@@ -489,8 +500,13 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               ))}
             </Select>
           </Field>
+          <ChampsDeLEmploi valeur={complements} onChange={setComplements} exclure={employee.id} />
         </ModalGrid>
       </ModalSection>
+
+      {voitSensible ? (
+        <SectionRemuneration valeur={remuneration} onChange={setRemuneration} />
+      ) : null}
     </Modal>
   );
 }

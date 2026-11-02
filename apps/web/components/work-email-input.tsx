@@ -1,16 +1,13 @@
 'use client';
 
 import * as React from 'react';
+import { DOMAINE_COURRIEL_PRO } from '@teranga/contracts';
 
 /**
- * Domaine des adresses professionnelles.
- *
- * En dur pour l'instant : l'employeur est unique et son domaine ne change pas.
- * Le jour où le produit sert un second organisme, cette constante devient un
- * paramètre du tenant — d'où le fait qu'elle vive à UN seul endroit plutôt que
- * dans le libellé de chaque champ.
+ * Domaine des adresses professionnelles : le même que celui que le serveur
+ * exige, à l'import comme à la saisie (ADR-0158).
  */
-export const WORK_EMAIL_DOMAIN = 'apix.sn';
+export const WORK_EMAIL_DOMAIN = DOMAINE_COURRIEL_PRO;
 
 /** Recompose l'adresse complète, ou rien si la partie locale est vide. */
 export function composeWorkEmail(local: string): string | undefined {

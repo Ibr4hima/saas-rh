@@ -26,8 +26,21 @@ import type {
   DevenirDeLAncien,
   SessionUser,
   UpdateEmployeeInput,
+  CodeDeBanque,
+  LienDeParente,
+  Region,
+  RemunerationInput,
+  VueRemuneration,
 } from '@teranga/contracts';
-import { peut, posteDAdjoint, posteDeResponsable, type OrgUnitType } from '@teranga/contracts';
+import {
+  DOMAINE_COURRIEL_PRO,
+  erreurDeLaCni,
+  erreurDesEpouses,
+  peut,
+  posteDAdjoint,
+  posteDeResponsable,
+  type OrgUnitType,
+} from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
 import { problem, ProblemException } from '../../common/problem';
 import { preparerInvitation } from '../portal/invitation';
@@ -83,6 +96,64 @@ function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
 function pgCode(err: unknown): string | undefined {
   const e = err as { code?: string; cause?: { code?: string } };
   return e?.code ?? e?.cause?.code;
+}
+
+/** Une adresse professionnelle est une adresse de l'organisation (ADR-0158). */
+function exigerLeDomaine(adresse: string): void {
+  if (!adresse.toLowerCase().endsWith(`@${DOMAINE_COURRIEL_PRO}`)) {
+    problem(
+      422,
+      'people.courriel_pro',
+      `L’adresse professionnelle doit se terminer par @${DOMAINE_COURRIEL_PRO}`,
+    );
+  }
+}
+
+/** La rémunération, la banque et l'IPRES : l'accès aux données sensibles (ADR-0158). */
+function exigerLesDonneesSensibles(user: SessionUser): void {
+  if (!peut(user, 'personnel.sensible')) {
+    problem(
+      403,
+      'people.donnees_sensibles',
+      'Seules les personnes ayant accès aux données sensibles peuvent modifier la rémunération',
+    );
+  }
+}
+
+/** Le numéro d'une CNI se garde en chiffres seuls ; celui d'un passeport, tel quel. */
+function numeroDeLaPiece(numero: string, type: string | null | undefined): string {
+  return type === 'cni' ? numero.replace(/[\s-]/g, '') : numero;
+}
+
+/**
+ * Le responsable fonctionnel : pour information, mais un agent en activité,
+ * et jamais l'agent concerné.
+ */
+async function exigerResponsableFonctionnel(
+  tx: Tx,
+  responsableId: string,
+  agentId: string | null,
+): Promise<void> {
+  if (responsableId === agentId) {
+    problem(
+      422,
+      'people.fonctionnel_soi',
+      'Un agent ne peut pas être son propre responsable fonctionnel',
+    );
+  }
+  const [r] = await tx
+    .select({ status: t.employees.status })
+    .from(t.employees)
+    .where(eq(t.employees.id, responsableId))
+    .limit(1);
+  if (!r) problem(422, 'people.fonctionnel_introuvable', 'Responsable fonctionnel introuvable');
+  if (r.status !== 'active') {
+    problem(
+      422,
+      'people.fonctionnel_inactif',
+      'Seul un agent en activité peut être responsable fonctionnel',
+    );
+  }
 }
 
 /**
@@ -398,7 +469,12 @@ export class PeopleService {
    * Ce qui est vérifié, en revanche, c'est le rattachement QUAND il est
    * donné : même direction, responsable actif, pas de boucle.
    */
-  async create(user: SessionUser, input: CreateEmployeeInput): Promise<CreateEmployeeResult> {
+  async create(
+    user: SessionUser,
+    input: CreateEmployeeInput,
+    /** Ce que seul l'import pose : un matricule provisoire, une entrée connue au mois. */
+    marques: { matriculeProvisoire?: boolean; entreeAuMois?: boolean } = {},
+  ): Promise<CreateEmployeeResult> {
     const employeeId = uuidv7();
     const personId = uuidv7();
     let invitation: InvitationAuPassage | null = null;
@@ -410,17 +486,24 @@ export class PeopleService {
           await exigerUniteVivante(tx, input.assignment.orgUnitId);
         }
         await this.exigerUnSeulDossier(tx, input.person);
+        if (input.employee.workEmail) exigerLeDomaine(input.employee.workEmail);
+        if (input.remuneration) exigerLesDonneesSensibles(user);
         const { nationalId, ...person } = input.person;
         await tx.insert(t.persons).values({
           id: personId,
           tenantId: user.tenantId,
           ...person,
-          nationalIdEncrypted: nationalId ? this.crypto.encrypt(nationalId) : null,
+          nationalIdEncrypted: nationalId
+            ? this.crypto.encrypt(numeroDeLaPiece(nationalId, input.person.idDocumentType))
+            : null,
         });
         if (input.employee.managerEmployeeId) {
           const direction = await directionDeUnite(tx, input.assignment?.orgUnitId ?? null);
           await pasResponsableDeSoi(tx, user.userId, input.employee.managerEmployeeId, direction);
           await validerRattachement(tx, employeeId, input.employee.managerEmployeeId, direction);
+        }
+        if (input.employee.responsableFonctionnelId) {
+          await exigerResponsableFonctionnel(tx, input.employee.responsableFonctionnelId, null);
         }
         await tx.insert(t.employees).values({
           id: employeeId,
@@ -433,8 +516,17 @@ export class PeopleService {
           workPhone: input.employee.workPhone,
           managerEmployeeId: input.employee.managerEmployeeId ?? null,
           personnel: input.employee.personnel ?? null,
+          lieuDeTravail: input.employee.lieuDeTravail ?? null,
+          projet: input.employee.projet ?? null,
+          categorie: input.employee.categorie ?? null,
+          responsableFonctionnelId: input.employee.responsableFonctionnelId ?? null,
+          matriculeProvisoire: marques.matriculeProvisoire ?? false,
+          entreeAuMois: marques.entreeAuMois ?? false,
           customFields: input.employee.customFields ?? {},
         });
+        if (input.remuneration) {
+          await this.ecrireLaRemuneration(tx, user, employeeId, input.remuneration);
+        }
         if (input.contract) {
           await tx.insert(t.contracts).values({
             id: uuidv7(),
@@ -647,11 +739,41 @@ export class PeopleService {
           : null;
 
       const canSeeSensitive = peut(user, 'personnel.sensible') || isSelf;
+      const [fonctionnel] = employee.responsableFonctionnelId
+        ? await tx
+            .select({
+              id: t.employees.id,
+              prenom: t.persons.givenName,
+              nom: t.persons.familyName,
+              matricule: t.employees.employeeNumber,
+            })
+            .from(t.employees)
+            .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+            .where(eq(t.employees.id, employee.responsableFonctionnelId))
+            .limit(1)
+        : [];
       return {
         id: employee.id,
         soi: isSelf,
         employeeNumber: employee.employeeNumber,
-        matriculeFige: await this.estFige(tx, employee.id),
+        // Un matricule provisoire (50-A) se corrige sans délai.
+        matriculeFige: !employee.matriculeProvisoire && (await this.estFige(tx, employee.id)),
+        matriculeProvisoire: employee.matriculeProvisoire,
+        entreeAuMois: employee.entreeAuMois,
+        lieuDeTravail: employee.lieuDeTravail,
+        projet: employee.projet,
+        categorie: employee.categorie,
+        responsableFonctionnel: fonctionnel
+          ? {
+              id: fonctionnel.id,
+              nom: `${fonctionnel.prenom} ${fonctionnel.nom}`,
+              matricule: fonctionnel.matricule,
+            }
+          : null,
+        // La rémunération : l'accès aux données sensibles, pas même l'agent.
+        remuneration: peut(user, 'personnel.sensible')
+          ? await this.lireLaRemuneration(tx, employee.id)
+          : null,
         status: employee.status,
         archivedAt: employee.archivedAt?.toISOString() ?? null,
         inactiviteMotif: (employee.inactiviteMotif as MotifInactivite | null) ?? null,
@@ -688,8 +810,17 @@ export class PeopleService {
           personalEmail: person.personalEmail,
           phone: person.phone,
           addressLine: person.addressLine,
+          ville: person.ville,
+          region: (person.region as Region | null) ?? null,
           emergencyContactName: person.emergencyContactName,
           emergencyContactPhone: person.emergencyContactPhone,
+          lienContactUrgence: (person.lienContactUrgence as LienDeParente | null) ?? null,
+          lieuDeNaissance: person.lieuDeNaissance,
+          prenomDuPere: person.prenomDuPere,
+          prenomDeLaMere: person.prenomDeLaMere,
+          nomDeLaMere: person.nomDeLaMere,
+          epouses: person.epouses,
+          nombreEnfants: person.nombreEnfants,
         },
         assignments: assignmentRows.map((a): AssignmentView => ({
           id: a.id,
@@ -828,12 +959,39 @@ export class PeopleService {
               'Seules les personnes ayant accès aux données sensibles peuvent modifier le numéro de la pièce',
             );
           }
+          // Les règles qui croisent les champs se vérifient sur la fiche telle
+          // qu'elle sera : la mise à jour n'envoie que ce qui change.
+          const [avant] = await tx
+            .select({
+              gender: t.persons.gender,
+              maritalStatus: t.persons.maritalStatus,
+              epouses: t.persons.epouses,
+              idDocumentType: t.persons.idDocumentType,
+            })
+            .from(t.persons)
+            .where(eq(t.persons.id, employee.personId))
+            .limit(1);
+          const epouses = erreurDesEpouses({
+            gender: rest.gender !== undefined ? rest.gender : avant?.gender,
+            maritalStatus:
+              rest.maritalStatus !== undefined ? rest.maritalStatus : avant?.maritalStatus,
+            epouses: rest.epouses ?? avant?.epouses,
+          });
+          if (epouses) problem(422, 'people.epouses', epouses);
+          const type =
+            rest.idDocumentType !== undefined ? rest.idDocumentType : avant?.idDocumentType;
+          const cni = nationalId && type === 'cni' ? erreurDeLaCni(nationalId) : null;
+          if (cni) problem(422, 'people.cni', cni);
           await tx
             .update(t.persons)
             .set({
               ...rest,
               ...(nationalId !== undefined
-                ? { nationalIdEncrypted: nationalId ? this.crypto.encrypt(nationalId) : null }
+                ? {
+                    nationalIdEncrypted: nationalId
+                      ? this.crypto.encrypt(numeroDeLaPiece(nationalId, type))
+                      : null,
+                  }
                 : {}),
             })
             .where(eq(t.persons.id, employee.personId));
@@ -861,22 +1019,42 @@ export class PeopleService {
           const e = input.employee;
           if (e.employeeNumber !== undefined) {
             champs.employeeNumber = e.employeeNumber.trim().toUpperCase();
-            // Le matricule reste à la personne : il se corrige le temps d'une
-            // erreur de saisie, puis il ne change plus.
-            if (champs.employeeNumber !== employee.employeeNumber && (await this.estFige(tx, id))) {
-              problem(
-                409,
-                'people.matricule_fige',
-                'Le matricule ne peut plus être modifié',
-                `Il peut être corrigé dans les ${DELAI_DE_CORRECTION_JOURS} jours qui suivent la création du dossier.`,
-              );
+            if (champs.employeeNumber !== employee.employeeNumber) {
+              // Le matricule reste à la personne : il se corrige le temps d'une
+              // erreur de saisie, puis il ne change plus. Un matricule
+              // provisoire (50-A), lui, attend le vrai sans délai.
+              if (!employee.matriculeProvisoire && (await this.estFige(tx, id))) {
+                problem(
+                  409,
+                  'people.matricule_fige',
+                  'Le matricule ne peut plus être modifié',
+                  `Il peut être corrigé dans les ${DELAI_DE_CORRECTION_JOURS} jours qui suivent la création du dossier.`,
+                );
+              }
+              champs.matriculeProvisoire = false;
             }
           }
-          if (e.hiredOn !== undefined) champs.hiredOn = e.hiredOn;
-          if (e.workEmail !== undefined) champs.workEmail = e.workEmail;
+          if (e.hiredOn !== undefined) {
+            champs.hiredOn = e.hiredOn;
+            // Une date saisie au jour près remplace celle qu'on ne savait qu'au mois.
+            if (e.hiredOn !== employee.hiredOn) champs.entreeAuMois = false;
+          }
+          if (e.workEmail !== undefined) {
+            if (e.workEmail) exigerLeDomaine(e.workEmail);
+            champs.workEmail = e.workEmail;
+          }
           if (e.workPhone !== undefined) champs.workPhone = e.workPhone;
           if (e.managerEmployeeId !== undefined) champs.managerEmployeeId = e.managerEmployeeId;
           if (e.personnel !== undefined) champs.personnel = e.personnel;
+          if (e.lieuDeTravail !== undefined) champs.lieuDeTravail = e.lieuDeTravail;
+          if (e.projet !== undefined) champs.projet = e.projet;
+          if (e.categorie !== undefined) champs.categorie = e.categorie;
+          if (e.responsableFonctionnelId !== undefined) {
+            if (e.responsableFonctionnelId) {
+              await exigerResponsableFonctionnel(tx, e.responsableFonctionnelId, id);
+            }
+            champs.responsableFonctionnelId = e.responsableFonctionnelId;
+          }
           if (Object.keys(champs).length > 0) {
             champs.updatedAt = new Date();
             await tx.update(t.employees).set(champs).where(eq(t.employees.id, id));
@@ -892,6 +1070,10 @@ export class PeopleService {
           ) {
             await faireSuivreLesDemandes(tx, id);
           }
+        }
+        if (input.remuneration && Object.keys(input.remuneration).length > 0) {
+          exigerLesDonneesSensibles(user);
+          await this.ecrireLaRemuneration(tx, user, id, input.remuneration);
         }
       });
     } catch (err) {
@@ -2717,6 +2899,65 @@ export class PeopleService {
         ? `${deja.nom} a déjà un dossier, matricule ${deja.matricule}.`
         : `${deja.nom} a déjà un dossier, inactif, matricule ${deja.matricule} : réactivez-le avec son nouveau contrat.`,
     );
+  }
+
+  /**
+   * La rémunération d'un agent : absent, inchangé ; null, effacé. La ligne
+   * se crée au premier montant saisi.
+   */
+  private async ecrireLaRemuneration(
+    tx: Tx,
+    user: SessionUser,
+    employeeId: string,
+    r: RemunerationInput,
+  ): Promise<void> {
+    const { rib, nombreDeParts, ...autres } = r;
+    const champs: Partial<typeof t.remunerations.$inferInsert> = { ...autres };
+    if (rib !== undefined) champs.ribChiffre = rib ? this.crypto.encrypt(rib) : null;
+    if (nombreDeParts !== undefined) {
+      champs.nombreDeParts = nombreDeParts === null ? null : String(nombreDeParts);
+    }
+    if (Object.keys(champs).length === 0) return;
+    const [deja] = await tx
+      .select({ id: t.remunerations.id })
+      .from(t.remunerations)
+      .where(eq(t.remunerations.employeeId, employeeId))
+      .limit(1);
+    if (deja) {
+      await tx
+        .update(t.remunerations)
+        .set({ ...champs, updatedAt: new Date() })
+        .where(eq(t.remunerations.id, deja.id));
+    } else {
+      await tx
+        .insert(t.remunerations)
+        .values({ id: uuidv7(), tenantId: user.tenantId, employeeId, ...champs });
+    }
+  }
+
+  private async lireLaRemuneration(tx: Tx, employeeId: string): Promise<VueRemuneration> {
+    const [r] = await tx
+      .select()
+      .from(t.remunerations)
+      .where(eq(t.remunerations.employeeId, employeeId))
+      .limit(1);
+    return {
+      salaireDeBase: r?.salaireDeBase ?? null,
+      sursalaire: r?.sursalaire ?? null,
+      primeAnciennete: r?.primeAnciennete ?? null,
+      brutSocial: r?.brutSocial ?? null,
+      primeTransport: r?.primeTransport ?? null,
+      salaireBrut: r?.salaireBrut ?? null,
+      carburant: r?.carburant ?? null,
+      forfaitTelephone: r?.forfaitTelephone ?? null,
+      indemniteSujetion: r?.indemniteSujetion ?? null,
+      autresAvantages: r?.autresAvantages ?? null,
+      nombreDeParts: r?.nombreDeParts != null ? Number(r.nombreDeParts) : null,
+      banque: (r?.banque as CodeDeBanque | null) ?? null,
+      rib: r?.ribChiffre ? this.crypto.decrypt(r.ribChiffre) : null,
+      domiciliation: r?.domiciliation ?? null,
+      numeroIpres: r?.numeroIpres ?? null,
+    };
   }
 
   private async requireEmployee(tx: Tx, id: string) {

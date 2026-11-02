@@ -39,6 +39,7 @@ export async function dossierDeLAgent(
       employeeNumber: t.employees.employeeNumber,
       status: t.employees.status,
       hiredOn: t.employees.hiredOn,
+      entreeAuMois: t.employees.entreeAuMois,
       givenName: t.persons.givenName,
       familyName: t.persons.familyName,
       gender: t.persons.gender,
@@ -94,6 +95,8 @@ export async function dossierDeLAgent(
   const { rows: anciennete } = await tx.execute<{ depuis: string | null }>(
     sql`SELECT ${debutDeLAnciennete(employeeId, sql`CURRENT_DATE`)}::text AS depuis`,
   );
+  const depuis = anciennete[0]?.depuis ?? row.hiredOn;
+  exigerLeJourDEntree(row.entreeAuMois, row.hiredOn, depuis, `${row.givenName} ${row.familyName}`);
 
   return {
     agent: {
@@ -101,7 +104,7 @@ export async function dossierDeLAgent(
       genre: row.gender ?? null,
     },
     employeeNumber: row.employeeNumber,
-    depuis: anciennete[0]?.depuis ?? row.hiredOn,
+    depuis,
     poste: row.positionTitle ?? null,
     contrat: contract?.contractType ?? null,
   };
@@ -252,12 +255,13 @@ export async function emploiDeLAgent(tx: Tx, employeeId: string): Promise<Emploi
     employee_number: string;
     status: string;
     hired_on: string;
+    entree_au_mois: boolean;
     given_name: string;
     family_name: string;
     gender: string | null;
     fin: string | null;
   }>(sql`
-    SELECT e.employee_number, e.status, e.hired_on::text AS hired_on,
+    SELECT e.employee_number, e.status, e.hired_on::text AS hired_on, e.entree_au_mois,
            p.given_name, p.family_name, p.gender,
            COALESCE(e.fin_activite,
                     (SELECT max(pi.dernier_jour) FROM periodes_inactivite pi
@@ -294,6 +298,12 @@ export async function emploiDeLAgent(tx: Tx, employeeId: string): Promise<Emploi
     );
   }
   const debut = au[0]?.debut ?? row.hired_on;
+  exigerLeJourDEntree(
+    row.entree_au_mois,
+    row.hired_on,
+    debut,
+    `${row.given_name} ${row.family_name}`,
+  );
 
   // Le poste du dernier jour : celui de la dernière affectation de l'emploi.
   const { rows: postes } = await tx.execute<{ position_title: string }>(sql`
@@ -312,6 +322,22 @@ export async function emploiDeLAgent(tx: Tx, employeeId: string): Promise<Emploi
     fin: row.fin,
     poste: postes[0]?.position_title ?? null,
   };
+}
+
+/**
+ * Une entrée connue au mois près (un fichier sans le jour, ADR-0159) ne
+ * s'imprime pas comme un 1er du mois : le document attend que la DCH précise
+ * la date sur la fiche.
+ */
+function exigerLeJourDEntree(auMois: boolean, embauche: string, debut: string, nom: string): void {
+  if (auMois && debut === embauche) {
+    problem(
+      422,
+      'documents.entree_au_mois',
+      `La date d’entrée de ${nom} n’est connue qu’au mois près`,
+      'Précisez-la sur sa fiche avant d’établir ce document.',
+    );
+  }
 }
 
 /** La personne d'un dossier, d'après son id en SQL ; null : aucun dossier. */

@@ -163,6 +163,18 @@ export const persons = pgTable('persons', {
   idDocumentExpiresOn: date('id_document_expires_on'),
   emergencyContactName: text('emergency_contact_name'),
   emergencyContactPhone: text('emergency_contact_phone'),
+  /* Ce que la DCH tient en plus sur chaque agent (0126, ADR-0158). */
+  /** La ville de naissance ; birthPlace est le pays. */
+  lieuDeNaissance: text('lieu_de_naissance'),
+  prenomDuPere: text('prenom_du_pere'),
+  prenomDeLaMere: text('prenom_de_la_mere'),
+  nomDeLaMere: text('nom_de_la_mere'),
+  /** Quatre au plus, pour un homme marié seulement. */
+  epouses: text('epouses').array().notNull().default([]),
+  nombreEnfants: smallint('nombre_enfants'),
+  ville: text('ville'),
+  region: text('region'),
+  lienContactUrgence: text('lien_contact_urgence'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -190,6 +202,42 @@ export const employees = pgTable('employees', {
   managerEmployeeId: uuid('manager_employee_id'),
   /** Cadre ou non cadre (0123) : la grille d'évaluation de l'agent en dépend. */
   personnel: text('personnel'),
+  lieuDeTravail: text('lieu_de_travail'),
+  projet: text('projet'),
+  categorie: text('categorie'),
+  /** Pour information : seul le N+1 valide (0126). */
+  responsableFonctionnelId: uuid('responsable_fonctionnel_id'),
+  /** 50-A, 50-B : un matricule en double à l'import, à corriger sans délai (0126). */
+  matriculeProvisoire: boolean('matricule_provisoire').notNull().default(false),
+  /** L'entrée n'est connue qu'au mois : hiredOn en est le 1er (0126). */
+  entreeAuMois: boolean('entree_au_mois').notNull().default(false),
+});
+
+/**
+ * La rémunération, la banque et l'IPRES d'un agent (0126) : réservées à
+ * l'accès aux données sensibles. Montants en francs CFA ; le RIB est chiffré.
+ */
+export const remunerations = pgTable('remunerations', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  salaireDeBase: integer('salaire_de_base'),
+  sursalaire: integer('sursalaire'),
+  primeAnciennete: integer('prime_anciennete'),
+  brutSocial: integer('brut_social'),
+  primeTransport: integer('prime_transport'),
+  salaireBrut: integer('salaire_brut'),
+  carburant: integer('carburant'),
+  forfaitTelephone: integer('forfait_telephone'),
+  indemniteSujetion: integer('indemnite_sujetion'),
+  autresAvantages: text('autres_avantages'),
+  nombreDeParts: numeric('nombre_de_parts', { precision: 2, scale: 1 }),
+  banque: text('banque'),
+  ribChiffre: text('rib_chiffre'),
+  domiciliation: text('domiciliation'),
+  numeroIpres: text('numero_ipres'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const assignments = pgTable('assignments', {

@@ -2050,8 +2050,8 @@ describe('les invitations partent d’elles-mêmes', () => {
         assignment: { positionTitle: 'Agent', orgUnitId: uDFC, startDate: '2026-10-01' },
         inviter: true,
       });
-    const avec = await creer('NV-1', 'nouvel@apix.test');
-    expect(avec.invitation).toEqual({ email: 'nouvel@apix.test', raison: null });
+    const avec = await creer('NV-1', 'nouvel@apix.sn');
+    expect(avec.invitation).toEqual({ email: 'nouvel@apix.sn', raison: null });
     const sans = await creer('NV-2');
     expect(sans.invitation).toEqual({ email: null, raison: 'Aucune adresse professionnelle' });
     // Le portail s'ouvre avec l'adresse professionnelle : la personnelle ne sert pas.
@@ -2063,7 +2063,7 @@ describe('les invitations partent d’elles-mêmes', () => {
       inviter: true,
     });
     expect(perso.invitation).toEqual({ email: null, raison: 'Aucune adresse professionnelle' });
-    expect(await enFile()).toEqual(['nouvel@apix.test']);
+    expect(await enFile()).toEqual(['nouvel@apix.sn']);
   });
 
   it('plusieurs d’un coup : chacun la sienne, et les refus sont nommés', async () => {
