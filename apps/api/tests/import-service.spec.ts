@@ -118,8 +118,12 @@ const DG: Ligne = {
   "Date d'entrée": '01/01/2015',
 };
 
-const importer = (lignes: Ligne[], appliquer = true, choix: Record<string, string> = {}) =>
-  imports.importer(admin, fichier(lignes), appliquer, choix);
+const importer = (
+  lignes: Ligne[],
+  appliquer = true,
+  choix: Record<string, string> = {},
+  noms: Record<string, string> = {},
+) => imports.importer(admin, fichier(lignes), appliquer, choix, noms);
 
 const ligne = (r: RapportImportEmployes, n: number) => r.lignes.find((l) => l.ligne === n)!;
 
@@ -399,7 +403,14 @@ describe('le poste place l’agent', () => {
     // Le chef d'abord, le DG en dernier : l'ordre du fichier ne compte pas.
     const r = await importer([chef, agent, directeur, DG]);
     expect(r.erreurs).toBe(0);
-    expect(r.unitesCreees).toEqual([{ nom: 'Département Digitalisation', parent: 'DSID' }]);
+    expect(r.unitesCreees).toEqual([
+      {
+        cle: expect.any(String),
+        nom: 'Département Digitalisation',
+        propose: 'Département Digitalisation',
+        parent: 'DSID',
+      },
+    ]);
     expect(r.designations.map((d) => d.poste)).toEqual([
       'Directeur général',
       'Directeur de la DSID',
@@ -421,6 +432,69 @@ describe('le poste place l’agent', () => {
     expect((await fiche('103'))?.n1).toBe('Cheikh Mbaye');
     expect((await fiche('102'))?.n1).toBe('Ousmane Fall');
     expect(ligne(r, 3).responsable).toBe('Fatou Sall');
+  });
+
+  it('crée l’unité sous le nom corrigé à l’aperçu, et le poste du responsable suit ce nom', async () => {
+    const cheffe = AGENT(2, {
+      Prénom: 'FATOU',
+      Nom: 'SALL',
+      'Poste occupé ': 'CHEF DU DEPARTEMENT RECOUVREMEN',
+      Statut: 'Cadre',
+      Direction: 'DFC',
+    });
+    const apercu = await importer([cheffe], false);
+    const unite = apercu.unitesCreees[0]!;
+    expect(unite).toMatchObject({
+      nom: 'Département Recouvremen',
+      propose: 'Département Recouvremen',
+      parent: 'DFC',
+    });
+    const noms = { [unite.cle]: 'Département Recouvrement' };
+    // L'aperçu rejoué garde la clé, prend le nom, et le poste de la cheffe suit.
+    const revu = await importer([cheffe], false, {}, noms);
+    expect(revu.unitesCreees).toMatchObject([
+      { cle: unite.cle, nom: 'Département Recouvrement', propose: 'Département Recouvremen' },
+    ]);
+    expect(revu.designations).toEqual([
+      { poste: 'Cheffe du département Recouvrement', nom: 'Fatou Sall' },
+    ]);
+    const r = await importer([cheffe], true, {}, noms);
+    expect(r.erreurs).toBe(0);
+    const deps = await raw(
+      `SELECT name FROM org_units WHERE tenant_id = $1 AND unit_type = 'department'`,
+      [tenantId],
+    );
+    expect(deps.rows).toEqual([{ name: 'Département Recouvrement' }]);
+    expect((await fiche('102'))?.position_title).toBe('Cheffe du département Recouvrement');
+  });
+
+  it('dit pourquoi une unité renommée comme sa voisine n’est pas créée', async () => {
+    await raw(
+      `INSERT INTO org_units (id, tenant_id, unit_type, name, parent_id)
+       VALUES ($1,$2,'department','Département Trésorerie',$3)`,
+      [randomUUID(), tenantId, unites.dfc],
+    );
+    const cheffe = AGENT(2, {
+      'Poste occupé ': 'CHEF DU DEPARTEMENT RECOUVREMENT',
+      Statut: 'Cadre',
+      Direction: 'DFC',
+    });
+    const cle = (await importer([cheffe], false)).unitesCreees[0]!.cle;
+    const r = await importer([cheffe], false, {}, { [cle]: 'Département Trésorerie' });
+    expect(r.unitesCreees).toEqual([
+      {
+        cle,
+        nom: 'Département Trésorerie',
+        propose: 'Département Recouvrement',
+        parent: 'DFC',
+        echec: 'une unité porte déjà ce nom à ce niveau',
+      },
+    ]);
+    expect(ligne(r, 2).avertissements).toContainEqual({
+      colonne: 'Poste occupé',
+      texte:
+        'Création de « Département Trésorerie » impossible (une unité porte déjà ce nom à ce niveau) : agent affecté à DFC',
+    });
   });
 
   it('ne remplace pas un responsable déjà en place', async () => {

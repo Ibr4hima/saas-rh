@@ -260,6 +260,21 @@ describe('les dates', () => {
     expect(lireDate('31/04/2021', AUJOURDHUI)).toHaveProperty('erreur');
   });
 
+  it('lit le format jj-mmm-aa qu’Excel montre, en français ou en anglais', () => {
+    expect(lireDate('01-mars-04', AUJOURDHUI)).toEqual({
+      valeur: { iso: '2004-03-01', auMois: false, interpretee: false },
+      corrige: false,
+    });
+    expect(lireDate('01-juil-26', AUJOURDHUI)).toMatchObject({ valeur: { iso: '2026-07-01' } });
+    expect(lireDate('15-déc.-19', AUJOURDHUI)).toMatchObject({ valeur: { iso: '2019-12-15' } });
+    expect(lireDate('12-mai-85', AUJOURDHUI)).toMatchObject({ valeur: { iso: '1985-05-12' } });
+    expect(lireDate('01-Mar-04', AUJOURDHUI)).toMatchObject({ valeur: { iso: '2004-03-01' } });
+    expect(lireDate('mars-04', AUJOURDHUI)).toMatchObject({
+      valeur: { iso: '2004-03-01', auMois: true },
+    });
+    expect(lireDate('31-avr.-04', AUJOURDHUI)).toHaveProperty('erreur');
+  });
+
   it('déduit de l’ancienneté le mois d’entrée, pas le jour', () => {
     expect(entreeDepuisAnciennete(5.1, AUJOURDHUI)).toBe('2021-10-01');
     expect(entreeDepuisAnciennete(0.5, AUJOURDHUI)).toBe('2026-05-01');
@@ -398,6 +413,48 @@ describe('les noms et les intitulés', () => {
     );
   });
 
+  it('nomme une unité sans faute : accents, apostrophe, sigle, faute de frappe', () => {
+    expect(nomDUnite('department', 'COMPETITIVITE ET INNOVATION')).toBe(
+      'Département Compétitivité et innovation',
+    );
+    expect(nomDUnite('department', 'RESPONSABILITE SOCIETALE D ENTREPRISE')).toBe(
+      'Département Responsabilité sociétale d’entreprise',
+    );
+    expect(nomDUnite('department', 'INGENIERIE URBAINE ET FONCIERE')).toBe(
+      'Département Ingénierie urbaine et foncière',
+    );
+    expect(nomDUnite('department', 'MOYENS GENEREAUX')).toBe('Département Moyens généraux');
+    expect(nomDUnite('department', 'PORTEFEUILLLE ET RECOUVREMENT')).toBe(
+      'Département Portefeuille et recouvrement',
+    );
+    expect(nomDUnite('department', 'COURRIER, DOCUMENTATION ET ARCHIVAGE')).toBe(
+      'Département Courrier, documentation et archivage',
+    );
+    expect(nomDUnite('service', 'COMPTABILITE ETAT')).toBe('Service Comptabilité État');
+    expect(nomDUnite('service', 'ETATS FINANCIERS')).toBe('Service États financiers');
+    expect(nomDUnite('service', 'SUIVI DES INVESTISSEMENTS PRIVES')).toBe(
+      'Service Suivi des investissements privés',
+    );
+    expect(nomDUnite('service', 'BCE')).toBe('Service BCE');
+  });
+
+  it('corrige une faute de frappe sur un mot connu, sans toucher au pluriel ni au féminin', () => {
+    expect(intitule('ADMINSTRATION DU PERSONNEL')).toBe('Administration du personnel');
+    expect(intitule('CHARGE DU RECOUVREMMENT')).toBe('Chargé du recouvrement');
+    expect(intitule('ZONES URBAINES')).toBe('Zones urbaines');
+    expect(intitule('CONSEILLERS FINANCIERS')).toBe('Conseillers financiers');
+    expect(intitule('CONTROLEURS DE GESTION')).toBe('Contrôleurs de gestion');
+    // Une faute dans les deux dernières lettres reste : le pluriel s'y écrit.
+    expect(intitule('RECOUVREMEN')).toBe('Recouvremen');
+  });
+
+  it('garde les villes, les chiffres romains et l’apostrophe perdue', () => {
+    expect(intitule('CHEF DE PROJET ZES DIASS')).toBe('Chef de projet ZES Diass');
+    expect(intitule('AGENT DE NIVEAU III')).toBe('Agent de niveau III');
+    expect(intitule('AGENT D ACCUEIL')).toBe('Agent d’accueil');
+    expect(intitule("CHARGE D'ETUDES")).toBe("Chargé d'études");
+  });
+
   it('reconnaît un nom écrit dans l’autre sens, ou avec sa civilité', () => {
     expect(cleDeNom('DIOP Awa')).toBe(cleDeNom('Awa Diop'));
     expect(cleDeNom('Mme Awa DIOP')).toBe(cleDeNom('Awa Diop'));
@@ -409,22 +466,45 @@ describe('ce que dit le poste', () => {
     expect(natureDuPoste('CHEF DE DEPARTEMENT DIGITALISATION')).toEqual({
       nature: 'chef',
       type: 'department',
-      nom: 'digitalisation',
+      nom: 'DIGITALISATION',
     });
     expect(natureDuPoste('CHEF DE SERVICE QUALITE')).toEqual({
       nature: 'chef',
       type: 'service',
-      nom: 'qualite',
+      nom: 'QUALITE',
     });
     expect(natureDuPoste('Cheffe du service des moyens généraux')).toEqual({
       nature: 'chef',
       type: 'service',
-      nom: 'moyens generaux',
+      nom: 'moyens généraux',
     });
     expect(natureDuPoste('CHEF DE SERVICE')).toEqual({
       nature: 'chef',
       type: 'service',
       nom: null,
+    });
+  });
+
+  it('prend le nom de l’unité tel que le fichier l’écrit, sans second rôle ni intérim', () => {
+    expect(natureDuPoste('CHEF DU DEPARTEMENT COURRIER, DOCUMENTATION ET ARCHIVAGE')).toEqual({
+      nature: 'chef',
+      type: 'department',
+      nom: 'COURRIER, DOCUMENTATION ET ARCHIVAGE',
+    });
+    expect(natureDuPoste('CHEF DU DEPARTEMENT AMENAGEMENT ET CHEF DE PROJET ZES DIASS')).toEqual({
+      nature: 'chef',
+      type: 'department',
+      nom: 'AMENAGEMENT',
+    });
+    expect(natureDuPoste('CHEF DU SERVICE LOGISTIQUE PAR INTERIM')).toEqual({
+      nature: 'chef',
+      type: 'service',
+      nom: 'LOGISTIQUE',
+    });
+    expect(natureDuPoste('CHEF DU SERVICE QUALITE (DQSE)')).toEqual({
+      nature: 'chef',
+      type: 'service',
+      nom: 'QUALITE',
     });
   });
 
@@ -568,6 +648,32 @@ describe('une ligne du fichier', () => {
       lu: '',
       retenu: 'oct. 2021, d’après l’ancienneté (5,1 ans)',
     });
+  });
+
+  it('lit la date d’entrée « 01-mars-04 » et laisse de côté l’ancienneté du fichier', () => {
+    // Le fichier date de deux mois : son ancienneté retarde, la date d'entrée fait foi.
+    const l = lue({ ...MOUSSA, "Date d'entrée": '01-mars-04', 'Ancienneté (années)': 22.6 });
+    expect(l.entree).toEqual({ iso: '2004-03-01', auMois: false });
+    expect(l.corrections.filter((c) => c.colonne === "Date d'entrée")).toEqual([]);
+    expect(l.avertissements).toEqual([]);
+  });
+
+  it('prend « NA », « N/A » ou « - » pour une case vide, sans avertissement', () => {
+    const l = lue({
+      ...MOUSSA,
+      'Adresse mail professionnel ': 'NA',
+      'Numero de tel professionnel': 'N/A',
+      'Responsable Hierarchique\n(N+1)': 'NA',
+      'Lieu de travail': '-',
+      "Nombre d'enfants": 'néant',
+    });
+    expect(l.emploi.workEmail).toBeUndefined();
+    expect(l.emploi.workPhone).toBeUndefined();
+    expect(l.emploi.lieuDeTravail).toBeUndefined();
+    expect(l.n1).toBeNull();
+    // Pour un nombre, « néant » dit 0.
+    expect(l.personne.nombreEnfants).toBe(0);
+    expect(l.avertissements).toEqual([]);
   });
 
   it('refuse la ligne sans date d’entrée ni ancienneté', () => {

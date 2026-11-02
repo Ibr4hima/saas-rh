@@ -1,15 +1,29 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { Fragment, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import {
   CHOIX_AUCUN,
   type ChoixImport,
   type InviterPlusieursResult,
   type LigneImport,
   type RapportImportEmployes,
+  type UniteCreeeImport,
 } from '@teranga/contracts';
-import { Badge, Button, Checkbox, cn, Select, Table, TBody, Td, Th, THead, Tr } from '@teranga/ui';
+import {
+  Badge,
+  Button,
+  Checkbox,
+  cn,
+  Input,
+  Select,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+  Tr,
+} from '@teranga/ui';
 import { api, ApiError } from '../lib/api';
 import { compte } from '../lib/mots';
 import { Icon } from './icons';
@@ -27,7 +41,8 @@ import { Pagination, usePagination } from './pagination';
 
    Un nom de N+1 porté par deux personnes se départage ici, avant l'import :
    une fois tous les noms départagés, l'aperçu se rejoue et montre les
-   rattachements retenus.
+   rattachements retenus. Le nom d'une unité à créer se corrige ici aussi :
+   l'unité naît avec le bon nom, et le poste de son responsable avec elle.
    ──────────────────────────────────────────────────────────────── */
 
 type Etape = 'depot' | 'apercu' | 'fait';
@@ -55,8 +70,13 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [survol, setSurvol] = useState(false);
-  // Les homonymes départagés, renvoyés avec le fichier à chaque envoi.
+  // Les homonymes départagés et les noms d'unités corrigés, renvoyés avec
+  // le fichier à chaque envoi.
   const [departages, setDepartages] = useState<Record<string, string>>({});
+  const [noms, setNoms] = useState<Record<string, string>>({});
+  // Seule la réponse au dernier envoi s'affiche : deux corrections de suite
+  // lancent deux aperçus, et le premier peut revenir après le second.
+  const dernierEnvoi = useRef(0);
   // Après l'import, l'invitation au portail des fiches créées.
   const [invitations, setInvitations] = useState<Set<string>>(new Set());
   const [invites, setInvites] = useState<InviterPlusieursResult | null>(null);
@@ -64,18 +84,28 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
     (l): l is LigneImport & { employeeId: string } => l.etat === 'a-creer' && Boolean(l.employeeId),
   );
 
-  const envoyer = async (f: File, apercu: boolean, choix: Record<string, string>) => {
+  const envoyer = async (
+    f: File,
+    apercu: boolean,
+    choix: Record<string, string>,
+    nomsCorriges: Record<string, string>,
+  ) => {
+    const envoi = ++dernierEnvoi.current;
     setEnCours(true);
     setErreur(null);
     try {
       const parametres = new URLSearchParams();
       if (apercu) parametres.set('apercu', '1');
       if (Object.keys(choix).length > 0) parametres.set('choix', JSON.stringify(choix));
+      if (Object.keys(nomsCorriges).length > 0) {
+        parametres.set('noms', JSON.stringify(nomsCorriges));
+      }
       const suite = parametres.toString();
       const r = await api<RapportImportEmployes>(`/employees/import${suite ? `?${suite}` : ''}`, {
         method: 'POST',
         body: f,
       });
+      if (envoi !== dernierEnvoi.current) return;
       setRapport(r);
       setEtape(apercu ? 'apercu' : 'fait');
       if (!apercu) {
@@ -92,9 +122,10 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
         await queryClient.invalidateQueries({ queryKey: ['hierarchie-controle'] });
       }
     } catch (err) {
+      if (envoi !== dernierEnvoi.current) return;
       setErreur(err instanceof ApiError ? err.message : 'Lecture impossible, réessayez.');
     } finally {
-      setEnCours(false);
+      if (envoi === dernierEnvoi.current) setEnCours(false);
     }
   };
 
@@ -117,7 +148,8 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
     }
     setFichier(f);
     setDepartages({});
-    void envoyer(f, true, {});
+    setNoms({});
+    void envoyer(f, true, {}, {});
   };
 
   const restants = (choix: Record<string, string>) =>
@@ -127,7 +159,16 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
   const departager = (cle: string, candidat: string) => {
     const suite = { ...departages, [cle]: candidat };
     setDepartages(suite);
-    if (fichier && restants(suite) === 0) void envoyer(fichier, true, suite);
+    if (fichier && restants(suite) === 0) void envoyer(fichier, true, suite, noms);
+  };
+  // Un nom d'unité corrigé : l'aperçu se rejoue, les postes des responsables
+  // suivent le nouveau nom.
+  const renommer = (unite: UniteCreeeImport, nom: string) => {
+    const suite = { ...noms };
+    if (nom === unite.propose) delete suite[unite.cle];
+    else suite[unite.cle] = nom;
+    setNoms(suite);
+    if (fichier) void envoyer(fichier, true, departages, suite);
   };
 
   const bloquant = rapport !== null && rapport.colonnesManquantes.length > 0;
@@ -178,7 +219,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
             <Button
               loading={enCours}
               disabled={aEcrire === 0 || bloquant || aDepartager > 0}
-              onClick={() => fichier && void envoyer(fichier, false, departages)}
+              onClick={() => fichier && void envoyer(fichier, false, departages, noms)}
             >
               {aEcrire === 0 ? 'Rien à importer' : `Importer ${compte(aEcrire, 'fiche')}`}
             </Button>
@@ -276,6 +317,7 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
           enCours={enCours}
           departages={departages}
           departager={etape === 'apercu' ? departager : null}
+          renommer={etape === 'apercu' ? renommer : null}
         />
       ) : null}
     </Modal>
@@ -376,11 +418,13 @@ function Compte({
   enCours,
   departages,
   departager,
+  renommer,
 }: {
   rapport: RapportImportEmployes;
   enCours: boolean;
   departages: Record<string, string>;
   departager: ((cle: string, candidat: string) => void) | null;
+  renommer: ((unite: UniteCreeeImport, nom: string) => void) | null;
 }) {
   const [filtre, setFiltre] = useState<Filtre>('toutes');
   const bloquant = rapport.colonnesManquantes.length > 0;
@@ -432,7 +476,7 @@ function Compte({
         />
       ) : null}
 
-      <Organigramme rapport={rapport} />
+      <Organigramme rapport={rapport} renommer={renommer} />
 
       {rapport.colonnesInconnues.length > 0 ? (
         <Remarque>
@@ -616,7 +660,13 @@ function Departages({
 }
 
 /** Les unités que l'import crée, et les responsables qu'il désigne. */
-function Organigramme({ rapport }: { rapport: RapportImportEmployes }) {
+function Organigramme({
+  rapport,
+  renommer,
+}: {
+  rapport: RapportImportEmployes;
+  renommer: ((unite: UniteCreeeImport, nom: string) => void) | null;
+}) {
   const a = rapport.applique;
   if (rapport.unitesCreees.length === 0 && rapport.designations.length === 0) return null;
   return (
@@ -626,12 +676,25 @@ function Organigramme({ rapport }: { rapport: RapportImportEmployes }) {
           <p className="text-[11.5px] font-bold text-ink-muted">
             {a ? 'Unités créées' : 'Unités à créer'}
           </p>
-          <ul className="mt-1.5 flex flex-col gap-1 text-[12.5px] text-ink">
-            {rapport.unitesCreees.map((u) => (
-              <li key={`${u.parent}-${u.nom}`}>
-                {u.nom} <span className="text-ink-muted">· {u.parent}</span>
-              </li>
-            ))}
+          <ul
+            className={cn(
+              'mt-1.5 flex flex-col text-[12.5px] text-ink',
+              renommer ? 'gap-2' : 'gap-1',
+            )}
+          >
+            {rapport.unitesCreees.map((u) =>
+              renommer ? (
+                // La clé suit le nom : l'aperçu rejoué remet le champ à jour.
+                <NomDUnite key={`${u.cle}:${u.nom}`} unite={u} renommer={renommer} />
+              ) : (
+                <li key={u.cle}>
+                  {u.nom} <span className="text-ink-muted">· {u.parent}</span>
+                  {u.echec ? (
+                    <span className="block text-[11.5px] text-danger">Non créée : {u.echec}</span>
+                  ) : null}
+                </li>
+              ),
+            )}
           </ul>
         </div>
       ) : null}
@@ -650,6 +713,50 @@ function Organigramme({ rapport }: { rapport: RapportImportEmployes }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** Le nom d'une unité à créer, à corriger avant l'import. */
+function NomDUnite({
+  unite,
+  renommer,
+}: {
+  unite: UniteCreeeImport;
+  renommer: (unite: UniteCreeeImport, nom: string) => void;
+}) {
+  const [valeur, setValeur] = useState(unite.nom);
+  const valider = () => {
+    const nom = valeur.replace(/\s+/g, ' ').trim();
+    if (!nom) return setValeur(unite.nom);
+    if (nom !== unite.nom) renommer(unite, nom);
+  };
+  return (
+    <li>
+      <div className="flex items-center gap-2">
+        <Input
+          value={valeur}
+          maxLength={120}
+          aria-label={`Nom de l’unité à créer sous ${unite.parent}`}
+          aria-invalid={unite.echec ? true : undefined}
+          onChange={(e) => setValeur(e.target.value)}
+          onBlur={valider}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+          }}
+          className={cn('h-9 min-w-0 flex-1 text-[12.5px]', unite.echec && 'border-danger')}
+        />
+        {/* Une largeur fixe pour le sigle : les champs s'alignent d'une ligne à l'autre. */}
+        <span className="w-14 shrink-0 truncate text-ink-muted" title={unite.parent}>
+          · {unite.parent}
+        </span>
+      </div>
+      {unite.echec ? (
+        <p className="mt-1 text-[11.5px] text-danger">Non créée : {unite.echec}</p>
+      ) : null}
+    </li>
   );
 }
 

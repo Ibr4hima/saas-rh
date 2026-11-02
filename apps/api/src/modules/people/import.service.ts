@@ -100,13 +100,15 @@ export class ImportEmployesService {
   /**
    * Lit le fichier et le joue. `appliquer` faux : tout est annulé, seul le
    * rapport reste. `choix` : les homonymes départagés, de la clé du choix au
-   * candidat retenu.
+   * candidat retenu. `noms` : les noms d'unités corrigés à l'aperçu, de la
+   * clé de l'unité à son nom.
    */
   async importer(
     user: SessionUser,
     fichier: Buffer,
     appliquer: boolean,
     choix: Record<string, string> = {},
+    noms: Record<string, string> = {},
   ): Promise<RapportImportEmployes> {
     const feuille = this.lire(fichier);
     // Les intitulés sont sur la première ligne, ou plus bas sous un titre :
@@ -147,7 +149,16 @@ export class ImportEmployesService {
         { tenantId: user.tenantId, userId: user.userId },
         async (tx) => {
           await verrouillerLaChaine(tx);
-          const passe = new Passe(tx, user, this.db, this.people, this.crypto, choix, this.journal);
+          const passe = new Passe(
+            tx,
+            user,
+            this.db,
+            this.people,
+            this.crypto,
+            choix,
+            noms,
+            this.journal,
+          );
           // La ligne du tableur où commencent les agents : le rapport la cite.
           const rapport = await passe.jouer(donnees, corr, vide, rang + 2);
           if (!appliquer) throw new FinDeLApercu(rapport);
@@ -237,7 +248,11 @@ interface Unite {
 
 /** Une unité que le fichier nomme et que l'organigramme n'a pas encore. */
 interface UniteACreer {
+  /** Son type, son parent et son nom tiré du fichier : la même d'un aperçu à l'autre. */
+  cle: string;
+  /** Le nom qu'elle prend : celui tiré du fichier, ou celui corrigé à l'aperçu. */
   nom: string;
+  propose: string;
   type: 'department' | 'service';
   parent: Place;
   id: string | null;
@@ -347,6 +362,7 @@ class Passe {
     private readonly people: PeopleService,
     private readonly crypto: EncryptionService,
     private readonly choix: Record<string, string>,
+    private readonly noms: Record<string, string>,
     private readonly journal: Logger,
   ) {
     this.organigramme = new OrgUnitsService(db);
@@ -779,15 +795,21 @@ class Passe {
         });
         return null;
       }
-      const parentDe = (u: UniteACreer) =>
-        'unite' in u.parent ? u.parent.unite.id : u.parent.nouvelle.nom;
-      const parentCle = 'unite' in parent ? parent.unite.id : parent.nouvelle.nom;
-      const deja = this.aCreer.find(
-        (u) =>
-          u.type === type && cleDUnite(u.nom) === cleDUnite(nomPropre) && parentDe(u) === parentCle,
-      );
+      // La clé tient au nom tiré du fichier, pas au nom corrigé : elle reste
+      // la même d'un aperçu à l'autre, et l'unité garde sa correction.
+      const parentCle = 'unite' in parent ? parent.unite.id : parent.nouvelle.cle;
+      const cleNouvelle = `${type}:${parentCle}:${cleDUnite(nomPropre)}`;
+      const deja = this.aCreer.find((u) => u.cle === cleNouvelle);
       if (deja) return { nouvelle: deja };
-      const nouvelle: UniteACreer = { nom: nomPropre, type, parent, id: null, echec: null };
+      const nouvelle: UniteACreer = {
+        cle: cleNouvelle,
+        nom: this.noms[cleNouvelle]?.trim() || nomPropre,
+        propose: nomPropre,
+        type,
+        parent,
+        id: null,
+        echec: null,
+      };
       this.aCreer.push(nouvelle);
       return { nouvelle };
     };
@@ -1373,10 +1395,27 @@ class Passe {
     const ordre = [...this.aCreer].sort(
       (a, b) => (a.type === 'department' ? 0 : 1) - (b.type === 'department' ? 0 : 1),
     );
+    const echouee = (u: UniteACreer, raison: string) => {
+      u.echec = raison;
+      this.unitesCreees.push({
+        cle: u.cle,
+        nom: u.nom,
+        propose: u.propose,
+        parent: nomDeLaPlace(u.parent),
+        echec: raison,
+      });
+    };
     for (const u of ordre) {
       const parentId = this.idDeLaPlace(u.parent);
       if (!parentId) {
-        u.echec = 'son unité de rattachement n’a pas pu être créée';
+        echouee(u, 'son unité de rattachement n’a pas pu être créée');
+        continue;
+      }
+      // Un nom corrigé à l'aperçu peut être celui d'une unité voisine.
+      if (
+        this.unites.some((x) => x.parentId === parentId && squelette(x.nom) === squelette(u.nom))
+      ) {
+        echouee(u, 'une unité porte déjà ce nom à ce niveau');
         continue;
       }
       const r = await this.essayer((sp) =>
@@ -1387,7 +1426,7 @@ class Passe {
         }),
       );
       if ('erreur' in r) {
-        u.echec = r.erreur;
+        echouee(u, r.erreur);
         continue;
       }
       u.id = r.ok.id;
@@ -1402,7 +1441,12 @@ class Passe {
         directionId: this.directionDeLaPlace(u.parent)?.id ?? null,
         sommet: false,
       });
-      this.unitesCreees.push({ nom: u.nom, parent: nomDeLaPlace(u.parent) });
+      this.unitesCreees.push({
+        cle: u.cle,
+        nom: u.nom,
+        propose: u.propose,
+        parent: nomDeLaPlace(u.parent),
+      });
     }
     // Une unité qui n'a pas pu naître : ses agents vont à l'unité au-dessus.
     for (const p of this.plans) {

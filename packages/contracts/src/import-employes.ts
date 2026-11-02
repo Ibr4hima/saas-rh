@@ -104,11 +104,25 @@ export interface LigneImport {
   employeeId?: string | null;
 }
 
+/**
+ * Les noms corrigés dans l'aperçu, renvoyés avec le fichier : la clé de
+ * l'unité à créer, le nom qu'elle prendra.
+ */
+export const nomsDUnitesSchema = z
+  .record(z.string().max(400), z.string().trim().min(1).max(120))
+  .refine((n) => Object.keys(n).length <= 200, 'Trop de noms');
+
 /** Une unité que l'import crée, faute de la trouver dans l'organigramme. */
 export interface UniteCreeeImport {
+  /** La clé de l'unité, à renvoyer avec son nom corrigé. */
+  cle: string;
   nom: string;
+  /** Le nom que l'import tire du fichier, avant toute correction dans l'aperçu. */
+  propose: string;
   /** La direction, ou le département, sous lequel elle se range. */
   parent: string;
+  /** Pourquoi elle n'a pas pu être créée : ses agents vont à l'unité au-dessus. */
+  echec?: string | null;
 }
 
 /** Une désignation que l'import fait : responsable d'unité, DG ou DGA. */

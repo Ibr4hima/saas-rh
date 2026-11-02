@@ -36,6 +36,7 @@ import {
   lireTelephone,
   nomDePersonne,
   nomDeVille,
+  sansObjet,
   squelette,
   texte,
   type Lecture,
@@ -281,6 +282,52 @@ const MOTS_VIDES = new Set([
   'aux',
 ]);
 
+/**
+ * Ce qui suit le nom de l'unité dans un poste sans en faire partie : un
+ * second rôle (« Chef du département Aménagement et chef de projet ZES
+ * Diass »), un intérim.
+ */
+const SECOND_ROLE =
+  / et (?:chef|cheffe|responsable|coordonnateur|coordonnatrice|coordinateur|coordinatrice|directeur|directrice|charge|chargee|point focal|gestionnaire|conseiller|conseillere|assistant|assistante|secretaire|manager|administrateur|administratrice|superviseur|superviseure)(?: .*)?$/;
+const INTERIM = / (?:par interim|interim|ai|a i|pi|p i)$/;
+
+/** Les mots du squelette d'un texte, chacun avec sa place dans le texte d'origine. */
+function motsEtPlaces(brut: string): { mot: string; debut: number; fin: number }[] {
+  const r: { mot: string; debut: number; fin: number }[] = [];
+  for (const m of brut.matchAll(/[\p{L}\p{M}\p{N}]+/gu)) {
+    for (const mot of squelette(m[0]).split(' ').filter(Boolean)) {
+      r.push({ mot, debut: m.index, fin: m.index + m[0].length });
+    }
+  }
+  return r;
+}
+
+/**
+ * Le nom de l'unité que nomme la fin d'un poste, tel que le fichier l'écrit,
+ * virgules et apostrophes comprises : « COURRIER, DOCUMENTATION ET
+ * ARCHIVAGE ». `reste` en est le squelette, mot à mot.
+ */
+function nomDansLePoste(brut: string, s: string, reste: string[]): string | null {
+  const tous = s.split(' ').filter(Boolean);
+  let garde = reste.join(' ').replace(SECOND_ROLE, '').replace(INTERIM, '').split(' ');
+  while (garde.length > 0 && MOTS_VIDES.has(garde[garde.length - 1]!)) garde = garde.slice(0, -1);
+  garde = garde.filter(Boolean);
+  if (garde.length === 0) return null;
+  const places = motsEtPlaces(brut);
+  if (places.map((p) => p.mot).join(' ') !== tous.join(' ')) return garde.join(' ');
+  const premier = places[tous.length - reste.length]!;
+  const dernier = places[tous.length - reste.length + garde.length - 1]!;
+  let nom = brut.slice(premier.debut, dernier.fin).trim();
+  // « QUALITE (DQSE » : une parenthèse que la coupe a laissée ouverte.
+  if ((nom.match(/\(/g)?.length ?? 0) !== (nom.match(/\)/g)?.length ?? 0)) {
+    nom = nom
+      .replace(/\s*\([^)]*$/, '')
+      .replace(/[()]/g, '')
+      .trim();
+  }
+  return nom || null;
+}
+
 export function natureDuPoste(brut: string): NaturePoste {
   const s = squelette(brut);
   const mots = s.split(' ');
@@ -301,7 +348,7 @@ export function natureDuPoste(brut: string): NaturePoste {
     return {
       nature: 'chef',
       type: chef[1] === 'service' ? 'service' : 'department',
-      nom: reste.length > 0 ? reste.join(' ') : null,
+      nom: reste.length > 0 ? nomDansLePoste(brut, s, reste) : null,
     };
   }
   const dir = /^(?:directeur|directrice)(?: (.*))?$/.exec(s);
@@ -349,13 +396,16 @@ export function cleDUnite(nom: string): string {
     .join(' ');
 }
 
-/** Le nom d'une unité à créer : « Département Digitalisation », « Service Qualité ». */
+/**
+ * Le nom d'une unité à créer : « Département Digitalisation », « Service
+ * Qualité », « Service BCE ».
+ */
 export function nomDUnite(
   type: 'department' | 'service',
   nom: string,
   sigles: ReadonlySet<string> = new Set(),
 ): string {
-  const propre = intitule(nom.toUpperCase(), sigles);
+  const propre = intitule(nom.toUpperCase(), sigles, { sigleCourt: true });
   return `${type === 'department' ? 'Département' : 'Service'} ${propre}`.slice(0, 120);
 }
 
@@ -520,7 +570,8 @@ export function lireLigne(
 ): { ok: LigneLue } | { refus: LigneRefusee } {
   const lire = (c: Champ): CelluleXlsx => {
     const i = corr.colonnes[c];
-    return i === undefined ? null : (valeurs[i] ?? null);
+    const v = i === undefined ? null : (valeurs[i] ?? null);
+    return sansObjet(v, c === 'enfants' || c === 'nbEpouses') ? null : v;
   };
   const colonne = (c: Champ) => corr.intitules[c] ?? INTITULES[c][0]!;
   const corrections: CorrectionImport[] = [];

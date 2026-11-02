@@ -165,3 +165,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0157](0157-cadre-ou-non-cadre-sur-soi.md)            | Cadre ou non cadre, la seule chose qu'on règle sur son propre dossier                   | acceptée                                    |
 | [0158](0158-la-fiche-recoit-le-fichier-de-la-dch.md)  | La fiche reçoit tout ce que la DCH tient sur chaque agent, la rémunération à part       | acceptée                                    |
 | [0159](0159-l-import-lit-le-fichier-de-la-dch.md)     | L'import lit le fichier de la DCH : corrections, réimport, postes et N+1 par leur nom   | acceptée                                    |
+| [0160](0160-l-import-ecrit-les-unites-sans-faute.md)  | L'import écrit les unités sans faute, lit « 01-mars-04 » et prend « NA » pour vide      | acceptée                                    |

@@ -30,6 +30,33 @@ export type Lecture<T> = { valeur: T; corrige: boolean } | { erreur: string } | 
 
 export const ok = <T>(valeur: T, corrige = false): Lecture<T> => ({ valeur, corrige });
 
+/** « NA », « N/A », « ND » : la DCH dit qu'il n'y a rien à mettre. */
+const SANS_OBJET = new Set([
+  'na',
+  'n a',
+  'nd',
+  'n d',
+  'sans objet',
+  'non applicable',
+  'non disponible',
+  'non renseigne',
+  'non renseignee',
+]);
+
+/**
+ * Une case qui dit « rien » : « NA » pour l'agent sans adresse
+ * professionnelle, « - » ou « néant » pour une case sans réponse. Elle vaut
+ * une case vide, sans avertissement. Pour un nombre (enfants, épouses),
+ * « néant » et « - » disent 0 : `compte` les laisse à la lecture du nombre.
+ */
+export function sansObjet(v: CelluleXlsx | undefined, compte = false): boolean {
+  if (typeof v !== 'string') return false;
+  const s = squelette(v);
+  if (SANS_OBJET.has(s)) return true;
+  if (compte) return false;
+  return ['neant', 'aucun', 'aucune'].includes(s) || /^[\p{P}\p{S}\s]+$/u.test(v);
+}
+
 /** Le texte d'une cellule, nettoyé ; undefined pour une cellule vide. */
 export function texte(v: CelluleXlsx | undefined): string | undefined {
   if (v === null || v === undefined) return undefined;
@@ -190,6 +217,25 @@ const MOIS: Record<string, number> = {
   nov: 11,
   decembre: 12,
   dec: 12,
+  // Un tableur réglé en anglais écrit « 01-Mar-04 ».
+  january: 1,
+  february: 2,
+  feb: 2,
+  march: 3,
+  mar: 3,
+  april: 4,
+  apr: 4,
+  may: 5,
+  june: 6,
+  jun: 6,
+  july: 7,
+  jul: 7,
+  august: 8,
+  aug: 8,
+  september: 9,
+  october: 10,
+  november: 11,
+  december: 12,
 };
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -230,7 +276,8 @@ function depuisChiffres(a: number, m: number, j: number): DateLue | { erreur: st
 /**
  * Une date, quelle que soit la façon dont le tableur l'a gardée : une vraie
  * date, un numéro de série (44452), du texte (13/09/2021, 13 septembre
- * 2021, 2021-09-13), ou un mois seul (09/2021, sept. 2021).
+ * 2021, 13-sept.-21, 2021-09-13), ou un mois seul (09/2021, sept. 2021,
+ * sept.-21).
  */
 export function lireDate(v: CelluleXlsx | undefined, aujourdhui: string): Lecture<DateLue> {
   if (v === null || v === undefined) return null;
@@ -261,11 +308,12 @@ export function lireDate(v: CelluleXlsx | undefined, aujourdhui: string): Lectur
     return d && !('erreur' in d) ? ok(d, d.interpretee) : erreur;
   }
   const mot = squelette(t);
-  const enLettres = /^(\d{1,2})(?: ?er)? ([a-z]+) (\d{4})$/.exec(mot);
+  // « 01-mars-04 » : le format jj-mmm-aa qu'Excel montre en français.
+  const enLettres = /^(\d{1,2})(?: ?er)? ([a-z]+) (\d{2}|\d{4})$/.exec(mot);
   if (enLettres) {
     const m = MOIS[enLettres[2]!];
-    if (m && jourValide(Number(enLettres[3]), m, Number(enLettres[1]))) {
-      const a = Number(enLettres[3]);
+    const a = annee(enLettres[3]!, aujourdhui);
+    if (m && jourValide(a, m, Number(enLettres[1]))) {
       return ok({
         iso: `${a}-${pad(m)}-${pad(Number(enLettres[1]))}`,
         auMois: false,
@@ -280,10 +328,11 @@ export function lireDate(v: CelluleXlsx | undefined, aujourdhui: string): Lectur
     if (m < 1 || m > 12) return erreur;
     return ok({ iso: `${moisSeul[2]}-${pad(m)}-01`, auMois: true, interpretee: false });
   }
-  const moisEnLettres = /^([a-z]+) (\d{4})$/.exec(mot);
+  const moisEnLettres = /^([a-z]+) (\d{2}|\d{4})$/.exec(mot);
   if (moisEnLettres && MOIS[moisEnLettres[1]!]) {
     const m = MOIS[moisEnLettres[1]!]!;
-    return ok({ iso: `${moisEnLettres[2]}-${pad(m)}-01`, auMois: true, interpretee: false });
+    const a = annee(moisEnLettres[2]!, aujourdhui);
+    return ok({ iso: `${a}-${pad(m)}-01`, auMois: true, interpretee: false });
   }
   return erreur;
 }
@@ -604,6 +653,8 @@ const VILLES: [string, Region][] = [
   ['Tivaouane', 'thies'],
   ['Joal-Fadiouth', 'thies'],
   ['Saly', 'thies'],
+  ['Diass', 'thies'],
+  ['Sandiara', 'thies'],
   ['Bignona', 'ziguinchor'],
   ['Oussouye', 'ziguinchor'],
   ['Ziguinchor', 'ziguinchor'],
@@ -747,7 +798,12 @@ const ACCENTS: Record<string, string> = Object.fromEntries(
   [
     'activité',
     'activités',
+    'agrément',
+    'agréments',
     'aménagement',
+    'aménagements',
+    'attaché',
+    'attachée',
     'bâtiment',
     'bâtiments',
     'budgétaire',
@@ -756,41 +812,57 @@ const ACCENTS: Record<string, string> = Object.fromEntries(
     'carrières',
     'chargé',
     'chargée',
+    'chargées',
+    'chargés',
     'cité',
+    'collectivités',
     'compétence',
     'compétences',
+    'compétitivité',
     'comptabilité',
     'conformité',
     'conseillère',
     'contrôle',
     'contrôleur',
+    'contrôleurs',
     'contrôleuse',
     'coopération',
     'création',
     'cuisinière',
+    'cybersécurité',
     'délégation',
     'délégué',
     'déléguée',
-    'département',
+    'délégués',
     'déontologie',
+    'département',
     'développement',
     'développeur',
+    'développeurs',
     'développeuse',
     'données',
     'économie',
     'économique',
     'économiques',
     'économiste',
+    'élaboration',
     'électricien',
     'électricienne',
+    'électriciens',
     'électricité',
     'électrique',
+    'électronique',
     'énergétique',
     'énergie',
     'entité',
+    'entités',
+    'équipe',
     'équipement',
     'équipements',
+    'équipes',
     'étage',
+    'État',
+    'états',
     'éthique',
     'étude',
     'études',
@@ -798,21 +870,35 @@ const ACCENTS: Record<string, string> = Object.fromEntries(
     'événement',
     'événementiel',
     'événements',
+    'exécution',
+    'extérieur',
+    'extérieure',
+    'extérieures',
     'financière',
     'fiscalité',
+    'foncière',
+    'foncières',
     'formalités',
     'général',
     'générale',
     'généraux',
     'génie',
     'géographie',
+    'géographique',
     'géomatique',
+    'hiérarchique',
     'hôtesse',
     'hygiène',
+    'immobilière',
+    'immobilières',
     'infirmière',
+    'ingénierie',
     'ingénieur',
     'ingénieure',
+    'ingénieurs',
     'intégrité',
+    'intérieur',
+    'intérieure',
     'intérimaire',
     'interprète',
     'marché',
@@ -820,67 +906,100 @@ const ACCENTS: Record<string, string> = Object.fromEntries(
     'matériel',
     'matériels',
     'mécanicien',
+    'mécaniciens',
     'mécanique',
     'médecin',
+    'médecins',
+    'médias',
     'médical',
     'médicale',
+    'médicaux',
     'ménage',
     'ménagère',
-    'métier',
-    'métiers',
     'méthode',
     'méthodes',
+    'métier',
+    'métiers',
+    'mobilité',
+    'multimédia',
+    'négociation',
+    'négociations',
     'numérique',
     'opérateur',
+    'opérateurs',
     'opération',
     'opérationnel',
     'opérationnelle',
     'opérations',
     'opératrice',
+    'opératrices',
     'pôle',
     'président',
     'présidente',
     'prévention',
     'privé',
     'privée',
+    'privées',
+    'privés',
+    'procédés',
     'procédure',
     'procédures',
+    'propriété',
     'qualité',
     'réception',
     'réceptionniste',
     'rédacteur',
     'rédactrice',
+    'référent',
+    'référente',
     'réforme',
     'réformes',
     'région',
     'régional',
     'régionale',
+    'régionaux',
     'régions',
+    'réglementaire',
     'réglementation',
     'réseau',
     'réseaux',
     'résidence',
+    'responsabilité',
+    'responsabilités',
     'santé',
     'secrétaire',
+    'secrétaires',
     'secrétariat',
     'sécurité',
+    'sociétal',
+    'sociétale',
+    'sociétales',
     'société',
     'spécial',
     'spéciale',
     'spéciales',
-    'spécialiste',
     'spécialisé',
     'spécialisée',
+    'spécialiste',
+    'spécialistes',
+    'spéciaux',
     'stratégie',
     'stratégies',
     'stratégique',
+    'stratégiques',
+    'sûreté',
     'système',
     'systèmes',
+    'télécommunication',
     'télécommunications',
+    'téléphonie',
+    'télévision',
     'trésorerie',
     'trésorier',
     'trésorière',
     'unité',
+    'unités',
+    'vidéo',
   ].map((mot) => [squelette(mot), mot]),
 );
 
@@ -931,24 +1050,300 @@ const SIGLES_COURANTS = [
 ];
 
 /**
- * Un intitulé de poste tel qu'on l'écrit : « CHARGE D'ETUDES » devient
- * Chargé d'études. La première lettre en capitale, les sigles connus en
- * capitales, le reste en minuscules avec ses accents. Un intitulé déjà écrit
- * en minuscules et capitales est gardé.
+ * Des mots courants des intitulés qui s'écrivent sans accent : connus, ils
+ * ne passent pas pour des fautes, et une faute sur l'un d'eux se corrige
+ * (« RECOUVREMMENT »).
  */
-export function intitule(brut: string, sigles: ReadonlySet<string> = new Set()): string {
+const MOTS_SANS_ACCENT = new Set([
+  'accompagnement',
+  'accueil',
+  'achats',
+  'administratif',
+  'administration',
+  'administrative',
+  'affaires',
+  'agent',
+  'agents',
+  'analyse',
+  'analyste',
+  'animation',
+  'appui',
+  'archivage',
+  'archives',
+  'archiviste',
+  'assistant',
+  'assistante',
+  'assurance',
+  'audiovisuel',
+  'audit',
+  'auditeur',
+  'auditrice',
+  'budget',
+  'bureau',
+  'cabinet',
+  'cadre',
+  'caisse',
+  'caissier',
+  'chauffeur',
+  'commercial',
+  'commerciale',
+  'communication',
+  'comptable',
+  'conception',
+  'conducteur',
+  'conseil',
+  'conseiller',
+  'consultant',
+  'contentieux',
+  'coordination',
+  'coordonnateur',
+  'coordonnatrice',
+  'correspondance',
+  'courrier',
+  'coursier',
+  'croissance',
+  'digital',
+  'digitale',
+  'digitalisation',
+  'directeur',
+  'direction',
+  'directrice',
+  'documentaliste',
+  'documentation',
+  'emploi',
+  'entreprise',
+  'entreprises',
+  'environnement',
+  'environnemental',
+  'environnementale',
+  'exploitation',
+  'facilitation',
+  'finance',
+  'financement',
+  'finances',
+  'financier',
+  'fiscal',
+  'fiscale',
+  'foncier',
+  'formation',
+  'formulation',
+  'gardien',
+  'gestion',
+  'gestionnaire',
+  'graphiste',
+  'guichet',
+  'habitat',
+  'immobilier',
+  'impact',
+  'incitations',
+  'informaticien',
+  'informatique',
+  'infrastructure',
+  'infrastructures',
+  'innovation',
+  'institutionnel',
+  'institutionnelle',
+  'intelligence',
+  'interne',
+  'investissement',
+  'investissements',
+  'investisseurs',
+  'juridique',
+  'juriste',
+  'logistique',
+  'maintenance',
+  'management',
+  'marketing',
+  'mobilisation',
+  'moyens',
+  'observatoire',
+  'organisation',
+  'partenariat',
+  'partenariats',
+  'patrimoine',
+  'performance',
+  'personnel',
+  'planification',
+  'planton',
+  'portefeuille',
+  'production',
+  'programme',
+  'programmes',
+  'projet',
+  'projets',
+  'promotion',
+  'prospection',
+  'prospective',
+  'protocole',
+  'publique',
+  'publiques',
+  'recherche',
+  'recouvrement',
+  'recrutement',
+  'relations',
+  'reporting',
+  'ressources',
+  'risques',
+  'salaires',
+  'service',
+  'services',
+  'stagiaire',
+  'standardiste',
+  'statistique',
+  'statistiques',
+  'suivi',
+  'superviseur',
+  'support',
+  'surface',
+  'technicien',
+  'technicienne',
+  'technique',
+  'techniques',
+  'territorial',
+  'territoriale',
+  'tourisme',
+  'transport',
+  'urbain',
+  'urbaine',
+  'urbanisme',
+  'valorisation',
+  'veille',
+]);
+
+/** Tous les mots connus des intitulés, avec leur écriture juste. */
+const DICTIONNAIRE: [string, string][] = [
+  ...Object.entries(ACCENTS),
+  ...[...MOTS_SANS_ACCENT].map((m): [string, string] => [m, m]),
+];
+
+/**
+ * Le mot connu qu'une faute de frappe a déformé : « GENEREAUX » pour
+ * généraux, « RECOUVREMMENT » pour recouvrement. Une seule lettre de trop,
+ * de moins, changée ou intervertie, jamais dans les deux dernières : c'est
+ * là que s'écrivent le pluriel et le féminin (« urbaines » reste urbaines,
+ * « financiers » ne devient pas financière). Un mot court, ou proche de deux
+ * mots connus, n'est pas corrigé.
+ */
+function motCorrige(cle: string): string | undefined {
+  if (cle.length < 7) return undefined;
+  let trouve: string | undefined;
+  for (const [k, juste] of DICTIONNAIRE) {
+    if (Math.abs(k.length - cle.length) > 1 || k.slice(-2) !== cle.slice(-2)) continue;
+    if (distance(k, cle) !== 1) continue;
+    if (trouve && trouve !== juste) return undefined;
+    trouve = juste;
+  }
+  return trouve;
+}
+
+/** Les villes d'un seul mot, pour leur capitale dans un intitulé (« ZES Diass »). */
+const VILLES_D_UN_MOT = new Map(
+  VILLES.filter(([nom]) => !/[\s-]/.test(nom)).map(([nom]) => [squelette(nom), nom]),
+);
+
+/**
+ * Les mots de trois lettres au plus qui ne sont pas des sigles. Dans un nom
+ * d'unité, tout autre mot aussi court en est un : « SERVICE BCE ».
+ */
+const MOTS_COURTS = new Set([
+  'a',
+  'air',
+  'an',
+  'ans',
+  'art',
+  'au',
+  'aux',
+  'axe',
+  'bac',
+  'bas',
+  'bio',
+  'bus',
+  'cas',
+  'ce',
+  'ces',
+  'cet',
+  'com',
+  'd',
+  'dev',
+  'de',
+  'des',
+  'du',
+  'eau',
+  'eco',
+  'en',
+  'est',
+  'et',
+  'fer',
+  'fin',
+  'gaz',
+  'ile',
+  'job',
+  'l',
+  'la',
+  'lab',
+  'le',
+  'les',
+  'lot',
+  'mer',
+  'net',
+  'nom',
+  'ou',
+  'par',
+  'pas',
+  'pro',
+  'pub',
+  'sa',
+  'se',
+  'sel',
+  'ses',
+  'sol',
+  'son',
+  'sud',
+  'sur',
+  'tri',
+  'un',
+  'une',
+  'vie',
+  'web',
+  'y',
+]);
+
+/** Un mot d'intitulé écrit en capitales, tel qu'on l'écrit dans une phrase. */
+function motDIntitule(m: string, garder: ReadonlySet<string>, sigleCourt: boolean): string {
+  const haut = m.toUpperCase();
+  if (garder.has(haut)) return haut;
+  // « NIVEAU III » : un chiffre romain reste en capitales.
+  if (/^[IVX]{2,4}$/.test(haut)) return haut;
+  // Aucun mot français ne triple une lettre : « PORTEFEUILLLE ».
+  const bas = m.toLowerCase().replace(/(\p{L})\1{2,}/gu, '$1$1');
+  const cle = squelette(bas);
+  if (MOTS_SANS_ACCENT.has(cle)) return bas;
+  const connu = ACCENTS[cle] ?? VILLES_D_UN_MOT.get(cle) ?? motCorrige(cle);
+  if (connu) return connu;
+  if (sigleCourt && cle.length <= 3 && !MOTS_COURTS.has(cle)) return haut;
+  return bas;
+}
+
+/**
+ * Un intitulé de poste ou d'unité tel qu'on l'écrit : « CHARGE D'ETUDES »
+ * devient Chargé d'études. La première lettre en capitale, les sigles connus
+ * en capitales, les villes avec la leur, le reste en minuscules avec ses
+ * accents ; une faute de frappe sur un mot connu est corrigée, et
+ * l'apostrophe perdue revient (« D ENTREPRISE », d’entreprise). Pour un nom
+ * d'unité, `sigleCourt` garde en capitales les mots courts inconnus
+ * (« BCE »). Un intitulé déjà écrit en minuscules et capitales est gardé.
+ */
+export function intitule(
+  brut: string,
+  sigles: ReadonlySet<string> = new Set(),
+  { sigleCourt = false }: { sigleCourt?: boolean } = {},
+): string {
   const t = brut.replace(/\s+/g, ' ').trim();
   if (!enCapitales(t)) return t;
   const garder = new Set([...SIGLES_COURANTS, ...[...sigles].map((s) => s.toUpperCase())]);
-  const mots = t.split(/(\s+|[-'’/()])/);
-  const rendu = mots
-    .map((m) => {
-      if (!/\p{L}/u.test(m)) return m;
-      if (garder.has(m.toUpperCase())) return m.toUpperCase();
-      const bas = m.toLowerCase();
-      return ACCENTS[squelette(bas)] ?? bas;
-    })
-    .join('');
+  const rendu = t
+    .replace(/\p{L}+/gu, (m) => motDIntitule(m, garder, sigleCourt))
+    .replace(/(^|[\s(])([dl]) (?=[aeiouyhàâäéèêëîïôöûüœ])/giu, '$1$2’');
   return rendu.charAt(0).toUpperCase() + rendu.slice(1);
 }
 

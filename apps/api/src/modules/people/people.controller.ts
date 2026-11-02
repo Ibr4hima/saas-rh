@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import {
   choixDImportSchema,
+  nomsDUnitesSchema,
   archiveEmployeesSchema,
   corrigerAffectationSchema,
   corrigerContratSchema,
@@ -100,12 +101,19 @@ export class PeopleController {
     @Req() req: AuthenticatedRequest,
     @Query('apercu') apercu: string | undefined,
     @Query('choix') choix: string | undefined,
+    @Query('noms') noms: string | undefined,
   ) {
     const fichier = (req as unknown as { body?: unknown }).body;
     if (!Buffer.isBuffer(fichier) || fichier.length === 0) {
       problem(415, 'import.corps_absent', 'Envoyez le classeur .xlsx en corps de requête');
     }
-    return this.imports.importer(req.sessionUser, fichier, apercu !== '1', lireLesChoix(choix));
+    return this.imports.importer(
+      req.sessionUser,
+      fichier,
+      apercu !== '1',
+      lireLesChoix(choix),
+      lireLesNoms(noms),
+    );
   }
 
   @Post('employees')
@@ -343,5 +351,21 @@ function lireLesChoix(brut: string | undefined): Record<string, string> {
   }
   const r = choixDImportSchema.safeParse(valeur);
   if (!r.success) problem(400, 'import.choix_illisibles', 'Les choix envoyés ne se lisent pas');
+  return r.data;
+}
+
+/** Les noms d'unités corrigés à l'aperçu, en JSON dans l'adresse : la clé de l'unité vers son nom. */
+function lireLesNoms(brut: string | undefined): Record<string, string> {
+  if (!brut) return {};
+  let valeur: unknown;
+  try {
+    valeur = JSON.parse(brut);
+  } catch {
+    problem(400, 'import.noms_illisibles', 'Les noms d’unités envoyés ne se lisent pas');
+  }
+  const r = nomsDUnitesSchema.safeParse(valeur);
+  if (!r.success) {
+    problem(400, 'import.noms_illisibles', 'Les noms d’unités envoyés ne se lisent pas');
+  }
   return r.data;
 }
