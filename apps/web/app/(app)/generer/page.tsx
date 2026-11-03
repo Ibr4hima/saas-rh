@@ -28,7 +28,7 @@ import {
   saisiesDe,
   sansAgent,
 } from '@teranga/contracts';
-import { Badge, Button, Card, cn, EmptyState, Field, Select } from '@teranga/ui';
+import { Badge, Button, Card, cn, DateInput, EmptyState, Field, Select } from '@teranga/ui';
 import { Page } from '../../../components/gabarit';
 import { Icon } from '../../../components/icons';
 import {
@@ -735,7 +735,7 @@ function ChampDeLaCategorie({
   );
 }
 
-/** Une date saisie, au calendrier du navigateur : celles du congé, le départ à la retraite. */
+/** Une date saisie, tapée ou choisie au calendrier : celles du congé, le départ à la retraite. */
 function ChampDeDate({
   id,
   premier,
@@ -758,8 +758,7 @@ function ChampDeDate({
   onSaisir: (date: string) => void;
 }) {
   return (
-    <input
-      type="date"
+    <DateInput
       id={id}
       autoFocus={premier}
       disabled={!ouvert}
@@ -771,7 +770,7 @@ function ChampDeDate({
       onChange={(e) => onSaisir(e.target.value)}
       className={cn(
         CHAMP,
-        'border-line px-3 font-medium text-ink-strong tabular-nums hover:border-ink-muted/40 focus:border-primary disabled:cursor-not-allowed disabled:opacity-50',
+        'border-line px-3 font-medium text-ink-strong hover:border-ink-muted/40 focus:border-primary',
       )}
     />
   );

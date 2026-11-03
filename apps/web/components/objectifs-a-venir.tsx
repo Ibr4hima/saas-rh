@@ -16,7 +16,7 @@ import {
   parEcheance,
   type ObjectifAVenir,
 } from '@teranga/contracts';
-import { cn } from '@teranga/ui';
+import { CalendrierFlottant, cn } from '@teranga/ui';
 import { aujourdhui } from '../lib/temps';
 import { BoutonAjouter } from './bouton-ajouter';
 import { Icon } from './icons';
@@ -68,11 +68,10 @@ const dansLesBornes = (date: string, min: string, max: string) =>
   /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= min && date <= max;
 
 /**
- * L'échéance, à choisir : une puce, et dessous le calendrier du navigateur,
- * qui s'ouvre d'un clic. Une date complète, dans ses bornes, vaut aussitôt ;
- * une date à moitié tapée, ou hors des bornes, s'efface quand on quitte la
- * puce. « Effacer » retire l'échéance. `onQuitter` suit la puce qu'on
- * quitte, ou Entrée.
+ * L'échéance, à choisir : une puce, et dessous notre calendrier, qui s'ouvre
+ * d'un clic, ou de la flèche vers le bas. Seuls les jours dans les bornes se
+ * choisissent ; « Effacer » retire l'échéance. `onQuitter` suit la puce
+ * qu'on quitte, ou le calendrier qu'on referme.
  */
 function ChoixEcheance({
   id,
@@ -91,64 +90,67 @@ function ChoixEcheance({
   onQuitter: () => void;
   label: string;
 }) {
-  // Ce qu'on tape et qui ne vaut pas encore : un jour incomplet, ou hors des bornes.
-  const [saisie, setSaisie] = useState<string | null>(null);
-  const montree = saisie ?? date;
+  const puce = useRef<HTMLButtonElement>(null);
+  const [ouvert, setOuvert] = useState(false);
+  const [auClavier, setAuClavier] = useState(false);
+  const valide = date !== null && dansLesBornes(date, min, max);
+  const ouvrir = (clavier: boolean) => {
+    setAuClavier(clavier);
+    setOuvert(true);
+  };
+  const fermer = (rendreLeFocus: boolean) => {
+    setOuvert(false);
+    if (rendreLeFocus) puce.current?.focus();
+    onQuitter();
+  };
   return (
-    <span
-      className={cn(
-        'relative inline-flex shrink-0 items-center gap-1 rounded-full border bg-surface py-[3px] pr-2.5 pl-2 text-[11.5px] font-semibold whitespace-nowrap',
-        'transition-colors duration-150 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 hover:border-primary/45 hover:text-primary',
-        montree && dansLesBornes(montree, min, max)
-          ? 'border-line text-ink'
-          : 'border-dashed border-line text-ink-muted',
-      )}
-    >
-      <Icon name="event" size={14} className="opacity-75" />
-      {montree && dansLesBornes(montree, min, max) ? dateEnLettres(montree) : 'Échéance'}
-      <input
+    <>
+      <button
+        ref={puce}
         id={id}
-        type="date"
-        aria-label={label}
-        value={montree ?? ''}
-        min={min}
-        max={max}
-        onClick={(e) => {
-          try {
-            e.currentTarget.showPicker();
-          } catch {
-            // Un navigateur sans calendrier à ouvrir : la saisie au clavier reste.
-          }
-        }}
+        type="button"
+        aria-label={valide ? `${label} : ${dateEnLettres(date)}` : label}
+        aria-haspopup="dialog"
+        aria-expanded={ouvert}
+        // Un clic de souris ouvre le calendrier sans y entrer ; Entrée ou
+        // Espace, au clavier (`detail` à zéro), y pose le focus.
+        onClick={(e) => (ouvert ? fermer(true) : ouvrir(e.detail === 0))}
         onKeyDown={(e) => {
-          if (e.key !== 'Enter') return;
+          if (e.key !== 'ArrowDown' || ouvert) return;
           e.preventDefault();
-          onQuitter();
-        }}
-        onChange={(e) => {
-          const v = e.target.value;
-          // Vidée tout entière (« Effacer ») : plus d'échéance. Une date à
-          // moitié tapée est vide elle aussi, mais le navigateur la dit
-          // incomplète : elle attend la suite.
-          if (v === '' && !e.target.validity.badInput) {
-            setSaisie(null);
-            if (date !== null) onChoix(null);
-            return;
-          }
-          if (!dansLesBornes(v, min, max)) {
-            setSaisie(v);
-            return;
-          }
-          setSaisie(null);
-          if (v !== date) onChoix(v);
+          ouvrir(true);
         }}
         onBlur={() => {
-          setSaisie(null);
-          onQuitter();
+          if (!ouvert) onQuitter();
         }}
-        className="absolute inset-0 size-full cursor-pointer opacity-0"
-      />
-    </span>
+        className={cn(
+          'inline-flex shrink-0 items-center gap-1 rounded-full border bg-surface py-[3px] pr-2.5 pl-2 text-[11.5px] font-semibold whitespace-nowrap',
+          'transition-colors duration-150 outline-none hover:border-primary/45 hover:text-primary focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30',
+          valide ? 'border-line text-ink' : 'border-dashed border-line text-ink-muted',
+          ouvert && 'border-primary text-primary',
+        )}
+      >
+        <Icon name="event" size={14} className="opacity-75" />
+        {valide ? dateEnLettres(date) : 'Échéance'}
+      </button>
+      {ouvert ? (
+        <CalendrierFlottant
+          ancre={puce}
+          valeur={date ?? ''}
+          min={min}
+          max={max}
+          libelle={label}
+          auClavier={auClavier}
+          effacable={date !== null}
+          onChoisir={(v) => {
+            const choisie = v === '' ? null : v;
+            if (choisie !== date) onChoix(choisie);
+            fermer(true);
+          }}
+          onFermer={fermer}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -249,7 +251,7 @@ export const EditeurObjectifsAVenir = memo(function EditeurObjectifsAVenir({
     const champ = document.getElementById(
       cible.ou === 'echeance' ? idEcheance(cible.id) : idDe(cible.id),
     );
-    if (!(champ instanceof HTMLTextAreaElement || champ instanceof HTMLInputElement)) return;
+    if (!(champ instanceof HTMLTextAreaElement || champ instanceof HTMLButtonElement)) return;
     aViser.current = null;
     champ.focus();
     if (champ instanceof HTMLTextAreaElement) {

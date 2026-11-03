@@ -174,3 +174,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0166](0166-mission-et-ponctuelle-retirees.md)        | « Mission » et « Absence ponctuelle » ne sont plus des types d'absence posés d'office   | acceptée                                    |
 | [0167](0167-essayer-en-mode-production.md)            | On essaie l'application en mode production (pnpm start), on la développe avec Turbopack | acceptée                                    |
 | [0168](0168-champs-par-lignes-pleines.md)             | Générer des documents : les champs par lignes pleines, la prime de transport préremplie | acceptée                                    |
+| [0169](0169-champ-de-date.md)                         | Les dates se tapent en jj/mm/aaaa et se choisissent dans notre calendrier, partout      | acceptée                                    |

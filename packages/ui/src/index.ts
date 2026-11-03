@@ -2,6 +2,7 @@ export { cn } from './cn';
 export { Checkbox } from './checkbox';
 export { Button } from './button';
 export { Input } from './input';
+export { CalendrierFlottant, DateInput } from './date';
 export { Label } from './label';
 export { Field } from './field';
 export { Select } from './select';

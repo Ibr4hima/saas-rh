@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { cn } from './cn';
+import { DateInput } from './date';
 
 /**
  * Champ de saisie, aux coins des boutons et des listes, comme dans e-Voting.
@@ -13,6 +14,9 @@ export function Input({
   autoComplete = 'off',
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement> & { ref?: React.Ref<HTMLInputElement> }) {
+  // Une date se tape en jj/mm/aaaa et se choisit dans notre calendrier,
+  // pas dans celui du navigateur.
+  if (props.type === 'date') return <DateInput className={className} {...props} />;
   return (
     <input
       // Pas de propositions du navigateur sous les champs : son historique
