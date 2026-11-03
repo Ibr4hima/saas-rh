@@ -352,7 +352,7 @@ export function FenetreDemandeAbsence({
           </Field>
           {needsDocument ? (
             <Field
-              label={selectedType?.name === 'Mission' ? 'Ordre de mission' : 'Justificatif'}
+              label="Justificatif"
               htmlFor="justificatif"
               hint={doc ? undefined : 'PDF, 5 Mo au plus'}
               error={fileError ?? undefined}

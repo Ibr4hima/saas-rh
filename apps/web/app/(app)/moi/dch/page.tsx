@@ -220,7 +220,7 @@ export default function CongesATraiterPage() {
             className="py-8"
             icon={<Icon name="how_to_reg" size={22} />}
             title="Aucune demande à traiter"
-            description="Une fois visée par le N+1, une demande d’absence ou de congé arrive ici, avec une notification."
+            description="Une fois visée par le N+1, une demande d’absence ou de congé pourra être traitée ici."
           />
         ) : (
           <>

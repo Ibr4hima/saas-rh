@@ -14,6 +14,8 @@
  *    modifier un type ne réécrit pas les soldes des années passées.
  */
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionUser } from '@teranga/contracts';
@@ -577,20 +579,52 @@ describe('quota et cadence', () => {
   });
 });
 
-describe('l’absence ponctuelle', () => {
-  it('fait partie des types posés d’office : à l’heure, sans justificatif, trois jours au plus', async () => {
-    const ponctuelle = (await absences.listTypes(admin)).find(
-      (t) => t.name === 'Absence ponctuelle',
-    );
-    expect(ponctuelle).toMatchObject({
-      allowsHours: true,
-      maxDaysPerRequest: 3,
-      requiresDocument: false,
-      deductsBalance: false,
-      frequency: 'none',
-    });
+describe('les types posés d’office', () => {
+  it('ne comptent plus la mission ni l’absence ponctuelle (ADR-0166)', async () => {
+    const noms = (await absences.listTypes(admin)).map((t) => t.name);
+    expect(noms).toEqual(['Congé annuel', 'Disponibilité', 'Maladie', 'Maternité', 'Sans solde']);
   });
 
+  it('la migration 0128 retire les deux types, sauf celui qu’une demande en attente porte', async () => {
+    const type = (name: string) =>
+      absences.createType(admin, {
+        name,
+        deductsBalance: false,
+        allowanceDays: null,
+        frequency: 'none',
+        requiresDocument: false,
+      });
+    const { id: mission } = await type('Mission');
+    const { id: ponctuelle } = await type('Absence ponctuelle');
+    const { id: autre } = await type('Récupération');
+    await raw(
+      `INSERT INTO absence_requests
+         (id, tenant_id, employee_id, absence_type_id, start_date, end_date, days_count, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 1, 'pending')`,
+      [randomUUID(), tenantId, employeeId, ponctuelle, `${ANNEE}-06-01`, `${ANNEE}-06-01`],
+    );
+    const migration = readFileSync(
+      join(__dirname, '../src/db/sql/0128_mission_et_absence_ponctuelle_retirees.sql'),
+      'utf8',
+    );
+    const retrait = migration
+      .split('\n')
+      .filter((l) => !l.startsWith('--'))
+      .join('\n')
+      .split(';')
+      .map((q) => q.trim())
+      .filter((q) => q.startsWith('UPDATE'));
+    expect(retrait).toHaveLength(1);
+    await raw(retrait[0]!);
+
+    const enService = (await absences.listTypes(admin)).map((t) => t.id);
+    expect(enService).not.toContain(mission);
+    expect(enService).toContain(ponctuelle);
+    expect(enService).toContain(autre);
+  });
+});
+
+describe('l’absence à l’heure', () => {
   it('la DCH règle le plafond ; omis à la modification, il reste ce qu’il était', async () => {
     const champs = {
       name: 'Absence ponctuelle',

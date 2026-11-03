@@ -23,8 +23,9 @@ export const ABSENCE_FREQUENCY_LABELS: Record<AbsenceFrequency, string> = {
 /**
  * La continuité du service (ADR-0129) : une demande de ce type qui laisserait
  * une délégation de demandes sans personne porte une alerte, et la DCH
- * l'apprécie. Toujours (le congé annuel), au-delà d'un jour (l'absence
- * ponctuelle), ou jamais (la maladie, la maternité : la force majeure).
+ * l'apprécie. Toujours (le congé annuel), au-delà d'un jour (quelques
+ * heures ne laissent personne sans relais), ou jamais (la maladie, la
+ * maternité : la force majeure).
  */
 export const continuiteSchema = z.enum(['toujours', 'au_dela_d_un_jour', 'jamais']);
 export type Continuite = z.infer<typeof continuiteSchema>;
@@ -289,7 +290,7 @@ export interface BalanceView {
 
 export const MAX_JUSTIFICATIF_BYTES = 5 * 1024 * 1024;
 
-/** Justificatif d'absence : PDF uniquement (attestation, ordre de mission…). */
+/** Justificatif d'absence : PDF uniquement (certificat médical, attestation…). */
 export const absenceJustificatifSchema = z.object({
   filename: z.string().trim().min(1).max(200),
   contentBase64: z

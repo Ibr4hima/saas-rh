@@ -160,27 +160,6 @@ const DEFAULT_TYPES: DefaultType[] = [
     frequency: 'none',
     requiresDocument: false,
   },
-  {
-    name: 'Mission',
-    deductsBalance: false,
-    allowanceDays: null,
-    frequency: 'none',
-    requiresDocument: true,
-    resteJoignable: true,
-  },
-  // Quelques heures (un rendez-vous) ou un jour ou deux (un baptême, un
-  // décès), sans justificatif. Trois jours ouvrés au plus, tant que la DCH
-  // n'a pas fixé le sien.
-  {
-    name: 'Absence ponctuelle',
-    deductsBalance: false,
-    allowanceDays: null,
-    frequency: 'none',
-    requiresDocument: false,
-    allowsHours: true,
-    maxDaysPerRequest: 3,
-    continuite: 'au_dela_d_un_jour',
-  },
   // L'agent s'éloigne du service pour des années, sans solde à décompter :
   // trois ans au plus par demande, renouvelable (ADR-0135).
   {
@@ -2328,9 +2307,9 @@ export class AbsencesService {
 
   /**
    * Le justificatif qui suit la demande : un certificat médical arrive après
-   * l'arrêt, l'ordre de mission après le départ. L'agent le joint, ou qui a
-   * saisi pour lui, ou la DCH. Tant que la demande attend, il se remplace ;
-   * validée, il ne s'ajoute que s'il manquait.
+   * l'arrêt. L'agent le joint, ou la personne qui a saisi la demande, ou la
+   * DCH. Tant que la demande attend, il se remplace ; validée, il ne
+   * s'ajoute que s'il manquait.
    */
   async joindreJustificatif(
     user: SessionUser,

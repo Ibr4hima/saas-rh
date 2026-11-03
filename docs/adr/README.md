@@ -37,7 +37,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0029](0029-refus-de-candidature-par-courriel.md)     | Le refus d'une candidature part par courriel, sans recopier l'adresse                   | acceptée, précisée par 0030 et 0062         |
 | [0030](0030-candidatures-non-retenues-a-part.md)      | Les candidatures non retenues ont leur page                                             | acceptée                                    |
 | [0031](0031-accuse-de-reception.md)                   | L'accusé de réception d'une candidature, et des courriels sans réponse                  | acceptée                                    |
-| [0032](0032-absence-ponctuelle-a-l-heure.md)          | L'absence ponctuelle, à l'heure ou à la journée, plafonnée par demande                  | acceptée, précisée par 0135                 |
+| [0032](0032-absence-ponctuelle-a-l-heure.md)          | L'absence ponctuelle, à l'heure ou à la journée, plafonnée par demande                  | acceptée, précisée par 0135 et 0166         |
 | [0033](0033-fonction-de-responsable.md)               | La fonction de responsable s'écrit dans les affectations                                | acceptée, précisée (0038, 0064, 0126, 0127) |
 | [0034](0034-n-plus-un-des-chefs-d-unite.md)           | Le chef d'un département ou d'un service relève de l'unité au-dessus                    | acceptée, relève précisée par 0035          |
 | [0035](0035-releve-d-un-chef-et-stagiaires.md)        | Relève d'un chef : l'équipe passe au nouveau ; aucun stagiaire n'est n+1                | acceptée, directeurs précisés par 0037      |
@@ -171,3 +171,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0163](0163-l-import-reprend-la-remuneration.md)      | L'import reprend la rémunération, la banque, l'IPRES et la filiation du fichier         | acceptée                                    |
 | [0164](0164-type-de-contrat-deduit.md)                | Un type de contrat vide se déduit de la date de fin : un CDD avec, un CDI sans          | acceptée                                    |
 | [0165](0165-vider-l-import.md)                        | L'administrateur peut vider l'import pour recommencer : ce que l'import a créé, seul    | acceptée                                    |
+| [0166](0166-mission-et-ponctuelle-retirees.md)        | « Mission » et « Absence ponctuelle » ne sont plus des types d'absence posés d'office   | acceptée                                    |
