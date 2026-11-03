@@ -138,13 +138,13 @@ const DEFAULT_TYPES: DefaultType[] = [
     requiresDocument: false,
     continuite: 'toujours',
   },
+  // Le N+1 lit la maladie comme les autres motifs (ADR-0171).
   {
     name: 'Maladie',
     deductsBalance: false,
     allowanceDays: null,
     frequency: 'none',
     requiresDocument: true,
-    motifConfidentiel: true,
   },
   {
     name: 'Maternité',
@@ -2616,7 +2616,7 @@ export class AbsencesService {
     const today = aujourdhui();
     const gereLesConges = await this.gereLesConges(tx, user);
     const horsDeMaMain = await this.horsDeMaMain(tx, user);
-    // Un motif confidentiel (la maladie) : l'agent et qui ouvre son
+    // Un motif réservé à la DCH (motifConfidentiel) : l'agent et qui ouvre son
     // justificatif le lisent, cf. `document`. Le N+1, le tableau de bord,
     // qui consulte les dossiers voient une absence.
     const sensible = peut(user, 'personnel.sensible');

@@ -67,6 +67,17 @@ async function codeOf(fn: () => Promise<unknown>): Promise<string> {
   }
 }
 
+/** Les UPDATE d'une migration, sans ses commentaires : le test les rejoue. */
+function misesAJourDe(migration: string): string[] {
+  return readFileSync(join(__dirname, '../src/db/sql', migration), 'utf8')
+    .split('\n')
+    .filter((l) => !l.startsWith('--'))
+    .join('\n')
+    .split(';')
+    .map((q) => q.trim())
+    .filter((q) => q.startsWith('UPDATE'));
+}
+
 /** Repart d'un paramétrage vierge : chaque test pose ce dont il a besoin. */
 async function tableRase(): Promise<void> {
   await raw('DELETE FROM absence_approvals WHERE tenant_id = $1', [tenantId]);
@@ -603,17 +614,7 @@ describe('les types posés d’office', () => {
        VALUES ($1, $2, $3, $4, $5, $6, 1, 'pending')`,
       [randomUUID(), tenantId, employeeId, ponctuelle, `${ANNEE}-06-01`, `${ANNEE}-06-01`],
     );
-    const migration = readFileSync(
-      join(__dirname, '../src/db/sql/0128_mission_et_absence_ponctuelle_retirees.sql'),
-      'utf8',
-    );
-    const retrait = migration
-      .split('\n')
-      .filter((l) => !l.startsWith('--'))
-      .join('\n')
-      .split(';')
-      .map((q) => q.trim())
-      .filter((q) => q.startsWith('UPDATE'));
+    const retrait = misesAJourDe('0128_mission_et_absence_ponctuelle_retirees.sql');
     expect(retrait).toHaveLength(1);
     await raw(retrait[0]!);
 
@@ -621,6 +622,39 @@ describe('les types posés d’office', () => {
     expect(enService).not.toContain(mission);
     expect(enService).toContain(ponctuelle);
     expect(enService).toContain(autre);
+  });
+
+  it('posent la maladie sans motif réservé à la DCH (ADR-0171)', async () => {
+    const maladie = (await absences.listTypes(admin)).find((t) => t.name === 'Maladie');
+    expect(maladie?.motifConfidentiel).toBe(false);
+  });
+
+  it('la migration 0129 rend la maladie au N+1 et garde les autres motifs réservés', async () => {
+    const { id: longue } = await absences.createType(admin, {
+      name: 'Maladie longue durée',
+      deductsBalance: false,
+      allowanceDays: null,
+      frequency: 'none',
+      requiresDocument: true,
+      motifConfidentiel: true,
+    });
+    const { id: reserve } = await absences.createType(admin, {
+      name: 'Consultation',
+      deductsBalance: false,
+      allowanceDays: null,
+      frequency: 'none',
+      requiresDocument: false,
+      motifConfidentiel: true,
+    });
+    const rendue = misesAJourDe('0129_maladie_visible_du_n1.sql');
+    expect(rendue).toHaveLength(1);
+    await raw(rendue[0]!);
+
+    const reservees = Object.fromEntries(
+      (await absences.listTypes(admin)).map((t) => [t.id, t.motifConfidentiel]),
+    );
+    expect(reservees[longue]).toBe(false);
+    expect(reservees[reserve]).toBe(true);
   });
 });
 

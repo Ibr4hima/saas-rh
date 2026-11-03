@@ -176,3 +176,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0168](0168-champs-par-lignes-pleines.md)             | Générer des documents : les champs par lignes pleines, la prime de transport préremplie | acceptée                                    |
 | [0169](0169-champ-de-date.md)                         | Les dates se tapent en jj/mm/aaaa et se choisissent dans notre calendrier, partout      | acceptée                                    |
 | [0170](0170-page-montree-d-un-bloc.md)                | La page qui arrive se montre d'un bloc, sans squelette fugitif, à largeur constante     | acceptée                                    |
+| [0171](0171-maladie-visible-du-n1.md)                 | La maladie se lit comme les autres motifs d'absence : le N+1 la voit                    | acceptée                                    |
