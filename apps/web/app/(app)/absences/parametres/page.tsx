@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import type { AbsenceType, Continuite } from '@teranga/contracts';
 import {
   ANNEES_MAX_PAR_DEMANDE,
@@ -10,7 +10,6 @@ import {
   peut,
 } from '@teranga/contracts';
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -28,7 +27,7 @@ import {
   Th,
   Tr,
 } from '@teranga/ui';
-import { Icon } from '../../../../components/icons';
+import { Icon, type IconName } from '../../../../components/icons';
 import { Pagination, usePagination } from '../../../../components/pagination';
 import { Modal, ModalGrid, ModalSection } from '../../../../components/modal';
 import {
@@ -51,10 +50,13 @@ export default function AbsenceSettingsPage() {
 
   return (
     <Page>
-      {/* Le catalogue des types prend la hauteur qui reste ; le circuit, qui
-          tient en deux listes, garde la sienne. */}
-      <TypesCard peutGerer={peutGerer} />
-      <CircuitCard />
+      {/* Les types à gauche ; à droite, le circuit de validation, de la même
+          hauteur, ses étapes l'une sous l'autre. Plus étroit, l'écran met le
+          circuit dessous : la table garde la place de ses colonnes. */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <TypesCard peutGerer={peutGerer} />
+        <CircuitCard />
+      </div>
     </Page>
   );
 }
@@ -62,6 +64,9 @@ export default function AbsenceSettingsPage() {
 // =============================================================================
 // Types d'absences
 // =============================================================================
+
+/** Sans quota ou sans plafond, la cellule porte un tiret cadratin, comme une cellule vide ailleurs. */
+const AUCUN = '\u2014';
 
 /** Un type a un quota annuel, ou n'en a pas : la maternité s'ouvre à la naissance. */
 function TypesCard({ peutGerer }: { peutGerer: boolean }) {
@@ -120,7 +125,6 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
                 <Th>Type d&apos;absence</Th>
                 <Th>Quota</Th>
                 <Th>Durée max</Th>
-                <Th>Règles</Th>
                 {peutGerer ? <Th className="w-20 text-right">Actions</Th> : null}
               </tr>
             </THead>
@@ -128,13 +132,13 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
               {tranche.map((t) => (
                 <Tr key={t.id} className="group">
                   <Td className="font-semibold text-ink-strong">{t.name}</Td>
-                  <Td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  <Td className="whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>
                     {t.frequency === 'annual' && t.allowanceDays != null ? (
                       <>
                         {t.allowanceDays} <span className="text-ink-muted">j par an</span>
                       </>
                     ) : (
-                      <span className="text-ink-muted">Sans quota</span>
+                      <span className="text-ink-muted">{AUCUN}</span>
                     )}
                   </Td>
                   <Td className="whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>
@@ -154,28 +158,8 @@ function TypesCard({ peutGerer }: { peutGerer: boolean }) {
                         </span>
                       </>
                     ) : (
-                      <span className="text-ink-muted">Sans plafond</span>
+                      <span className="text-ink-muted">{AUCUN}</span>
                     )}
-                  </Td>
-                  <Td>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {t.deductsBalance ? (
-                        <Badge tone="bleu">Décompté du solde</Badge>
-                      ) : (
-                        <Badge tone="gris">Non décompté</Badge>
-                      )}
-                      {t.allowsHours ? <Badge tone="bleu">À l’heure</Badge> : null}
-                      {t.requiresDocument ? <Badge tone="orange">Justificatif</Badge> : null}
-                      {t.resteJoignable ? <Badge tone="teal">Joignable</Badge> : null}
-                      {t.motifConfidentiel ? <Badge tone="prune">Confidentiel</Badge> : null}
-                      {t.continuite === 'jamais' ? null : (
-                        <Badge tone="orange">
-                          {t.continuite === 'toujours'
-                            ? 'Continuité'
-                            : 'Continuité au-delà d’un jour'}
-                        </Badge>
-                      )}
-                    </div>
                   </Td>
                   {peutGerer ? (
                     <Td className="text-right">
@@ -513,21 +497,42 @@ function FenetreType({
  * DIT, pour que personne ne cherche le réglage.
  */
 function CircuitCard() {
-  const etapes = ['Le N+1 de l’agent', 'La Direction du Capital Humain'];
+  const etapes: { titre: string; icone: IconName }[] = [
+    { titre: 'Le N+1 de l’agent', icone: 'how_to_reg' },
+    { titre: 'La Direction du Capital Humain', icone: 'verified' },
+  ];
   return (
-    <Card className="shrink-0">
-      <CardHeader>
+    // De la hauteur des types : les étapes se partagent la carte, une tuile
+    // chacune, une flèche de l'une à l'autre.
+    <Card className="flex flex-col">
+      {/* L'intitulé à la hauteur de celui des types, que leur bouton grandit. */}
+      <CardHeader className="flex items-center">
         <CardTitle>Circuit de validation</CardTitle>
+        <span aria-hidden className="h-[30px]" />
       </CardHeader>
-      <CardContent>
-        <ol className="grid gap-3 sm:grid-cols-2">
-          {etapes.map((titre, i) => (
-            <li key={titre} className="flex items-center gap-2.5 rounded-bloc bg-bg px-3.5 py-3">
-              <span className="flex size-[20px] shrink-0 items-center justify-center rounded-full bg-primary/[0.08] text-[10.5px] font-bold text-primary">
-                {i + 1}
-              </span>
-              <span className="min-w-0 text-[12.5px] font-semibold text-ink-strong">{titre}</span>
-            </li>
+      <CardContent className="flex flex-1 flex-col">
+        <ol className="flex flex-1 flex-col">
+          {etapes.map((e, i) => (
+            <Fragment key={e.titre}>
+              {i > 0 ? (
+                <li aria-hidden className="relative z-[1] -my-1.5 flex justify-center">
+                  <span className="grid size-6 place-items-center rounded-full border border-line bg-surface text-ink-muted shadow-sm">
+                    <Icon name="arrow_downward" size={14} />
+                  </span>
+                </li>
+              ) : null}
+              <li className="flex min-h-[112px] flex-1 flex-col items-center justify-center gap-2 rounded-bloc border border-line-soft bg-bg px-4 py-5 text-center">
+                <span className="mb-1 grid size-10 place-items-center rounded-full bg-primary-soft text-primary">
+                  <Icon name={e.icone} size={20} />
+                </span>
+                <span className="text-[10.5px] font-bold tracking-[0.1em] text-ink-muted uppercase">
+                  Étape {i + 1}
+                </span>
+                <span className="text-[13px] leading-snug font-semibold text-ink-strong">
+                  {e.titre}
+                </span>
+              </li>
+            </Fragment>
           ))}
         </ol>
       </CardContent>
