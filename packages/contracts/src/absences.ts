@@ -137,8 +137,8 @@ export interface AbsenceType {
 
 /**
  * Le dernier jour qu'une demande peut atteindre quand la durée max du type
- * se donne en années : trois ans à compter du 1er novembre 2026 mènent au
- * 31 octobre 2029. Null sans durée max en années.
+ * se donne en années : deux ans à compter du 1er novembre 2026 mènent au
+ * 31 octobre 2028. Null sans durée max en années.
  */
 export function finAuPlusTard(
   type: Pick<AbsenceType, 'maxYearsPerRequest'>,

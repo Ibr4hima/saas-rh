@@ -236,7 +236,7 @@ export function FenetreDemandeAbsence({
   const manquent = decompte ? lignes.filter((l) => l.apres < 0) : [];
   const insufficient = manquent.length > 0;
   // Ce qui ne se décompte pas tient en une case : « Non décompté » vaut pour
-  // chaque année, et une disponibilité de trois ans en touche quatre.
+  // chaque année, et une disponibilité de deux ans en touche trois.
   const soldesAffiches = selectedType?.deductsBalance ? lignes : lignes.slice(0, 1);
 
   const retires: string[] = [];

@@ -174,7 +174,7 @@ export function FicheDeLaDecision({
   // Les règles des dates, dites sous les champs (ADR-0133, ADR-0136) : la
   // demande et les nominations ne viennent pas après aujourd'hui, la prise
   // d'effet pas avant la demande, la reprise après la prise d'effet ou la
-  // période initiale, et au plus trois ans après la prise d'effet.
+  // période initiale, et au plus deux ans après la prise d'effet (ADR-0172).
   const fiche = versLaFicheDeLaDecision(valeur, doc);
   const erreurs = reglesEnfreintes(
     fiche,
@@ -194,7 +194,7 @@ export function FicheDeLaDecision({
   });
   const aujourdhui = aujourdhuiIso();
   const debutDeLaReprise = lendemain(renouvellement ? valeur.initialementAu : valeur.effetLe);
-  // La reprise, au plus trois ans après la prise d'effet : de la
+  // La reprise, au plus deux ans après la prise d'effet : de la
   // disponibilité, ou de sa prorogation, le lendemain de la période initiale.
   const priseDEffet = renouvellement
     ? debutDeLaReprise

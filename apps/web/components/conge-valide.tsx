@@ -83,7 +83,8 @@ export function MentionConge({ demande: r }: { demande: AbsenceRequestView }) {
 
 /**
  * L'agent renouvelle sa disponibilité (ADR-0135) : la période suivante, du
- * lendemain de la fin, pour une à trois années.
+ * lendemain de la fin, d'un an jusqu'à la durée max du type, deux ans posés
+ * d'office (ADR-0172).
  */
 export function FenetreRenouvellement({
   demande: r,

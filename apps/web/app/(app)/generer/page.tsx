@@ -442,7 +442,7 @@ export default function GenererDesDocumentsPage() {
                       libelle={libelleDe(choisi, s)}
                       date={courantes[s]}
                       // La fin se choisit après le début, et une disponibilité
-                      // dure trois ans au plus ; la reprise, pas avant la fin.
+                      // dure deux ans au plus ; la reprise, pas avant la fin.
                       min={
                         s === 'fin' && courantes.debut
                           ? plusJours(courantes.debut, 1)

@@ -2172,12 +2172,12 @@ describe('une disponibilité', () => {
     sabbatiqueId = randomUUID();
     await raw(
       `INSERT INTO absence_types (id, tenant_id, name, max_years_per_request, renouvelable)
-       VALUES ($1,$2,'Disponibilité',3,true), ($3,$2,'Congé sabbatique',1,false)`,
+       VALUES ($1,$2,'Disponibilité',2,true), ($3,$2,'Congé sabbatique',1,false)`,
       [disponibiliteId, tenantId, sabbatiqueId],
     );
   });
 
-  it('trois ans au plus par demande : jusqu’à la veille du même jour, trois ans plus tard', async () => {
+  it('deux ans au plus par demande : jusqu’à la veille du même jour, deux ans plus tard', async () => {
     const demande = (fin: string) =>
       absences.createRequest(moussa.session, {
         employeeId: moussa.employeeId,
@@ -2185,22 +2185,22 @@ describe('une disponibilité', () => {
         startDate: '2031-03-03',
         endDate: fin,
       });
-    const refus = await demande('2034-03-03').then(
+    const refus = await demande('2033-03-03').then(
       () => null,
       (err: unknown) => (err instanceof ProblemException ? err.problem : err),
     );
     expect(refus).toMatchObject({
       code: 'absence.duree_max',
-      title: '« Disponibilité » peut être demandé pour 3 ans maximum',
-      detail: 'Terminez la demande le 2 mars 2034 au plus tard.',
+      title: '« Disponibilité » peut être demandé pour 2 ans maximum',
+      detail: 'Terminez la demande le 2 mars 2033 au plus tard.',
     });
-    expect((await demande('2034-03-02')).daysCount).toBeGreaterThan(700);
+    expect((await demande('2033-03-02')).daysCount).toBeGreaterThan(450);
   });
 
-  it('renouvelable : pendant sa période, l’agent demande la suivante, d’un à trois ans', async () => {
+  it('renouvelable : pendant sa période, l’agent demande la suivante, d’un à deux ans', async () => {
     const id = await enConge(moussa, disponibiliteId, 60);
     expect((await vue(id, moussa.session)).gestes.renouveler).toBe(true);
-    expect(await codeOf(() => absences.renouveler(moussa.session, id, { annees: 4 }))).toBe(
+    expect(await codeOf(() => absences.renouveler(moussa.session, id, { annees: 3 }))).toBe(
       'absence.duree_max',
     );
     expect(await codeOf(() => absences.renouveler(ousmane.session, id, { annees: 1 }))).toBe(

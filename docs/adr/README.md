@@ -140,8 +140,8 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0132](0132-stage-au-choix.md)                        | L'attestation de stage : le stage au choix, quand le dossier en compte plusieurs        | acceptée                                    |
 | [0133](0133-dates-des-fiches.md)                      | Les dates des fiches : la CNI à jour, rien dans l'avenir, chaque fin après son début    | acceptée, précisée par 0134 et 0136         |
 | [0134](0134-delivrance-de-la-cni.md)                  | La délivrance de la CNI dans chaque fiche ; le renouvellement demandé sans date limite  | acceptée, précisée par 0168                 |
-| [0135](0135-disponibilite.md)                         | La disponibilité, trois ans au plus, renouvelable ; l'agent demande le renouvellement   | acceptée                                    |
-| [0136](0136-reprise-au-plus-trois-ans.md)             | La disponibilité dure trois ans au plus : les décisions et l'attestation de reprise     | acceptée                                    |
+| [0135](0135-disponibilite.md)                         | La disponibilité, trois ans au plus, renouvelable ; l'agent demande le renouvellement   | acceptée, précisée par 0172                 |
+| [0136](0136-reprise-au-plus-trois-ans.md)             | La disponibilité dure trois ans au plus : les décisions et l'attestation de reprise     | acceptée, précisée par 0172                 |
 | [0137](0137-documents-demandables.md)                 | « Demander un document » n'offre à l'agent que les documents de sa cible                | acceptée                                    |
 | [0138](0138-cadre-du-focus-au-clavier.md)             | Le cadre du focus ne paraît qu'à la navigation au clavier                               | acceptée                                    |
 | [0139](0139-retour-a-gauche-du-titre.md)              | Le retour à la page précédente, un rond à gauche du titre de l'écran                    | acceptée, précisée par 0140                 |
@@ -177,3 +177,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0169](0169-champ-de-date.md)                         | Les dates se tapent en jj/mm/aaaa et se choisissent dans notre calendrier, partout      | acceptée                                    |
 | [0170](0170-page-montree-d-un-bloc.md)                | La page qui arrive se montre d'un bloc, sans squelette fugitif, à largeur constante     | acceptée                                    |
 | [0171](0171-maladie-visible-du-n1.md)                 | La maladie se lit comme les autres motifs d'absence : le N+1 la voit                    | acceptée                                    |
+| [0172](0172-disponibilite-deux-ans.md)                | La disponibilité dure deux ans au plus, renouvelable, pour le type comme les documents  | acceptée                                    |

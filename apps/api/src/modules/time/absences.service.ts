@@ -42,6 +42,7 @@ import type {
 } from '@teranga/contracts';
 import {
   CAPACITE_INFOS,
+  DISPONIBILITE_ANS_MAX,
   dansLaJournee,
   finAuPlusTard,
   horsDeLaJournee,
@@ -161,14 +162,14 @@ const DEFAULT_TYPES: DefaultType[] = [
     requiresDocument: false,
   },
   // L'agent s'éloigne du service pour des années, sans solde à décompter :
-  // trois ans au plus par demande, renouvelable (ADR-0135).
+  // deux ans au plus par demande, renouvelable (ADR-0135, ADR-0172).
   {
     name: 'Disponibilité',
     deductsBalance: false,
     allowanceDays: null,
     frequency: 'none',
     requiresDocument: false,
-    maxYearsPerRequest: 3,
+    maxYearsPerRequest: DISPONIBILITE_ANS_MAX,
     renouvelable: true,
   },
 ];

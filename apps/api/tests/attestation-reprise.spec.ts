@@ -276,7 +276,7 @@ describe('le dossier et les dates', () => {
     expect(await code({ ...DATES, reprise: DATES.fin })).toBe('AUCUNE ERREUR');
   });
 
-  it('une disponibilité dure trois ans au plus : jusqu’à la veille du même jour, trois ans plus tard (ADR-0136)', async () => {
+  it('une disponibilité dure deux ans au plus : jusqu’à la veille du même jour, deux ans plus tard (ADR-0172)', async () => {
     const titre = async (saisies: { debut: string; fin: string; reprise: string }) => {
       try {
         await enTenant((tx) => attestationDeReprise.pdf(tx, employes.agent!, saisies));
@@ -285,11 +285,11 @@ describe('le dossier et les dates', () => {
         return err instanceof ProblemException ? err.problem.title : String(err);
       }
     };
-    expect(await titre({ debut: '2026-01-02', fin: '2029-01-01', reprise: '2029-01-02' })).toBe(
+    expect(await titre({ debut: '2026-01-02', fin: '2028-01-01', reprise: '2028-01-02' })).toBe(
       'AUCUNE ERREUR',
     );
-    expect(await titre({ debut: '2026-01-02', fin: '2029-01-02', reprise: '2029-01-03' })).toBe(
-      'La disponibilité ne peut pas dépasser trois ans',
+    expect(await titre({ debut: '2026-01-02', fin: '2028-01-02', reprise: '2028-01-03' })).toBe(
+      'La disponibilité ne peut pas dépasser deux ans',
     );
   });
 

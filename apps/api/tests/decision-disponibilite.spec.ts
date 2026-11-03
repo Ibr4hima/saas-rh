@@ -235,12 +235,12 @@ describe('la fiche', () => {
       { initialementAu: '2026-01-01' },
       { repriseLe: '2026-07-01' },
       { duree: 0 },
-      { duree: 37 },
+      { duree: 25 },
     ]) {
       expect(ficheRenouvellementSchema.safeParse(ficheDuRenouvellement(f)).success).toBe(false);
     }
-    // Une disponibilité se proroge de trois ans au plus, comme elle se renouvelle (ADR-0135).
-    expect(ficheRenouvellementSchema.safeParse(ficheDuRenouvellement({ duree: 36 })).success).toBe(
+    // Une disponibilité se proroge de deux ans au plus, comme elle se renouvelle (ADR-0172).
+    expect(ficheRenouvellementSchema.safeParse(ficheDuRenouvellement({ duree: 24 })).success).toBe(
       true,
     );
     expect(

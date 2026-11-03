@@ -656,6 +656,41 @@ describe('les types posés d’office', () => {
     expect(reservees[longue]).toBe(false);
     expect(reservees[reserve]).toBe(true);
   });
+
+  it('la migration 0130 passe à deux ans la disponibilité restée à trois, pas une durée changée', async () => {
+    const disponibilite = (await absences.listTypes(admin)).find((t) => t.name === 'Disponibilité');
+    expect(disponibilite).toBeDefined();
+    const { id: sabbatique } = await absences.createType(admin, {
+      name: 'Congé sabbatique',
+      deductsBalance: false,
+      allowanceDays: null,
+      frequency: 'none',
+      requiresDocument: false,
+      maxYearsPerRequest: 3,
+      renouvelable: true,
+    });
+    const annees = async () =>
+      Object.fromEntries(
+        (await absences.listTypes(admin)).map((t) => [t.id, t.maxYearsPerRequest]),
+      );
+    const passage = misesAJourDe('0130_disponibilite_deux_ans.sql');
+    expect(passage).toHaveLength(1);
+    const duree = (n: number) =>
+      raw('UPDATE absence_types SET max_years_per_request = $2 WHERE id = $1', [
+        disponibilite!.id,
+        n,
+      ]);
+
+    // Une durée que la DCH a changée reste la sienne.
+    await duree(5);
+    await raw(passage[0]!);
+    expect((await annees())[disponibilite!.id]).toBe(5);
+
+    // Les trois ans posés par la migration 0120 passent à deux ; un autre type, non.
+    await duree(3);
+    await raw(passage[0]!);
+    expect(await annees()).toMatchObject({ [disponibilite!.id]: 2, [sabbatique]: 3 });
+  });
 });
 
 describe('l’absence à l’heure', () => {
@@ -685,11 +720,11 @@ describe('l’absence à l’heure', () => {
     expect(await lu()).toMatchObject({ allowsHours: false, maxDaysPerRequest: null });
   });
 
-  it('la disponibilité aussi : sans quota, trois ans au plus par demande', async () => {
+  it('la disponibilité aussi : sans quota, deux ans au plus par demande (ADR-0172)', async () => {
     const disponibilite = (await absences.listTypes(admin)).find((t) => t.name === 'Disponibilité');
     expect(disponibilite).toMatchObject({
       maxDaysPerRequest: null,
-      maxYearsPerRequest: 3,
+      maxYearsPerRequest: 2,
       renouvelable: true,
       deductsBalance: false,
       allowanceDays: null,

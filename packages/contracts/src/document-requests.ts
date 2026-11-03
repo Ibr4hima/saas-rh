@@ -167,16 +167,23 @@ const SAISIES_DES_DOCUMENTS: Partial<Record<DocumentGenere, readonly Saisie[]>> 
 export const saisiesDe = (doc: string): readonly Saisie[] =>
   (estGenere(doc) && SAISIES_DES_DOCUMENTS[doc]) || [];
 
-/** Une disponibilité dure trois ans au plus, sa prorogation aussi (ADR-0135, ADR-0136). */
-export const DISPONIBILITE_ANS_MAX = 3;
+/**
+ * Une disponibilité dure deux ans au plus, sa prorogation aussi (ADR-0135,
+ * ADR-0136, ADR-0172). Le type « Disponibilité » posé d'office prend la même
+ * durée.
+ */
+export const DISPONIBILITE_ANS_MAX = 2;
 
-/** Ce que dit une disponibilité, ou une prorogation, de plus de trois ans. */
-export const DISPONIBILITE_TROP_LONGUE = 'La disponibilité ne peut pas dépasser trois ans';
+/** Ce que dit une disponibilité de plus de deux ans. */
+export const DISPONIBILITE_TROP_LONGUE = 'La disponibilité ne peut pas dépasser deux ans';
+
+/** Ce que dit une prorogation de plus de deux ans. */
+export const PROROGATION_TROP_LONGUE = 'La prorogation ne peut pas dépasser deux ans';
 
 /**
  * Le dernier jour, au plus tard, d'une disponibilité qui commence le
- * `debut` : la veille du même jour, trois ans plus tard. Du 2 janvier 2026
- * au 1er janvier 2029.
+ * `debut` : la veille du même jour, deux ans plus tard. Du 2 janvier 2026
+ * au 1er janvier 2028.
  */
 export function finDeDisponibiliteAuPlusTard(debut: string): string {
   return finDeLaDuree(debut, 12 * DISPONIBILITE_ANS_MAX);
@@ -184,8 +191,8 @@ export function finDeDisponibiliteAuPlusTard(debut: string): string {
 
 /**
  * La date limite de reprise la plus tardive d'une disponibilité, ou d'une
- * prorogation, qui prend effet le `effet` : le même jour, trois ans plus
- * tard. Prise d'effet le 10 octobre 2026 : reprise le 10 octobre 2029 au
+ * prorogation, qui prend effet le `effet` : le même jour, deux ans plus
+ * tard. Prise d'effet le 10 octobre 2026 : reprise le 10 octobre 2028 au
  * plus tard.
  */
 export function repriseAuPlusTard(effet: string): string {
@@ -195,7 +202,7 @@ export function repriseAuPlusTard(effet: string): string {
 /**
  * Ce que les dates saisies d'un document enfreignent, saisie par saisie
  * (ADR-0133, ADR-0136) ; vide, rien. Le dernier jour d'un congé ou d'une
- * disponibilité suit le premier ; une disponibilité dure trois ans au plus ;
+ * disponibilité suit le premier ; une disponibilité dure deux ans au plus ;
  * la reprise de service ne précède pas son dernier jour.
  */
 export function datesEnfreintes(
@@ -528,7 +535,7 @@ const ficheDeLaDecision = z.object({
 /**
  * Les dates croisées d'une mise en disponibilité (ADR-0133, ADR-0136) : la
  * prise d'effet pas avant la demande, la reprise après la prise d'effet et
- * au plus trois ans après.
+ * au plus deux ans après.
  */
 export function datesDeLaDisponibilite(f: Record<string, unknown>): ReglesDesDates {
   const [demande, effet, reprise] = [jourDe(f.demandeLe), jourDe(f.effetLe), jourDe(f.repriseLe)];
@@ -551,12 +558,12 @@ export const ficheDisponibiliteSchema = ficheDeLaDecision
   .superRefine((f, ctx) => poser(ctx, datesDeLaDisponibilite(f)));
 export type FicheDisponibilite = z.infer<typeof ficheDisponibiliteSchema>;
 
-/** Une disponibilité se proroge de trois ans au plus, comme elle se renouvelle (ADR-0135). */
+/** Une disponibilité se proroge de deux ans au plus, comme elle se renouvelle (ADR-0172). */
 export const DUREE_DE_PROROGATION_MAX = 12 * DISPONIBILITE_ANS_MAX;
 
 /**
  * Les dates croisées d'un renouvellement (ADR-0133, ADR-0134, ADR-0136) : la
- * période initiale dans l'ordre, la reprise après elle et au plus trois ans
+ * période initiale dans l'ordre, la reprise après elle et au plus deux ans
  * après la prise d'effet de la prorogation, le lendemain de la période
  * initiale. La demande n'a que la borne de son champ : pas après
  * aujourd'hui.
@@ -572,7 +579,7 @@ export function datesDuRenouvellement(f: Record<string, unknown>): ReglesDesDate
   if (au && reprise && reprise <= au) {
     regles.repriseLe = 'Doit être après la fin de la période initiale';
   } else if (au && reprise && reprise > repriseAuPlusTard(lendemain(au))) {
-    regles.repriseLe = 'La prorogation ne peut pas dépasser trois ans';
+    regles.repriseLe = PROROGATION_TROP_LONGUE;
   }
   return regles;
 }
