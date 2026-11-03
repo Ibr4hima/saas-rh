@@ -172,6 +172,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0164](0164-type-de-contrat-deduit.md)                | Un type de contrat vide se déduit de la date de fin : un CDD avec, un CDI sans          | acceptée                                    |
 | [0165](0165-vider-l-import.md)                        | L'administrateur peut vider l'import pour recommencer : ce que l'import a créé, seul    | acceptée                                    |
 | [0166](0166-mission-et-ponctuelle-retirees.md)        | « Mission » et « Absence ponctuelle » ne sont plus des types d'absence posés d'office   | acceptée                                    |
-| [0167](0167-essayer-en-mode-production.md)            | On essaie l'application en mode production (pnpm start), on la développe avec Turbopack | acceptée                                    |
+| [0167](0167-essayer-en-mode-production.md)            | On essaie l'application en mode production (pnpm start), on la développe avec Turbopack | acceptée, précisée par 0170                 |
 | [0168](0168-champs-par-lignes-pleines.md)             | Générer des documents : les champs par lignes pleines, la prime de transport préremplie | acceptée                                    |
 | [0169](0169-champ-de-date.md)                         | Les dates se tapent en jj/mm/aaaa et se choisissent dans notre calendrier, partout      | acceptée                                    |
+| [0170](0170-page-montree-d-un-bloc.md)                | La page qui arrive se montre d'un bloc, sans squelette fugitif, à largeur constante     | acceptée                                    |

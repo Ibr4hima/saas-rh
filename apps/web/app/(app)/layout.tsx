@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   CAPACITES_DOCUMENTS,
   CAPACITES_PIECES,
@@ -18,6 +18,7 @@ import {
 import { cn, Skeleton } from '@teranga/ui';
 import { BrandMark } from '../../components/brand-mark';
 import { Icon, type IconName } from '../../components/icons';
+import { ArriveeDeLaPage } from '../../components/arrivee-de-la-page';
 import { PageTitleProvider, usePageTitleOverride } from '../../components/page-title';
 import { MenuCompte } from '../../components/menu-compte';
 import { NotificationsBell } from '../../components/notifications-bell';
@@ -1098,7 +1099,26 @@ function useEcranLarge(): boolean {
   return large;
 }
 
+/**
+ * La largeur de la barre de défilement du panneau, réservée même quand il ne
+ * défile pas : zéro quand le système la fait flotter, comme sur un Mac sans
+ * souris ; dix pixels quand elle se tient sur le côté.
+ */
+function useGouttiere(): number {
+  const [gouttiere, setGouttiere] = useState(0);
+  useLayoutEffect(() => {
+    const panneau = document.querySelector<HTMLElement>('[data-scroll-root]');
+    if (!panneau) return;
+    const mesurer = () => setGouttiere(panneau.offsetWidth - panneau.clientWidth);
+    mesurer();
+    window.addEventListener('resize', mesurer);
+    return () => window.removeEventListener('resize', mesurer);
+  }, []);
+  return gouttiere;
+}
+
 function AppShell({ children }: { children: React.ReactNode }) {
+  const gouttiere = useGouttiere();
   const fondu = useFonduEnBas();
   const me = useMe();
   const router = useRouter();
@@ -1398,7 +1418,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* L'en-tête et la page ne font qu'un seul fond, même quand le
             contenu défile : aucun filet ne les sépare (ADR-0122). */}
-        <header className="relative z-10 flex h-14 shrink-0 items-center px-4 lg:h-[76px] lg:px-7">
+        <header
+          // La gouttière réservée à la barre du panneau (ADR-0170) se reporte
+          // ici : l'en-tête et les blocs gardent le même bord droit.
+          style={{ '--gouttiere': `${gouttiere}px` } as React.CSSProperties}
+          className="relative z-10 flex h-14 shrink-0 items-center pr-[calc(1rem+var(--gouttiere))] pl-4 lg:h-[76px] lg:pr-[calc(1.75rem+var(--gouttiere))] lg:pl-7"
+        >
           <div
             className={cn(
               'mx-auto flex w-full min-w-0 items-center gap-3 lg:gap-4',
@@ -1478,10 +1503,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Le seul panneau qui défile. `data-scroll-root` le signale aux
-            fenêtres modales, qui doivent le geler comme elles gèlent la page. */}
+            fenêtres modales, qui doivent le geler comme elles gèlent la page.
+            La place de la barre de défilement reste réservée : quand le
+            système l'affiche toujours, une page courte et une page longue
+            gardent la même largeur (ADR-0170). */}
         <main
           data-scroll-root
-          className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-24 lg:px-7 lg:pt-1 lg:pb-10"
+          className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-24 [scrollbar-gutter:stable] lg:px-7 lg:pt-1 lg:pb-10"
         >
           <div className="mb-4 flex min-w-0 items-center gap-1 lg:hidden">
             <div id={ANCRE_RETOUR_TELEPHONE} className="-ml-2 flex shrink-0 empty:hidden" />
@@ -1520,7 +1548,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
               )}
             </nav>
           ) : null}
-          <EspaceProvider value={espace}>{children}</EspaceProvider>
+          <EspaceProvider value={espace}>
+            <ArriveeDeLaPage>{children}</ArriveeDeLaPage>
+          </EspaceProvider>
         </main>
       </div>
 

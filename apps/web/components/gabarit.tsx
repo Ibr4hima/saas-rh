@@ -50,7 +50,9 @@ export function Page({
   return (
     <div
       className={cn(
-        'mx-auto flex min-h-full w-full flex-col gap-4',
+        // `flex-1` : la page remplit le panneau, sous l'enveloppe de son
+        // arrivée (ArriveeDeLaPage), comme `min-h-full` le faisait seul.
+        'mx-auto flex min-h-full w-full flex-1 flex-col gap-4',
         canevas ? 'max-w-none' : 'max-w-page',
         className,
       )}
