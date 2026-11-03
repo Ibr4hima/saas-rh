@@ -18,6 +18,7 @@ import {
   ChampDeLaCNI,
   ChampDeLaDuree,
   ChampDuMontant,
+  EN_DEBUT_DE_LIGNE,
   Groupe,
   reglesEnfreintes,
 } from './saisie-de-fiche';
@@ -31,7 +32,9 @@ import {
    lieu (« Patte d’Oie », ADR-0098), la formation et le poste à leur première
    lettre (ADR-0097) ; le numéro de la CNI se groupe comme sur la carte. La
    date de délivrance de la CNI, que le contrat n'écrit pas, dit qu'elle est
-   à jour (ADR-0134).
+   à jour (ADR-0134). Les champs vont par lignes pleines (ADR-0168) : la
+   personne ; sa naissance et son adresse ; sa CNI ; sa filiation. Puis le
+   stage : la formation, le poste, la catégorie ; les dates et l'allocation.
 */
 
 /** La fiche telle qu'elle se tape : du texte, une durée choisie, un montant. */
@@ -125,7 +128,6 @@ export function FicheDuStagiaire({
           civilite={valeur.civilite}
           onSaisir={(civilite) => poser({ civilite })}
         />
-        <ChampDeLaCNI id={`${id}-cni`} cni={valeur.cni} onSaisir={(cni) => poser({ cni })} />
         <Field label="Prénom" htmlFor={`${id}-prenom`} required>
           <Input {...nomPropre('prenom')} />
         </Field>
@@ -149,6 +151,10 @@ export function FicheDuStagiaire({
         <Field label="Lieu de naissance" htmlFor={`${id}-naissanceA`} required>
           <Input {...lieu('naissanceA', 120)} />
         </Field>
+        <Field label="Adresse" htmlFor={`${id}-adresse`} required>
+          <Input {...lieu('adresse', 200)} />
+        </Field>
+        <ChampDeLaCNI id={`${id}-cni`} cni={valeur.cni} onSaisir={(cni) => poser({ cni })} />
         {/* La CNI est à jour : délivrée il y a moins de dix ans (ADR-0134). */}
         <Field
           label="Date de délivrance de la CNI"
@@ -165,7 +171,12 @@ export function FicheDuStagiaire({
             className={cn(CADRE, 'tabular-nums')}
           />
         </Field>
-        <Field label="Prénom du père" htmlFor={`${id}-perePrenom`} required>
+        <Field
+          label="Prénom du père"
+          htmlFor={`${id}-perePrenom`}
+          required
+          className={EN_DEBUT_DE_LIGNE}
+        >
           <Input {...nomPropre('perePrenom')} />
         </Field>
         <Field label="Prénom de la mère" htmlFor={`${id}-merePrenom`} required>
@@ -174,11 +185,6 @@ export function FicheDuStagiaire({
         <Field label="Nom de la mère" htmlFor={`${id}-mereNom`} required>
           <Input {...nomPropre('mereNom')} />
         </Field>
-        <div className="sm:col-span-2">
-          <Field label="Adresse" htmlFor={`${id}-adresse`} required>
-            <Input {...lieu('adresse', 200)} />
-          </Field>
-        </div>
       </Groupe>
 
       <Groupe titre="Renseigner le stage">
@@ -187,6 +193,9 @@ export function FicheDuStagiaire({
         </Field>
         <Field label="Poste" htmlFor={`${id}-poste`} required>
           <Input {...intitule('poste', 120)} />
+        </Field>
+        <Field label="Catégorie" htmlFor={`${id}-categorie`} required>
+          <Input {...texte('categorie', CATEGORIE_MAX)} className={cn(CADRE, 'uppercase')} />
         </Field>
         <Field label="Date de début" htmlFor={`${id}-debut`} required>
           <Input type="date" {...texte('debut')} className={cn(CADRE, 'tabular-nums')} />
@@ -199,9 +208,6 @@ export function FicheDuStagiaire({
           fin={fin ? { libelle: 'Fin du stage', date: fin } : null}
           onSaisir={(duree) => poser({ duree })}
         />
-        <Field label="Catégorie" htmlFor={`${id}-categorie`} required>
-          <Input {...texte('categorie', CATEGORIE_MAX)} className={cn(CADRE, 'uppercase')} />
-        </Field>
         <ChampDuMontant
           id={`${id}-allocation`}
           libelle="Allocation mensuelle TTC"

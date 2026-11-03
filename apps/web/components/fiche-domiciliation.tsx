@@ -26,7 +26,9 @@ import {
    et le genre de qui la dirige, son RIB, son salaire mensuel net, le jour de
    sa demande. Tout est obligatoire. Le RIB se saisit deux fois, comme un mot
    de passe : validé, le premier se masque ; le second se tape, sans coller,
-   et doit être le même.
+   et doit être le même. La domiciliation tient en deux lignes (ADR-0168) :
+   la banque, son destinataire et la date de la demande ; puis le RIB, sa
+   confirmation et le salaire versé sur le compte.
 */
 
 /** La fiche telle qu'elle se tape ; une date, au format AAAA-MM-JJ. */
@@ -198,6 +200,14 @@ export function FicheDeLaDomiciliation({
             <option value="directrice_generale">Directrice Générale</option>
           </Select>
         </Field>
+        <Field
+          label="Date de la demande"
+          htmlFor={`${id}-demandeLe`}
+          required
+          error={erreurs.demandeLe}
+        >
+          <Input {...date('demandeLe', valeur.debut)} />
+        </Field>
         <ChampsDuRib
           id={id}
           rib={valeur.rib}
@@ -211,14 +221,6 @@ export function FicheDeLaDomiciliation({
           montant={valeur.salaire}
           onSaisir={(salaire) => poser({ salaire })}
         />
-        <Field
-          label="Date de la demande"
-          htmlFor={`${id}-demandeLe`}
-          required
-          error={erreurs.demandeLe}
-        >
-          <Input {...date('demandeLe', valeur.debut)} />
-        </Field>
       </Groupe>
     </>
   );

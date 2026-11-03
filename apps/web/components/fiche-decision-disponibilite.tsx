@@ -27,6 +27,7 @@ import {
   ChampDeLaDuree,
   Groupe,
   reglesEnfreintes,
+  SUR_DEUX_COLONNES,
 } from './saisie-de-fiche';
 
 /*
@@ -201,6 +202,18 @@ export function FicheDeLaDecision({
       ? valeur.effetLe
       : undefined;
   const finDeLaReprise = priseDEffet ? repriseAuPlusTard(priseDEffet) : undefined;
+  // Le renouvellement tient la demande et l'affectation sur une ligne : sa
+  // date ouvre celle de la disponibilité, avant la période initiale (ADR-0168).
+  const demandeLe = (
+    <Field
+      label="Date de la demande"
+      htmlFor={`${id}-demandeLe`}
+      required
+      error={erreurs.demandeLe}
+    >
+      <Input {...date('demandeLe', { max: aujourdhui })} />
+    </Field>
+  );
 
   return (
     <>
@@ -220,40 +233,38 @@ export function FicheDeLaDecision({
           <Input {...intitule('poste', 120)} />
         </Field>
         {renouvellement ? (
-          <div className="sm:col-span-2">
-            <Field label="Affectation" htmlFor={`${id}-affectation`} required>
-              <Select
-                id={`${id}-affectation`}
-                aria-label="Affectation"
-                value={valeur.affectation}
-                onChange={(e) => poser({ affectation: e.target.value })}
-                className={CADRE}
-              >
-                <option value="" hidden>
-                  Choisir une direction, un département ou un service
+          <Field
+            label="Affectation"
+            htmlFor={`${id}-affectation`}
+            required
+            className={SUR_DEUX_COLONNES}
+          >
+            <Select
+              id={`${id}-affectation`}
+              aria-label="Affectation"
+              value={valeur.affectation}
+              onChange={(e) => poser({ affectation: e.target.value })}
+              className={CADRE}
+            >
+              <option value="" hidden>
+                Choisir une direction, un département ou un service
+              </option>
+              {parLibelle(unites.data ?? []).map((u) => (
+                <option key={u.id} value={u.id}>
+                  {orgUnitLabel(u)}
                 </option>
-                {parLibelle(unites.data ?? []).map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {orgUnitLabel(u)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-        ) : null}
-        <Field
-          label="Date de la demande"
-          htmlFor={`${id}-demandeLe`}
-          required
-          error={erreurs.demandeLe}
-        >
-          <Input {...date('demandeLe', { max: aujourdhui })} />
-        </Field>
+              ))}
+            </Select>
+          </Field>
+        ) : (
+          demandeLe
+        )}
       </Groupe>
 
       <Groupe titre="Renseigner la disponibilité">
         {renouvellement ? (
           <>
+            {demandeLe}
             <Field
               label="Début de la disponibilité initiale"
               htmlFor={`${id}-initialementDu`}

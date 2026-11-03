@@ -26,18 +26,71 @@ import { Icon } from './icons';
 export const CADRE = 'h-9 rounded-controle px-3 text-[12.5px] font-medium text-ink-strong';
 
 /**
- * Une section du préremplissage : son intitulé, puis ses champs, en deux
- * colonnes dès que la largeur le permet ; une seule sur un téléphone. Les
- * sections se suivent dans le bloc, séparées d'un filet.
+ * Une section du préremplissage : son intitulé, puis ses champs, trois par
+ * ligne quand le bloc est assez large (ADR-0168), quatre quand la section
+ * tient en quatre champs courts, deux sur une tablette, un seul sur un
+ * téléphone. Aucun champ ne reste seul au bout d'une ligne : chaque fiche
+ * range les siens pour remplir les lignes. La largeur se mesure au bloc, pas
+ * à l'écran : le menu en prend sa part. Chaque champ occupe trois rangées que
+ * ses voisins de ligne partagent (`subgrid`) : l'intitulé, la saisie, le
+ * message. Un intitulé sur deux lignes ne décale donc pas la saisie d'à côté.
+ * Les sections se suivent dans le bloc, séparées d'un filet.
  */
-export function Groupe({ titre, children }: { titre: string; children: ReactNode }) {
+export function Groupe({
+  titre,
+  colonnes = 3,
+  children,
+}: {
+  titre: string;
+  colonnes?: 3 | 4;
+  children: ReactNode;
+}) {
   return (
-    <section className="border-t border-line-soft px-5 pt-4 pb-5">
+    <section className="@container border-t border-line-soft px-5 pt-4 pb-1.5">
       <h3 className="mb-3.5 text-[13.5px] font-bold text-ink-strong">{titre}</h3>
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-3.5 sm:grid-cols-2">{children}</div>
+      <div
+        className={cn(
+          'grid grid-cols-[minmax(0,1fr)] gap-x-3.5 *:row-span-3 *:grid *:grid-rows-subgrid *:items-start *:pb-3.5 @lg:grid-cols-2',
+          colonnes === 4 ? '@4xl:grid-cols-4' : '@3xl:grid-cols-3',
+        )}
+      >
+        {children}
+      </div>
     </section>
   );
 }
+
+/**
+ * Une section d'un seul choix, l'agent ou le stage : son intitulé à gauche,
+ * le choix à droite, comme celui du document au-dessus. Sur téléphone,
+ * l'intitulé passe au-dessus.
+ */
+export function Choix({ titre, children }: { titre: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-3 border-t border-line-soft px-5 py-4 sm:flex-row sm:items-center sm:gap-5">
+      <h3 className="min-w-0 flex-1 text-[13.5px] font-bold text-ink-strong">{titre}</h3>
+      <div className="w-full sm:w-[23rem] sm:shrink-0">{children}</div>
+    </section>
+  );
+}
+
+/** Un champ sur deux colonnes : une adresse, une affectation, un nom d'unité. */
+export const SUR_DEUX_COLONNES = '@lg:col-span-2';
+
+/**
+ * Le dernier champ d'une liste qui s'allonge, les enfants d'une déclaration
+ * de mouvement : seul sur sa ligne de trois, il en prend deux.
+ */
+export const ALLONGE_EN_FIN_DE_LISTE = '@3xl:col-span-2';
+
+/** Un champ sur toute la ligne : une phrase à écrire, comme une disposition particulière. */
+export const PLEINE_LIGNE = 'col-span-full';
+
+/**
+ * Un champ qui ouvre une ligne quand elles sont de trois : la ligne d'avant
+ * s'arrête, comme celle de la naissance avant celle de la CNI.
+ */
+export const EN_DEBUT_DE_LIGNE = '@3xl:col-start-1';
 
 /**
  * Le bloc « Préremplissage » : tout ce que la DCH saisit pour un document,
@@ -229,10 +282,13 @@ export function ChampDeLaCivilite({
 export function ChampDeLaCNI({
   id,
   cni,
+  className,
   onSaisir,
 }: {
   id: string;
   cni: string;
+  /** Sa place dans la grille : `EN_DEBUT_DE_LIGNE`. */
+  className?: string;
   onSaisir: (cni: string) => void;
 }) {
   const [quitte, setQuitte] = useState(false);
@@ -243,6 +299,7 @@ export function ChampDeLaCNI({
       label="N° de la CNI"
       htmlFor={id}
       required
+      className={className}
       error={incomplet ? 'Treize chiffres attendus' : undefined}
     >
       <Input

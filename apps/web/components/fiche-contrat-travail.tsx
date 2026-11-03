@@ -27,6 +27,7 @@ import {
   ChampDuMontant,
   Groupe,
   reglesEnfreintes,
+  SUR_DEUX_COLONNES,
 } from './saisie-de-fiche';
 
 /*
@@ -34,7 +35,9 @@ import {
    n'est pas encore dans l'application. Son état civil, son emploi, sa
    rémunération ; tout est obligatoire. La nationalité se choisit dans la
    liste des pays, le contrat en écrit le gentilé ; l'affectation, dans
-   l'organigramme. Le salaire brut est la somme de ses trois parts.
+   l'organigramme. Le salaire brut est la somme de ses trois parts. Les
+   champs vont par lignes (ADR-0168) : la personne, sa naissance, sa CNI et
+   sa délivrance, puis son adresse.
 */
 
 export type ContratDeTravail = 'contrat_cdd' | 'contrat_cdi';
@@ -64,6 +67,12 @@ export type SaisieDuContrat = {
   treiziemeMois: '' | 'oui' | 'non';
 };
 
+/**
+ * La prime de transport la plus courante, en francs CFA par mois : la fiche
+ * s'ouvre avec, la DCH la corrige au besoin (ADR-0168).
+ */
+const PRIME_DE_TRANSPORT_USUELLE = 26_000;
+
 export const CONTRAT_VIDE: SaisieDuContrat = {
   civilite: '',
   prenom: '',
@@ -82,7 +91,7 @@ export const CONTRAT_VIDE: SaisieDuContrat = {
   categorie: '',
   salaireDeBase: null,
   sursalaire: null,
-  primeDeTransport: null,
+  primeDeTransport: PRIME_DE_TRANSPORT_USUELLE,
   treiziemeMois: '',
 };
 
@@ -156,7 +165,6 @@ export function FicheDuContratDeTravail({
           civilite={valeur.civilite}
           onSaisir={(civilite) => poser({ civilite })}
         />
-        <ChampDeLaCNI id={`${id}-cni`} cni={valeur.cni} onSaisir={(cni) => poser({ cni })} />
         <Field label="Prénom" htmlFor={`${id}-prenom`} required>
           <Input {...nomPropre('prenom')} />
         </Field>
@@ -180,6 +188,25 @@ export function FicheDuContratDeTravail({
         <Field label="Lieu de naissance" htmlFor={`${id}-naissanceA`} required>
           <Input {...lieu('naissanceA', 120)} />
         </Field>
+        <Field label="Nationalité" htmlFor={`${id}-nationalite`} required>
+          <Select
+            id={`${id}-nationalite`}
+            aria-label="Nationalité"
+            value={valeur.nationalite}
+            onChange={(e) => poser({ nationalite: e.target.value })}
+            className={CADRE}
+          >
+            <option value="" hidden>
+              Choisir un pays
+            </option>
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <ChampDeLaCNI id={`${id}-cni`} cni={valeur.cni} onSaisir={(cni) => poser({ cni })} />
         {/* La CNI est à jour : délivrée il y a moins de dix ans (ADR-0133). */}
         <Field
           label="Date de délivrance de la CNI"
@@ -199,25 +226,7 @@ export function FicheDuContratDeTravail({
         <Field label="Lieu de délivrance de la CNI" htmlFor={`${id}-cniDelivreeA`} required>
           <Input {...lieu('cniDelivreeA', 120)} />
         </Field>
-        <Field label="Nationalité" htmlFor={`${id}-nationalite`} required>
-          <Select
-            id={`${id}-nationalite`}
-            aria-label="Nationalité"
-            value={valeur.nationalite}
-            onChange={(e) => poser({ nationalite: e.target.value })}
-            className={CADRE}
-          >
-            <option value="" hidden>
-              Choisir un pays
-            </option>
-            {COUNTRIES.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Adresse" htmlFor={`${id}-adresse`} required>
+        <Field label="Adresse" htmlFor={`${id}-adresse`} required className={SUR_DEUX_COLONNES}>
           <Input {...lieu('adresse', 200)} />
         </Field>
       </Groupe>
@@ -226,29 +235,32 @@ export function FicheDuContratDeTravail({
         <Field label="Poste" htmlFor={`${id}-poste`} required>
           <Input {...intitule('poste', 120)} />
         </Field>
+        <Field
+          label="Affectation"
+          htmlFor={`${id}-affectation`}
+          required
+          className={SUR_DEUX_COLONNES}
+        >
+          <Select
+            id={`${id}-affectation`}
+            aria-label="Affectation"
+            value={valeur.affectation}
+            onChange={(e) => poser({ affectation: e.target.value })}
+            className={CADRE}
+          >
+            <option value="" hidden>
+              Choisir une direction, un département ou un service
+            </option>
+            {parLibelle(unites.data ?? []).map((u) => (
+              <option key={u.id} value={u.id}>
+                {orgUnitLabel(u)}
+              </option>
+            ))}
+          </Select>
+        </Field>
         <Field label="Catégorie" htmlFor={`${id}-categorie`} required>
           <Input {...texte('categorie', CATEGORIE_MAX)} className={cn(CADRE, 'uppercase')} />
         </Field>
-        <div className="sm:col-span-2">
-          <Field label="Affectation" htmlFor={`${id}-affectation`} required>
-            <Select
-              id={`${id}-affectation`}
-              aria-label="Affectation"
-              value={valeur.affectation}
-              onChange={(e) => poser({ affectation: e.target.value })}
-              className={CADRE}
-            >
-              <option value="" hidden>
-                Choisir une direction, un département ou un service
-              </option>
-              {parLibelle(unites.data ?? []).map((u) => (
-                <option key={u.id} value={u.id}>
-                  {orgUnitLabel(u)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
         <Field label="Date de début" htmlFor={`${id}-debut`} required>
           <Input type="date" {...texte('debut')} className={cn(CADRE, 'tabular-nums')} />
         </Field>
@@ -264,7 +276,8 @@ export function FicheDuContratDeTravail({
         ) : null}
       </Groupe>
 
-      <Groupe titre="Renseigner la rémunération">
+      {/* Quatre montants courts : une seule ligne, la prime de transport comprise. */}
+      <Groupe titre="Renseigner la rémunération" colonnes={4}>
         <ChampDuMontant
           id={`${id}-salaireDeBase`}
           libelle="Salaire de base"

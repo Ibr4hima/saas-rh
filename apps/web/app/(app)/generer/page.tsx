@@ -72,7 +72,7 @@ import {
   versLaFiche,
   type SaisieDuStagiaire,
 } from '../../../components/fiche-stagiaire';
-import { Groupe, Preremplissage } from '../../../components/saisie-de-fiche';
+import { CADRE, Choix, Groupe, Preremplissage } from '../../../components/saisie-de-fiche';
 import { api, ApiError } from '../../../lib/api';
 import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
 import { formatDate, useMe } from '../../../lib/hooks';
@@ -86,9 +86,10 @@ import { champDuMontant } from '../../../lib/montant';
    et à sa droite la liste déroulante. Tout ce que la DCH saisit tient dans un
    seul bloc, « Préremplissage », en sections selon le document, et le
    document ne se génère qu'à « Valider » ; le bloc se replie alors, et
-   « Modifier » le rouvre (ADR-0121). Un document qui demande ce que le
-   dossier ne porte pas le fait saisir : le salaire de l'attestation de revenu
-   (ADR-0087), la catégorie du poste du certificat de travail (ADR-0091),
+   « Modifier » le rouvre (ADR-0121). L'agent et ce que son document
+   demande se saisissent sur une même ligne (ADR-0168). Un document qui
+   demande ce que le dossier ne porte pas le fait saisir : le salaire de
+   l'attestation de revenu (ADR-0087), la catégorie du poste du certificat de travail (ADR-0091),
    les dates de l'attestation de congé (ADR-0092), le jour du départ à la
    retraite (ADR-0093), la disponibilité et la reprise de l'attestation de
    reprise après disponibilité (ADR-0104), le jour du congé de maternité ou de
@@ -350,10 +351,48 @@ export default function GenererDesDocumentsPage() {
               onChange={setDisponibilite}
             />
           ) : null}
-          {avecAgent ? (
-            <Groupe titre="Sélectionner l’agent">
+          {avecAgent && demandees.length === 0 ? (
+            // L'agent seul : une ligne, son intitulé et le choix, comme le document.
+            <Choix titre="Sélectionner l’agent">
+              {/* Un autre document, une autre cible : le champ repart de l'agent retenu. */}
+              <ChoixDeLAgent
+                key={avecAgent}
+                id={`${id}-agent`}
+                doc={avecAgent}
+                agent={agent}
+                onChoisir={setAgent}
+              />
+            </Choix>
+          ) : null}
+          {stagesAChoisir && agent ? (
+            <Choix titre="Sélectionner le stage">
+              <Select
+                id={`${id}-stage`}
+                aria-label="Stage"
+                value={stageCourant}
+                onChange={(e) => setStage({ agentId: agent.id, debut: e.target.value })}
+                className={CADRE}
+              >
+                <option value="" disabled hidden>
+                  Choisir un stage
+                </option>
+                {stagesAChoisir.map((s) => (
+                  <option key={s.debut} value={s.debut}>
+                    {periodeDuStage(s)}
+                  </option>
+                ))}
+              </Select>
+            </Choix>
+          ) : null}
+          {avecAgent && demandees.length > 0 ? (
+            // L'agent et ce que le document demande, sur une même ligne
+            // (ADR-0168) : quatre colonnes pour les trois dates de la reprise
+            // après disponibilité. Les saisies s'ouvrent une fois l'agent choisi.
+            <Groupe
+              titre={SECTION_DES_SAISIES[choisi] ?? 'Renseigner le document'}
+              colonnes={demandees.length === 3 ? 4 : 3}
+            >
               <Field label="Agent" htmlFor={`${id}-agent`} required>
-                {/* Un autre document, une autre cible : le champ repart de l'agent retenu. */}
                 <ChoixDeLAgent
                   key={avecAgent}
                   id={`${id}-agent`}
@@ -362,31 +401,6 @@ export default function GenererDesDocumentsPage() {
                   onChoisir={setAgent}
                 />
               </Field>
-            </Groupe>
-          ) : null}
-          {stagesAChoisir && agent ? (
-            <Groupe titre="Sélectionner le stage">
-              <Field label="Stage" htmlFor={`${id}-stage`} required>
-                <Select
-                  id={`${id}-stage`}
-                  aria-label="Stage"
-                  value={stageCourant}
-                  onChange={(e) => setStage({ agentId: agent.id, debut: e.target.value })}
-                >
-                  <option value="" disabled hidden>
-                    Choisir un stage
-                  </option>
-                  {stagesAChoisir.map((s) => (
-                    <option key={s.debut} value={s.debut}>
-                      {periodeDuStage(s)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </Groupe>
-          ) : null}
-          {!sansLAgent && agent && demandees.length > 0 ? (
-            <Groupe titre={SECTION_DES_SAISIES[choisi] ?? 'Renseigner le document'}>
               {demandees.map((s, i) => (
                 <Field
                   key={s}
@@ -403,25 +417,28 @@ export default function GenererDesDocumentsPage() {
                 >
                   {s === 'salaire' ? (
                     <ChampDuSalaire
-                      key={agent.id}
+                      key={agent?.id ?? 'aucun'}
                       id={`${id}-${s}`}
                       premier={i === 0}
+                      ouvert={agent !== null}
                       salaire={courantes.salaire}
                       onSaisir={(salaire) => saisir({ salaire })}
                     />
                   ) : s === 'categorie' ? (
                     <ChampDeLaCategorie
-                      key={agent.id}
+                      key={agent?.id ?? 'aucun'}
                       id={`${id}-${s}`}
                       premier={i === 0}
+                      ouvert={agent !== null}
                       categorie={courantes.categorie}
                       onSaisir={(categorie) => saisir({ categorie })}
                     />
                   ) : (
                     <ChampDeDate
-                      key={agent.id}
+                      key={agent?.id ?? 'aucun'}
                       id={`${id}-${s}`}
                       premier={i === 0}
+                      ouvert={agent !== null}
                       libelle={libelleDe(choisi, s)}
                       date={courantes[s]}
                       // La fin se choisit après le début, et une disponibilité
@@ -645,11 +662,14 @@ function ChoixDeLAgent({
 function ChampDuSalaire({
   id,
   premier,
+  ouvert,
   salaire,
   onSaisir,
 }: {
   id: string;
   premier: boolean;
+  /** L'agent est choisi : la saisie s'ouvre. */
+  ouvert: boolean;
   salaire: number | null;
   onSaisir: (salaire: number | null) => void;
 }) {
@@ -660,12 +680,13 @@ function ChampDuSalaire({
         {...montant}
         id={id}
         autoFocus={premier}
+        disabled={!ouvert}
         autoComplete="off"
         aria-label="Salaire net mensuel, en francs CFA"
         placeholder="Montant en chiffres"
         className={cn(
           CHAMP,
-          'border-line pr-14 pl-3 font-medium text-ink-strong tabular-nums placeholder:font-normal placeholder:text-ink-muted hover:border-ink-muted/40 focus:border-primary',
+          'border-line pr-14 pl-3 font-medium text-ink-strong tabular-nums placeholder:font-normal placeholder:text-ink-muted hover:border-ink-muted/40 focus:border-primary disabled:cursor-not-allowed disabled:opacity-50',
         )}
       />
       <span
@@ -685,11 +706,13 @@ function ChampDuSalaire({
 function ChampDeLaCategorie({
   id,
   premier,
+  ouvert,
   categorie,
   onSaisir,
 }: {
   id: string;
   premier: boolean;
+  ouvert: boolean;
   categorie: string;
   onSaisir: (categorie: string) => void;
 }) {
@@ -697,6 +720,7 @@ function ChampDeLaCategorie({
     <input
       id={id}
       autoFocus={premier}
+      disabled={!ouvert}
       autoComplete="off"
       aria-label="Catégorie du poste"
       placeholder="Catégorie"
@@ -705,7 +729,7 @@ function ChampDeLaCategorie({
       onChange={(e) => onSaisir(e.target.value)}
       className={cn(
         CHAMP,
-        'border-line px-3 font-medium text-ink-strong uppercase placeholder:font-normal placeholder:text-ink-muted placeholder:normal-case hover:border-ink-muted/40 focus:border-primary',
+        'border-line px-3 font-medium text-ink-strong uppercase placeholder:font-normal placeholder:text-ink-muted placeholder:normal-case hover:border-ink-muted/40 focus:border-primary disabled:cursor-not-allowed disabled:opacity-50',
       )}
     />
   );
@@ -715,6 +739,7 @@ function ChampDeLaCategorie({
 function ChampDeDate({
   id,
   premier,
+  ouvert,
   libelle,
   date,
   min,
@@ -724,6 +749,7 @@ function ChampDeDate({
 }: {
   id: string;
   premier: boolean;
+  ouvert: boolean;
   libelle: string;
   date: string;
   min?: string;
@@ -736,6 +762,7 @@ function ChampDeDate({
       type="date"
       id={id}
       autoFocus={premier}
+      disabled={!ouvert}
       aria-label={libelle}
       aria-invalid={invalide || undefined}
       value={date}
@@ -744,7 +771,7 @@ function ChampDeDate({
       onChange={(e) => onSaisir(e.target.value)}
       className={cn(
         CHAMP,
-        'border-line px-3 font-medium text-ink-strong tabular-nums hover:border-ink-muted/40 focus:border-primary',
+        'border-line px-3 font-medium text-ink-strong tabular-nums hover:border-ink-muted/40 focus:border-primary disabled:cursor-not-allowed disabled:opacity-50',
       )}
     />
   );

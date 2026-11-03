@@ -8,11 +8,13 @@ interface FieldProps {
   /** Précision sous le champ : ce que la saisie implique, pas une répétition du label. */
   hint?: string;
   required?: boolean;
+  /** La place du champ dans la grille d'un formulaire : deux colonnes, une ligne à ouvrir. */
+  className?: string;
   children: React.ReactNode;
 }
 
 /** Champ de formulaire : label + contrôle + erreur inline (ch. 05 : les erreurs disent quoi faire). */
-export function Field({ label, htmlFor, error, hint, required, children }: FieldProps) {
+export function Field({ label, htmlFor, error, hint, required, className, children }: FieldProps) {
   const messageId = htmlFor && (error || hint) ? `${htmlFor}-message` : undefined;
   // Le message sous le champ doit être ANNONCÉ par le lecteur d'écran, pas
   // seulement affiché : sans aria-describedby, « Facultatif — DCH… » et les
@@ -33,7 +35,7 @@ export function Field({ label, htmlFor, error, hint, required, children }: Field
         })
       : children;
   return (
-    <div>
+    <div className={className}>
       <Label htmlFor={htmlFor}>
         {label}
         {required ? <span className="text-danger"> *</span> : null}

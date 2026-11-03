@@ -27,13 +27,17 @@ import { Checkbox, cn, Field, Input, Select } from '@teranga/ui';
 import { champDeChiffres } from '../lib/chiffres';
 import { COUNTRIES } from '../lib/countries';
 import {
+  ALLONGE_EN_FIN_DE_LISTE,
   CADRE,
   champsDeTexte,
   ChampDeLaCivilite,
   ChampDeLaCNI,
   ChampDuMontant,
+  EN_DEBUT_DE_LIGNE,
   Groupe,
+  PLEINE_LIGNE,
   reglesEnfreintes,
+  SUR_DEUX_COLONNES,
 } from './saisie-de-fiche';
 
 /*
@@ -277,7 +281,14 @@ export function FicheDeLaDeclaration({
   onChange: (valeur: SaisieDeLaDeclaration) => void;
 }) {
   const id = useId();
-  const poser = (champ: Partial<SaisieDeLaDeclaration>) => onChange({ ...valeur, ...champ });
+  const poser = (champ: Partial<SaisieDeLaDeclaration>) => {
+    const suivante = { ...valeur, ...champ };
+    // Sans service militaire, ses précisions, grisées, ne gardent rien.
+    if ('serviceMilitaire' in champ && suivante.serviceMilitaire !== 'oui') {
+      Object.assign(suivante, { classeDeRecrutement: '', armee: '', grade: '' });
+    }
+    onChange(suivante);
+  };
   const { texte, nomPropre, lieu, intitule } = champsDeTexte(id, valeur, poser);
   // Les règles des dates, dites sous les champs (ADR-0133, ADR-0134) :
   // l'entrée et le contrat avant aujourd'hui, les visas et la déclaration
@@ -304,17 +315,25 @@ export function FicheDeLaDeclaration({
     'aria-invalid': erreurDe(champ) ? true : undefined,
     className: cn(CADRE, 'tabular-nums'),
   });
-  /** Une liste à choisir : son libellé, ses options. */
+  /**
+   * Une liste à choisir : son libellé, ses options, sa place dans la grille ;
+   * grisée, et facultative, quand elle ne vaut pas encore.
+   */
   const liste = <K extends keyof SaisieDeLaDeclaration & string>(
     champ: K,
     libelle: string,
     options: readonly (readonly [string, string])[],
-    choisir = 'Choisir',
+    {
+      choisir = 'Choisir',
+      className,
+      grisee = false,
+    }: { choisir?: string; className?: string; grisee?: boolean } = {},
   ) => (
-    <Field label={libelle} htmlFor={`${id}-${champ}`} required>
+    <Field label={libelle} htmlFor={`${id}-${champ}`} required={!grisee} className={className}>
       <Select
         id={`${id}-${champ}`}
         aria-label={libelle}
+        disabled={grisee}
         value={String(valeur[champ])}
         onChange={(e) => poser({ [champ]: e.target.value } as Partial<SaisieDeLaDeclaration>)}
         className={CADRE}
@@ -331,8 +350,19 @@ export function FicheDeLaDeclaration({
     </Field>
   );
   /** Un nom d'une liste, épouse ou enfant : la capitale à chaque mot, à la frappe. */
-  const nomDeLaListe = (champ: 'conjoints' | 'enfants', i: number, libelle: string) => (
-    <Field key={`${champ}-${i}`} label={libelle} htmlFor={`${id}-${champ}-${i}`} required>
+  const nomDeLaListe = (
+    champ: 'conjoints' | 'enfants',
+    i: number,
+    libelle: string,
+    className?: string,
+  ) => (
+    <Field
+      key={`${champ}-${i}`}
+      label={libelle}
+      htmlFor={`${id}-${champ}-${i}`}
+      required
+      className={className}
+    >
       <Input
         id={`${id}-${champ}-${i}`}
         value={valeur[champ][i] ?? ''}
@@ -362,6 +392,11 @@ export function FicheDeLaDeclaration({
   );
   const aNommer = conjointsANommer(valeur);
   const enfants = Number(valeur.nombreDEnfants || 0);
+  const epouses = valeur.situationDeFamille === 'marie' && valeur.civilite === 'monsieur';
+  // La famille suit son cours, trois champs par ligne : un dernier seul sur
+  // la sienne en prend deux.
+  const dernierDeLaFamille =
+    (2 + (epouses ? 1 : 0) + aNommer + enfants) % 3 === 1 ? ALLONGE_EN_FIN_DE_LISTE : undefined;
   const service = valeur.serviceMilitaire === 'oui';
 
   return (
@@ -380,10 +415,19 @@ export function FicheDeLaDeclaration({
             )
           : null}
         {valeur.nature === 'changement' ? (
-          <fieldset className="min-w-0 sm:col-span-2">
-            <legend className="mb-1.5 block text-sm font-medium text-ink-strong">
+          // Un groupe plutôt qu'un fieldset : sa légende se range dans la
+          // rangée des intitulés, comme celle de « Mouvement » à côté.
+          <div
+            role="group"
+            aria-labelledby={`${id}-changements`}
+            className={cn('min-w-0', SUR_DEUX_COLONNES)}
+          >
+            <span
+              id={`${id}-changements`}
+              className="mb-1.5 block text-sm font-medium text-ink-strong"
+            >
               Changements<span className="text-danger"> *</span>
-            </legend>
+            </span>
             <div className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
               {CHANGEMENTS_DU_TRAVAILLEUR.map((c) => (
                 <label
@@ -404,7 +448,7 @@ export function FicheDeLaDeclaration({
                 </label>
               ))}
             </div>
-          </fieldset>
+          </div>
         ) : null}
         {valeur.nature === 'depart' ? (
           <Field
@@ -477,9 +521,17 @@ export function FicheDeLaDeclaration({
         <Field label="Lieu de naissance" htmlFor={`${id}-naissanceA`} required>
           <Input {...lieu('naissanceA', 120)} />
         </Field>
-        {liste('naissancePays', 'Pays de naissance', pays, 'Choisir un pays')}
-        {liste('nationalite', 'Nationalité', pays, 'Choisir un pays')}
-        <Field label="Prénom du père" htmlFor={`${id}-perePrenom`} required>
+        {liste('naissancePays', 'Pays de naissance', pays, { choisir: 'Choisir un pays' })}
+        {liste('nationalite', 'Nationalité', pays, { choisir: 'Choisir un pays' })}
+        <Field label="Adresse" htmlFor={`${id}-adresse`} required className={SUR_DEUX_COLONNES}>
+          <Input {...lieu('adresse', 200)} />
+        </Field>
+        <Field
+          label="Prénom du père"
+          htmlFor={`${id}-perePrenom`}
+          required
+          className={EN_DEBUT_DE_LIGNE}
+        >
           <Input {...nomPropre('perePrenom')} />
         </Field>
         <Field label="Prénom de la mère" htmlFor={`${id}-merePrenom`} required>
@@ -488,11 +540,6 @@ export function FicheDeLaDeclaration({
         <Field label="Nom de la mère" htmlFor={`${id}-mereNom`} required>
           <Input {...nomPropre('mereNom')} />
         </Field>
-        <div className="sm:col-span-2">
-          <Field label="Adresse" htmlFor={`${id}-adresse`} required>
-            <Input {...lieu('adresse', 200)} />
-          </Field>
-        </div>
         {etrangere(valeur) ? (
           <Field label="N° de la carte d’identité" htmlFor={`${id}-cni`} required>
             <Input {...codeEnCapitales('cni', 20)} />
@@ -535,7 +582,7 @@ export function FicheDeLaDeclaration({
             (s) => [s, etat[ETAT_CIVIL[s]]!] as const,
           ),
         )}
-        {valeur.situationDeFamille === 'marie' && valeur.civilite === 'monsieur'
+        {epouses
           ? liste(
               'epouses',
               'Nombre d’épouses',
@@ -563,17 +610,28 @@ export function FicheDeLaDeclaration({
             { length: ENFANTS_MAX + 1 },
             (_, i) => [String(i), i === 0 ? 'Aucun' : String(i)] as const,
           ),
+          { className: enfants === 0 ? dernierDeLaFamille : undefined },
         )}
         {Array.from({ length: enfants }, (_, i) =>
           nomDeLaListe(
             'enfants',
             i,
             enfants === 1 ? 'Prénom et nom de l’enfant' : `Prénom et nom de l’enfant ${i + 1}`,
+            i === enfants - 1 ? dernierDeLaFamille : undefined,
           ),
         )}
       </Groupe>
 
       <Groupe titre="Renseigner l’emploi">
+        <Field label="Profession" htmlFor={`${id}-profession`} required>
+          <Input {...intitule('profession', 120)} />
+        </Field>
+        <Field label="Emploi dans l’établissement" htmlFor={`${id}-emploi`} required>
+          <Input {...intitule('emploi', 120)} />
+        </Field>
+        <Field label="Catégorie" htmlFor={`${id}-categorie`} required>
+          <Input {...texte('categorie', CATEGORIE_MAX)} className={cn(CADRE, 'uppercase')} />
+        </Field>
         <Field
           label="Date d’entrée dans l’établissement"
           htmlFor={`${id}-entreeLe`}
@@ -584,29 +642,6 @@ export function FicheDeLaDeclaration({
         </Field>
         <Field label="Date du contrat" htmlFor={`${id}-contratLe`} error={erreurDe('contratLe')}>
           <Input {...date('contratLe', { max: veille })} />
-        </Field>
-        {valeur.nature === 'depart' || valeur.nature === 'changement' ? (
-          <>
-            <Field label="N° de la déclaration d’embauche" htmlFor={`${id}-declarationNumero`}>
-              <Input {...texte('declarationNumero', 30)} />
-            </Field>
-            <Field
-              label="Date de la déclaration d’embauche"
-              htmlFor={`${id}-declarationLe`}
-              error={erreurDe('declarationLe')}
-            >
-              <Input {...date('declarationLe', { max: aujourdhui })} />
-            </Field>
-          </>
-        ) : null}
-        <Field label="Profession" htmlFor={`${id}-profession`} required>
-          <Input {...intitule('profession', 120)} />
-        </Field>
-        <Field label="Emploi dans l’établissement" htmlFor={`${id}-emploi`} required>
-          <Input {...intitule('emploi', 120)} />
-        </Field>
-        <Field label="Catégorie" htmlFor={`${id}-categorie`} required>
-          <Input {...texte('categorie', CATEGORIE_MAX)} className={cn(CADRE, 'uppercase')} />
         </Field>
         {liste('contrat', 'Type de contrat', [
           ['cdd', 'Contrat à durée déterminée'],
@@ -629,11 +664,38 @@ export function FicheDeLaDeclaration({
           </>
         ) : null}
         {valeur.contrat === 'chantier' ? (
-          <Field label="Chantier de" htmlFor={`${id}-chantier`} required>
+          <Field
+            label="Chantier de"
+            htmlFor={`${id}-chantier`}
+            required
+            className={SUR_DEUX_COLONNES}
+          >
             <Input {...texte('chantier', 120)} />
           </Field>
         ) : null}
-        <Field label="N° du visa d’approbation" htmlFor={`${id}-visaNumero`}>
+        {valeur.nature === 'depart' || valeur.nature === 'changement' ? (
+          <>
+            <Field
+              label="N° de la déclaration d’embauche"
+              htmlFor={`${id}-declarationNumero`}
+              className={EN_DEBUT_DE_LIGNE}
+            >
+              <Input {...texte('declarationNumero', 30)} />
+            </Field>
+            <Field
+              label="Date de la déclaration d’embauche"
+              htmlFor={`${id}-declarationLe`}
+              error={erreurDe('declarationLe')}
+            >
+              <Input {...date('declarationLe', { max: aujourdhui })} />
+            </Field>
+          </>
+        ) : null}
+        <Field
+          label="N° du visa d’approbation"
+          htmlFor={`${id}-visaNumero`}
+          className={EN_DEBUT_DE_LIGNE}
+        >
           <Input {...texte('visaNumero', 30)} />
         </Field>
         <Field
@@ -643,7 +705,11 @@ export function FicheDeLaDeclaration({
         >
           <Input {...date('visaLe', { min: valeur.contratLe, max: aujourdhui })} />
         </Field>
-        <Field label="N° du visa d’enregistrement" htmlFor={`${id}-enregistrementNumero`}>
+        <Field
+          label="N° du visa d’enregistrement"
+          htmlFor={`${id}-enregistrementNumero`}
+          className={EN_DEBUT_DE_LIGNE}
+        >
           <Input {...texte('enregistrementNumero', 30)} />
         </Field>
         <Field
@@ -653,11 +719,15 @@ export function FicheDeLaDeclaration({
         >
           <Input {...date('enregistrementLe', { min: valeur.contratLe, max: aujourdhui })} />
         </Field>
-        <div className="sm:col-span-2">
-          <Field label="Nom et adresse du précédent employeur" htmlFor={`${id}-precedentEmployeur`}>
-            <Input {...texte('precedentEmployeur', 200)} />
-          </Field>
-        </div>
+        {/* Une ligne pleine : le précédent employeur prend la place de l'entrée
+            au Sénégal quand la personne est sénégalaise. */}
+        <Field
+          label="Nom et adresse du précédent employeur"
+          htmlFor={`${id}-precedentEmployeur`}
+          className={cn(EN_DEBUT_DE_LIGNE, !etrangere(valeur) && SUR_DEUX_COLONNES)}
+        >
+          <Input {...texte('precedentEmployeur', 200)} />
+        </Field>
         <Field label="Lieu de résidence habituel" htmlFor={`${id}-residence`} required>
           <Input {...lieu('residence', 120)} />
         </Field>
@@ -678,41 +748,50 @@ export function FicheDeLaDeclaration({
         ) : null}
       </Groupe>
 
-      <Groupe titre="Renseigner le statut militaire">
+      {/* Quatre champs sur une ligne : la question, puis ses précisions,
+          grisées tant que le service n'est pas dit effectué. */}
+      <Groupe titre="Renseigner le statut militaire" colonnes={4}>
         {liste('serviceMilitaire', 'Service militaire effectué', [
           ['oui', 'Oui'],
           ['non', 'Non'],
         ])}
-        {service ? (
-          <>
-            <Field
-              label="Classe de recrutement"
-              htmlFor={`${id}-classeDeRecrutement`}
-              required
-              error={erreurDe('classeDeRecrutement')}
-            >
-              <Input
-                {...texte('classeDeRecrutement', 4)}
-                aria-invalid={erreurDe('classeDeRecrutement') ? true : undefined}
-                inputMode="numeric"
-                onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                  poser({ classeDeRecrutement: e.target.value.replace(/\D/g, '') })
-                }
-                className={cn(CADRE, 'tabular-nums')}
-              />
-            </Field>
-            {liste('armee', 'Armée d’appartenance', [
-              ['terre', 'Terre'],
-              ['air', 'Air'],
-              ['mer', 'Mer'],
-            ])}
-            {liste('grade', 'Grade dans la réserve', [
-              ['officier', 'Officier'],
-              ['sous_officier', 'Sous-officier'],
-              ['troupe', 'Troupe'],
-            ])}
-          </>
-        ) : null}
+        <Field
+          label="Classe de recrutement"
+          htmlFor={`${id}-classeDeRecrutement`}
+          required={service}
+          error={erreurDe('classeDeRecrutement')}
+        >
+          <Input
+            {...texte('classeDeRecrutement', 4)}
+            disabled={!service}
+            aria-invalid={erreurDe('classeDeRecrutement') ? true : undefined}
+            inputMode="numeric"
+            onChange={(e: ChangeEvent<HTMLInputElement>) =>
+              poser({ classeDeRecrutement: e.target.value.replace(/\D/g, '') })
+            }
+            className={cn(CADRE, 'tabular-nums')}
+          />
+        </Field>
+        {liste(
+          'armee',
+          'Armée d’appartenance',
+          [
+            ['terre', 'Terre'],
+            ['air', 'Air'],
+            ['mer', 'Mer'],
+          ],
+          { grisee: !service },
+        )}
+        {liste(
+          'grade',
+          'Grade dans la réserve',
+          [
+            ['officier', 'Officier'],
+            ['sous_officier', 'Sous-officier'],
+            ['troupe', 'Troupe'],
+          ],
+          { grisee: !service },
+        )}
       </Groupe>
 
       <Groupe titre="Renseigner les dispositions particulières">
@@ -728,21 +807,24 @@ export function FicheDeLaDeclaration({
           onSaisir={(salaire) => poser({ salaire })}
         />
         {valeur.dispositions.map((d, i) => (
-          <div key={i} className="sm:col-span-2">
-            <Field label={`Disposition ${i + 2}`} htmlFor={`${id}-disposition-${i}`}>
-              <Input
-                id={`${id}-disposition-${i}`}
-                value={d}
-                maxLength={DISPOSITION_MAX}
-                onChange={(e) =>
-                  poser({
-                    dispositions: valeur.dispositions.map((x, j) => (j === i ? e.target.value : x)),
-                  })
-                }
-                className={CADRE}
-              />
-            </Field>
-          </div>
+          <Field
+            key={i}
+            label={`Disposition ${i + 2}`}
+            htmlFor={`${id}-disposition-${i}`}
+            className={PLEINE_LIGNE}
+          >
+            <Input
+              id={`${id}-disposition-${i}`}
+              value={d}
+              maxLength={DISPOSITION_MAX}
+              onChange={(e) =>
+                poser({
+                  dispositions: valeur.dispositions.map((x, j) => (j === i ? e.target.value : x)),
+                })
+              }
+              className={CADRE}
+            />
+          </Field>
         ))}
       </Groupe>
     </>
