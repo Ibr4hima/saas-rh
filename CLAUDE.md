@@ -12,7 +12,8 @@ pnpm mail:up              # démarre Mailpit (courriels de dev, http://localhost
 pnpm db:migrate           # applique les migrations SQL (apps/api/src/db/sql)
 pnpm db:reset             # DÉTRUIT la base puis remigre à neuf (dev/CI seulement)
 pnpm personnel:vider      # efface le personnel d'une organisation (à blanc sans --confirmer)
-pnpm dev                  # api (:3001) + web (:3000)
+pnpm start                # api (:3001) + web (:3000) en mode production, construits au besoin : pour essayer l'application
+pnpm dev                  # api (:3001) + web (:3000) en mode développement (Turbopack) : pour développer
 pnpm build                # build de tous les paquets (ordre géré par turbo)
 pnpm typecheck            # tsc --noEmit partout
 pnpm test                 # tests (le test RLS exige Postgres démarré + migré)

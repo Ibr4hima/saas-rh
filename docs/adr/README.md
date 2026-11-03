@@ -172,3 +172,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0164](0164-type-de-contrat-deduit.md)                | Un type de contrat vide se déduit de la date de fin : un CDD avec, un CDI sans          | acceptée                                    |
 | [0165](0165-vider-l-import.md)                        | L'administrateur peut vider l'import pour recommencer : ce que l'import a créé, seul    | acceptée                                    |
 | [0166](0166-mission-et-ponctuelle-retirees.md)        | « Mission » et « Absence ponctuelle » ne sont plus des types d'absence posés d'office   | acceptée                                    |
+| [0167](0167-essayer-en-mode-production.md)            | On essaie l'application en mode production (pnpm start), on la développe avec Turbopack | acceptée                                    |

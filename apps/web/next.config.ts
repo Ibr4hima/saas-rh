@@ -32,11 +32,10 @@ const nextConfig: NextConfig = {
   distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
   reactStrictMode: true,
   transpilePackages: ['@teranga/ui'],
-  // L'indicateur de développement de Next (le rond « N ») se posait en bas à
-  // gauche, sur la carte du compte — et, la colonne repliée, sur le bouton du
-  // menu du compte lui-même. Il n'existe qu'en développement ; en bas à
-  // droite, il ne cache plus rien d'utile.
-  devIndicators: { position: 'bottom-right' },
+  // Pas d'indicateur de développement (le rond « N ») : il s'anime pendant que
+  // Next compile la page, et laisse croire que l'application rame. Il n'existe
+  // qu'en développement (ADR-0167).
+  devIndicators: false,
   // Les courriels chargent Google Sans depuis le site. Une police venue d'un
   // autre domaine ne s'applique qu'avec la permission du site qui la sert.
   async headers() {

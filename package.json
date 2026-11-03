@@ -11,6 +11,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "dev": "turbo run dev",
+    "start": "turbo run start",
     "db:up": "docker compose up -d db",
     "mail:up": "docker compose up -d mailpit",
     "db:migrate": "pnpm --filter @teranga/api db:migrate",

@@ -16,6 +16,11 @@ const API = new URL(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').
 export function middleware(request: NextRequest) {
   const nonce = btoa(crypto.randomUUID());
   const dev = process.env.NODE_ENV === 'development';
+  // Servie en HTTPS, la page fait passer ses requêtes en HTTPS. Servie en HTTP
+  // (l'application lancée sur un poste, ADR-0167), l'API locale aussi reste en
+  // HTTP : la faire passer en HTTPS couperait la page de ses données.
+  const https =
+    request.nextUrl.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';
   const politique = [
     "default-src 'self'",
     // Le rechargement à chaud du développement évalue du code : là seulement.
@@ -33,7 +38,7 @@ export function middleware(request: NextRequest) {
     "base-uri 'none'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    ...(dev ? [] : ['upgrade-insecure-requests']),
+    ...(https && !dev ? ['upgrade-insecure-requests'] : []),
   ].join('; ');
 
   const entetes = new Headers(request.headers);
