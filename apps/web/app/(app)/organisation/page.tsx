@@ -4,14 +4,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   createOrgUnitSchema,
   nomAbrege,
   ORG_UNIT_PARENT_TYPES,
   ORG_UNIT_ROOT_TYPES,
-  ORG_UNIT_TYPE_LABELS,
   orgUnitLabel,
   type ConsequencesHierarchie,
   type CreateOrgUnitInput,
@@ -51,8 +50,6 @@ import { Modal } from '../../../components/modal';
 import { Organigramme } from '../../../components/organigramme';
 import { CartePleine, Page } from '../../../components/gabarit';
 
-const TYPE_LABELS = ORG_UNIT_TYPE_LABELS;
-
 /**
  * « Direction Financière › Service Comptabilité » : les noms d'unités ne sont
  * uniques QU'ENTRE SŒURS, donc deux « Service Comptabilité » sous deux
@@ -87,6 +84,26 @@ function sousArbre(units: OrgUnitView[], id: string): Set<string> {
  * boucle. Le serveur la refuse, mais une option qu'on ne peut pas choisir n'a
  * rien à faire dans un menu.
  */
+/**
+ * Les membres d'une unité, et qui peut en prendre la tête : ce que la fiche
+ * charge. Les mêmes requêtes servent au préchargement depuis l'organigramme et
+ * à la fiche ; chargées depuis moins de trente secondes, elles ne se relancent
+ * pas à l'ouverture.
+ */
+const membresDe = (id: string) => ({
+  queryKey: ['org-unit-members', id],
+  queryFn: () => api<OrgUnitMember[]>(`/org-units/${id}/members`),
+  staleTime: 30_000,
+});
+const responsablesPossiblesDe = (id: string) => ({
+  queryKey: ['org-unit-eligible-managers', id],
+  queryFn: () => api<OrgUnitMember[]>(`/org-units/${id}/eligible-managers`),
+  staleTime: 30_000,
+});
+
+/** Au plus ce délai avant d'ouvrir une fiche dont les membres ne sont pas encore là. */
+const ATTENTE_MAX_DE_LA_FICHE = 300;
+
 function parentOptions(units: OrgUnitView[], type: OrgUnitType, excludeId?: string) {
   const allowed = ORG_UNIT_PARENT_TYPES[type];
   const interdits = excludeId ? sousArbre(units, excludeId) : new Set<string>();
@@ -112,11 +129,33 @@ export default function OrganisationPage() {
   // L'unité peut être désignée par l'URL (?unite=<id>) : c'est ainsi que le
   // tableau de bord ouvre l'organigramme directement sur elle.
   const uniteUrl = parametres.get('unite');
-  const [selectedId, setSelectedId] = useState<string | null>(uniteUrl);
+  const queryClient = useQueryClient();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /**
+   * La fiche se charge dès qu'on approche du bloc, et ne s'ouvre qu'une fois
+   * ses membres connus (au plus 300 ms d'attente) : elle apparaît entière, sans
+   * grandir sous les yeux. Une autre unité choisie entre-temps l'emporte.
+   */
+  const precharger = (id: string) => {
+    void queryClient.prefetchQuery(membresDe(id));
+    if (canManage) void queryClient.prefetchQuery(responsablesPossiblesDe(id));
+  };
+  const derniereOuverture = useRef(0);
+  const ouvrir = async (id: string) => {
+    const n = ++derniereOuverture.current;
+    precharger(id);
+    await Promise.race([
+      queryClient.ensureQueryData(membresDe(id)).catch(() => null),
+      new Promise((fini) => setTimeout(fini, ATTENTE_MAX_DE_LA_FICHE)),
+    ]);
+    if (n === derniereOuverture.current) setSelectedId(id);
+  };
   useEffect(() => {
-    if (uniteUrl) setSelectedId(uniteUrl);
+    if (uniteUrl) void ouvrir(uniteUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uniteUrl]);
   const fermerPanneau = () => {
+    derniereOuverture.current++;
     setSelectedId(null);
     if (uniteUrl) router.replace('/organisation');
   };
@@ -159,7 +198,8 @@ export default function OrganisationPage() {
             unites={liste}
             selectionId={selectedId}
             actions={{
-              onOuvrir: (u) => setSelectedId(u.id),
+              onOuvrir: (u) => void ouvrir(u.id),
+              onApprocher: (u) => precharger(u.id),
               ...(canManage ? { onAjouter: (parent: OrgUnitView) => setCreation({ parent }) } : {}),
             }}
           />
@@ -316,18 +356,11 @@ function UnitPanel({
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Suppression impossible.'),
   });
 
-  const members = useQuery({
-    queryKey: ['org-unit-members', unit.id],
-    queryFn: () => api<OrgUnitMember[]>(`/org-units/${unit.id}/members`),
-  });
+  const members = useQuery(membresDe(unit.id));
   // Le responsable se choisit dans la direction de l'unité : proposer tout le
   // tenant, c'était offrir des noms que le serveur refuse, et faire découvrir
   // la règle par un 422. Même principe que pour le rattachement.
-  const eligible = useQuery({
-    queryKey: ['org-unit-eligible-managers', unit.id],
-    queryFn: () => api<OrgUnitMember[]>(`/org-units/${unit.id}/eligible-managers`),
-    enabled: canManage,
-  });
+  const eligible = useQuery({ ...responsablesPossiblesDe(unit.id), enabled: canManage });
 
   // La passation s'écrit dans les affectations : le nouveau prend ses
   // fonctions à une date, au plus tôt le début de son affectation en cours ;
@@ -422,21 +455,21 @@ function UnitPanel({
         </span>
       }
       title={unit.name}
+      // Son contenu change sur place (modifier, désigner, supprimer) : posée
+      // en haut, la fiche ne remonte pas d'un coup quand il grandit.
+      ancre="haut"
+      // Le nom dit déjà le type (« Département Études ») : dessous, le sigle
+      // et le rattachement seulement.
       subtitle={
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-ink-muted">
-          <span className="rounded-full bg-bg px-2 py-[3px] font-semibold text-ink">
-            {TYPE_LABELS[unit.unitType as OrgUnitType]}
+        unit.shortName || rattachement ? (
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-ink-muted">
+            {unit.shortName ? (
+              <span className="font-mono font-semibold">{unit.shortName}</span>
+            ) : null}
+            {unit.shortName && rattachement ? <span>·</span> : null}
+            {rattachement ? <span>{rattachement}</span> : null}
           </span>
-          {unit.shortName ? (
-            <span className="font-mono font-semibold">{unit.shortName}</span>
-          ) : null}
-          {rattachement ? (
-            <>
-              <span>·</span>
-              <span>{rattachement}</span>
-            </>
-          ) : null}
-        </span>
+        ) : undefined
       }
       maxWidth="max-w-2xl"
       footer={

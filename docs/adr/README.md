@@ -182,3 +182,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0174](0174-fiches-depuis-le-dossier.md)              | Fiches préremplies au dossier, prime de transport facultative, stage de 1 à 6 mois      | acceptée                                    |
 | [0175](0175-date-entre-numero-et-emetteur.md)         | La date de l'en-tête, à égale distance du numéro et de l'émetteur                       | acceptée                                    |
 | [0176](0176-sans-dossier-ou-avant-le-depart.md)       | Certificat de travail et attestation de stage, sans dossier ou avant le départ          | acceptée                                    |
+| [0177](0177-fiche-d-une-unite-stable.md)              | La fiche d'une unité s'ouvre entière, et les fenêtres se posent sans flou               | acceptée                                    |

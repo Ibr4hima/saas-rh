@@ -72,6 +72,11 @@ const FOND_CANEVAS: React.CSSProperties = {
 export interface ActionsNoeud {
   /** Ouvrir le panneau de détail. */
   onOuvrir: (u: OrgUnitView) => void;
+  /**
+   * Le bloc est survolé, pris au doigt ou atteint au clavier : la fiche peut
+   * se charger d'avance, et s'ouvrir complète au clic.
+   */
+  onApprocher?: (u: OrgUnitView) => void;
   /** Créer une unité rattachée à celle-ci. */
   onAjouter?: (parent: OrgUnitView) => void;
 }
@@ -557,6 +562,9 @@ function Bloc({
       <button
         type="button"
         onClick={() => actions.onOuvrir(u)}
+        onPointerEnter={() => actions.onApprocher?.(u)}
+        onPointerDown={() => actions.onApprocher?.(u)}
+        onFocus={() => actions.onApprocher?.(u)}
         // Le gabarit coupe les noms à rallonge et les responsables aux
         // prénoms multiples : l'infobulle rend l'un et l'autre en entier, et
         // la fenêtre de détail aussi.
