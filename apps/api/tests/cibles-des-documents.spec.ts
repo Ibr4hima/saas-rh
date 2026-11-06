@@ -109,7 +109,12 @@ beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 2 });
   db = new TenantDb();
-  service = new GenerationService(db, new AttestationService(db), new AbsencesService(db));
+  service = new GenerationService(
+    db,
+    new EncryptionService(),
+    new AttestationService(db),
+    new AbsencesService(db),
+  );
   await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1, 'Cibles', $2)`, [
     tenantId,
     `cibles-${tenantId.slice(0, 8)}`,

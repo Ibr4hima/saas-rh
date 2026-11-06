@@ -121,6 +121,19 @@ export class DocumentsController {
   }
 
   /**
+   * Ce que le dossier d'un agent donne d'avance à la fiche d'une
+   * domiciliation bancaire (ADR-0174).
+   */
+  @Get('documents/generer/:type/agents/:employeeId/fiche')
+  dossierPourLaFiche(
+    @Req() req: AuthenticatedRequest,
+    @Param('type') type: string,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+  ) {
+    return this.generation.dossierPourLaFiche(req.sessionUser, type, employeeId);
+  }
+
+  /**
    * Ce que la fiche d'un document sans agent sait d'avance : les sessions du
    * conseil d'administration d'une décision de disponibilité (ADR-0123).
    */

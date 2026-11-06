@@ -24,6 +24,7 @@ import {
   premiereMajuscule,
 } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
+import { EncryptionService } from '../src/common/encryption.service';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
@@ -102,7 +103,12 @@ beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 2 });
   db = new TenantDb();
-  service = new GenerationService(db, new AttestationService(db), new AbsencesService(db));
+  service = new GenerationService(
+    db,
+    new EncryptionService(),
+    new AttestationService(db),
+    new AbsencesService(db),
+  );
 
   await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1, 'APIX', $2)`, [
     tenantId,
@@ -175,6 +181,27 @@ describe('la saisie', () => {
     expect(contrat({ cniDelivreeLe: ansPlusTot(aujourdhuiIso(), 1) })).toEqual(
       contrat({ cniDelivreeLe: ansPlusTot(aujourdhuiIso(), 9) }),
     );
+  });
+
+  it('un stage dure de un à six mois', () => {
+    for (const duree of [1, 2, 3, 4, 5, 6]) {
+      expect(ficheStagiaireSchema.safeParse({ ...fiche(), duree }).success).toBe(true);
+    }
+    expect(ficheStagiaireSchema.safeParse({ ...fiche(), duree: 7 }).success).toBe(false);
+    const textes = tousLesTextes(
+      blocsDuContratDeStage(
+        {
+          stagiaire: { ...fiche(), duree: 1 },
+          signataire: { nom: 'Mariama CISSÉ', genre: 'female' },
+        },
+        new Date(),
+      ),
+    );
+    expect(
+      textes.some((t) =>
+        t.startsWith('Le présent contrat est conclu pour une durée de un (01) mois.'),
+      ),
+    ).toBe(true);
   });
 
   it('la fiche validée porte les capitales, même saisie sans elles', () => {
@@ -410,6 +437,7 @@ describe('la génération', () => {
       { cniDelivreeLe: undefined },
       { cniDelivreeLe: ansPlusTot(aujourdhuiIso(), 10) },
       { duree: 0 },
+      { duree: 7 },
       { allocation: 0 },
       { prenom: '' },
       { adresse: undefined },

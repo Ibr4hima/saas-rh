@@ -21,6 +21,7 @@ import {
   nomDuDocumentGenere,
 } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
+import { EncryptionService } from '../src/common/encryption.service';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
@@ -116,7 +117,12 @@ beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 2 });
   db = new TenantDb();
-  service = new GenerationService(db, new AttestationService(db), new AbsencesService(db));
+  service = new GenerationService(
+    db,
+    new EncryptionService(),
+    new AttestationService(db),
+    new AbsencesService(db),
+  );
 
   await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1, 'APIX', $2)`, [
     tenantId,
@@ -194,9 +200,7 @@ describe('la fiche', () => {
   it('un pays de la liste ; une CNI de treize chiffres ; un sursalaire peut être nul, pas la base', () => {
     expect(ficheCddSchema.safeParse(fiche({ nationalite: 'XX' })).success).toBe(false);
     expect(ficheCddSchema.safeParse(fiche({ cni: '27512002012' })).success).toBe(false);
-    expect(ficheCddSchema.safeParse(fiche({ sursalaire: 0, primeDeTransport: 0 })).success).toBe(
-      true,
-    );
+    expect(ficheCddSchema.safeParse(fiche({ sursalaire: 0 })).success).toBe(true);
     expect(ficheCddSchema.safeParse(fiche({ salaireDeBase: 0 })).success).toBe(false);
   });
 
@@ -360,7 +364,7 @@ describe('les articles', () => {
     );
   });
 
-  it('le salaire brut, somme de ses trois parts, en lettres puis en chiffres et en gras', () => {
+  it('le salaire brut, somme de ses parts, en lettres puis en chiffres et en gras', () => {
     const blocs = contrat();
     const remuneration = blocs.find((b) => enClair(b).startsWith('À titre de rémunération'));
     expect(remuneration && enClair(remuneration)).toBe(
@@ -376,6 +380,23 @@ describe('les articles', () => {
       { type: 'montant', libelle: 'Salaire de base :', montant: 350000, avant: 18 },
       { type: 'montant', libelle: 'Sursalaire :', montant: 136000, avant: 0 },
       { type: 'montant', libelle: 'Prime de transport :', montant: 26000, avant: 0 },
+    ]);
+  });
+
+  it('la prime de transport, que tous n’ont pas : sans elle, ni sa ligne ni sa part du salaire brut', () => {
+    const { primeDeTransport: _prime, ...sansPrime } = fiche();
+    expect(ficheCddSchema.safeParse(sansPrime).success).toBe(true);
+    // Accordée, elle a un montant : ne pas l'accorder, c'est l'omettre.
+    expect(ficheCddSchema.safeParse(fiche({ primeDeTransport: 0 })).success).toBe(false);
+    const blocs = contrat({ primeDeTransport: undefined });
+    const remuneration = blocs.find((b) => enClair(b).startsWith('À titre de rémunération'));
+    expect(remuneration && enClair(remuneration)).toBe(
+      'À titre de rémunération, Madame Awa NDIAYE perçoit à la fin de chaque mois un salaire brut ' +
+        'de quatre cent quatre-vingt-six mille (486 000) francs CFA décomposé ainsi qu’il suit :',
+    );
+    expect(blocs.filter((b) => b.type === 'montant').map((b) => b.libelle)).toEqual([
+      'Salaire de base :',
+      'Sursalaire :',
     ]);
   });
 

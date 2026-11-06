@@ -1,21 +1,28 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { sql } from 'drizzle-orm';
 import type {
   AgentDeLaCible,
+  CodeDeBanque,
   DocumentGenere,
   DocumentSansAgent,
+  DossierPourLaFiche,
   SaisiesDuDocument,
   SessionUser,
   StageAuDossier,
 } from '@teranga/contracts';
 import {
+  aChoixDAgent,
+  depuisLeDossier,
   estGenere,
   genereQuelqueChose,
+  peut,
   peutGenerer,
   REQUESTABLE_DOC_LABELS,
   requestableDocSchema,
   sansAgent,
 } from '@teranga/contracts';
 import { pasSurSoi } from '../acces/dch';
+import { EncryptionService } from '../../common/encryption.service';
 import { problem } from '../../common/problem';
 import { TenantDb } from '../../db/tenant-db';
 import { AbsencesService } from '../time/absences.service';
@@ -73,6 +80,7 @@ export class GenerationService {
 
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
+    @Inject(EncryptionService) private readonly crypto: EncryptionService,
     @Inject(AttestationService) attestations: AttestationService,
     @Inject(AbsencesService) absences: AbsencesService,
   ) {
@@ -126,16 +134,89 @@ export class GenerationService {
 
   /**
    * Les agents de la cible du document qui répondent à la recherche
-   * (ADR-0130) : la page ne propose qu'eux.
+   * (ADR-0130) : la page ne propose qu'eux. La domiciliation bancaire, sans
+   * agent, propose les siens pour préremplir sa fiche (ADR-0174).
    */
   async agents(user: SessionUser, type: string, q: string): Promise<AgentDeLaCible[]> {
     const doc = this.documentConfigure(user, type);
-    if (sansAgent(doc)) {
+    if (!aChoixDAgent(doc)) {
       problem(422, 'documents.sans_agent', `${REQUESTABLE_DOC_LABELS[doc]} : sans agent`);
     }
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
       agentsDeLaCible(tx, doc, q, user.userId),
     );
+  }
+
+  /**
+   * Ce que le dossier d'un agent donne d'avance à la fiche d'une
+   * domiciliation bancaire ou d'une décision de disponibilité (ADR-0174) :
+   * son état civil, son poste et son unité en cours, le contrat qui fait foi
+   * et son premier jour ; pour la domiciliation seulement, sa banque et son
+   * RIB, à qui a l'accès aux données sensibles (ADR-0158). L'agent est de la
+   * cible, et jamais soi.
+   */
+  async dossierPourLaFiche(
+    user: SessionUser,
+    type: string,
+    employeeId: string,
+  ): Promise<DossierPourLaFiche> {
+    const doc = this.documentConfigure(user, type);
+    if (!depuisLeDossier(doc)) {
+      problem(
+        422,
+        'documents.sans_dossier',
+        `${REQUESTABLE_DOC_LABELS[doc]} : rien à reprendre du dossier d’un agent`,
+      );
+    }
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await pasSurSoi(tx, user.userId, [employeeId], 'générer un document pour');
+      await exigerLaCible(tx, doc, employeeId);
+      const { rows } = await tx.execute<{
+        gender: string | null;
+        given_name: string;
+        family_name: string;
+        position_title: string | null;
+        org_unit_id: string | null;
+        contract_type: 'cdd' | 'cdi';
+        start_date: string;
+      }>(sql`
+        SELECT p.gender, p.given_name, p.family_name, a.position_title, a.org_unit_id,
+               c.contract_type, to_char(c.start_date, 'YYYY-MM-DD') AS start_date
+          FROM employees e
+          JOIN persons p ON p.id = e.person_id
+          -- Le poste en cours, sinon le prochain.
+          LEFT JOIN LATERAL (
+            SELECT position_title, org_unit_id FROM assignments
+             WHERE employee_id = e.id
+             ORDER BY validity @> CURRENT_DATE DESC, lower(validity) DESC LIMIT 1
+          ) a ON true
+          -- Le contrat qui fait foi, comme pour la cible : le dernier commencé.
+          JOIN LATERAL (
+            SELECT contract_type, start_date FROM contracts
+             WHERE employee_id = e.id AND start_date <= CURRENT_DATE
+             ORDER BY start_date DESC, created_at DESC LIMIT 1
+          ) c ON true
+         WHERE e.id = ${employeeId}`);
+      const dossier = rows[0]!;
+      const banqueEtRib = doc === 'domiciliation_bancaire' && peut(user, 'personnel.sensible');
+      const { rows: comptes } = banqueEtRib
+        ? await tx.execute<{ banque: string | null; rib_chiffre: string | null }>(sql`
+            SELECT banque, rib_chiffre FROM remunerations WHERE employee_id = ${employeeId} LIMIT 1`)
+        : { rows: [] };
+      const compte = comptes[0];
+      return {
+        civilite:
+          dossier.gender === 'female' ? 'madame' : dossier.gender === 'male' ? 'monsieur' : null,
+        prenom: dossier.given_name,
+        nom: dossier.family_name,
+        poste: dossier.position_title,
+        affectation: dossier.org_unit_id,
+        contrat: dossier.contract_type,
+        debut: dossier.start_date,
+        banque: (compte?.banque as CodeDeBanque | null | undefined) ?? null,
+        rib: compte?.rib_chiffre ? this.crypto.decrypt(compte.rib_chiffre) : null,
+      };
+    });
   }
 
   /** Un document sans agent, d'après la fiche que la DCH renseigne. */

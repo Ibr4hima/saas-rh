@@ -1,13 +1,13 @@
 import { sql, type SQL } from 'drizzle-orm';
 import {
   AGENTS_DE_LA_CIBLE_MAX,
-  CIBLES_DES_DOCUMENTS,
+  CIBLES_DES_CHOIX,
   horsCible,
   REQUESTABLE_DOC_LABELS,
   type AgentDeLaCible,
   type CibleDuDocument,
   type ContractType,
-  type DocumentAvecAgent,
+  type DocumentAChoixDAgent,
   type DocumentDemandable,
   type EmployeeStatus,
   type Gender,
@@ -84,11 +84,11 @@ const situationDe = (l: Ligne): SituationDeLAgent => ({
  */
 export async function agentsDeLaCible(
   tx: Tx,
-  doc: DocumentAvecAgent,
+  doc: DocumentAChoixDAgent,
   q: string,
   userId: string,
 ): Promise<AgentDeLaCible[]> {
-  const cible = CIBLES_DES_DOCUMENTS[doc];
+  const cible = CIBLES_DES_CHOIX[doc];
   // Un premier tri en base, que la règle refait : le statut, le genre.
   const filtres = [
     sql`p.user_id IS DISTINCT FROM ${userId}`,
@@ -174,15 +174,18 @@ export function refuserHorsCible(
   problem(422, `documents.${raison}`, titre, detail);
 }
 
-/** Le document ne se génère que pour un agent de sa cible ; sinon, le refus. */
+/**
+ * Le document ne se génère, ou ne se préremplit, que pour un agent de sa
+ * cible ; sinon, le refus.
+ */
 export async function exigerLaCible(
   tx: Tx,
-  doc: DocumentAvecAgent,
+  doc: DocumentAChoixDAgent,
   employeeId: string,
 ): Promise<void> {
   const [ligne] = await lireLesSituations(tx, sql`e.id = ${employeeId}`);
   if (!ligne) problem(404, 'people.employee_not_found', 'Employé introuvable');
-  const cible = CIBLES_DES_DOCUMENTS[doc];
+  const cible = CIBLES_DES_CHOIX[doc];
   const situation = situationDe(ligne);
   const raison = horsCible(cible, situation);
   if (raison) refuserHorsCible(doc, cible, situation, raison);

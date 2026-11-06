@@ -99,6 +99,38 @@ export const CIBLES_DES_DEMANDES: Record<DocumentDemandable, CibleDuDocument> = 
   declaration_mouvement: SOUS_CDI_OU_CDD,
 };
 
+/**
+ * Les documents sans agent dont la fiche se préremplit au dossier d'un agent
+ * choisi (ADR-0174) : la domiciliation bancaire, les décisions de
+ * disponibilité et de renouvellement.
+ */
+export const FICHES_DEPUIS_LE_DOSSIER = [
+  'domiciliation_bancaire',
+  'decision_disponibilite',
+  'decision_renouvellement_disponibilite',
+] as const satisfies readonly DocumentSansAgent[];
+export type FicheDepuisLeDossier = (typeof FICHES_DEPUIS_LE_DOSSIER)[number];
+
+/**
+ * Les documents où « Générer des documents » fait choisir un agent : ceux
+ * qui se génèrent pour un agent, et ceux dont la fiche se préremplit à son
+ * dossier.
+ */
+export type DocumentAChoixDAgent = DocumentAvecAgent | FicheDepuisLeDossier;
+
+/** Les agents que chacun de ces documents propose : pour une fiche, sous CDI ou CDD. */
+export const CIBLES_DES_CHOIX: Record<DocumentAChoixDAgent, CibleDuDocument> = {
+  ...CIBLES_DES_DOCUMENTS,
+  domiciliation_bancaire: SOUS_CDI_OU_CDD,
+  decision_disponibilite: SOUS_CDI_OU_CDD,
+  decision_renouvellement_disponibilite: SOUS_CDI_OU_CDD,
+};
+
+export const depuisLeDossier = (doc: string): doc is FicheDepuisLeDossier =>
+  (FICHES_DEPUIS_LE_DOSSIER as readonly string[]).includes(doc);
+
+export const aChoixDAgent = (doc: string): doc is DocumentAChoixDAgent => doc in CIBLES_DES_CHOIX;
+
 /** Ce qui écarte un agent de la cible d'un document : le code du refus. */
 export type HorsCible =
   'not_active' | 'en_activite' | 'stage' | 'contrat' | 'sans_stage' | 'genre' | 'age';

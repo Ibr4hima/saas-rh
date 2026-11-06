@@ -19,6 +19,7 @@ import {
   ribGroupe,
 } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
+import { EncryptionService } from '../src/common/encryption.service';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
@@ -38,7 +39,13 @@ const env = loadEnv();
 const tenantId = randomUUID();
 const ids = { dch: randomUUID(), agent: randomUUID() };
 const unites = { sommet: randomUUID(), dch: randomUUID() };
-const employes = { dg: randomUUID(), dch: randomUUID() };
+const employes = {
+  dg: randomUUID(),
+  dch: randomUUID(),
+  awa: randomUUID(),
+  stagiaire: randomUUID(),
+};
+const RIB = 'SN0120100103612345678954';
 
 const session = (userId: string, s: Partial<SessionUser>) =>
   ({ userId, tenantId, role: 'employee', capacites: [], ...s }) as SessionUser;
@@ -99,7 +106,12 @@ beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 2 });
   db = new TenantDb();
-  service = new GenerationService(db, new AttestationService(db), new AbsencesService(db));
+  service = new GenerationService(
+    db,
+    new EncryptionService(),
+    new AttestationService(db),
+    new AbsencesService(db),
+  );
 
   await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1, 'APIX', $2)`, [
     tenantId,
@@ -137,6 +149,46 @@ beforeAll(async () => {
       [employes[cle], tenantId, personId, `DOM-${cle}`],
     );
   }
+  // Deux agents du dossier : Awa Diop, sous CDI, son RIB à la CBAO ; un stagiaire.
+  const enc = new EncryptionService();
+  for (const [cle, prenom, nom, genre, contrat, debut] of [
+    ['awa', 'Awa', 'Diop', 'female', 'cdi', '2018-03-01'],
+    ['stagiaire', 'Ibou', 'Sarr', 'male', 'stage', '2026-09-01'],
+  ] as const) {
+    const personId = randomUUID();
+    await raw(
+      `INSERT INTO persons (id, tenant_id, given_name, family_name, gender)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [personId, tenantId, prenom, nom, genre],
+    );
+    await raw(
+      `INSERT INTO employees (id, tenant_id, person_id, employee_number, hired_on)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [employes[cle], tenantId, personId, `DOM-${cle}`, debut],
+    );
+    await raw(
+      `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        randomUUID(),
+        tenantId,
+        employes[cle],
+        contrat,
+        debut,
+        contrat === 'stage' ? '2027-02-28' : null,
+      ],
+    );
+    await raw(
+      `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+       VALUES ($1, $2, $3, $4, $5, daterange($6::date, NULL))`,
+      [randomUUID(), tenantId, employes[cle], unites.dch, 'Chargée d’études', debut],
+    );
+  }
+  await raw(
+    `INSERT INTO remunerations (id, tenant_id, employee_id, banque, rib_chiffre)
+     VALUES ($1, $2, $3, 'cbao', $4)`,
+    [randomUUID(), tenantId, employes.awa, enc.encrypt(RIB)],
+  );
   await raw(`UPDATE org_units SET manager_employee_id = $2 WHERE id = $1`, [
     unites.sommet,
     employes.dg,
@@ -149,6 +201,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await raw('UPDATE org_units SET manager_employee_id = NULL WHERE tenant_id = $1', [tenantId]);
+  for (const table of ['remunerations', 'assignments', 'contracts', 'audit_log']) {
+    await raw(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
+  }
   await raw('DELETE FROM employees WHERE tenant_id = $1', [tenantId]);
   await raw('DELETE FROM persons WHERE tenant_id = $1', [tenantId]);
   await raw('DELETE FROM org_units WHERE tenant_id = $1 AND parent_id IS NOT NULL', [tenantId]);
@@ -157,6 +212,62 @@ afterAll(async () => {
   await raw('DELETE FROM users WHERE id = ANY($1)', [Object.values(ids)]);
   await db?.pool.end();
   await ownerPool?.end();
+});
+
+describe('l’agent choisi', () => {
+  const sensible = session(ids.dch, { dirigeLaDCH: true, capacites: ['personnel.sensible'] });
+
+  it('se choisit parmi les agents en activité sous CDI ou CDD, jamais soi', async () => {
+    const proposes = (await service.agents(dch, 'domiciliation_bancaire', '')).map((a) => a.id);
+    expect(proposes).toContain(employes.awa);
+    expect(proposes).not.toContain(employes.stagiaire);
+    expect(proposes).not.toContain(employes.dch);
+  });
+
+  it('remplit la fiche de son dossier, la banque et le RIB pour qui a l’accès aux données sensibles', async () => {
+    expect(
+      await service.dossierPourLaFiche(sensible, 'domiciliation_bancaire', employes.awa),
+    ).toEqual({
+      civilite: 'madame',
+      prenom: 'Awa',
+      nom: 'Diop',
+      poste: 'Chargée d’études',
+      affectation: unites.dch,
+      contrat: 'cdi',
+      debut: '2018-03-01',
+      banque: 'cbao',
+      rib: RIB,
+    });
+    // Sans l'accès aux données sensibles, la banque et le RIB restent à saisir.
+    expect(
+      await service.dossierPourLaFiche(dch, 'domiciliation_bancaire', employes.awa),
+    ).toMatchObject({ prenom: 'Awa', banque: null, rib: null });
+  });
+
+  it('une décision de disponibilité prend la personne et son affectation, jamais le RIB', async () => {
+    for (const doc of ['decision_disponibilite', 'decision_renouvellement_disponibilite']) {
+      expect(await service.dossierPourLaFiche(sensible, doc, employes.awa)).toMatchObject({
+        civilite: 'madame',
+        poste: 'Chargée d’études',
+        affectation: unites.dch,
+        banque: null,
+        rib: null,
+      });
+    }
+  });
+
+  it('hors de la cible, pour soi, pour un autre document ou sans le droit : refusé', async () => {
+    const refus = (u: SessionUser, doc: string, id: string) =>
+      codeOf(() => service.dossierPourLaFiche(u, doc, id));
+    expect(await refus(dch, 'domiciliation_bancaire', employes.stagiaire)).toBe(
+      'documents.contrat',
+    );
+    expect(await refus(dch, 'domiciliation_bancaire', employes.dch)).toBe(
+      'acces.son_propre_dossier',
+    );
+    expect(await refus(dch, 'contrat_cdd', employes.awa)).toBe('documents.sans_dossier');
+    expect(await refus(agent, 'domiciliation_bancaire', employes.awa)).toBe('auth.forbidden');
+  });
 });
 
 describe('la fiche', () => {

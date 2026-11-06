@@ -8,6 +8,7 @@ import {
   ficheDomiciliationSchema,
   ribGroupe,
   type CodeDeBanque,
+  type DossierPourLaFiche,
 } from '@teranga/contracts';
 import { Button, cn, Field, Input, Select } from '@teranga/ui';
 import { champDeChiffres } from '../lib/chiffres';
@@ -24,7 +25,9 @@ import {
    Ce que la DCH renseigne pour une domiciliation bancaire (ADR-0102) : la
    personne, sa fonction, son contrat et le jour où il a commencé, sa banque
    et le genre de qui la dirige, son RIB, son salaire mensuel net, le jour de
-   sa demande. Tout est obligatoire. Le RIB se saisit deux fois, comme un mot
+   sa demande. Tout est obligatoire. L'agent se choisit d'abord : son dossier
+   remplit la personne, et la banque et le RIB quand il les porte (ADR-0174) ;
+   tout se corrige. Le RIB saisi à la main se saisit deux fois, comme un mot
    de passe : validé, le premier se masque ; le second se tape, sans coller,
    et doit être le même. La domiciliation tient en deux lignes (ADR-0168) :
    la banque, son destinataire et la date de la demande ; puis le RIB, sa
@@ -69,6 +72,30 @@ export const DOMICILIATION_VIDE: SaisieDeLaDomiciliation = {
 
 /** Un RIB : « SN », déjà écrit, puis vingt-deux chiffres. */
 const CHIFFRES_DU_RIB = 22;
+
+/**
+ * La fiche d'un agent choisi, d'après son dossier (ADR-0174) : la personne,
+ * sa fonction et son contrat ; sa banque et son RIB, s'il les porte, sinon
+ * ceux déjà saisis. Un RIB du dossier n'a pas à se retaper : il arrive validé
+ * et confirmé. La demande, le destinataire et le salaire restent à saisir.
+ */
+export function domiciliationDepuisLeDossier(
+  s: SaisieDeLaDomiciliation,
+  d: DossierPourLaFiche,
+): SaisieDeLaDomiciliation {
+  const rib = d.rib?.replace(/^SN/, '');
+  return {
+    ...s,
+    civilite: d.civilite ?? '',
+    prenom: d.prenom,
+    nom: d.nom,
+    poste: d.poste ?? '',
+    debut: d.debut,
+    contrat: d.contrat,
+    banque: d.banque ?? s.banque,
+    ...(rib ? { rib, ribValide: true, confirmation: rib } : {}),
+  };
+}
 
 /**
  * La fiche telle que l'API la valide (`ficheDomiciliationSchema`) : les
@@ -181,10 +208,10 @@ export function FicheDeLaDomiciliation({
             ))}
           </Select>
         </Field>
-        <Field label="Destinataire" htmlFor={`${id}-destinataire`} required>
+        <Field label="Destinataire de la lettre" htmlFor={`${id}-destinataire`} required>
           <Select
             id={`${id}-destinataire`}
-            aria-label="Destinataire"
+            aria-label="Destinataire de la lettre"
             value={valeur.destinataire}
             onChange={(e) =>
               poser({
@@ -201,7 +228,7 @@ export function FicheDeLaDomiciliation({
           </Select>
         </Field>
         <Field
-          label="Date de la demande"
+          label="Date de la demande de domiciliation"
           htmlFor={`${id}-demandeLe`}
           required
           error={erreurs.demandeLe}

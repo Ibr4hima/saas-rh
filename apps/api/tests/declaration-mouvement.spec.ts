@@ -18,6 +18,7 @@ import {
   nomDuDocumentGenere,
 } from '@teranga/contracts';
 import { ProblemException } from '../src/common/problem';
+import { EncryptionService } from '../src/common/encryption.service';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
@@ -133,7 +134,12 @@ const pages = (pdf: Buffer) => (pdf.toString('latin1').match(/\/Type\s*\/Page[^s
 beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   db = new TenantDb();
-  service = new GenerationService(db, new AttestationService(db), new AbsencesService(db));
+  service = new GenerationService(
+    db,
+    new EncryptionService(),
+    new AttestationService(db),
+    new AbsencesService(db),
+  );
 });
 
 afterAll(async () => {

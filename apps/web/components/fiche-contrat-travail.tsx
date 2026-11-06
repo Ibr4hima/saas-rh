@@ -15,7 +15,7 @@ import {
   orgUnitLabel,
   salaireBrut,
 } from '@teranga/contracts';
-import { cn, Field, Input, Select } from '@teranga/ui';
+import { Checkbox, cn, Field, Input, Select } from '@teranga/ui';
 import { api } from '../lib/api';
 import { COUNTRIES } from '../lib/countries';
 import {
@@ -27,17 +27,19 @@ import {
   ChampDuMontant,
   Groupe,
   reglesEnfreintes,
+  SaisieDuMontant,
   SUR_DEUX_COLONNES,
 } from './saisie-de-fiche';
 
 /*
    Ce que la DCH renseigne pour un contrat de travail (ADR-0098) : la personne
    n'est pas encore dans l'application. Son état civil, son emploi, sa
-   rémunération ; tout est obligatoire. La nationalité se choisit dans la
-   liste des pays, le contrat en écrit le gentilé ; l'affectation, dans
-   l'organigramme. Le salaire brut est la somme de ses trois parts. Les
-   champs vont par lignes (ADR-0168) : la personne, sa naissance, sa CNI et
-   sa délivrance, puis son adresse.
+   rémunération ; tout est obligatoire, sauf la prime de transport, que tous
+   n'ont pas : elle se coche, et son montant se saisit alors (ADR-0174). La
+   nationalité se choisit dans la liste des pays, le contrat en écrit le
+   gentilé ; l'affectation, dans l'organigramme. Le salaire brut est la somme
+   de ses parts. Les champs vont par lignes (ADR-0168) : la personne, sa
+   naissance, sa CNI et sa délivrance, puis son adresse.
 */
 
 export type ContratDeTravail = 'contrat_cdd' | 'contrat_cdi';
@@ -63,13 +65,15 @@ export type SaisieDuContrat = {
   categorie: string;
   salaireDeBase: number | null;
   sursalaire: number | null;
+  /** La prime de transport, cochée ou non ; décochée, son montant attend sans compter. */
+  avecPrimeDeTransport: boolean;
   primeDeTransport: number | null;
   treiziemeMois: '' | 'oui' | 'non';
 };
 
 /**
- * La prime de transport la plus courante, en francs CFA par mois : la fiche
- * s'ouvre avec, la DCH la corrige au besoin (ADR-0168).
+ * La prime de transport la plus courante, en francs CFA par mois : cochée,
+ * la prime s'ouvre avec, et la DCH la corrige au besoin (ADR-0168, ADR-0174).
  */
 const PRIME_DE_TRANSPORT_USUELLE = 26_000;
 
@@ -91,6 +95,7 @@ export const CONTRAT_VIDE: SaisieDuContrat = {
   categorie: '',
   salaireDeBase: null,
   sursalaire: null,
+  avecPrimeDeTransport: false,
   primeDeTransport: PRIME_DE_TRANSPORT_USUELLE,
   treiziemeMois: '',
 };
@@ -99,7 +104,8 @@ export const CONTRAT_VIDE: SaisieDuContrat = {
  * La fiche telle que l'API la valide (`ficheCddSchema`, `ficheCdiSchema`) :
  * les blancs ôtés, la catégorie en capitales ; une liste pas encore choisie,
  * un montant pas encore saisi, absents. La durée n'est que d'un contrat à
- * durée déterminée.
+ * durée déterminée. La prime de transport n'y est que cochée ; cochée sans
+ * montant, elle vaut null, et la fiche n'est pas complète.
  */
 export function versLaFicheDuContrat(s: SaisieDuContrat, doc: ContratDeTravail) {
   return {
@@ -120,7 +126,7 @@ export function versLaFicheDuContrat(s: SaisieDuContrat, doc: ContratDeTravail) 
     categorie: s.categorie.trim().toLocaleUpperCase('fr-FR'),
     salaireDeBase: s.salaireDeBase ?? undefined,
     sursalaire: s.sursalaire ?? undefined,
-    primeDeTransport: s.primeDeTransport ?? undefined,
+    primeDeTransport: s.avecPrimeDeTransport ? s.primeDeTransport : undefined,
     treiziemeMois: s.treiziemeMois ? s.treiziemeMois === 'oui' : undefined,
   };
 }
@@ -148,10 +154,11 @@ export function FicheDuContratDeTravail({
   const cdd = doc === 'contrat_cdd';
   const fin =
     cdd && valeur.debut && valeur.duree ? finDuContrat(valeur.debut, Number(valeur.duree)) : null;
-  const { salaireDeBase, sursalaire, primeDeTransport } = valeur;
+  const { salaireDeBase, sursalaire, avecPrimeDeTransport, primeDeTransport } = valeur;
+  const prime = avecPrimeDeTransport ? primeDeTransport : 0;
   const brut =
-    salaireDeBase !== null && sursalaire !== null && primeDeTransport !== null
-      ? salaireBrut({ salaireDeBase, sursalaire, primeDeTransport })
+    salaireDeBase !== null && sursalaire !== null && prime !== null
+      ? salaireBrut({ salaireDeBase, sursalaire, primeDeTransport: prime })
       : null;
   // Les règles des dates, dites sous les champs (ADR-0133).
   const fiche = versLaFicheDuContrat(valeur, doc);
@@ -276,7 +283,7 @@ export function FicheDuContratDeTravail({
         ) : null}
       </Groupe>
 
-      {/* Quatre montants courts : une seule ligne, la prime de transport comprise. */}
+      {/* Quatre champs courts sur une ligne ; la prime de transport, cochée, prend son montant. */}
       <Groupe titre="Renseigner la rémunération" colonnes={4}>
         <ChampDuMontant
           id={`${id}-salaireDeBase`}
@@ -291,12 +298,20 @@ export function FicheDuContratDeTravail({
           zeroPermis
           onSaisir={(montant) => poser({ sursalaire: montant })}
         />
-        <ChampDuMontant
+        <ChampDeLaPrime
           id={`${id}-primeDeTransport`}
-          libelle="Prime de transport"
+          accordee={avecPrimeDeTransport}
           montant={primeDeTransport}
-          zeroPermis
           indication={brut === null ? undefined : `Salaire brut : ${enChiffres(brut)} F CFA`}
+          onCocher={(coche) =>
+            poser({
+              avecPrimeDeTransport: coche,
+              // Effacé puis recoché, le montant revient au montant usuel.
+              ...(coche && primeDeTransport === null
+                ? { primeDeTransport: PRIME_DE_TRANSPORT_USUELLE }
+                : {}),
+            })
+          }
           onSaisir={(montant) => poser({ primeDeTransport: montant })}
         />
         <Field label="Treizième mois" htmlFor={`${id}-treiziemeMois`} required>
@@ -318,5 +333,43 @@ export function FicheDuContratDeTravail({
         </Field>
       </Groupe>
     </>
+  );
+}
+
+/**
+ * La prime de transport, que tous n'ont pas (ADR-0174) : une case la donne,
+ * et son montant se saisit alors à côté d'elle. L'intitulé coche la case.
+ */
+function ChampDeLaPrime({
+  id,
+  accordee,
+  montant,
+  indication,
+  onCocher,
+  onSaisir,
+}: {
+  id: string;
+  accordee: boolean;
+  montant: number | null;
+  indication?: string;
+  onCocher: (coche: boolean) => void;
+  onSaisir: (montant: number | null) => void;
+}) {
+  return (
+    <Field label="Prime de transport" htmlFor={id} required={accordee} hint={indication}>
+      <div className="flex h-9 items-center gap-3">
+        <Checkbox id={id} checked={accordee} onChange={(e) => onCocher(e.target.checked)} />
+        {accordee ? (
+          <div className="min-w-0 flex-1">
+            <SaisieDuMontant
+              id={`${id}-montant`}
+              aria-label="Montant de la prime de transport"
+              montant={montant}
+              onSaisir={onSaisir}
+            />
+          </div>
+        ) : null}
+      </div>
+    </Field>
   );
 }

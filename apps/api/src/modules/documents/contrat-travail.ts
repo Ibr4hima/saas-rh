@@ -235,7 +235,17 @@ export function blocsDuContratDeTravail(
     },
     { type: 'montant', libelle: 'Salaire de base :', montant: f.salaireDeBase, avant: PAS },
     { type: 'montant', libelle: 'Sursalaire :', montant: f.sursalaire, avant: 0 },
-    { type: 'montant', libelle: 'Prime de transport :', montant: f.primeDeTransport, avant: 0 },
+    // Tous n'ont pas de prime de transport : sans elle, le salaire brut s'en passe aussi.
+    ...(f.primeDeTransport === undefined
+      ? []
+      : [
+          {
+            type: 'montant',
+            libelle: 'Prime de transport :',
+            montant: f.primeDeTransport,
+            avant: 0,
+          } as const,
+        ]),
     ...(f.treiziemeMois ? [texte(`Un treizième mois est octroyé à ${nom} en fin d’année.`)] : []),
     texte(
       `${elide('Le poste d', f.poste)} est classé à la ` +

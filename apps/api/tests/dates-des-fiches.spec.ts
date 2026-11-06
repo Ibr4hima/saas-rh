@@ -55,7 +55,6 @@ const contrat = (f: Record<string, unknown> = {}) =>
       categorie: '7A',
       salaireDeBase: 350000,
       sursalaire: 0,
-      primeDeTransport: 0,
       treiziemeMois: true,
       ...f,
     }),

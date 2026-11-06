@@ -4,6 +4,7 @@ import { useEffect, useId, type Dispatch, type SetStateAction } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type {
   DecisionDeDisponibilite,
+  DossierPourLaFiche,
   OrgUnitView,
   PreremplissageDeLaDecision,
 } from '@teranga/contracts';
@@ -35,9 +36,11 @@ import {
    la demande et quand, les dates de la disponibilité, celles des sessions du
    conseil d'administration qui ont nommé à la direction générale et à la
    direction générale adjointe, que l'organisation propose (ADR-0123). Tout
-   est obligatoire. Le renouvellement y ajoute l'affectation, la période
-   fixée d'abord et la durée de sa prorogation : la date de reprise s'en
-   déduit, et se corrige.
+   est obligatoire. L'agent se choisit d'abord : son dossier remplit la
+   demande, la personne, son poste et son affectation (ADR-0174) ; tout se
+   corrige. Le renouvellement y ajoute l'affectation, la période fixée
+   d'abord et la durée de sa prorogation : la date de reprise s'en déduit, et
+   se corrige.
 */
 
 /** La fiche telle qu'elle se tape ; une date, au format AAAA-MM-JJ. */
@@ -99,6 +102,25 @@ export function versLaFicheDeLaDecision(s: SaisieDeLaDecision, doc: DecisionDeDi
         initialementAu: s.initialementAu,
         duree: s.duree ? Number(s.duree) : undefined,
       };
+}
+
+/**
+ * La fiche d'un agent choisi, d'après son dossier (ADR-0174) : la personne,
+ * son poste et son affectation. Les dates de la demande restent à saisir ;
+ * celles du conseil d'administration, de l'organisation, restent.
+ */
+export function decisionDepuisLeDossier(
+  s: SaisieDeLaDecision,
+  d: DossierPourLaFiche,
+): SaisieDeLaDecision {
+  return {
+    ...s,
+    civilite: d.civilite ?? '',
+    prenom: d.prenom,
+    nom: d.nom,
+    poste: d.poste ?? '',
+    affectation: d.affectation ?? '',
+  };
 }
 
 /**
@@ -206,7 +228,11 @@ export function FicheDeLaDecision({
   // date ouvre celle de la disponibilité, avant la période initiale (ADR-0168).
   const demandeLe = (
     <Field
-      label="Date de la demande"
+      label={
+        renouvellement
+          ? 'Date de la demande de renouvellement'
+          : 'Date de la demande de disponibilité'
+      }
       htmlFor={`${id}-demandeLe`}
       required
       error={erreurs.demandeLe}

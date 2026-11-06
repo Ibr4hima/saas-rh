@@ -360,6 +360,43 @@ export function ChampDeLaDuree({
   );
 }
 
+/** La saisie d'un montant en francs CFA : les milliers séparés à la frappe, l'unité au bout. */
+export function SaisieDuMontant({
+  id,
+  montant,
+  zeroPermis = false,
+  onSaisir,
+  'aria-label': libelle,
+  'aria-describedby': decrit,
+}: {
+  id: string;
+  montant: number | null;
+  /** Zéro se saisit : un sursalaire peut être nul. */
+  zeroPermis?: boolean;
+  onSaisir: (montant: number | null) => void;
+  'aria-label'?: string;
+  'aria-describedby'?: string;
+}) {
+  const champ = champDuMontant(montant, onSaisir, { zeroPermis });
+  return (
+    <div className="relative">
+      <Input
+        {...champ}
+        id={id}
+        aria-label={libelle}
+        aria-describedby={decrit}
+        className={cn(CADRE, 'pr-14 tabular-nums')}
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-[11.5px] font-semibold text-ink-muted"
+      >
+        FCFA
+      </span>
+    </div>
+  );
+}
+
 /** Un montant en francs CFA, les milliers séparés à la frappe. */
 export function ChampDuMontant({
   id,
@@ -377,18 +414,9 @@ export function ChampDuMontant({
   indication?: string;
   onSaisir: (montant: number | null) => void;
 }) {
-  const champ = champDuMontant(montant, onSaisir, { zeroPermis });
   return (
     <Field label={libelle} htmlFor={id} required hint={indication}>
-      <div className="relative">
-        <Input {...champ} id={id} className={cn(CADRE, 'pr-14 tabular-nums')} />
-        <span
-          aria-hidden
-          className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-[11.5px] font-semibold text-ink-muted"
-        >
-          FCFA
-        </span>
-      </div>
+      <SaisieDuMontant id={id} montant={montant} zeroPermis={zeroPermis} onSaisir={onSaisir} />
     </Field>
   );
 }

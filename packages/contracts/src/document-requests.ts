@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { TraitementView } from './acces';
-import { CODES_DES_BANQUES } from './banques';
+import { CODES_DES_BANQUES, type CodeDeBanque } from './banques';
 import {
   aujourdhuiIso,
   avantAujourdhuiSchema,
@@ -296,8 +296,8 @@ export type DocumentSansAgent = (typeof DOCS_SANS_AGENT)[number];
 export const sansAgent = (doc: string): doc is DocumentSansAgent =>
   (DOCS_SANS_AGENT as readonly string[]).includes(doc);
 
-/** Un stage dure au plus deux ans. */
-export const DUREE_DE_STAGE_MAX = 24;
+/** Un stage dure de un à six mois (ADR-0174). */
+export const DUREE_DE_STAGE_MAX = 6;
 
 /**
  * Un prénom, un nom, un lieu ou une adresse, la première lettre de chaque mot
@@ -462,8 +462,8 @@ export const DUREE_DE_CDD_MAX = 24;
 /**
  * Ce que la DCH renseigne pour un contrat de travail (ADR-0098) : la
  * personne, qui n'est pas encore dans l'application, son emploi et sa
- * rémunération. Tout est obligatoire ; le contrat à durée déterminée y
- * ajoute sa durée.
+ * rémunération. Tout est obligatoire, sauf la prime de transport, que tous
+ * n'ont pas (ADR-0174) ; le contrat à durée déterminée y ajoute sa durée.
  */
 const ficheDuContratDeTravail = z.object({
   civilite: z.enum(['madame', 'monsieur']),
@@ -485,10 +485,11 @@ const ficheDuContratDeTravail = z.object({
   debut: z.iso.date(),
   /** La catégorie du poste dans la convention collective. */
   categorie: z.string().trim().min(1).max(CATEGORIE_MAX),
-  /** Les trois parts du salaire brut mensuel, en francs CFA. */
+  /** Les parts du salaire brut mensuel, en francs CFA. */
   salaireDeBase: z.number().int().min(1).max(SALAIRE_MAX),
   sursalaire: z.number().int().min(0).max(SALAIRE_MAX),
-  primeDeTransport: z.number().int().min(0).max(SALAIRE_MAX),
+  /** Absente, pas de prime de transport : le contrat n'en dit rien. */
+  primeDeTransport: z.number().int().min(1).max(SALAIRE_MAX).optional(),
   /** Un treizième mois en fin d'année, ou non. */
   treiziemeMois: z.boolean(),
 });
@@ -506,12 +507,12 @@ export type FicheCdd = z.infer<typeof ficheCddSchema>;
 export const ficheDuContratSchema = (doc: 'contrat_cdd' | 'contrat_cdi') =>
   doc === 'contrat_cdd' ? ficheCddSchema : ficheCdiSchema;
 
-/** Le salaire brut mensuel : la base, le sursalaire et la prime de transport. */
+/** Le salaire brut mensuel : la base, le sursalaire et la prime de transport, s'il y en a une. */
 export const salaireBrut = (f: {
   salaireDeBase: number;
   sursalaire: number;
-  primeDeTransport: number;
-}) => f.salaireDeBase + f.sursalaire + f.primeDeTransport;
+  primeDeTransport?: number;
+}) => f.salaireDeBase + f.sursalaire + (f.primeDeTransport ?? 0);
 
 /**
  * Ce que la DCH renseigne pour une décision de disponibilité (ADR-0100) : qui
@@ -675,6 +676,28 @@ export const ficheDomiciliationSchema = z
   .strict()
   .superRefine((f, ctx) => poser(ctx, datesDeLaDomiciliation(f)));
 export type FicheDomiciliation = z.infer<typeof ficheDomiciliationSchema>;
+
+/**
+ * Ce que le dossier d'un agent donne d'avance à la fiche d'une domiciliation
+ * ou d'une décision de disponibilité (ADR-0174) : l'état civil, le poste et
+ * l'unité en cours, le contrat qui fait foi et son premier jour ; pour une
+ * domiciliation seulement, la banque et le RIB, à qui a l'accès aux données
+ * sensibles (ADR-0158). Null : le dossier ne le porte pas, ou ne le montre
+ * pas.
+ */
+export interface DossierPourLaFiche {
+  civilite: 'madame' | 'monsieur' | null;
+  prenom: string;
+  nom: string;
+  poste: string | null;
+  /** L'unité de l'organigramme du poste en cours. */
+  affectation: string | null;
+  contrat: 'cdd' | 'cdi';
+  debut: string;
+  banque: CodeDeBanque | null;
+  /** « SN », puis vingt-deux chiffres. */
+  rib: string | null;
+}
 
 /**
  * Un RIB tel qu'il s'imprime : « SN012 01001 036123456789 54 », le code de la

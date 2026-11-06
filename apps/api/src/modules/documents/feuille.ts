@@ -136,6 +136,32 @@ export function nouvelleFeuille({
     if (doc.y + hauteur > bas()) doc.addPage();
   };
 
+  /**
+   * La date de l'en-tête attend ce qui la suit : l'émetteur qui vient juste
+   * après la pose à mi-chemin entre le numéro et sa propre ligne ; tout autre
+   * bloc, à sa place, une ligne blanche sous le numéro (ADR-0175).
+   */
+  let dateEnAttente: {
+    /** La ligne de base du numéro, et la hauteur de ses capitales. */
+    numero: number;
+    capitales: number;
+    poser: (base?: number) => void;
+  } | null = null;
+  const poserLaDate = (base?: number) => {
+    const date = dateEnAttente;
+    dateEnAttente = null;
+    if (!date) return;
+    // Écrire déplace le curseur de pdfkit : la suite garde sa place.
+    const y = doc.y;
+    date.poser(base);
+    doc.y = y;
+  };
+  /** La hauteur des capitales de la police courante, à son corps. */
+  const hauteurDesCapitales = () => {
+    const f = doc as unknown as { _font: { capHeight: number }; _fontSize: number };
+    return (f._font.capHeight / 1000) * f._fontSize;
+  };
+
   return {
     doc,
     L,
@@ -148,9 +174,10 @@ export function nouvelleFeuille({
     /**
      * L'en-tête : le papier de la charte, puis, à droite sous le logo, le
      * numéro de l'acte, laissé en pointillés pour qu'on le porte à la main,
-     * et, un blanc plus bas, le lieu et la date, comme sur le courrier de la
-     * charte. Les deux lignes partagent leur bord gauche, et la plus longue
-     * finit sur la marge.
+     * et le lieu et la date, comme sur le courrier de la charte : à égale
+     * distance du numéro et de l'émetteur qui suit, sinon une ligne blanche
+     * sous le numéro (ADR-0175). Les deux lignes partagent leur bord gauche,
+     * et la plus longue finit sur la marge.
      */
     entete({ reference, lieuEtDate }: { reference: string; lieuEtDate: string }) {
       dessinerEnTete(doc, { logo });
@@ -178,9 +205,14 @@ export function nouvelleFeuille({
         .stroke()
         .undash();
       ecrire(reference, xBlanc + BLANC + 3, base);
-      // Plus bas qu'une ligne suivante : un blanc détache la date du numéro.
+      // Sa place sans émetteur : un blanc la détache du numéro. La suite se
+      // place d'après elle, que l'émetteur la déplace ou non.
       const date = base + 22;
-      ecrire(lieuEtDate, x, date);
+      dateEnAttente = {
+        numero: base,
+        capitales: hauteurDesCapitales(),
+        poser: (ici = date) => ecrire(lieuEtDate, x, ici),
+      };
       doc.y = date + TAILLE * 0.4;
     },
 
@@ -197,6 +229,7 @@ export function nouvelleFeuille({
      * soient les coupures du modèle (« \n »).
      */
     titre(texte: string, { avant = 34, taille = 20 }: { avant?: number; taille?: number } = {}) {
+      poserLaDate();
       doc.y += avant;
       const ESPACEMENT = 0.3;
       const anton = police(doc, 'normal', 'anton');
@@ -303,6 +336,20 @@ export function nouvelleFeuille({
         .font(police(doc, 'bold', f))
         .fontSize(taille)
         .fillColor(ENCRE);
+      if (dateEnAttente) {
+        // L'émetteur juste sous l'en-tête : la date à mi-chemin, autant de
+        // blanc entre le numéro et elle qu'entre elle et l'émetteur, de la
+        // ligne de base au haut des capitales.
+        const { numero, capitales } = dateEnAttente;
+        const fonte = (doc as unknown as { _font: { ascender: number } })._font;
+        const baseDuTimbre = doc.y + (fonte.ascender / 1000) * taille;
+        const date = (numero + baseDuTimbre - hauteurDesCapitales() + capitales) / 2;
+        poserLaDate(date);
+        doc
+          .font(police(doc, 'bold', f))
+          .fontSize(taille)
+          .fillColor(ENCRE);
+      }
       const x = align === 'center' ? MARGE + (L - doc.widthOfString(texte)) / 2 : MARGE + retrait;
       doc.text(texte, x, doc.y, { lineBreak: false });
       doc.y += doc.currentLineHeight(true);
@@ -352,6 +399,7 @@ export function nouvelleFeuille({
         align?: 'justify' | 'left' | 'right' | 'center';
       } = {},
     ) {
+      poserLaDate();
       doc.y += avant;
       const largeurUtile = L - retrait - retraitDroit;
       const mesurer = (texte: string, gras: boolean, italique = false) =>
@@ -726,6 +774,10 @@ export function nouvelleFeuille({
      */
     terminer(): Promise<Buffer> {
       const pages = doc.bufferedPageRange();
+      if (dateEnAttente) {
+        doc.switchToPage(pages.start);
+        poserLaDate();
+      }
       for (let i = 0; pied && i < pages.count; i++) {
         doc.switchToPage(pages.start + i);
         // Écrire dans la marge du bas sans ouvrir de page : la marge est

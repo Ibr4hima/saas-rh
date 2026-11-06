@@ -1,18 +1,23 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type {
   AgentDeLaCible,
+  DocumentAChoixDAgent,
   DocumentAvecAgent,
   DocumentGenere,
+  DossierPourLaFiche,
+  FicheDepuisLeDossier,
   Saisie,
   StageAuDossier,
 } from '@teranga/contracts';
 import {
   CATEGORIE_MAX,
+  CIBLES_DES_CHOIX,
   CIBLES_DES_DOCUMENTS,
   datesEnfreintes,
+  depuisLeDossier,
   estGenere,
   finDeDisponibiliteAuPlusTard,
   ficheDeclarationMouvementSchema,
@@ -55,6 +60,7 @@ import {
 } from '../../../components/fiche-declaration-mouvement';
 import {
   DECISION_VIDE,
+  decisionDepuisLeDossier,
   FicheDeLaDecision,
   usePreremplissageDeLaDecision,
   versLaFicheDeLaDecision,
@@ -62,6 +68,7 @@ import {
 } from '../../../components/fiche-decision-disponibilite';
 import {
   DOMICILIATION_VIDE,
+  domiciliationDepuisLeDossier,
   FicheDeLaDomiciliation,
   versLaFicheDeLaDomiciliation,
   type SaisieDeLaDomiciliation,
@@ -211,6 +218,13 @@ export default function GenererDesDocumentsPage() {
   const [declaration, setDeclaration] = useState<SaisieDeLaDeclaration>(DECLARATION_VIDE);
   // Ce que « Valider » a retenu ; null tant que le préremplissage est ouvert.
   const [validation, setValidation] = useState<Validation | null>(null);
+  // L'agent choisi pour une fiche que son dossier préremplit (ADR-0174) : pour
+  // la domiciliation, et pour les décisions, qui partagent leur fiche.
+  const [agentDeLaDomiciliation, setAgentDeLaDomiciliation] = useState<AgentDeLaCible | null>(null);
+  const [agentDeLaDecision, setAgentDeLaDecision] = useState<AgentDeLaCible | null>(null);
+  const [erreurDuDossier, setErreurDuDossier] = useState<string | null>(null);
+  // Le dernier agent demandé : une réponse en retard ne remplit pas la fiche d'un autre.
+  const dossierAttendu = useRef<string | null>(null);
 
   const sansLAgent = choisi !== null && sansAgent(choisi);
   const avecAgent: DocumentAvecAgent | null = choisi !== null && !sansAgent(choisi) ? choisi : null;
@@ -225,6 +239,51 @@ export default function GenererDesDocumentsPage() {
       ? choisi
       : null;
   usePreremplissageDeLaDecision(deDisponibilite, setDisponibilite);
+  const deLaFiche = choisi !== null && depuisLeDossier(choisi) ? choisi : null;
+  const agentDeLaFiche =
+    deLaFiche === 'domiciliation_bancaire'
+      ? agentDeLaDomiciliation
+      : deLaFiche
+        ? agentDeLaDecision
+        : null;
+  /**
+   * L'agent choisi remplit la fiche de son dossier. Pour un autre agent que
+   * le précédent, la fiche repart de zéro : sa demande n'est pas la même ;
+   * les sessions du conseil d'administration, de l'organisation, restent.
+   */
+  const choisirPourLaFiche = async (doc: FicheDepuisLeDossier, a: AgentDeLaCible) => {
+    const domiciliationChoisie = doc === 'domiciliation_bancaire';
+    const precedent = domiciliationChoisie ? agentDeLaDomiciliation : agentDeLaDecision;
+    const autre = precedent !== null && precedent.id !== a.id;
+    (domiciliationChoisie ? setAgentDeLaDomiciliation : setAgentDeLaDecision)(a);
+    setErreurDuDossier(null);
+    dossierAttendu.current = a.id;
+    try {
+      const d = await api<DossierPourLaFiche>(`/documents/generer/${doc}/agents/${a.id}/fiche`);
+      if (dossierAttendu.current !== a.id) return;
+      if (domiciliationChoisie) {
+        setDomiciliation((s) => domiciliationDepuisLeDossier(autre ? DOMICILIATION_VIDE : s, d));
+      } else {
+        setDisponibilite((s) =>
+          decisionDepuisLeDossier(
+            autre
+              ? {
+                  ...DECISION_VIDE,
+                  pvDirectionGeneraleLe: s.pvDirectionGeneraleLe,
+                  pvDirectionGeneraleAdjointeLe: s.pvDirectionGeneraleAdjointeLe,
+                }
+              : s,
+            d,
+          ),
+        );
+      }
+    } catch (e) {
+      if (dossierAttendu.current !== a.id) return;
+      setErreurDuDossier(
+        e instanceof ApiError ? e.message : 'Le dossier de l’agent n’a pas pu être lu',
+      );
+    }
+  };
   // La fiche du document sans agent, telle qu'elle partira à l'API.
   const ficheSansAgent = deTravail
     ? versLaFicheDuContrat(contrat, deTravail)
@@ -262,7 +321,7 @@ export default function GenererDesDocumentsPage() {
   const pret =
     choisi !== null &&
     (sansLAgent
-      ? fiche.success
+      ? fiche.success && (deLaFiche === null || agentDeLaFiche !== null)
       : agent !== null &&
         demandees.every((s) => remplie(courantes, s)) &&
         Object.keys(erreursDesDates).length === 0 &&
@@ -332,6 +391,21 @@ export default function GenererDesDocumentsPage() {
           onValider={valider}
           onModifier={() => setValidation(null)}
         >
+          {deLaFiche ? (
+            // L'agent d'abord : son dossier remplit la fiche (ADR-0174).
+            <Choix titre="Sélectionner l’agent">
+              <ChoixDeLAgent
+                key={deLaFiche}
+                id={`${id}-agent`}
+                doc={deLaFiche}
+                agent={agentDeLaFiche}
+                onChoisir={(a) => void choisirPourLaFiche(deLaFiche, a)}
+              />
+              {erreurDuDossier ? (
+                <p className="mt-1 text-xs text-danger">{erreurDuDossier}</p>
+              ) : null}
+            </Choix>
+          ) : null}
           {choisi === 'contrat_stage' ? (
             <FicheDuStagiaire valeur={stagiaire} onChange={setStagiaire} />
           ) : null}
@@ -339,7 +413,12 @@ export default function GenererDesDocumentsPage() {
             <FicheDuContratDeTravail doc={deTravail} valeur={contrat} onChange={setContrat} />
           ) : null}
           {choisi === 'domiciliation_bancaire' ? (
-            <FicheDeLaDomiciliation valeur={domiciliation} onChange={setDomiciliation} />
+            <FicheDeLaDomiciliation
+              // Un autre agent : le RIB repart de sa propre saisie.
+              key={agentDeLaDomiciliation?.id ?? 'aucun'}
+              valeur={domiciliation}
+              onChange={setDomiciliation}
+            />
           ) : null}
           {choisi === 'declaration_mouvement' ? (
             <FicheDeLaDeclaration valeur={declaration} onChange={setDeclaration} />
@@ -490,7 +569,7 @@ function ChoixDeLAgent({
 }: {
   /** L'identifiant du champ, que son intitulé désigne. */
   id: string;
-  doc: DocumentAvecAgent;
+  doc: DocumentAChoixDAgent;
   agent: AgentDeLaCible | null;
   onChoisir: (a: AgentDeLaCible) => void;
 }) {
@@ -532,7 +611,7 @@ function ChoixDeLAgent({
     if (i >= 0) setCourant(i);
   }, [ouverte, cherche, agent, resultats.data]);
   // Les dossiers inactifs se signalent quand la cible les mêle aux autres.
-  const mele = CIBLES_DES_DOCUMENTS[doc].dossiers === 'tous';
+  const mele = CIBLES_DES_CHOIX[doc].dossiers === 'tous';
 
   const remettre = () => setTexte(agent ? nomDe(agent) : '');
   const choisir = (a: AgentDeLaCible | undefined) => {
