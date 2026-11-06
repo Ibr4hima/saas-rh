@@ -32,6 +32,7 @@ import type { Passage } from '../src/modules/documents/feuille';
 import { GenerationService } from '../src/modules/documents/generation.service';
 import type { Personne } from '../src/modules/documents/redaction';
 import { AbsencesService } from '../src/modules/time/absences.service';
+import { policesDe } from './lecture-pdf';
 
 const env = loadEnv();
 const tenantId = randomUUID();
@@ -384,9 +385,10 @@ describe('la génération', () => {
     expect(filename).toBe('domiciliation-bancaire-DIOP-Awa.pdf');
     expect(filename).toBe(nomDuDocumentGenere('domiciliation_bancaire', 'DIOP-Awa'));
     expect(pages(pdf)).toBe(1);
-    const brut = pdf.toString('latin1');
-    expect(/\/BaseFont \/[A-Z]{6}\+(Arimo|Arial)/.test(brut)).toBe(true);
-    expect(/\/BaseFont \/[A-Z]{6}\+(ComicRelief|ComicSans)/.test(brut)).toBe(true);
+    // Les polices de la charte (ADR-0173) : Raleway, le pied de page en Exo.
+    const polices = policesDe(pdf);
+    expect(polices).toContain('Raleway-Regular');
+    expect(polices).toContain('Exo-Regular');
   });
 
   it('la banque au nom le plus long, une directrice générale : toujours une page', async () => {

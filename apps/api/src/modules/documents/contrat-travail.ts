@@ -14,7 +14,7 @@ import type { Tx } from '../../db/tenant-db';
 import type { ModeleSansAgent } from './contrat-stage';
 import { quiDirigeLeSommet, uniteDAffectation, type Unite } from './dossier';
 import { ENTETE } from './entete';
-import { nouvelleFeuille, type Passage } from './feuille';
+import { nouvelleFeuille, surSesPages, type Passage } from './feuille';
 import {
   A_REMPLIR,
   accords,
@@ -28,8 +28,8 @@ import {
 
 /*
  * Les contrats de travail à durée déterminée et indéterminée, sur le modèle
- * de l'APIX (ADR-0098) : quatre pages en Times New Roman, les parties, neuf
- * articles et les signatures. La personne n'est pas encore dans
+ * de l'APIX (ADR-0098) : quatre pages, les parties, neuf articles et les
+ * signatures, au papier et aux polices de la charte (ADR-0173). La personne n'est pas encore dans
  * l'application : la DCH la renseigne, avec son emploi et sa rémunération.
  * Qui représente l'APIX dirige la direction générale. Les deux modèles fournis
  * portent le même texte : la durée, déterminée ou non, fait la différence.
@@ -319,63 +319,77 @@ function enteteDArticle(b: { numero: number; titres: string[] }): Passage[] {
   ];
 }
 
+/**
+ * Les pages du modèle. Ses deux sauts de page en font trois parties, mais les
+ * articles, la troisième, courent sur deux pages.
+ */
+const PAGES_DU_MODELE = 4;
+
 /** Le contrat en PDF : l'en-tête de la République en première page, le pied de l'APIX sur chacune. */
 export function pdfDuContratDeTravail(
   blocs: readonly BlocDuContratDeTravail[],
   { logo }: { logo?: string | null } = {},
 ): Promise<Buffer> {
-  const feuille = nouvelleFeuille({ titre: 'Contrat de travail', famille: 'times', logo });
-  const { doc } = feuille;
-  // Le corps du modèle : 12 points, en retrait de 18 sur la marge.
-  const corps = { taille: 12, pas: PAS, retrait: 18 };
-  feuille.blocRepublique();
-  feuille.titreCadre('CONTRAT DE TRAVAIL', { avant: 46 });
-  for (const b of blocs) {
-    if (b.type === 'paragraphe') {
-      feuille.paragraphe(b.passages, {
-        ...corps,
-        avant: b.avant,
-        pas: b.pas ?? PAS,
-        align: b.align,
-      });
-    } else if (b.type === 'tiret') {
-      feuille.paragraphe(b.passages, {
-        ...corps,
-        avant: b.avant,
-        retrait: 36,
-        puce: '-',
-        puceA: 18,
-      });
-    } else if (b.type === 'rubrique' || b.type === 'article') {
-      // Un intitulé ne reste pas seul en bas de page : il part avec la ligne qui le suit.
-      doc.y += b.avant;
-      feuille.place(PAS * 3);
-      if (b.type === 'article') feuille.paragraphe(enteteDArticle(b), corps);
-      else {
-        feuille.paragraphe([{ texte: insecable(b.texte), gras: true, souligne: true }], {
+  // Le modèle était en Times New Roman 12. Raleway, plus large, s'imprime en
+  // 11, et chaque interligne du modèle à la même échelle : les pages tombent
+  // aux mêmes endroits, avec le même air (ADR-0173). Un contrat qui
+  // déborderait de ses quatre pages se resserre, le corps d'abord
+  // (`surSesPages`).
+  return surSesPages(PAGES_DU_MODELE, ({ corps: taille, espaces }) => {
+    const feuille = nouvelleFeuille({ titre: 'Contrat de travail', logo });
+    const { doc } = feuille;
+    const k = taille / 12;
+    // Le corps du modèle, en retrait de 18 sur la marge.
+    const corps = { taille, pas: PAS * k, retrait: 18 };
+    feuille.blocRepublique();
+    feuille.titre('CONTRAT DE TRAVAIL', { avant: 30 });
+    for (const b of blocs) {
+      if (b.type === 'paragraphe') {
+        feuille.paragraphe(b.passages, {
           ...corps,
+          avant: b.avant * k * espaces,
+          pas: (b.pas ?? PAS) * k,
+          align: b.align,
+        });
+      } else if (b.type === 'tiret') {
+        feuille.paragraphe(b.passages, {
+          ...corps,
+          avant: b.avant * k * espaces,
           retrait: 36,
-          puce: '•',
+          puce: '-',
           puceA: 18,
         });
+      } else if (b.type === 'rubrique' || b.type === 'article') {
+        // Un intitulé ne reste pas seul en bas de page : il part avec la ligne qui le suit.
+        doc.y += b.avant * k * espaces;
+        feuille.place(PAS * k * 3);
+        if (b.type === 'article') feuille.paragraphe(enteteDArticle(b), corps);
+        else {
+          feuille.paragraphe([{ texte: insecable(b.texte), gras: true, souligne: true }], {
+            ...corps,
+            retrait: 36,
+            puce: '•',
+            puceA: 18,
+          });
+        }
+      } else if (b.type === 'montant') {
+        feuille.ligneAColonne(b.libelle, `${enChiffres(b.montant)} F CFA`, {
+          avant: b.avant * k * espaces,
+          taille,
+          pas: PAS * k,
+          puce: '•',
+          puceA: 36,
+          retrait: 54,
+          colonne: 189,
+        });
+      } else if (b.type === 'saut') {
+        feuille.sautDePage();
+      } else {
+        feuille.signatures(b.gauche, b.droite, { avant: 13 * k, espace: 72, taille });
       }
-    } else if (b.type === 'montant') {
-      feuille.ligneAColonne(b.libelle, `${enChiffres(b.montant)} F CFA`, {
-        avant: b.avant,
-        taille: 12,
-        pas: PAS,
-        puce: '•',
-        puceA: 36,
-        retrait: 54,
-        colonne: 189,
-      });
-    } else if (b.type === 'saut') {
-      feuille.sautDePage();
-    } else {
-      feuille.signatures(b.gauche, b.droite, { avant: 13, espace: 72, taille: 12 });
     }
-  }
-  return feuille.terminer();
+    return feuille;
+  });
 }
 
 /** La fiche, validée selon le contrat : la durée, pour un contrat à durée déterminée. */

@@ -1,9 +1,11 @@
 /**
- * Les polices des documents (ADR-0090) : Arial, Times New Roman pour les
- * contrats de travail (ADR-0098), et Comic Sans MS pour ce que les modèles de
- * l'APIX écrivent avec elle. Leur licence interdisant de les versionner,
- * Arimo, Tinos et Comic Relief tiennent leur place, aux mêmes chasses.
- * Google Sans reste celle du certificat d'APIX Academy.
+ * Les polices des documents. Ceux de la DCH suivent la charte de l'APIX de
+ * 2026 (ADR-0173) : Raleway pour le texte, Anton pour les titres, Exo et les
+ * pictogrammes de Material Symbols pour le pied de page, toutes libres et
+ * versionnées. Arial (ADR-0090) et Times New Roman (ADR-0098) restent celles
+ * de la déclaration de mouvement et des grilles d'évaluation : leur licence
+ * interdisant de les versionner, Arimo et Tinos tiennent leur place, aux
+ * mêmes chasses. Google Sans reste celle du certificat d'APIX Academy.
  */
 import PDFDocument from 'pdfkit';
 import { describe, expect, it } from 'vitest';
@@ -12,18 +14,22 @@ import {
   textesDeLAttestation,
 } from '../src/modules/documents/attestation.service';
 import { enregistrerPolices, police } from '../src/modules/documents/entete';
+import { policesDe } from './lecture-pdf';
 
-describe('Arial', () => {
-  it('est la police par défaut, dans ses quatre coupes', () => {
+describe('Raleway', () => {
+  it('est la police par défaut, dans ses quatre coupes et les graisses du bloc de la République', () => {
     const doc = new PDFDocument();
     enregistrerPolices(doc);
-    expect(police(doc, 'normal')).toBe('arial-normal');
-    expect(police(doc, 'bold')).toBe('arial-bold');
-    expect(police(doc, 'italic')).toBe('arial-italic');
-    expect(police(doc, 'bold-italic')).toBe('arial-bold-italic');
+    expect(police(doc, 'normal')).toBe('raleway-normal');
+    expect(police(doc, 'bold')).toBe('raleway-bold');
+    expect(police(doc, 'italic')).toBe('raleway-italic');
+    expect(police(doc, 'bold-italic')).toBe('raleway-bold-italic');
+    expect(police(doc, 'normal', 'raleway-light')).toBe('raleway-light-normal');
+    expect(police(doc, 'normal', 'raleway-medium')).toBe('raleway-medium-normal');
+    expect(police(doc, 'normal', 'raleway-semibold')).toBe('raleway-semibold-normal');
   });
 
-  it('écrit l’attestation de travail, en-tête et pied de page compris ; Comic Sans MS, son timbre', async () => {
+  it('écrit l’attestation de travail ; Anton, son titre ; Exo et les pictogrammes, son pied de page', async () => {
     const pdf = await pdfDeLAttestation(
       textesDeLAttestation(
         {
@@ -38,28 +44,34 @@ describe('Arial', () => {
       ),
       { logo: null },
     );
-    const polices = new Set(
-      (pdf.toString('latin1').match(/\/BaseFont \/[A-Z]{6}\+[\w-]+/g) ?? []).map((p) =>
-        p.replace(/^.*\+/, ''),
-      ),
-    );
-    // Arimo dans le dépôt ; Arial là où l'exploitant l'a déposée.
-    expect([...polices].filter((p) => !/^(Arimo|Arial|ComicRelief|ComicSansMS)/.test(p))).toEqual(
-      [],
-    );
-    expect([...polices].some((p) => /^(Arimo|Arial)-Bold/.test(p))).toBe(true);
-    expect([...polices].some((p) => /^Comic(Relief|SansMS)-Bold/.test(p))).toBe(true);
+    const polices = [...policesDe(pdf)];
+    expect(polices.filter((p) => !/^(Raleway|Anton|Exo|MaterialSymbols)/.test(p))).toEqual([]);
+    for (const attendue of ['Raleway-Regular', 'Raleway-Bold', 'Anton-Regular', 'Exo-Regular']) {
+      expect(polices).toContain(attendue);
+    }
+    expect(polices.some((p) => p.startsWith('MaterialSymbols'))).toBe(true);
   });
 });
 
 describe('Times New Roman', () => {
-  it('a ses quatre coupes, celles des contrats de travail', () => {
+  it('a ses quatre coupes, celles de la déclaration de mouvement et des grilles', () => {
     const doc = new PDFDocument();
     enregistrerPolices(doc);
     expect(police(doc, 'normal', 'times')).toBe('times-normal');
     expect(police(doc, 'bold', 'times')).toBe('times-bold');
     expect(police(doc, 'italic', 'times')).toBe('times-italic');
     expect(police(doc, 'bold-italic', 'times')).toBe('times-bold-italic');
+  });
+});
+
+describe('Arial', () => {
+  it('a ses quatre coupes, celles des grilles d’évaluation', () => {
+    const doc = new PDFDocument();
+    enregistrerPolices(doc);
+    expect(police(doc, 'normal', 'arial')).toBe('arial-normal');
+    expect(police(doc, 'bold', 'arial')).toBe('arial-bold');
+    expect(police(doc, 'italic', 'arial')).toBe('arial-italic');
+    expect(police(doc, 'bold-italic', 'arial')).toBe('arial-bold-italic');
   });
 });
 
@@ -72,22 +84,13 @@ describe('Google Sans', () => {
   });
 });
 
-describe('Comic Sans MS', () => {
-  it('a son romain et son gras ; une italique absente reste dans la famille', () => {
-    const doc = new PDFDocument();
-    enregistrerPolices(doc);
-    expect(police(doc, 'normal', 'comic')).toBe('comic-normal');
-    expect(police(doc, 'bold', 'comic')).toBe('comic-bold');
-    expect(police(doc, 'italic', 'comic')).toMatch(/^comic-/);
-  });
-});
-
 describe('à défaut', () => {
   it('une coupe absente cède la place à sa voisine de la même famille', () => {
     const doc = new PDFDocument();
     enregistrerPolices(doc);
-    // Google Sans n'a pas de gras italique dans le dépôt.
+    // Google Sans n'a pas de gras italique dans le dépôt ; Anton, que son romain.
     expect(police(doc, 'bold-italic', 'google-sans')).toBe('google-sans-bold');
+    expect(police(doc, 'italic', 'anton')).toBe('anton-normal');
   });
 
   it('sans fichiers, Helvetica', () => {

@@ -343,9 +343,9 @@ a{text-decoration:none}
 </style>
 <!--[if mso]><style>body,table,td,a,p,div,h1{font-family:'Segoe UI',Arial,sans-serif !important}</style><![endif]-->
 </head>
-<body style="margin:0;padding:0;background-color:#f3f6fa">
+<body style="margin:0;padding:0;background-color:#f5f7f9">
 <div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all">${echapper(o.apercu)}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f3f6fa" style="background-color:#f3f6fa">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f5f7f9" style="background-color:#f5f7f9">
 <tr><td align="center" class="cadre" style="padding:32px 16px 28px">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px">
 <tr><td class="tete" align="center" style="padding:0 28px">

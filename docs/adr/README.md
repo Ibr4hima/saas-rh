@@ -91,19 +91,19 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0083](0083-anciennete-du-contrat-en-cours.md)        | L'ancienneté est celle du contrat en cours ; le stage n'en donne pas                    | acceptée                                    |
 | [0084](0084-documents-de-la-dch.md)                   | La liste des documents à demander est celle de la DCH                                   | acceptée, précisée par 0085 et 0114         |
 | [0085](0085-generer-des-documents.md)                 | Générer des documents : qui dirige la DCH, à sa guise, sur les modèles de l'APIX        | acceptée, précisée 5 fois, de 0086 à 0130   |
-| [0086](0086-modeles-de-l-apix.md)                     | Les documents de la DCH sur les modèles de l'APIX : sections composées, Google Sans     | acceptée, précisée par 0087, 0089, 0090     |
+| [0086](0086-modeles-de-l-apix.md)                     | Les documents de la DCH sur les modèles de l'APIX : sections composées, Google Sans     | acceptée, précisée 4 fois, de 0087 à 0173   |
 | [0087](0087-attestation-de-revenu.md)                 | L'attestation de revenu : le salaire saisi, le montant en chiffres et en lettres        | acceptée, précisée (0088, 0091, 0094, 0121) |
 | [0088](0088-apix-sa-et-montant-en-gras.md)            | Les attestations : « APIX-SA » partout, le montant en gras                              | acceptée                                    |
 | [0089](0089-attestation-de-stage.md)                  | L'attestation de stage : le dernier stage commencé, dossier en activité ou non          | acceptée, précisée par 0132                 |
-| [0090](0090-arial-police-des-documents.md)            | Arial, police principale des documents de la DCH, prise là où la machine l'a            | acceptée, précisée par 0098                 |
+| [0090](0090-arial-police-des-documents.md)            | Arial, police principale des documents de la DCH, prise là où la machine l'a            | précisée (0098), en partie remplacée (0173) |
 | [0091](0091-certificat-de-travail.md)                 | Le certificat de travail : l'emploi d'un dossier inactif, la catégorie saisie           | acceptée, précisée par 0092                 |
 | [0092](0092-attestation-de-conge.md)                  | L'attestation de congé : les dates saisies, la reprise au premier jour ouvré            | acceptée, précisée par 0093, 0104 et 0133   |
 | [0093](0093-attestation-de-depart-a-la-retraite.md)   | L'attestation de départ à la retraite : le jour du départ saisi                         | acceptée, précisée par 0130                 |
-| [0094](0094-contrat-de-stage.md)                      | Le contrat de stage : sans agent, la personne et le stage renseignés par la DCH         | acceptée, précisée 5 fois, de 0095 à 0168   |
+| [0094](0094-contrat-de-stage.md)                      | Le contrat de stage : sans agent, la personne et le stage renseignés par la DCH         | acceptée, précisée 6 fois, de 0095 à 0173   |
 | [0095](0095-coquilles-des-modeles.md)                 | Les coquilles des modèles de l'APIX se corrigent à la reprise                           | acceptée                                    |
 | [0096](0096-fiche-du-contrat-de-stage.md)             | La fiche du contrat de stage : tout obligatoire, capitales initiales, CNI groupée       | acceptée, précisée par 0097, 0121 et 0134   |
 | [0097](0097-capitales-du-lieu-et-du-poste.md)         | Lieu de naissance et adresse en capitales initiales, formation et poste à l'initiale    | acceptée, précisée par 0098                 |
-| [0098](0098-contrats-de-travail.md)                   | Les contrats de travail : la fiche saisie, le modèle de l'APIX en Times New Roman       | acceptée, précisée 5 fois, de 0099 à 0168   |
+| [0098](0098-contrats-de-travail.md)                   | Les contrats de travail : la fiche saisie, le modèle de l'APIX en Times New Roman       | acceptée, précisée 6 fois, de 0099 à 0173   |
 | [0099](0099-ninea-de-l-apix.md)                       | Le NINEA de l'APIX est 28409592G3, partout                                              | acceptée                                    |
 | [0100](0100-decisions-de-disponibilite.md)            | Les décisions de disponibilité : la fiche saisie, une page sur le modèle de l'APIX      | acceptée, précisée 7 fois, de 0101 à 0168   |
 | [0101](0101-analyse-du-renouvellement.md)             | L'analyse du renouvellement de disponibilité nomme le renouvellement                    | acceptée                                    |
@@ -150,7 +150,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0142](0142-pied-du-menu-en-fondu.md)                 | Le pied du menu, sans filet : la liste s'efface au-dessus du compte                     | acceptée                                    |
 | [0143](0143-fond-bleu-gris.md)                        | Le fond de l'application, un bleu-gris qui détache les blocs                            | acceptée, précisée (0144, 0145, 0146)       |
 | [0144](0144-gris-accordes-au-fond.md)                 | Les gris des blocs, accordés au fond bleu-gris                                          | acceptée                                    |
-| [0145](0145-retour-au-fond-f3f6fa.md)                 | Le fond de l'application revient à #F3F6FA                                              | acceptée, précisée par 0146                 |
+| [0145](0145-retour-au-fond-f3f6fa.md)                 | Le fond de l'application revient à #F3F6FA                                              | acceptée, précisée (0146, 0173)             |
 | [0146](0146-entree-courante-bleu-pale.md)             | L'entrée courante du menu revient au bleu pâle de la charte                             | acceptée                                    |
 | [0147](0147-deux-n-plus-un.md)                        | Deux N+1 : le hiérarchique suit l'organigramme, le fonctionnel se choisit               | remplacée par ADR-0148                      |
 | [0148](0148-un-seul-n-plus-un.md)                     | Un seul N+1, comme avant : abandon de l'ADR-0147                                        | acceptée                                    |
@@ -178,3 +178,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0170](0170-page-montree-d-un-bloc.md)                | La page qui arrive se montre d'un bloc, sans squelette fugitif, à largeur constante     | acceptée                                    |
 | [0171](0171-maladie-visible-du-n1.md)                 | La maladie se lit comme les autres motifs d'absence : le N+1 la voit                    | acceptée                                    |
 | [0172](0172-disponibilite-deux-ans.md)                | La disponibilité dure deux ans au plus, renouvelable, pour le type comme les documents  | acceptée                                    |
+| [0173](0173-papier-de-la-charte.md)                   | Les documents de la DCH sur le papier de la charte de l'APIX ; le fond clair #F5F7F9    | acceptée                                    |

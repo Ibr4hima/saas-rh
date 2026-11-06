@@ -33,6 +33,7 @@ import {
 } from '../src/modules/documents/contrat-travail';
 import { GenerationService } from '../src/modules/documents/generation.service';
 import { AbsencesService } from '../src/modules/time/absences.service';
+import { corpsDuTexte, policesDe } from './lecture-pdf';
 
 const env = loadEnv();
 const tenantId = randomUUID();
@@ -431,14 +432,15 @@ describe('les articles', () => {
 });
 
 describe('la génération', () => {
-  it('qui dirige la DCH, sans agent : quatre pages en Times New Roman, nommées d’après la personne', async () => {
+  it('qui dirige la DCH, sans agent : les quatre pages du modèle, en Raleway 11, nommées d’après la personne', async () => {
     const { filename, pdf } = await service.pdfSansAgent(dch, 'contrat_cdd', fiche());
     expect(filename).toBe('contrat-cdd-NDIAYE-Awa.pdf');
     expect(filename).toBe(nomDuDocumentGenere('contrat_cdd', 'NDIAYE-Awa'));
     const brut = pdf.toString('latin1');
     expect((brut.match(/\/Type\s*\/Page[^s]/g) ?? []).length).toBe(4);
-    // Tinos dans le dépôt ; Times New Roman là où l'exploitant l'a déposée.
-    expect(/\/BaseFont \/[A-Z]{6}\+(Tinos|TimesNewRoman)/.test(brut)).toBe(true);
+    // Les polices de la charte (ADR-0173), au corps du modèle : rien à resserrer.
+    expect(policesDe(pdf)).toContain('Raleway-Regular');
+    expect(corpsDuTexte(pdf)).toBe(11);
     const { duree: _duree, ...cdi } = fiche();
     const indetermine = await service.pdfSansAgent(dch, 'contrat_cdi', cdi);
     expect(indetermine.filename).toBe('contrat-cdi-NDIAYE-Awa.pdf');

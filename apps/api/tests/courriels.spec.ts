@@ -589,7 +589,7 @@ describe('le gabarit', () => {
       rendu,
     );
     expect(c.subject).toBe('Hawa Ba demande son contrat de travail');
-    expect(c.html).toContain('<body style="margin:0;padding:0;background-color:#f3f6fa">');
+    expect(c.html).toContain('<body style="margin:0;padding:0;background-color:#f5f7f9">');
     expect(c.html).not.toContain('gradient(180deg');
     expect(c.html).toContain("url('https://rh.apix.sn/fonts/google-sans-latin.woff2')");
     expect(c.html).toContain('>Direction du Capital Humain</td>');

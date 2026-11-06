@@ -11,7 +11,7 @@ import { ZodValidationPipe } from '../../common/zod.pipe';
 import type { Tx } from '../../db/tenant-db';
 import { quiDirigeLaDCH } from './dossier';
 import { ENTETE } from './entete';
-import { nouvelleFeuille, type DocumentPdf, type Passage } from './feuille';
+import { nouvelleFeuille, surSesPages, type DocumentPdf, type Passage } from './feuille';
 import {
   A_REMPLIR,
   accords,
@@ -223,30 +223,38 @@ export function blocsDuContratDeStage(d: ContratStageData, aujourdhui: Date): Bl
   ];
 }
 
+/** Les pages du modèle, une par partie entre ses deux sauts de page. */
+const PAGES_DU_MODELE = 3;
+
 /** Le contrat en PDF : l'en-tête de la République en première page, le pied de l'APIX sur chacune. */
 export function pdfDuContratDeStage(
   blocs: readonly BlocDuContrat[],
   { logo }: { logo?: string | null } = {},
 ): Promise<Buffer> {
-  const feuille = nouvelleFeuille({ titre: 'Contrat de stage', logo });
-  feuille.blocRepublique();
-  for (const b of blocs) {
-    if (b.type === 'titre') feuille.titreSouligne(b.texte);
-    else if (b.type === 'paragraphe') feuille.paragraphe(b.passages, { avant: b.avant });
-    else if (b.type === 'puce')
-      feuille.paragraphe(b.passages, { avant: 6, retrait: 28, puce: '-' });
-    else if (b.type === 'article') {
-      feuille.paragraphe(
-        [
-          { texte: insecable(`ARTICLE ${b.numero}`), gras: true, souligne: true },
-          { texte: ` : ${b.titre}`, gras: true },
-        ],
-        { avant: b.numero === 1 || b.numero === 6 ? 0 : 20 },
-      );
-    } else if (b.type === 'saut') feuille.sautDePage();
-    else feuille.signatures(b.gauche, b.droite);
-  }
-  return feuille.terminer();
+  // Le contrat tient sur les trois pages du modèle, une par partie, le corps
+  // réduit s'il le faut (`surSesPages`).
+  return surSesPages(PAGES_DU_MODELE, ({ corps: taille, espaces }) => {
+    const feuille = nouvelleFeuille({ titre: 'Contrat de stage', logo });
+    feuille.blocRepublique();
+    for (const b of blocs) {
+      if (b.type === 'titre') feuille.titre(b.texte, { avant: 40 * espaces });
+      else if (b.type === 'paragraphe') {
+        feuille.paragraphe(b.passages, { avant: b.avant * espaces, taille });
+      } else if (b.type === 'puce') {
+        feuille.paragraphe(b.passages, { avant: 6 * espaces, taille, retrait: 28, puce: '-' });
+      } else if (b.type === 'article') {
+        feuille.paragraphe(
+          [
+            { texte: insecable(`ARTICLE ${b.numero}`), gras: true, souligne: true },
+            { texte: ` : ${b.titre}`, gras: true },
+          ],
+          { avant: (b.numero === 1 || b.numero === 6 ? 0 : 20) * espaces, taille },
+        );
+      } else if (b.type === 'saut') feuille.sautDePage();
+      else feuille.signatures(b.gauche, b.droite, { taille });
+    }
+    return feuille;
+  });
 }
 
 /** La fiche, validée : ce que la page envoie, comme une route le ferait. */

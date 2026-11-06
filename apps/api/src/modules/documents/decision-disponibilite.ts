@@ -20,7 +20,7 @@ import {
   type Unite,
 } from './dossier';
 import { ENTETE, SESSIONS_DU_CONSEIL } from './entete';
-import { nouvelleFeuille, type Passage } from './feuille';
+import { nouvelleFeuille, surUnePage, type Passage, type Serrage } from './feuille';
 import {
   accords,
   aLUnite,
@@ -241,48 +241,43 @@ export function textesDeLaDecision(d: DisponibiliteData, aujourdhui: Date): Text
 }
 
 /**
- * Les espaces entre les blocs : ceux du modèle, l'en-tête un peu rapproché
- * pour que l'article 1er d'un renouvellement, plus long, tienne ; puis ceux
- * d'une page serrée, quand la saisie allonge le texte au point que les
- * ampliations ne tiennent plus à côté du pied.
+ * Les espaces entre les blocs, ceux du modèle. Le serrage d'une page qui
+ * déborde réduit le corps du texte d'abord, ces espaces ensuite
+ * (`surUnePage`).
  */
-const ESPACES = [
-  { analyse: 36, timbre: 11, visas: 16, decide: 14, articles: 14, entre: 13.8 },
-  { analyse: 18, timbre: 6, visas: 8, decide: 8, articles: 8, entre: 6 },
-] as const;
+const ESPACES = { analyse: 36, timbre: 11, visas: 16, decide: 14, articles: 14, entre: 13.8 };
 
-/** La décision posée sur la feuille, aux espaces donnés. */
+/** La décision posée sur la feuille, au serrage donné. */
 function composer(
   t: TextesDeLaDecision,
   logo: string | null | undefined,
-  espaces: (typeof ESPACES)[number],
+  { corps, espaces: k }: Serrage,
 ) {
   const feuille = nouvelleFeuille({ titre: t.titre, logo, marge: 42.6 });
   feuille.entete({ reference: t.reference, lieuEtDate: t.lieuEtDate });
   feuille.paragraphe([{ texte: t.analyse, gras: true }], {
-    avant: espaces.analyse,
-    taille: 12,
+    avant: ESPACES.analyse * k,
+    taille: corps,
     interligne: 0,
     retrait: 70,
     puce: [{ texte: 'ANALYSE', gras: true, souligne: true }, { texte: insecable(' :') }],
     puceA: 0,
     align: 'left',
   });
-  feuille.timbre(t.timbre, { avant: espaces.timbre, police: 'comic', taille: 13, align: 'center' });
+  feuille.timbre(t.timbre, { avant: ESPACES.timbre * k, taille: corps + 1, align: 'center' });
   t.visas.forEach((visa, i) =>
     feuille.paragraphe(visa, {
-      avant: i === 0 ? espaces.visas : 0,
-      taille: 12,
-      pas: 15.9,
+      avant: i === 0 ? ESPACES.visas * k : 0,
+      taille: corps,
+      pas: corps * 1.325,
       retrait: 18,
       puce: '▪',
       puceA: 0,
     }),
   );
   feuille.timbre('D É C I D E', {
-    avant: espaces.decide,
-    police: 'arial',
-    taille: 18,
+    avant: ESPACES.decide * k,
+    taille: corps * 1.5,
     align: 'center',
   });
   t.articles.forEach((article, i) =>
@@ -292,7 +287,7 @@ function composer(
         { texte: `${insecable(' :')} ` },
         ...article.passages,
       ],
-      { avant: i === 0 ? espaces.articles : espaces.entre, taille: 12, interligne: 0 },
+      { avant: (i === 0 ? ESPACES.articles : ESPACES.entre) * k, taille: corps, interligne: 0 },
     ),
   );
   feuille.piedAGauche([
@@ -308,9 +303,7 @@ export function pdfDeLaDecision(
   t: TextesDeLaDecision,
   { logo }: { logo?: string | null } = {},
 ): Promise<Buffer> {
-  const [modele, serree] = ESPACES;
-  const feuille = composer(t, logo, modele);
-  return (feuille.pages() > 1 ? composer(t, logo, serree) : feuille).terminer();
+  return surUnePage((serrage) => composer(t, logo, serrage));
 }
 
 /** La fiche validée, et ce que l'organisation sait. */

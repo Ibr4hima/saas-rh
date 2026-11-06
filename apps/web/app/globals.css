@@ -322,7 +322,7 @@ body {
    marque, de taille fixe, éclairent le haut sans s'étirer avec la longueur
    de l'offre. Une seule teinte, la claire (cf. `useThemeClair`). */
 .fond-offre {
-  background-color: #f3f6fa;
+  background-color: #f5f7f9;
   background-image:
     radial-gradient(720px 480px at 100% -160px, rgb(0 79 145 / 0.1), rgb(0 79 145 / 0) 70%),
     radial-gradient(560px 380px at 0% -120px, rgb(0 79 145 / 0.06), rgb(0 79 145 / 0) 70%);

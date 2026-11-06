@@ -36,6 +36,7 @@ import type { Passage } from '../src/modules/documents/feuille';
 import { GenerationService } from '../src/modules/documents/generation.service';
 import type { Personne } from '../src/modules/documents/redaction';
 import { AbsencesService } from '../src/modules/time/absences.service';
+import { policesDe } from './lecture-pdf';
 
 const env = loadEnv();
 const tenantId = randomUUID();
@@ -450,10 +451,10 @@ describe('la génération', () => {
     expect(mise.filename).toBe('decision-disponibilite-DIOP-Awa.pdf');
     expect(mise.filename).toBe(nomDuDocumentGenere('decision_disponibilite', 'DIOP-Awa'));
     expect(pages(mise.pdf)).toBe(1);
-    // Arial (Arimo dans le dépôt) ; le timbre en Comic Sans MS (Comic Relief).
-    const brut = mise.pdf.toString('latin1');
-    expect(/\/BaseFont \/[A-Z]{6}\+(Arimo|Arial)/.test(brut)).toBe(true);
-    expect(/\/BaseFont \/[A-Z]{6}\+(ComicRelief|ComicSans)/.test(brut)).toBe(true);
+    // Les polices de la charte (ADR-0173) : Raleway, le pied de page en Exo.
+    const polices = policesDe(mise.pdf);
+    expect(polices).toContain('Raleway-Regular');
+    expect(polices).toContain('Exo-Regular');
     const renouvelee = await service.pdfSansAgent(
       dch,
       'decision_renouvellement_disponibilite',

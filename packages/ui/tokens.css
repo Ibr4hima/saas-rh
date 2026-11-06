@@ -22,14 +22,13 @@
   color-scheme: light;
 
   /* --- Couleurs sémantiques (light) --- */
-  /* Le fond des pages, et celui de l'écran de connexion (ADR-0116) : un
-     blanc à peine bleui, sous le blanc des cartes, revenu après l'essai
-     d'un bleu-gris plus soutenu (ADR-0143, ADR-0145). Le texte secondaire
-     y garde 5,8:1. Les gris des cartes (en-tête des tableaux, filets,
-     survol, rail des barres) en prennent la teinte, à peine saturée : les
-     gris chauds de la plateforme APIX viraient au beige à côté du bleuté
-     et ternissaient le blanc qui les porte (ADR-0144). */
-  --tg-bg: #f3f6fa;
+  /* Le fond des pages, et celui de l'écran de connexion (ADR-0116) : le
+     gris clair et froid de la charte de l'APIX de 2026, sous le blanc des
+     cartes (ADR-0173). Le texte secondaire y garde 5,9:1. Les gris des
+     cartes (en-tête des tableaux, filets, survol, rail des barres) restent
+     à peine bleutés : les gris chauds de la plateforme APIX viraient au
+     beige à côté et ternissaient le blanc qui les porte (ADR-0144). */
+  --tg-bg: #f5f7f9;
   --tg-surface: #ffffff;
   --tg-surface-raised: #f8fafd;
   /* Teinte des ÉTATS (rangée survolée, bouton discret, onglet au repos).

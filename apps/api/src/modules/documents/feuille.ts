@@ -2,20 +2,26 @@ import PDFDocument from 'pdfkit';
 import type { SaisiesDuDocument } from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
 import {
+  BLEU,
   cheminLogo,
-  dessinerBlocRepublique,
-  dessinerPiedApix,
+  chiffresAlignes,
+  dessinerEnTete,
+  dessinerPiedDePage,
   ENTETE,
   enregistrerPolices,
+  HAUT_DE_LA_COURBE,
+  hautDeLaCourbe,
+  ORANGE,
   police,
   type Coupe,
   type Famille,
 } from './entete';
+import { cedeA, lignesEquilibrees } from './composition';
 
 /**
- * La feuille des documents de la DCH : une A4 aux sections de l'APIX (le
- * bloc de la République en tête, le pied de page sur chaque page), et les
- * blocs d'un acte.
+ * La feuille des documents de la DCH : une A4 sur le papier à en-tête de la
+ * charte de l'APIX (ADR-0173), l'en-tête sur la première page, le pied de
+ * page sur chacune, et les blocs d'un acte.
  *
  * La mécanique vient des documents d'apix-e-voting : une fonction ouvre la
  * feuille et rend ses blocs, un bloc qui ne tient plus en bas de page passe à
@@ -58,11 +64,13 @@ const ENCRE = '#111111';
 const GRIS = '#5a5f75';
 /** La marge de gauche et de droite des documents ; un modèle peut avoir la sienne. */
 const MARGE_PAR_DEFAUT = 56;
+/** Le haut du texte des pages qui suivent la première, sans en-tête. */
 const HAUT = 48;
-/** Le bas du pied de page, au-dessus du bord de la feuille. */
-const BAS_DU_PIED = 30;
-/** Ce que le pied de page garde pour lui en bas de chaque page : le texte s'arrête au-dessus. */
-const RESERVE_DU_PIED = 110;
+/**
+ * Ce que le pied de page garde pour lui en bas de chaque page : le texte
+ * s'arrête au-dessus de la courbe, avec un peu d'air.
+ */
+const RESERVE_DU_PIED = 841.89 - HAUT_DE_LA_COURBE + 6;
 /** La marge du bas d'une feuille sans pied de page. */
 const BAS_SANS_PIED = 36;
 /** L'espace insécable : la justification ne coupe ni n'étire ce qu'elle joint. */
@@ -72,16 +80,17 @@ const INSECABLE = '\u00a0';
  * Ouvre une feuille.
  *
  * @param titre Le titre du PDF, celui que la visionneuse affiche.
- * @param famille La police de la feuille : Arial, celle des documents de la DCH (ADR-0090).
- * @param logo Le logo du pied de page ; par défaut, celui que l'exploitant a déposé.
- * @param marge Les marges de gauche et de droite, celles du modèle ; l'en-tête et le pied s'y calent.
- * @param haut La marge du haut.
+ * @param famille La police de la feuille : Raleway, celle de la charte (ADR-0173).
+ * @param logo Le logo de l'en-tête ; par défaut, celui que l'exploitant a déposé.
+ * @param marge Les marges de gauche et de droite du texte, celles du modèle. L'en-tête et
+ *   le pied, imprimés d'avance sur le papier de la charte, ne s'y calent pas.
+ * @param haut La marge du haut des pages qui suivent la première.
  * @param pied Le pied de page de l'APIX, sur chaque page ; un formulaire de l'administration
  *   s'en passe.
  */
 export function nouvelleFeuille({
   titre,
-  famille = 'arial',
+  famille = 'raleway',
   logo = cheminLogo(),
   marge = MARGE_PAR_DEFAUT,
   haut = HAUT,
@@ -107,6 +116,7 @@ export function nouvelleFeuille({
     info: { Title: titre, Author: ENTETE.raisonSociale },
   });
   enregistrerPolices(doc);
+  chiffresAlignes(doc);
   const morceaux: Buffer[] = [];
   doc.on('data', (m: Buffer) => morceaux.push(m));
   const fini = new Promise<Buffer>((resolve, reject) => {
@@ -136,74 +146,103 @@ export function nouvelleFeuille({
     pages: () => doc.bufferedPageRange().count,
 
     /**
-     * L'en-tête : le bloc de la République à gauche ; à droite, le numéro de
-     * l'acte, laissé en pointillés pour qu'on le porte à la main, puis le lieu
-     * et la date. Les deux lignes de droite partagent leur bord gauche, et la
-     * plus longue finit sur la marge.
+     * L'en-tête : le papier de la charte, puis, à droite sous le logo, le
+     * numéro de l'acte, laissé en pointillés pour qu'on le porte à la main,
+     * et, un blanc plus bas, le lieu et la date, comme sur le courrier de la
+     * charte. Les deux lignes partagent leur bord gauche, et la plus longue
+     * finit sur la marge.
      */
     entete({ reference, lieuEtDate }: { reference: string; lieuEtDate: string }) {
-      const y = haut;
-      const bloc = dessinerBlocRepublique(doc, MARGE, y);
-      const TAILLE = 10.5;
+      dessinerEnTete(doc, { logo });
+      const TAILLE = 9.5;
       const BLANC = 84;
-      doc.font(coupe('bold')).fontSize(TAILLE).fillColor(ENCRE);
+      const base = 144;
+      doc.font(coupe('normal')).fontSize(TAILLE).fillColor(ENCRE);
       const largeurNumero = doc.widthOfString('N°');
       const largeurRef = largeurNumero + 3 + BLANC + 3 + doc.widthOfString(reference);
       const x = MARGE + L - Math.max(largeurRef, doc.widthOfString(lieuEtDate));
-      doc.text('N°', x, y, { lineBreak: false });
+      const ecrire = (texte: string, xTexte: number, y: number) =>
+        doc
+          .font(coupe('normal'))
+          .fontSize(TAILLE)
+          .fillColor(ENCRE)
+          .text(texte, xTexte, y, { lineBreak: false, baseline: 'alphabetic' });
+      ecrire('N°', x, base);
       const xBlanc = x + largeurNumero + 3;
-      const ligne = y + TAILLE * 0.98;
       doc
-        .moveTo(xBlanc, ligne)
-        .lineTo(xBlanc + BLANC, ligne)
+        .moveTo(xBlanc, base + 0.6)
+        .lineTo(xBlanc + BLANC, base + 0.6)
         .lineWidth(0.7)
         .dash(0.8, { space: 2.2 })
         .strokeColor(GRIS)
         .stroke()
         .undash();
-      doc
-        .font(coupe('bold'))
-        .fontSize(TAILLE)
-        .fillColor(ENCRE)
-        .text(reference, xBlanc + BLANC + 3, y, { lineBreak: false });
-      doc.text(lieuEtDate, x, y + 30, { lineBreak: false });
-      doc.y = y + bloc.hauteur;
+      ecrire(reference, xBlanc + BLANC + 3, base);
+      // Plus bas qu'une ligne suivante : un blanc détache la date du numéro.
+      const date = base + 22;
+      ecrire(lieuEtDate, x, date);
+      doc.y = date + TAILLE * 0.4;
     },
 
-    /** L'en-tête d'un contrat : le bloc de la République seul, sans numéro ni date. */
+    /** L'en-tête d'un contrat : le papier de la charte seul, sans numéro ni date. */
     blocRepublique() {
-      const bloc = dessinerBlocRepublique(doc, MARGE, haut);
-      doc.y = haut + bloc.hauteur;
+      doc.y = dessinerEnTete(doc, { logo });
     },
 
-    /** Le titre d'un contrat : centré, en gras, souligné. */
-    titreSouligne(texte: string, { avant = 40 }: { avant?: number } = {}) {
+    /**
+     * Le titre d'un acte, comme ceux de la charte : en Anton, en capitales
+     * bleues, centré, et souligné d'un court filet orange. Il tient sur une
+     * ligne quand il le peut ; sinon sur deux lignes de longueurs voisines,
+     * coupées entre deux mots là où elles s'équilibrent le mieux, quelles que
+     * soient les coupures du modèle (« \n »).
+     */
+    titre(texte: string, { avant = 34, taille = 20 }: { avant?: number; taille?: number } = {}) {
       doc.y += avant;
+      const ESPACEMENT = 0.3;
+      const anton = police(doc, 'normal', 'anton');
+      const mesurer = (t: string) =>
+        doc.font(anton).fontSize(taille).widthOfString(t, { characterSpacing: ESPACEMENT });
+      const mots = texte.toUpperCase().split(/\s+/).filter(Boolean);
+      const entier = mots.join(' ');
+      let lignes = [entier];
+      if (mesurer(entier) > L * 0.92 && mots.length > 1) {
+        // La coupure qui rend la plus longue des deux lignes la plus courte.
+        let meilleure = 1;
+        let largeurMax = Infinity;
+        for (let i = 1; i < mots.length; i++) {
+          const plus = Math.max(
+            mesurer(mots.slice(0, i).join(' ')),
+            mesurer(mots.slice(i).join(' ')),
+          );
+          if (plus < largeurMax) [meilleure, largeurMax] = [i, plus];
+        }
+        lignes = [mots.slice(0, meilleure).join(' '), mots.slice(meilleure).join(' ')];
+      }
+      const h = taille * 1.22;
+      place(lignes.length * h + 14);
+      // La ligne de base de la première ligne : la hauteur des capitales d'Anton.
+      const premiere = doc.y + taille * 0.95;
+      lignes.forEach((ligne, i) => {
+        doc
+          .font(anton)
+          .fontSize(taille)
+          .fillColor(BLEU)
+          .text(ligne, MARGE, premiere + i * h, {
+            width: L,
+            align: 'center',
+            lineBreak: false,
+            characterSpacing: ESPACEMENT,
+            baseline: 'alphabetic',
+          });
+      });
+      const filet = premiere + (lignes.length - 1) * h + 8;
       doc
-        .font(coupe('bold'))
-        .fontSize(12)
-        .fillColor(ENCRE)
-        .text(texte, MARGE, doc.y, { width: L, align: 'center', underline: true });
-    },
-
-    /** Le titre d'un contrat de travail : centré, en gras, dans un filet fin qui le serre. */
-    titreCadre(
-      texte: string,
-      { avant = 40, taille = 12 }: { avant?: number; taille?: number } = {},
-    ) {
-      doc.y += avant;
-      doc.font(coupe('bold')).fontSize(taille).fillColor(ENCRE);
-      const largeur = doc.widthOfString(texte);
-      const hauteur = doc.currentLineHeight();
-      const x = MARGE + (L - largeur) / 2;
-      const y = doc.y;
-      doc.text(texte, x, y, { lineBreak: false });
-      doc
-        .rect(x - 2, y - 1, largeur + 4, hauteur + 2)
-        .lineWidth(0.5)
-        .strokeColor(ENCRE)
+        .moveTo(MARGE + L / 2 - 18, filet)
+        .lineTo(MARGE + L / 2 + 18, filet)
+        .lineWidth(1.6)
+        .strokeColor(ORANGE)
         .stroke();
-      doc.y = y + hauteur;
+      doc.y = filet + 2;
     },
 
     /** La suite sur une nouvelle page. */
@@ -270,37 +309,6 @@ export function nouvelleFeuille({
     },
 
     /**
-     * Le titre de l'acte, centré dans un cadre gris : un filet épais dehors,
-     * un filet fin dedans, le fond gris entre les deux, comme sur le modèle.
-     */
-    titreEncadre(texte: string, { avant = 34 }: { avant?: number } = {}) {
-      doc.y += avant;
-      const RETRAIT = 32;
-      const RENTRE = 3.4;
-      // Un titre long se donne en plusieurs lignes, séparées par « \n » comme
-      // sur le modèle ; le cadre grandit d'une ligne par ligne ajoutée.
-      const lignes = texte.split('\n');
-      doc.font(coupe('bold')).fontSize(17).fillColor(ENCRE);
-      const h = doc.currentLineHeight();
-      const HAUTEUR = 56 + (lignes.length - 1) * h;
-      place(HAUTEUR);
-      const x = MARGE + RETRAIT;
-      const largeur = L - 2 * RETRAIT;
-      const y = doc.y;
-      doc.rect(x, y, largeur, HAUTEUR).lineWidth(2.2).strokeColor(ENCRE).stroke();
-      doc
-        .rect(x + RENTRE, y + RENTRE, largeur - 2 * RENTRE, HAUTEUR - 2 * RENTRE)
-        .lineWidth(0.6)
-        .fillAndStroke('#e0e0e0', ENCRE);
-      doc.font(coupe('bold')).fontSize(17).fillColor(ENCRE);
-      const premiere = y + (HAUTEUR - lignes.length * h) / 2;
-      lignes.forEach((ligne, i) =>
-        doc.text(ligne, x, premiere + i * h, { width: largeur, align: 'center', lineBreak: false }),
-      );
-      doc.y = y + HAUTEUR;
-    },
-
-    /**
      * Un paragraphe justifié, gras et romain mêlés.
      *
      * pdfkit ne justifie pas une ligne faite de plusieurs morceaux
@@ -363,7 +371,7 @@ export function nouvelleFeuille({
         encadre: boolean;
         largeur: number;
       };
-      const mots: { morceaux: Morceau[]; largeur: number }[] = [];
+      const mots: { morceaux: Morceau[]; largeur: number; lie?: boolean }[] = [];
       let enCours: Morceau[] = [];
       const clore = () => {
         if (enCours.length === 0) return;
@@ -404,20 +412,20 @@ export function nouvelleFeuille({
       /**
        * Le mot insécable coupé à la dernière de ses espaces insécables qui
        * laisse tenir sa tête dans `place` ; null s'il n'en a pas. Seules se
-       * coupent celles qui séparent deux mots : jamais devant une
-       * ponctuation, après « n° » ni entre des guillemets.
+       * coupent celles qui cèdent (`composition.ts`) : entre deux prénoms,
+       * jamais après une civilité ni un nombre, ni devant une ponctuation.
        */
       const couper = (mot: Mot, place: number): [Mot, Mot] | null => {
         let coupe: [Mot, Mot] | null = null;
+        const texteDuMot = mot.morceaux.map((m) => m.texte).join('');
+        let debut = 0;
         mot.morceaux.forEach((m, i) => {
           for (
             let k = m.texte.indexOf(INSECABLE);
             k !== -1;
             k = m.texte.indexOf(INSECABLE, k + 1)
           ) {
-            const avant = k > 0 ? m.texte[k - 1] : mot.morceaux[i - 1]?.texte.at(-1);
-            const apres = k < m.texte.length - 1 ? m.texte[k + 1] : mot.morceaux[i + 1]?.texte[0];
-            if (!/[\p{L}\p{N}.]/u.test(avant ?? '') || !/[\p{L}\p{N}]/u.test(apres ?? '')) continue;
+            if (!cedeA(texteDuMot, debut + k)) continue;
             const tete = [...mot.morceaux.slice(0, i), partie(m, m.texte.slice(0, k))].filter(
               (x) => x.texte,
             );
@@ -432,41 +440,53 @@ export function nouvelleFeuille({
               ];
             }
           }
+          debut += m.texte.length;
         });
         return coupe;
       };
-      const lignes: Mot[][] = [];
-      let ligne: Mot[] = [];
-      let largeur = 0;
-      for (let mot of mots) {
-        for (;;) {
-          const ajout = ligne.length > 0 ? espace + mot.largeur : mot.largeur;
-          if (largeur + ajout <= largeurUtile) {
-            ligne.push(mot);
-            largeur += ajout;
-            break;
-          }
-          // Un mot insécable qui laisserait la ligne creuse, un nom à trois
-          // prénoms par exemple, se coupe plutôt qu'étirer ses blancs.
-          const coupe =
-            largeur < largeurUtile * 0.6
-              ? couper(mot, largeurUtile - largeur - (ligne.length > 0 ? espace : 0))
-              : null;
-          if (coupe) {
-            lignes.push([...ligne, coupe[0]]);
-            [ligne, largeur, mot] = [[], 0, coupe[1]];
-          } else if (ligne.length === 0) {
-            // Plus large que la ligne, et rien à couper : il dépasse.
-            ligne.push(mot);
-            largeur = mot.largeur;
-            break;
-          } else {
-            lignes.push(ligne);
-            [ligne, largeur] = [[], 0];
+      /** Chaque ligne remplie au plus juste : un paragraphe en drapeau ou centré. */
+      const lignesAuPlusJuste = (): Mot[][] => {
+        const lignes: Mot[][] = [];
+        let ligne: Mot[] = [];
+        let largeur = 0;
+        for (let mot of mots) {
+          for (;;) {
+            const ajout = ligne.length > 0 ? espace + mot.largeur : mot.largeur;
+            if (largeur + ajout <= largeurUtile) {
+              ligne.push(mot);
+              largeur += ajout;
+              break;
+            }
+            // Un mot insécable qui laisserait la ligne creuse, un nom à trois
+            // prénoms par exemple, se coupe plutôt qu'étirer ses blancs.
+            const coupe =
+              largeur < largeurUtile * 0.6
+                ? couper(mot, largeurUtile - largeur - (ligne.length > 0 ? espace : 0))
+                : null;
+            if (coupe) {
+              lignes.push([...ligne, coupe[0]]);
+              [ligne, largeur, mot] = [[], 0, coupe[1]];
+            } else if (ligne.length === 0) {
+              // Plus large que la ligne, et rien à couper : il dépasse.
+              ligne.push(mot);
+              largeur = mot.largeur;
+              break;
+            } else {
+              lignes.push(ligne);
+              [ligne, largeur] = [[], 0];
+            }
           }
         }
-      }
-      if (ligne.length > 0) lignes.push(ligne);
+        if (ligne.length > 0) lignes.push(ligne);
+        return lignes;
+      };
+      // Justifié, le paragraphe se répartit sur toutes ses lignes à la fois,
+      // un mot courant coupé s'il le faut, pour que ses blancs restent égaux
+      // et proches de l'espace normal (`composition.ts`).
+      const lignes: Mot[][] =
+        align === 'justify'
+          ? lignesEquilibrees(mots, { largeurUtile, espace, partie })
+          : lignesAuPlusJuste();
 
       doc.font(coupe('normal')).fontSize(taille);
       const hauteurLigne =
@@ -535,33 +555,43 @@ export function nouvelleFeuille({
             : align === 'center'
               ? MARGE + retrait + (largeurUtile - occupee) / 2
               : MARGE + retrait;
+        // Le trait sous la ligne de base, à l'épaisseur du corps.
+        const souligner = (de: number, a: number) => {
+          const sous = y + taille * 1.02;
+          doc
+            .moveTo(de, sous)
+            .lineTo(a, sous)
+            .lineWidth(taille * 0.06)
+            .strokeColor(ENCRE)
+            .stroke();
+        };
+        // Le trait à mi-hauteur des minuscules.
+        const rayer = (de: number, a: number) => {
+          const milieu = y + taille * 0.62;
+          doc
+            .moveTo(de, milieu)
+            .lineTo(a, milieu)
+            .lineWidth(taille * 0.07)
+            .strokeColor(ENCRE)
+            .stroke();
+        };
+        let precedent: { morceau: Morceau; fin: number } | null = null;
         for (const mot of l) {
+          const premier = mot.morceaux[0];
+          if (mot.lie && precedent && premier) {
+            // Le blanc d'une espace insécable, que le trait d'un passage traverse.
+            if (precedent.morceau.souligne && premier.souligne) souligner(precedent.fin, x);
+            if (precedent.morceau.raye && premier.raye) rayer(precedent.fin, x);
+          }
           for (const m of mot.morceaux) {
             doc
               .font(coupe(coupeDe(m.gras, m.italique)))
               .fontSize(taille)
               .fillColor(ENCRE)
               .text(m.texte, x + (m.encadre ? AIR_DU_CADRE : 0), y, { lineBreak: false });
-            if (m.souligne) {
-              // Le trait sous la ligne de base, à l'épaisseur du corps.
-              const sous = y + taille * 1.02;
-              doc
-                .moveTo(x, sous)
-                .lineTo(x + m.largeur, sous)
-                .lineWidth(taille * 0.06)
-                .strokeColor(ENCRE)
-                .stroke();
-            }
-            if (m.raye) {
-              // Le trait à mi-hauteur des minuscules, qui déborde un peu.
-              const milieu = y + taille * 0.62;
-              doc
-                .moveTo(x - 1, milieu)
-                .lineTo(x + m.largeur + 1, milieu)
-                .lineWidth(taille * 0.07)
-                .strokeColor(ENCRE)
-                .stroke();
-            }
+            if (m.souligne) souligner(x, x + m.largeur);
+            // Il déborde un peu du mot.
+            if (m.raye) rayer(x - 1, x + m.largeur + 1);
             if (m.encadre) {
               // Le cadre serre la mention, de la ligne des capitales au bas des jambages.
               doc
@@ -572,6 +602,8 @@ export function nouvelleFeuille({
             }
             x += m.largeur;
           }
+          const dernier = mot.morceaux.at(-1);
+          precedent = dernier ? { morceau: dernier, fin: x } : null;
           x += ecart;
         }
         y += hauteurLigne;
@@ -616,9 +648,9 @@ export function nouvelleFeuille({
     },
 
     /**
-     * Un bloc en bas de page, à gauche, à côté du pied de l'APIX : les
+     * Un bloc en bas de page, à gauche, au-dessus de la courbe du pied : les
      * ampliations d'une décision, le destinataire d'une lettre. Sa dernière
-     * ligne finit à `finA` au-dessus du bas du pied ; une ligne vide se donne
+     * ligne finit à `finA` au-dessus de la courbe ; une ligne vide se donne
      * sans passage. Les lignes commencent à `retrait` de la marge, l'étiquette
      * de la première (« À ») sur la marge. Si le texte de la page descend
      * jusque-là, le bloc passe à la page suivante.
@@ -628,7 +660,7 @@ export function nouvelleFeuille({
       {
         taille = 10,
         pas = 11.5,
-        finA = 28,
+        finA = 9,
         police: f = famille,
         retrait = 0,
         etiquette,
@@ -641,7 +673,20 @@ export function nouvelleFeuille({
         etiquette?: readonly Passage[];
       } = {},
     ) {
-      const sommet = doc.page.height - BAS_DU_PIED - finA - lignes.length * pas;
+      const largeurDe = (passages: readonly Passage[]) =>
+        passages.reduce(
+          (s, p) =>
+            s +
+            doc
+              .font(police(doc, coupeDe(Boolean(p.gras), Boolean(p.italique)), f))
+              .fontSize(taille)
+              .widthOfString(p.texte),
+          0,
+        );
+      // La courbe monte vers la droite : le bloc se pose au-dessus de son
+      // point le plus haut, sous toute la largeur de sa plus longue ligne.
+      const droite = MARGE + retrait + Math.max(0, ...lignes.map(largeurDe));
+      const sommet = hautDeLaCourbe(MARGE, droite) - finA - lignes.length * pas;
       if (doc.y > sommet - pas) doc.addPage();
       const ecrire = (passages: readonly Passage[], depuis: number, y: number) => {
         let x = depuis;
@@ -687,23 +732,52 @@ export function nouvelleFeuille({
         // levée le temps du pied.
         const marge = doc.page.margins.bottom;
         doc.page.margins.bottom = 0;
-        const bas = doc.page.height - BAS_DU_PIED;
-        const { milieu } = dessinerPiedApix(doc, { droite: MARGE + L, bas, logo });
-        // Le numéro seul, sur la marge de gauche, à la hauteur du logo : le
-        // champ PAGE des modèles Word. Ses chiffres se centrent sur le milieu.
-        if (pages.count > 1) {
-          doc
-            .font(coupe('normal'))
-            .fontSize(11)
-            .fillColor(ENCRE)
-            .text(String(i + 1), MARGE, milieu - 6, { lineBreak: false });
-        }
+        dessinerPiedDePage(doc, pages.count > 1 ? `${i + 1}/${pages.count}` : null);
         doc.page.margins.bottom = marge;
       }
       doc.end();
       return fini;
     },
   };
+}
+
+/** Une feuille ouverte : ce que `nouvelleFeuille` rend. */
+export type Feuille = ReturnType<typeof nouvelleFeuille>;
+
+/**
+ * Comment un acte qui tient sur une page se resserre, s'il le faut : le
+ * corps de son texte d'abord, d'un demi-point à la fois jusqu'à 10, ses
+ * espaces ensuite seulement. Une page aérée en corps 10,5 se lit mieux
+ * qu'une page tassée en corps 11.
+ */
+export const SERRAGES = [
+  { corps: 11, espaces: 1 },
+  { corps: 10.5, espaces: 1 },
+  { corps: 10, espaces: 1 },
+  { corps: 10, espaces: 0.8 },
+  { corps: 10, espaces: 0.6 },
+] as const;
+export type Serrage = (typeof SERRAGES)[number];
+
+/**
+ * L'acte posé au premier serrage qui le tient sur ses `pages`, celles de son
+ * modèle : les lettres, les attestations et les décisions sur une, un contrat
+ * sur les siennes. Au plus serré, s'il déborde encore, il garde sa suite.
+ */
+export function surSesPages(
+  pages: number,
+  composer: (serrage: Serrage) => Feuille,
+): Promise<Buffer> {
+  for (const serrage of SERRAGES.slice(0, -1)) {
+    const feuille = composer(serrage);
+    if (feuille.pages() <= pages) return feuille.terminer();
+  }
+  return composer(SERRAGES[SERRAGES.length - 1]!).terminer();
+}
+
+/** L'acte sur une page : cf. `surSesPages`. */
+export function surUnePage(composer: (serrage: Serrage) => Feuille): Promise<Buffer> {
+  return surSesPages(1, composer);
 }
 
 /** Ce qu'une attestation de l'APIX imprime, bloc par bloc. */
@@ -719,9 +793,10 @@ export interface TextesDUneAttestation {
 
 /**
  * Une attestation sur le modèle de l'APIX (ADR-0086), ou un certificat, qui
- * suit la même : l'en-tête, le timbre en Comic Sans MS, comme sur le modèle,
- * le titre encadré, puis les paragraphes et, s'il y en a une, la pièce
+ * suit la même, sur le papier de la charte (ADR-0173) : l'en-tête, le
+ * timbre, le titre, puis les paragraphes et, s'il y en a une, la pièce
  * jointe. L'espace sous le texte reste libre pour la signature et le cachet.
+ * Elle tient sur une page, serrée s'il le faut (`surUnePage`).
  *
  * @param titre Le titre du PDF, celui que la visionneuse affiche.
  */
@@ -729,19 +804,23 @@ export function pdfDUneAttestation(
   textes: TextesDUneAttestation,
   { titre, logo }: { titre: string; logo?: string | null },
 ): Promise<Buffer> {
-  const feuille = nouvelleFeuille({ titre, logo });
-  feuille.entete({ reference: textes.reference, lieuEtDate: textes.lieuEtDate });
-  feuille.timbre(textes.timbre, { police: 'comic' });
-  feuille.titreEncadre(textes.titre);
-  textes.paragraphes.forEach((p, i) => feuille.paragraphe(p, { avant: i === 0 ? 40 : 14 }));
-  if (textes.pieceJointe) {
-    feuille.paragraphe(
-      [
-        { texte: 'PJ', gras: true, souligne: true },
-        { texte: `${INSECABLE}: ${textes.pieceJointe}` },
-      ],
-      { avant: 40, align: 'left' },
+  return surUnePage(({ corps, espaces }) => {
+    const feuille = nouvelleFeuille({ titre, logo });
+    feuille.entete({ reference: textes.reference, lieuEtDate: textes.lieuEtDate });
+    feuille.timbre(textes.timbre, { avant: 44 * espaces });
+    feuille.titre(textes.titre, { avant: 34 * espaces });
+    textes.paragraphes.forEach((p, i) =>
+      feuille.paragraphe(p, { avant: (i === 0 ? 40 : 14) * espaces, taille: corps }),
     );
-  }
-  return feuille.terminer();
+    if (textes.pieceJointe) {
+      feuille.paragraphe(
+        [
+          { texte: 'PJ', gras: true, souligne: true },
+          { texte: `${INSECABLE}: ${textes.pieceJointe}` },
+        ],
+        { avant: 40 * espaces, taille: corps, align: 'left' },
+      );
+    }
+    return feuille;
+  });
 }

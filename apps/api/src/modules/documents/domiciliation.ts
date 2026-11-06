@@ -13,7 +13,7 @@ import type { Tx } from '../../db/tenant-db';
 import type { ModeleSansAgent } from './contrat-stage';
 import { quiDirigeLaDCH } from './dossier';
 import { ENTETE } from './entete';
-import { nouvelleFeuille, type Passage } from './feuille';
+import { nouvelleFeuille, surUnePage, type Passage } from './feuille';
 import { accords, elide, frDate, insecable, qualiteDCH, type Personne } from './redaction';
 
 /*
@@ -161,43 +161,45 @@ export function pdfDeLaDomiciliation(
   t: TextesDeLaDomiciliation,
   { logo }: { logo?: string | null } = {},
 ): Promise<Buffer> {
-  const feuille = nouvelleFeuille({
-    titre: REQUESTABLE_DOC_LABELS.domiciliation_bancaire,
-    logo,
-  });
-  feuille.entete({ reference: t.reference, lieuEtDate: t.lieuEtDate });
-  feuille.timbre(t.timbre, { avant: 45, police: 'comic', taille: 12, retrait: 6 });
-  feuille.paragraphe(
-    [{ texte: 'Objet', gras: true, souligne: true }, { texte: `${insecable(' :')} ${t.objet}` }],
-    { avant: 25, taille: 12, interligne: 0, retrait: 17, align: 'left' },
-  );
-  feuille.paragraphe([{ texte: t.appel, gras: true }], {
-    avant: 27,
-    taille: 12,
-    interligne: 0,
-    retrait: RETRAIT,
-    align: 'left',
-  });
-  t.paragraphes.forEach((p) =>
-    feuille.paragraphe(p, {
-      avant: 13.8,
-      taille: 12,
+  // Une lettre tient sur une page : son corps se réduit s'il le faut, ses
+  // espaces ensuite (`surUnePage`).
+  return surUnePage(({ corps, espaces: k }) => {
+    const feuille = nouvelleFeuille({
+      titre: REQUESTABLE_DOC_LABELS.domiciliation_bancaire,
+      logo,
+    });
+    feuille.entete({ reference: t.reference, lieuEtDate: t.lieuEtDate });
+    feuille.timbre(t.timbre, { avant: 45 * k, taille: corps + 0.5, retrait: 6 });
+    feuille.paragraphe(
+      [{ texte: 'Objet', gras: true, souligne: true }, { texte: `${insecable(' :')} ${t.objet}` }],
+      { avant: 25 * k, taille: corps, interligne: 0, retrait: 17, align: 'left' },
+    );
+    feuille.paragraphe([{ texte: t.appel, gras: true }], {
+      avant: 27 * k,
+      taille: corps,
       interligne: 0,
       retrait: RETRAIT,
-      retraitDroit: 4,
-    }),
-  );
-  // Qui dirige la banque, en bas à gauche, à la hauteur du modèle ; au-dessus,
-  // la place de la signature.
-  feuille.piedAGauche([[{ texte: t.destinataire, gras: true }]], {
-    police: 'comic',
-    taille: 12,
-    pas: 14.4,
-    finA: 81.4,
-    retrait: 24,
-    etiquette: [{ texte: 'À', gras: true }],
+      align: 'left',
+    });
+    t.paragraphes.forEach((p) =>
+      feuille.paragraphe(p, {
+        avant: 13.8 * k,
+        taille: corps,
+        pas: corps * 1.32,
+        retrait: RETRAIT,
+        retraitDroit: 4,
+      }),
+    );
+    // Qui dirige la banque, en bas à gauche, au-dessus de la courbe du pied ;
+    // au-dessus, la place de la signature.
+    feuille.piedAGauche([[{ texte: t.destinataire, gras: true }]], {
+      taille: corps,
+      pas: corps * 1.2,
+      retrait: 24,
+      etiquette: [{ texte: 'À', gras: true }],
+    });
+    return feuille;
   });
-  return feuille.terminer();
 }
 
 const valider = new ZodValidationPipe(ficheDomiciliationSchema);

@@ -13,17 +13,18 @@
  * Les fichiers produits sont VERSIONNÉS : une attestation doit sortir avec la
  * bonne typographie sur un dépôt fraîchement cloné, sans manipulation.
  *
- * Arial est la police des documents de la DCH (ADR-0090) ; Times New Roman,
- * celle de ses contrats de travail (ADR-0098) ; Comic Sans MS, certains
- * modèles de l'APIX l'emploient. Aucune ne se redistribue : leur licence
- * (Monotype, Microsoft) interdit de les versionner. Arimo, Tinos et Comic
- * Relief en sont les équivalents libres, sous licence OFL, dessinés aux MÊMES
- * chasses : un mot y occupe la même largeur, une ligne se coupe au même
- * endroit. Gill Sans MT, celle des grilles d'évaluation (ADR-0149), n'a pas
- * d'équivalent aux mêmes chasses : Cabin, de la même famille humaniste, en
- * tient lieu. Google Sans reste celle du certificat d'APIX Academy, comme du
- * site. Allura, une écriture manuscrite, trace les paraphes des signataires
- * des grilles d'évaluation (ADR-0151).
+ * Raleway, Anton et Exo sont celles de la charte graphique de l'APIX, que
+ * suivent les documents de la DCH (ADR-0173) : le texte, les titres, le pied
+ * de page. Arial (ADR-0090) et Times New Roman (ADR-0098) restent celles de
+ * la déclaration de mouvement et des grilles d'évaluation. Aucune des deux ne
+ * se redistribue : leur licence (Monotype, Microsoft) interdit de les
+ * versionner. Arimo et Tinos en sont les équivalents libres, sous licence
+ * OFL, dessinés aux MÊMES chasses : un mot y occupe la même largeur, une
+ * ligne se coupe au même endroit. Gill Sans MT, celle des grilles
+ * d'évaluation (ADR-0149), n'a pas d'équivalent aux mêmes chasses : Cabin, de
+ * la même famille humaniste, en tient lieu. Google Sans reste celle du
+ * certificat d'APIX Academy, comme du site. Allura, une écriture manuscrite,
+ * trace les paraphes des signataires des grilles d'évaluation (ADR-0151).
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -42,9 +43,9 @@ const UA = 'Mozilla/4.0';
 
 /**
  * Les familles, coupe par coupe, et leur licence : l'OFL veut qu'elle voyage
- * avec la police. Arimo pour Arial, Tinos pour Times New Roman, Comic Relief
- * pour Comic Sans MS, et Google Sans. Une licence que Google Fonts ne publie
- * pas avec la police se prend dans le dépôt de la famille (`url`).
+ * avec la police. Arimo pour Arial, Tinos pour Times New Roman, et Google
+ * Sans. Une licence que Google Fonts ne publie pas avec la police se prend
+ * dans le dépôt de la famille (`url`).
  */
 const FAMILLES = [
   {
@@ -100,13 +101,45 @@ const FAMILLES = [
     coupes: [{ nom: 'allura-regular.ttf', style: 'normal', poids: '400' }],
   },
   {
-    // Comic Relief n'a pas d'italique.
-    css: 'Comic+Relief:wght@400;700',
-    licence: { source: 'ofl/comicrelief/OFL.txt', nom: 'comic-relief-OFL.txt' },
+    // La charte de l'APIX (ADR-0173) : Raleway porte le texte des documents
+    // et le bloc de la République, du maigre au gras.
+    css: 'Raleway:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,700',
+    licence: { source: 'ofl/raleway/OFL.txt', nom: 'raleway-OFL.txt' },
     coupes: [
-      { nom: 'comic-relief-regular.ttf', style: 'normal', poids: '400' },
-      { nom: 'comic-relief-bold.ttf', style: 'normal', poids: '700' },
+      { nom: 'raleway-light.ttf', style: 'normal', poids: '300' },
+      { nom: 'raleway-regular.ttf', style: 'normal', poids: '400' },
+      { nom: 'raleway-medium.ttf', style: 'normal', poids: '500' },
+      { nom: 'raleway-semibold.ttf', style: 'normal', poids: '600' },
+      { nom: 'raleway-bold.ttf', style: 'normal', poids: '700' },
+      { nom: 'raleway-italic.ttf', style: 'italic', poids: '400' },
+      { nom: 'raleway-bold-italic.ttf', style: 'italic', poids: '700' },
     ],
+  },
+  {
+    // Les titres des documents, en capitales, comme ceux de la charte.
+    css: 'Anton',
+    licence: { source: 'ofl/anton/OFL.txt', nom: 'anton-OFL.txt' },
+    coupes: [{ nom: 'anton-regular.ttf', style: 'normal', poids: '400' }],
+  },
+  {
+    // Les mentions du pied de page, comme sur le papier à en-tête de la charte.
+    css: 'Exo:wght@400',
+    licence: { source: 'ofl/exo/OFL.txt', nom: 'exo-OFL.txt' },
+    coupes: [{ nom: 'exo-regular.ttf', style: 'normal', poids: '400' }],
+  },
+  {
+    // Les pictogrammes du pied de page (adresse, téléphone, fax, courriel,
+    // site) : les Material Symbols de l'application, pleins, réduits par
+    // Google à ces cinq icônes. Leurs glyphes sont hors du latin : la police
+    // ne se réduit pas. Licence Apache 2.0, pas OFL.
+    css: 'Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,1,0&icon_names=call,fax,language,location_on,mail',
+    licence: {
+      url: 'https://raw.githubusercontent.com/google/material-design-icons/master/LICENSE',
+      nom: 'material-symbols-LICENSE.txt',
+      attendu: 'Apache License',
+    },
+    reduire: false,
+    coupes: [{ nom: 'material-symbols.ttf', style: 'normal', poids: '400' }],
   },
 ];
 
@@ -185,10 +218,12 @@ function blocsDe(famille) {
 }
 
 /** Une coupe, téléchargée, vérifiée et réduite : rend sa taille en octets. */
-function recuperer(coupe, blocs) {
+function recuperer(coupe, blocs, { reduire = true } = {}) {
   const bloc = blocs.find((b) => b.style === coupe.style && b.poids === coupe.poids);
   if (!bloc?.url) throw new Error(`Coupe absente de la réponse : ${coupe.style} ${coupe.poids}`);
-  if (!bloc.url.endsWith('.ttf')) {
+  // Une police réduite par Google (`icon_names`) n'a pas d'extension : seul
+  // son format compte, vérifié une fois le fichier là.
+  if (!bloc.url.endsWith('.ttf') && !bloc.url.includes('/l/font?')) {
     throw new Error(
       `Google a servi autre chose qu'un TTF (${bloc.url.slice(-12)}) — police NON remplacée.`,
     );
@@ -202,17 +237,17 @@ function recuperer(coupe, blocs) {
   if (entete !== 0x00010000 && octets.subarray(0, 4).toString('latin1') !== 'OTTO') {
     throw new Error(`${coupe.nom} n'est pas une police TrueType — NON remplacée.`);
   }
-  const reduit = reduireAuLatin(chemin);
+  const reduit = reduire ? reduireAuLatin(chemin) : octets.length;
   console.log(`  ${coupe.nom} (${(reduit / 1024).toFixed(0)} Ko)`);
   return reduit;
 }
 
 /** La licence d'une famille, telle que Google Fonts, ou son dépôt, la publie avec elle. */
-function recupererLaLicence({ source, url, nom }) {
+function recupererLaLicence({ source, url, nom, attendu = 'SIL OPEN FONT LICENSE' }) {
   const chemin = join(OUT, nom);
   curl(url ?? `https://raw.githubusercontent.com/google/fonts/main/${source}`, chemin);
-  if (!readFileSync(chemin, 'utf8').includes('SIL OPEN FONT LICENSE')) {
-    throw new Error(`${nom} n'est pas la licence OFL attendue.`);
+  if (!readFileSync(chemin, 'utf8').includes(attendu)) {
+    throw new Error(`${nom} n'est pas la licence attendue (${attendu}).`);
   }
   console.log(`  ${nom}`);
 }
@@ -228,7 +263,7 @@ for (const famille of FAMILLES) {
   if (demandees.length > 0 && !demandees.includes(nomDe(famille))) continue;
   const blocs = blocsDe(famille.css);
   for (const coupe of famille.coupes) {
-    total += recuperer(coupe, blocs);
+    total += recuperer(coupe, blocs, { reduire: famille.reduire ?? true });
     coupes += 1;
   }
   recupererLaLicence(famille.licence);
@@ -241,11 +276,15 @@ writeFileSync(
     '    pnpm --filter @teranga/api fonts:fetch\n\n' +
     'pdfkit ne lit ni le woff2 ni le SVG : le web et les PDF ont chacun leur\n' +
     'copie de Google Sans, dans le format que leur moteur sait ouvrir.\n\n' +
-    "Arimo, Tinos et Comic Relief tiennent la place d'Arial, de Times New Roman\n" +
-    'et de Comic Sans MS, que leur licence interdit de versionner : mêmes\n' +
-    "chasses, licence OFL (fichiers `*-OFL.txt`). Les polices d'origine se\n" +
-    'déposent à la racine de `assets/` (cf. `assets/README.md`).\n\n' +
+    "Arimo et Tinos tiennent la place d'Arial et de Times New Roman, que leur\n" +
+    'licence interdit de versionner : mêmes chasses, licence OFL (fichiers\n' +
+    "`*-OFL.txt`). Les polices d'origine se déposent à la racine de `assets/`\n" +
+    '(cf. `assets/README.md`).\n\n' +
     'Allura, une écriture manuscrite (OFL), trace les paraphes des\n' +
-    "signataires des grilles d'évaluation.\n",
+    "signataires des grilles d'évaluation.\n\n" +
+    "Raleway, Anton et Exo (OFL) sont les polices de la charte de l'APIX,\n" +
+    'celles des documents de la DCH : le texte, les titres, le pied de page.\n\n' +
+    "Les pictogrammes du pied de page sont les Material Symbols de l'application,\n" +
+    'réduits à cinq icônes (`material-symbols.ttf`, licence Apache 2.0).\n',
 );
 console.log(`✓ ${coupes} coupes, ${(total / 1024).toFixed(0)} Ko, dans ${OUT}`);
