@@ -106,7 +106,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   // poste n'y entre pas. Il devient obligatoire avec la direction, sans quoi
   // l'affectation, et la direction avec elle, ne s'enregistrerait pas.
   const peutChoisirLeN1 = Boolean(directionChoisie);
-  // Le directeur coiffe sa direction : pourvue, il est le n+1 d'office.
+  // Le responsable de son unité est son n+1 d'office (ADR-0178).
   const directeur = n1DOffice(unites, uniteId || null);
 
   const needsDuration = contractType === 'cdd' || contractType === 'stage';
@@ -453,11 +453,14 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             unites={unites}
             value={uniteId}
             onChange={(id) => {
-              // Le responsable appartenait à l'ancienne direction : le
-              // garder ferait échouer l'enregistrement sur une règle qu'on
-              // vient de rendre fausse sous ses pieds. Le directeur de la
-              // nouvelle le remplace d'office.
-              if (directionDe(unites, id)?.id !== directionChoisie?.id) {
+              // Le n+1 d'office suit l'unité choisie (ADR-0178). Changer de
+              // direction remplace aussi un n+1 choisi : le garder ferait
+              // échouer l'enregistrement sur une règle qu'on vient de rendre
+              // fausse sous ses pieds.
+              if (
+                directionDe(unites, id)?.id !== directionChoisie?.id ||
+                managerId === (n1DOffice(unites, uniteId || null) ?? '')
+              ) {
                 setManagerId(n1DOffice(unites, id || null) ?? '');
               }
               setUniteId(id);

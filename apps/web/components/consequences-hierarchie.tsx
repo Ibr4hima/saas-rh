@@ -29,6 +29,7 @@ const MOTIFS: Record<MotifChangement, string> = {
   reprise_equipe: 'reprise de l’équipe',
   prend_la_place: 'remplace le responsable qui part',
   responsable_de_sa_direction: 'a désormais pour N+1 le responsable de sa direction',
+  responsable_de_son_unite: 'a désormais pour N+1 le responsable de son unité',
   retour_du_responsable: 'son N+1 est de retour',
 };
 

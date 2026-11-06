@@ -125,7 +125,8 @@ const importer = (
   appliquer = true,
   choix: Record<string, string> = {},
   noms: Record<string, string> = {},
-) => imports.importer(admin, fichier(lignes), appliquer, choix, noms);
+  rattachements: Record<string, string> = {},
+) => imports.importer(admin, fichier(lignes), appliquer, choix, noms, rattachements);
 
 const ligne = (r: RapportImportEmployes, n: number) => r.lignes.find((l) => l.ligne === n)!;
 
@@ -516,6 +517,168 @@ describe('le poste place l’agent', () => {
       texte: 'Cheikh Mbaye dirige déjà DG : désignation non faite',
     });
     expect(await chefDe(unites.dg)).toBe('Cheikh Mbaye');
+  });
+});
+
+/* ─── Les services se rangent sous un département (ADR-0178) ─── */
+
+const DIRECTEUR_DSID = AGENT(3, {
+  Prénom: 'OUSMANE',
+  Nom: 'FALL',
+  Sexe: 'M',
+  'Poste occupé ': "DIRECTEUR DES SYSTEMES D'INFORMATION",
+  Statut: 'Cadre',
+  Direction: 'DSID',
+});
+const cheffeDeDepartement = (n: number, prenom: string, nom: string, departement: string) =>
+  AGENT(n, {
+    Prénom: prenom,
+    Nom: nom,
+    'Poste occupé ': `CHEF DE DEPARTEMENT ${departement}`,
+    Statut: 'Cadre',
+    Direction: 'DSID',
+  });
+const CHEF_MAINTENANCE = AGENT(6, {
+  Prénom: 'MODOU',
+  Nom: 'GUEYE',
+  Sexe: 'M',
+  'Poste occupé ': 'CHEF DU SERVICE MAINTENANCE',
+  Statut: 'Cadre',
+  Direction: 'DSID',
+  'Responsable Hierarchique\n(N+1)': 'FALL Ousmane',
+});
+
+/** Le parent d'une unité, par son nom. */
+async function parentDe(nom: string): Promise<string | null> {
+  const r = await raw(
+    `SELECT p.name FROM org_units u JOIN org_units p ON p.id = u.parent_id
+      WHERE u.tenant_id = $1 AND u.name = $2 AND u.deleted_at IS NULL`,
+    [tenantId, nom],
+  );
+  return (r.rows[0] as { name: string } | undefined)?.name ?? null;
+}
+
+describe('les services se rangent sous un département', () => {
+  it('sous le seul département de la direction, et le chef relève du chef de département', async () => {
+    // Le service avant son département : l'ordre du fichier ne compte pas.
+    const r = await importer([
+      CHEF_MAINTENANCE,
+      DIRECTEUR_DSID,
+      cheffeDeDepartement(2, 'FATOU', 'SALL', 'DIGITALISATION'),
+      DG,
+    ]);
+    expect(r.erreurs).toBe(0);
+    expect(r.rattachements).toEqual([]);
+    expect(r.unitesCreees).toContainEqual(
+      expect.objectContaining({
+        nom: 'Service Maintenance',
+        parent: 'Département Digitalisation',
+      }),
+    );
+    expect(await parentDe('Service Maintenance')).toBe('Département Digitalisation');
+    // Le fichier donnait le directeur pour N+1 au chef du service : la
+    // règle 3 bis corrige.
+    expect((await fiche('106'))?.n1).toBe('Fatou Sall');
+    expect(ligne(r, 2).corrections).toContainEqual(
+      expect.objectContaining({
+        lu: 'FALL Ousmane',
+        retenu: 'Fatou Sall, responsable de « Département Digitalisation »',
+      }),
+    );
+    expect(ligne(r, 2).avertissements.filter((a) => a.colonne.startsWith('Responsable'))).toEqual(
+      [],
+    );
+  });
+
+  it('dans une direction sans département, le service reste sous la direction', async () => {
+    const r = await importer([DIRECTEUR_DSID, CHEF_MAINTENANCE, DG]);
+    expect(r.rattachements).toEqual([]);
+    expect(await parentDe('Service Maintenance')).toBe(
+      "Direction des Systèmes d'information et de la Digitalisation",
+    );
+    expect((await fiche('106'))?.n1).toBe('Ousmane Fall');
+  });
+
+  it('avec deux départements, l’aperçu demande lequel, puis l’import y range le service', async () => {
+    const lignes = [
+      DG,
+      DIRECTEUR_DSID,
+      cheffeDeDepartement(2, 'FATOU', 'SALL', 'DIGITALISATION'),
+      cheffeDeDepartement(4, 'AWA', 'NDIAYE', 'INFRASTRUCTURES'),
+      CHEF_MAINTENANCE,
+    ];
+    const apercu = await importer(lignes, false);
+    expect(apercu.rattachements).toEqual([
+      {
+        cle: expect.any(String),
+        service: 'Service Maintenance',
+        direction: 'DSID',
+        lignes: [6],
+        departements: [
+          { cle: expect.any(String), nom: 'Département Digitalisation' },
+          { cle: expect.any(String), nom: 'Département Infrastructures' },
+        ],
+        retenu: null,
+      },
+    ]);
+    expect(ligne(apercu, 6).avertissements).toContainEqual({
+      colonne: 'Poste occupé',
+      texte: 'Choisissez le département auquel rattacher « Service Maintenance »',
+    });
+    const question = apercu.rattachements[0]!;
+    const choix = { [question.cle]: question.departements[1]!.cle };
+    const revu = await importer(lignes, false, {}, {}, choix);
+    expect(revu.rattachements[0]?.retenu).toBe(question.departements[1]!.cle);
+    expect(revu.unitesCreees).toContainEqual(
+      expect.objectContaining({
+        nom: 'Service Maintenance',
+        parent: 'Département Infrastructures',
+      }),
+    );
+    expect(ligne(revu, 6).avertissements).not.toContainEqual(
+      expect.objectContaining({ texte: expect.stringContaining('Choisissez le département') }),
+    );
+
+    const r = await importer(lignes, true, {}, {}, choix);
+    expect(r.erreurs).toBe(0);
+    expect(await parentDe('Service Maintenance')).toBe('Département Infrastructures');
+    expect((await fiche('106'))?.n1).toBe('Awa Ndiaye');
+  });
+
+  it('au réimport, le service d’un import précédent se range sous le département arrivé depuis', async () => {
+    await importer([DG, DIRECTEUR_DSID, CHEF_MAINTENANCE]);
+    const lignes = [
+      DG,
+      DIRECTEUR_DSID,
+      CHEF_MAINTENANCE,
+      cheffeDeDepartement(2, 'FATOU', 'SALL', 'DIGITALISATION'),
+    ];
+    const apercu = await importer(lignes, false);
+    expect(apercu.servicesRanges).toEqual([
+      { service: 'Service Maintenance', departement: 'Département Digitalisation' },
+    ]);
+    const r = await importer(lignes);
+    expect(r.servicesRanges).toEqual(apercu.servicesRanges);
+    expect(await parentDe('Service Maintenance')).toBe('Département Digitalisation');
+    expect((await fiche('106'))?.n1).toBe('Fatou Sall');
+  });
+
+  it('un service saisi à la main reste où la DCH l’a mis', async () => {
+    await raw(
+      `INSERT INTO org_units (id, tenant_id, unit_type, name, parent_id)
+       VALUES ($1,$2,'service','Service Maintenance',$3)`,
+      [randomUUID(), tenantId, unites.dsid],
+    );
+    const r = await importer([
+      DG,
+      DIRECTEUR_DSID,
+      cheffeDeDepartement(2, 'FATOU', 'SALL', 'DIGITALISATION'),
+      CHEF_MAINTENANCE,
+    ]);
+    expect(r.servicesRanges).toEqual([]);
+    expect(await parentDe('Service Maintenance')).toBe(
+      "Direction des Systèmes d'information et de la Digitalisation",
+    );
   });
 });
 

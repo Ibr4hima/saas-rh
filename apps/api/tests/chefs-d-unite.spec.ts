@@ -263,6 +263,74 @@ describe('quand l’unité au-dessus change de tête', () => {
   });
 });
 
+describe('le N+1 d’office : le responsable de son unité (ADR-0178)', () => {
+  it('membre d’un service : le chef du service ; d’un département : le chef du département', async () => {
+    await laTete();
+    const chefEtudes = await agent('ETUDES', uEtudes);
+    await nommer(uEtudes, chefEtudes);
+    const y = await agent('Y', uCompta);
+    await nommer(uCompta, y);
+    expect(await n1(await agent('M', uCompta))).toBe(y);
+    expect(await n1(await agent('D', uEtudes))).toBe(chefEtudes);
+  });
+
+  it('sans chef, le responsable au-dessus : le chef du département, puis le directeur', async () => {
+    const { directeur } = await laTete();
+    expect(await n1(await agent('C', uCourrier))).toBe(directeur);
+    const chefEtudes = await agent('ETUDES', uEtudes);
+    await nommer(uEtudes, chefEtudes);
+    expect(await n1(await agent('M', uCompta))).toBe(chefEtudes);
+  });
+
+  it('le chef désigné reprend qui relevait d’office de l’unité au-dessus, pas un N+1 choisi', async () => {
+    const { directeur } = await laTete();
+    const collegue = await agent('COLLEGUE', uDGT, directeur);
+    const m = await agent('M', uCompta);
+    const choisi = await agent('CHOISI', uCompta, collegue);
+    expect(await n1(m)).toBe(directeur);
+    const y = await agent('Y', uCompta);
+    const r = await nommer(uCompta, y);
+    expect(await n1(m)).toBe(y);
+    expect(await n1(choisi)).toBe(collegue);
+    expect(r.changements).toContainEqual(
+      expect.objectContaining({ employeeId: m, motif: 'responsable_de_son_unite' }),
+    );
+  });
+
+  it('un service rangé sous un département : ses membres sans chef suivent le chef du département', async () => {
+    const { directeur } = await laTete();
+    const chefEtudes = await agent('ETUDES', uEtudes);
+    await nommer(uEtudes, chefEtudes);
+    const m = await agent('M', uCourrier);
+    expect(await n1(m)).toBe(directeur);
+    await organigramme.update(user, uCourrier, { parentId: uEtudes });
+    expect(await n1(m)).toBe(chefEtudes);
+  });
+
+  it('une mutation dans la direction fait suivre le N+1 d’office, pas un N+1 choisi', async () => {
+    const { directeur } = await laTete();
+    const y = await agent('Y', uCompta);
+    await nommer(uCompta, y);
+    const collegue = await agent('COLLEGUE', uDGT, directeur);
+    const m = await agent('M', uDGT);
+    const choisi = await agent('CHOISI', uDGT, collegue);
+    expect(await n1(m)).toBe(directeur);
+    const muter = (id: string) =>
+      people.newAssignment(user, id, {
+        positionTitle: 'Comptable',
+        orgUnitId: uCompta,
+        startDate: '2025-06-01',
+      } as never);
+    const r = await muter(m);
+    expect(await n1(m)).toBe(y);
+    expect(r.changements).toContainEqual(
+      expect.objectContaining({ employeeId: m, motif: 'responsable_de_son_unite' }),
+    );
+    await muter(choisi);
+    expect(await n1(choisi)).toBe(collegue);
+  });
+});
+
 describe('à la relève d’un chef, ses agents directs passent au nouveau', () => {
   it('dans l’unité comme ailleurs dans la direction', async () => {
     await laTete();
@@ -275,10 +343,13 @@ describe('à la relève d’un chef, ses agents directs passent au nouveau', () 
     const r = await nommer(uEtudes, nouveau);
     expect(await n1(dedans)).toBe(nouveau);
     expect(await n1(ailleurs)).toBe(nouveau);
+    // Membre du département, le nouveau relevait d'office de l'ancien chef
+    // (ADR-0178) : une fois désigné, le nouveau chef relève du directeur.
     expect(r.changements.map((c) => `${c.nom}:${c.motif}`).sort()).toEqual([
       'AILLEURS Test:suit_le_chef',
       'ANCIEN Test:ancien_chef',
       'DEDANS Test:suit_le_chef',
+      'NOUVEAU Test:chef_d_unite',
     ]);
   });
 

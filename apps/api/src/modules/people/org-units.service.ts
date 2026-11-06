@@ -32,10 +32,12 @@ import {
   apresNouvelAdjoint,
   directeurGeneral,
   directionDeLUnite,
+  nPlusUnDuPerimetre,
   perimetre,
   placesDesChefs,
   SOMMET,
   sortDuPerimetre,
+  suivreLeNPlusUnDOffice,
   uniteRacine,
   verrouillerLaChaine,
 } from './chaine';
@@ -787,6 +789,15 @@ export class OrgUnitsService {
     // La place des chefs de département et de service avant l'opération :
     // ceux dont le supérieur change en dépendent ensuite (règle 3 bis).
     const chefsAvant = await placesDesChefs(tx);
+    // Le n+1 d'office des agents de l'unité, avant : qui le suivait suit le
+    // nouveau (ADR-0178). Un responsable retiré sans successeur garde son
+    // équipe.
+    const dOfficeAvant =
+      (responsableChange && prochain !== null) ||
+      input.parentId !== undefined ||
+      input.unitType !== undefined
+        ? await nPlusUnDuPerimetre(tx, id)
+        : null;
 
     // Re-rattacher une unité, ou en changer le type, déplace des PÉRIMÈTRES :
     // un responsable affecté dedans peut se retrouver hors de l'unité qu'il
@@ -853,6 +864,7 @@ export class OrgUnitsService {
     if (responsableChange && prochain !== null && nextType !== 'direction') {
       await apresNouveauChef(tx, journal, id, ancien, prochain, !devenirAilleurs);
     }
+    if (dOfficeAvant) await suivreLeNPlusUnDOffice(tx, journal, id, dOfficeAvant);
     // Son équipe passée au nouveau, l'ancien part là où on l'envoie.
     if (devenirAilleurs && devenir) {
       await suite!(tx, journal, {

@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from 'uuid';
 import type {
   ChangementRattachement,
   ConsequencesHierarchie,
+  MotifChangement,
   NewAssignmentInput,
 } from '@teranga/contracts';
 import { problem, ProblemException } from '../../common/problem';
@@ -183,6 +184,9 @@ export async function muter(
   for (const a of equipe) if (await tenait(a.id, id)) equipeEnRegle.add(a.id);
   const n1Garde = input.managerEmployeeId ? null : dossier.managerId;
   const n1GardeEnRegle = n1Garde ? await tenait(id, n1Garde) : false;
+  // Le n+1 d'office de sa place d'avant : l'agent qui en relevait prend le
+  // n+1 d'office de sa nouvelle place (ADR-0178).
+  const dOfficeAvant = n1Garde ? ((await n1DOffice(tx, id))?.id ?? null) : null;
 
   // 4. L'équipe, confiée si l'on en désigne le repreneur.
   if (input.repreneurEquipeId) {
@@ -252,10 +256,11 @@ export async function muter(
     }
     for (const m of await equipeDe(tx, id)) {
       if (await tenait(m.id, id)) continue;
-      const candidats = [
+      const dOffice = await n1DOffice(tx, m.id);
+      const candidats: [string | null, MotifChangement][] = [
         [dossier.managerId, 'reprise_equipe'],
-        [(await n1DOffice(tx, m.id))?.id ?? null, 'responsable_de_sa_direction'],
-      ] as const;
+        [dOffice?.id ?? null, dOffice?.motif ?? 'responsable_de_sa_direction'],
+      ];
       for (const [cible, motif] of candidats) {
         if (!cible || cible === id || !(await tenait(m.id, cible))) continue;
         await rattacher(tx, journal, m.id, cible, motif);
@@ -288,11 +293,12 @@ export async function muter(
     }
   }
 
-  // 5. Son n+1 : le nouveau, désigné dans le même geste : changer de
-  // direction rend l'ancien caduc, et le corriger avant serait refusé
-  // (il ne serait pas encore de la direction de l'agent), ou celui
-  // qu'il garde, s'il tient toujours. Sinon, le responsable de sa
-  // nouvelle direction le reprend d'office, s'il y en a un.
+  // 5. Son n+1 : le nouveau, désigné dans le même geste (changer de
+  // direction rend l'ancien caduc, et le corriger avant serait refusé : le
+  // nouveau ne serait pas encore de la direction de l'agent), ou l'actuel,
+  // si le rattachement tient toujours. Sans l'un ni l'autre, ou quand
+  // l'agent relevait de son n+1 d'office, le n+1 d'office de sa nouvelle
+  // place, s'il y en a un.
   if (responsable) {
     // Il prend la tête de l'unité : son n+1 est celui qu'impose sa place
     // (le DG pour un directeur, l'unité au-dessus pour un chef), et c'est
@@ -323,6 +329,11 @@ export async function muter(
         'Le responsable actuel n’appartient pas à la nouvelle direction',
         `L’agent rejoint « ${direction!.nom} » : désignez son nouveau N+1 dans la même opération.`,
       );
+    }
+  } else if (n1Garde && n1Garde === dOfficeAvant && !futur) {
+    const tete = await n1DOffice(tx, id);
+    if (tete && tete.id !== n1Garde && (await tenait(id, tete.id))) {
+      await rattacher(tx, journal, id, tete.id, tete.motif);
     }
   } else if (!dossier.managerId && !futur) {
     await rattacherDOffice(tx, journal, id);

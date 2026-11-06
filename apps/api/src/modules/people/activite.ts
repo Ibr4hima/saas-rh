@@ -456,9 +456,10 @@ async function inactiverLesEchus(tx: Tx, tenantId: string): Promise<number> {
     const journal: ChangementRattachement[] = [];
     const parties: CeQuIlALaisse['equipe'] = [];
     for (const m of equipe) {
+      const dOffice = await n1DOffice(tx, m.id);
       const candidats: [string | null, MotifChangement][] = [
         [a.n1, 'reprise_equipe'],
-        [(await n1DOffice(tx, m.id))?.id ?? null, 'responsable_de_sa_direction'],
+        [dOffice?.id ?? null, dOffice?.motif ?? 'responsable_de_sa_direction'],
       ];
       for (const [cible, motif] of candidats) {
         if (!cible || cible === a.id) continue;

@@ -125,6 +125,44 @@ export interface UniteCreeeImport {
   echec?: string | null;
 }
 
+/**
+ * Les services rangés à l'aperçu, renvoyés avec le fichier : la clé du
+ * service, celle du département retenu (ADR-0178).
+ */
+export const rattachementsDImportSchema = z
+  .record(z.string().max(400), z.string().max(400))
+  .refine((r) => Object.keys(r).length <= 200, 'Trop de rattachements');
+
+/** Un département où ranger un service : de l'organigramme, ou que l'import crée. */
+export interface DepartementPossible {
+  /** `u:<id>` pour un département de l'organigramme ; sinon la clé de l'unité à créer. */
+  cle: string;
+  nom: string;
+}
+
+/**
+ * Un service d'une direction qui compte plusieurs départements : l'import
+ * demande sous lequel le ranger (ADR-0178).
+ */
+export interface RattachementImport {
+  /** La clé du service, à renvoyer avec le département retenu. */
+  cle: string;
+  service: string;
+  /** Sa direction : son sigle, sinon son nom. */
+  direction: string;
+  /** Les lignes du fichier qui le nomment. */
+  lignes: number[];
+  departements: DepartementPossible[];
+  /** Le département retenu ; null tant que rien n'est choisi. */
+  retenu: string | null;
+}
+
+/** Un service de l'organigramme que l'import range sous un département. */
+export interface ServiceRangeImport {
+  service: string;
+  departement: string;
+}
+
 /** Une désignation que l'import fait : responsable d'unité, DG ou DGA. */
 export interface DesignationImport {
   /** « Directeur de la DFC », « Cheffe du département Études ». */
@@ -158,9 +196,13 @@ export interface RapportImportEmployes {
   colonnesNonImportees: string[];
   lignes: LigneImport[];
   unitesCreees: UniteCreeeImport[];
+  /** Les services déjà dans l'organigramme que l'import range sous un département. */
+  servicesRanges: ServiceRangeImport[];
   designations: DesignationImport[];
   /** Les homonymes à départager avant d'appliquer. */
   choix: ChoixImport[];
+  /** Les services à ranger sous un département avant d'appliquer. */
+  rattachements: RattachementImport[];
   total: number;
   aCreer: number;
   aModifier: number;

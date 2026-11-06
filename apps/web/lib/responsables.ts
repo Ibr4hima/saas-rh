@@ -96,12 +96,13 @@ export function useResponsablesPossibles(
 }
 
 /**
- * Le n+1 d'office — la règle du serveur, lue sur l'organigramme : le
- * directeur coiffe sa direction. Pour un directeur, le DG ; pour le chef d'un
- * département ou d'un service, l'unité au-dessus de la sienne ; sinon le
- * responsable de la direction de l'unité (le DG pour la Direction Générale).
- * `null` : l'agent est le DG, l'unité n'a pas de direction, ou la direction
- * attend sa tête — le n+1 reste alors à choisir.
+ * Le n+1 d'office, la règle du serveur lue sur l'organigramme : pour un
+ * directeur, le DG ; pour le chef d'un département ou d'un service, l'unité
+ * au-dessus de la sienne ; sinon le responsable de son unité (ADR-0178) : en
+ * remontant depuis elle, le premier responsable, jusqu'à la direction
+ * comprise (le DG pour la Direction Générale). `null` : l'agent est le DG,
+ * l'unité n'a pas de direction, ou personne n'en a la tête jusqu'à la
+ * direction : le n+1 reste alors à choisir.
  *
  * @param uniteId L'unité d'affectation de l'agent (ou visée).
  * @param agentId L'agent, s'il existe déjà : on ne relève pas de soi.
@@ -124,13 +125,14 @@ export function n1DOffice(
   if (impose !== undefined) return impose?.id ?? null;
   let u = unites.find((x) => x.id === uniteId) ?? null;
   const vus = new Set<string>();
-  while (u && u.unitType !== 'direction' && !vus.has(u.id)) {
+  while (u && !vus.has(u.id)) {
     vus.add(u.id);
+    if (u.managerEmployeeId && u.managerEmployeeId !== agentId) return u.managerEmployeeId;
+    if (u.unitType === 'direction') break;
     const parent: string | null = u.parentId;
     u = unites.find((x) => x.id === parent) ?? null;
   }
-  const tete = u?.unitType === 'direction' ? u.managerEmployeeId : null;
-  return tete && tete !== agentId ? tete : null;
+  return null;
 }
 
 /**

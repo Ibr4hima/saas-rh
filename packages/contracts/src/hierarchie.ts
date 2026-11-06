@@ -119,6 +119,11 @@ export type MotifChangement =
   | 'prend_la_place'
   /** Sans n+1, dans une direction qui a sa tête : relève d'office du directeur. */
   | 'responsable_de_sa_direction'
+  /**
+   * Sans n+1, dans un département ou un service qui a sa tête : relève
+   * d'office de son chef (ADR-0178).
+   */
+  | 'responsable_de_son_unite'
   /** Son responsable, parti à la fin de son contrat, est revenu : il relève de nouveau de lui. */
   | 'retour_du_responsable';
 

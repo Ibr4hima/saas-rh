@@ -42,10 +42,11 @@ import { debutDuStage, enActivite, exigerEnActivite } from './en-activite';
         service qui en dépend, sinon le directeur, et le DG quand la
         direction attend sa tête. Son n+1 ne se choisit pas ;
      4. pas de boucle, et un n+1 actif ;
-     5. le directeur coiffe sa direction : qui n'y a pas de n+1 relève
-        d'office de lui (le DG, à la Direction Générale ; le DG, pour un
-        directeur). Qui en a un le garde — le directeur est alors au bout de
-        sa chaîne, n+2 ou plus haut.
+     5. sans n+1, on relève d'office du responsable de son unité : le chef
+        de son service, sinon le chef du département au-dessus, sinon le
+        directeur (le DG, à la Direction Générale ; le DG, pour un
+        directeur). Un n+1 choisi reste ; un n+1 d'office suit les
+        changements de l'organigramme et les mutations (ADR-0178).
 
    Toutes les requêtes récursives se protègent des boucles : une donnée
    ancienne qui en contiendrait une ne doit jamais faire tourner le serveur
@@ -662,9 +663,10 @@ async function sansN1DansLaDirection(tx: Tx, directionId: string | SQL): Promise
 /**
  * Le n+1 qui revient d'office à un agent qui n'en a pas (règle 5) : pour un
  * directeur, le DG ; pour le chef d'un département ou d'un service, le
- * responsable de l'unité au-dessus (règle 3 bis) ; sinon le responsable ACTIF
- * de sa direction, le DG pour la Direction Générale. `null` : il est le DG,
- * il n'a pas de direction, ou personne n'est au-dessus de lui.
+ * responsable de l'unité au-dessus (règle 3 bis) ; sinon le responsable de son
+ * unité (ADR-0178) : en remontant depuis elle, le premier responsable ACTIF,
+ * jusqu'à la direction comprise, le DG pour la Direction Générale. `null` :
+ * l'agent est le DG, n'a pas de direction, ou personne n'est au-dessus.
  */
 export async function n1DOffice(
   tx: Tx,
@@ -676,20 +678,50 @@ export async function n1DOffice(
   // Le chef d'un département ou d'un service : l'unité qui coiffe la sienne.
   const place = await superieurAttendu(tx, employeeId);
   if (place) return place.superieur ? { id: place.superieur.id, motif: 'chef_d_unite' } : null;
-  const direction = await directionDeEmploye(tx, employeeId);
-  if (!direction) return null;
-  const { rows } = await tx.execute<{ id: string }>(sql`
-    SELECT o.manager_employee_id AS id FROM org_units o
-      JOIN employees e ON e.id = o.manager_employee_id AND e.status = 'active'
-     WHERE o.id = ${direction.id} AND o.deleted_at IS NULL`);
-  const tete = rows[0]?.id ?? null;
-  return tete && tete !== employeeId ? { id: tete, motif: 'responsable_de_sa_direction' } : null;
+  const tete = await responsableDeSonUnite(tx, employeeId);
+  if (!tete) return null;
+  return {
+    id: tete.id,
+    motif: tete.direction ? 'responsable_de_sa_direction' : 'responsable_de_son_unite',
+  };
 }
 
 /**
- * Un agent actif SANS n+1 relève d'office du responsable de sa direction
- * (règle 5), si elle en a un et que le rattachement tient. Rend `true` s'il
- * a été écrit. Qui a déjà un n+1 n'est pas touché.
+ * Le responsable ACTIF le plus proche d'un agent, en remontant depuis l'unité
+ * de son affectation jusqu'à sa direction comprise : le chef de son service,
+ * sinon le chef du département au-dessus, sinon le directeur ; jamais l'agent
+ * en personne.
+ * `direction` : c'est le responsable de la direction. `null` : personne,
+ * la direction attend sa tête.
+ */
+async function responsableDeSonUnite(
+  tx: Tx,
+  employeeId: string,
+): Promise<{ id: string; direction: boolean } | null> {
+  const { rows } = await tx.execute<{ id: string; type: string }>(sql`
+    WITH RECURSIVE montee AS (
+      SELECT u.id, u.unit_type, u.parent_id, u.manager_employee_id, 0 AS prof
+        FROM org_units u
+       WHERE u.id = ${uniteEnVigueur(sql`${employeeId}::uuid`)} AND u.deleted_at IS NULL
+      UNION ALL
+      SELECT p.id, p.unit_type, p.parent_id, p.manager_employee_id, m.prof + 1
+        FROM montee m
+        JOIN org_units p ON p.id = m.parent_id AND p.deleted_at IS NULL
+       WHERE m.unit_type <> 'direction' AND m.prof < 64
+    )
+    SELECT m.manager_employee_id AS id, m.unit_type AS type
+      FROM montee m
+      JOIN employees e ON e.id = m.manager_employee_id AND e.status = 'active'
+     WHERE m.manager_employee_id <> ${employeeId}::uuid
+     ORDER BY m.prof LIMIT 1`);
+  const r = rows[0];
+  return r ? { id: r.id, direction: r.type === 'direction' } : null;
+}
+
+/**
+ * Un agent actif SANS n+1 reçoit son n+1 d'office (règle 5), s'il y en a un
+ * et que le rattachement tient. Rend `true` quand le rattachement est écrit.
+ * Un agent qui a déjà un n+1 n'est pas touché.
  */
 export async function rattacherDOffice(
   tx: Tx,
@@ -705,6 +737,91 @@ export async function rattacherDOffice(
   const cible = await n1DOffice(tx, employeeId);
   if (!cible) return false;
   return tenterRattachement(tx, journal, employeeId, cible.id, cible.motif);
+}
+
+/** Le n+1 d'un agent et son n+1 d'office, relevés au même instant. */
+export interface NPlusUnReleve {
+  n1: string | null;
+  /** Le responsable de son unité (règle 5) ; `null` : personne. */
+  dOffice: string | null;
+  /** Ce responsable dirige sa direction. */
+  direction: boolean;
+}
+
+/**
+ * Le n+1 et le n+1 d'office des agents actifs du périmètre d'une unité, en
+ * une requête. Les responsables n'y sont pas : leur n+1 s'impose (règle 3 bis,
+ * cf. `alignerLesChefs`), comme pour le DG et les directeurs.
+ */
+export async function nPlusUnDuPerimetre(
+  tx: Tx,
+  uniteId: string,
+): Promise<Map<string, NPlusUnReleve>> {
+  const { rows } = await tx.execute<{
+    agent: string;
+    n1: string | null;
+    tete: string | null;
+    direction: boolean | null;
+  }>(sql`
+    ${perimetre(uniteId)},
+    agents AS (
+      SELECT e.id, e.manager_employee_id AS n1, x.unite
+        FROM employees e
+        CROSS JOIN LATERAL (SELECT ${uniteEnVigueur(sql`e.id`)} AS unite) x
+       WHERE e.status = 'active' AND x.unite IN (SELECT id FROM perimetre)
+         AND e.id IS DISTINCT FROM ${DG}
+         AND NOT EXISTS (SELECT 1 FROM org_units d
+                          WHERE d.manager_employee_id = e.id AND d.deleted_at IS NULL)
+    ),
+    montee AS (
+      SELECT a.id AS agent, u.unit_type, u.parent_id, u.manager_employee_id, 0 AS prof
+        FROM agents a JOIN org_units u ON u.id = a.unite AND u.deleted_at IS NULL
+      UNION ALL
+      SELECT m.agent, p.unit_type, p.parent_id, p.manager_employee_id, m.prof + 1
+        FROM montee m JOIN org_units p ON p.id = m.parent_id AND p.deleted_at IS NULL
+       WHERE m.unit_type <> 'direction' AND m.prof < 64
+    ),
+    tetes AS (
+      SELECT DISTINCT ON (m.agent) m.agent, m.manager_employee_id AS tete,
+             m.unit_type = 'direction' AS direction
+        FROM montee m JOIN employees h ON h.id = m.manager_employee_id AND h.status = 'active'
+       WHERE m.manager_employee_id <> m.agent
+       ORDER BY m.agent, m.prof
+    )
+    SELECT a.id AS agent, a.n1, tt.tete, tt.direction
+      FROM agents a LEFT JOIN tetes tt ON tt.agent = a.id`);
+  return new Map(
+    rows.map((r) => [r.agent, { n1: r.n1, dOffice: r.tete, direction: Boolean(r.direction) }]),
+  );
+}
+
+/**
+ * Après une opération sur l'organigramme (une désignation, le rattachement
+ * d'une unité) : l'agent du périmètre qui relevait de son n+1 d'office, de
+ * personne, ou du DG en attendant une tête, relève du nouveau n+1 d'office
+ * (ADR-0178). Un n+1 choisi reste, comme un rattachement qu'une cascade
+ * vient d'écrire.
+ */
+export async function suivreLeNPlusUnDOffice(
+  tx: Tx,
+  journal: ChangementRattachement[],
+  uniteId: string,
+  avant: Map<string, NPlusUnReleve>,
+): Promise<void> {
+  const dg = await directeurGeneral(tx);
+  for (const [agent, apres] of await nPlusUnDuPerimetre(tx, uniteId)) {
+    const a = avant.get(agent);
+    if (!a || !apres.dOffice || apres.dOffice === a.dOffice || apres.n1 !== a.n1) continue;
+    const enAttente = a.n1 === null || (a.dOffice === null && a.n1 === dg);
+    if (!enAttente && a.n1 !== a.dOffice) continue;
+    await tenterRattachement(
+      tx,
+      journal,
+      agent,
+      apres.dOffice,
+      apres.direction ? 'responsable_de_sa_direction' : 'responsable_de_son_unite',
+    );
+  }
 }
 
 /**
@@ -778,11 +895,12 @@ export async function apresNouveauDG(
       await tenterRattachement(tx, journal, ancien, nouveau, 'ancien_dg');
     }
   }
-  // La Direction Générale est la direction du DG : qui y est sans n+1 relève de lui.
+  // À la Direction Générale, un agent sans n+1 relève du responsable de son
+  // unité, du DG à défaut (règle 5).
   for (const id of await sansN1DansLaDirection(tx, SOMMET)) {
-    if (id !== nouveau && id !== ancien) {
-      await tenterRattachement(tx, journal, id, nouveau, 'responsable_de_sa_direction');
-    }
+    if (id === nouveau || id === ancien) continue;
+    const cible = await n1DOffice(tx, id);
+    if (cible) await tenterRattachement(tx, journal, id, cible.id, cible.motif);
   }
 }
 
@@ -815,7 +933,8 @@ export async function apresNouvelAdjoint(
  * Une direction reçoit un (nouveau) responsable. Ce que la règle impose :
  *   - il relève du directeur général ;
  *   - les agents de la direction rattachés au DG EN ATTENDANT une tête,
- *     et ceux qui n'avaient pas de n+1, relèvent désormais de lui ;
+ *     et les agents sans n+1, reçoivent leur n+1 d'office : le
+ *     nouveau directeur, ou le chef de leur unité (règle 5) ;
  *   - ce qui relevait de l'ancien directeur relève de lui : l'équipe reste
  *     à la direction, elle ne suit pas l'ancien là où il va ;
  *   - l'ancien directeur, s'il reste dans la direction, relève de lui.
@@ -845,7 +964,15 @@ export async function apresNouveauDirecteur(
   for (const r of rows) {
     if (r.id === nouveau || r.id === ancien) continue;
     if (await dirigeUneDirection(tx, r.id)) continue;
-    await tenterRattachement(tx, journal, r.id, nouveau, 'direction_pourvue');
+    const cible = await n1DOffice(tx, r.id);
+    if (!cible) continue;
+    await tenterRattachement(
+      tx,
+      journal,
+      r.id,
+      cible.id,
+      cible.id === nouveau ? 'direction_pourvue' : cible.motif,
+    );
   }
 
   if (ancien && ancien !== nouveau) {

@@ -16,6 +16,7 @@ import {
 import {
   choixDImportSchema,
   nomsDUnitesSchema,
+  rattachementsDImportSchema,
   archiveEmployeesSchema,
   corrigerAffectationSchema,
   corrigerContratSchema,
@@ -102,6 +103,7 @@ export class PeopleController {
     @Query('apercu') apercu: string | undefined,
     @Query('choix') choix: string | undefined,
     @Query('noms') noms: string | undefined,
+    @Query('rattachements') rattachements: string | undefined,
   ) {
     const fichier = (req as unknown as { body?: unknown }).body;
     if (!Buffer.isBuffer(fichier) || fichier.length === 0) {
@@ -113,6 +115,7 @@ export class PeopleController {
       apercu !== '1',
       lireLesChoix(choix),
       lireLesNoms(noms),
+      lireLesRattachements(rattachements),
     );
   }
 
@@ -367,6 +370,25 @@ function lireLesChoix(brut: string | undefined): Record<string, string> {
   }
   const r = choixDImportSchema.safeParse(valeur);
   if (!r.success) problem(400, 'import.choix_illisibles', 'Les choix envoyés ne se lisent pas');
+  return r.data;
+}
+
+/**
+ * Les services rangés à l'aperçu, en JSON dans l'adresse : la clé du service
+ * vers celle du département retenu (ADR-0178).
+ */
+function lireLesRattachements(brut: string | undefined): Record<string, string> {
+  if (!brut) return {};
+  let valeur: unknown;
+  try {
+    valeur = JSON.parse(brut);
+  } catch {
+    problem(400, 'import.rattachements_illisibles', 'Les départements choisis ne se lisent pas');
+  }
+  const r = rattachementsDImportSchema.safeParse(valeur);
+  if (!r.success) {
+    problem(400, 'import.rattachements_illisibles', 'Les départements choisis ne se lisent pas');
+  }
   return r.data;
 }
 

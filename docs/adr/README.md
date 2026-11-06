@@ -39,8 +39,8 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0031](0031-accuse-de-reception.md)                   | L'accusé de réception d'une candidature, et des courriels sans réponse                  | acceptée                                    |
 | [0032](0032-absence-ponctuelle-a-l-heure.md)          | L'absence ponctuelle, à l'heure ou à la journée, plafonnée par demande                  | acceptée, précisée par 0135 et 0166         |
 | [0033](0033-fonction-de-responsable.md)               | La fonction de responsable s'écrit dans les affectations                                | acceptée, précisée (0038, 0064, 0126, 0127) |
-| [0034](0034-n-plus-un-des-chefs-d-unite.md)           | Le chef d'un département ou d'un service relève de l'unité au-dessus                    | acceptée, relève précisée par 0035          |
-| [0035](0035-releve-d-un-chef-et-stagiaires.md)        | Relève d'un chef : l'équipe passe au nouveau ; aucun stagiaire n'est n+1                | acceptée, directeurs précisés par 0037      |
+| [0034](0034-n-plus-un-des-chefs-d-unite.md)           | Le chef d'un département ou d'un service relève de l'unité au-dessus                    | acceptée, précisée par 0035 et 0178         |
+| [0035](0035-releve-d-un-chef-et-stagiaires.md)        | Relève d'un chef : l'équipe passe au nouveau ; aucun stagiaire n'est n+1                | précisée (0037), en partie remplacée (0178) |
 | [0036](0036-responsable-choisi-dans-la-direction.md)  | Le responsable d'un département ou d'un service se choisit dans la direction            | acceptée                                    |
 | [0037](0037-directeur-remplace-son-equipe-passe.md)   | Directeur remplacé : son équipe passe au nouveau directeur                              | acceptée                                    |
 | [0038](0038-devenir-de-l-ancien-responsable.md)       | Responsable remplacé : il reste, change d'affectation, prend une autre tête ou part     | acceptée, précisée par 0126                 |
@@ -164,7 +164,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0156](0156-reprise-de-la-grille-au-n2.md)            | Chez le N+2, le N+1 attend l'avis ou reprend la grille avant de l'envoyer à la DCH      | acceptée                                    |
 | [0157](0157-cadre-ou-non-cadre-sur-soi.md)            | Cadre ou non cadre, la seule chose qu'on règle sur son propre dossier                   | acceptée                                    |
 | [0158](0158-la-fiche-recoit-le-fichier-de-la-dch.md)  | La fiche reçoit tout ce que la DCH tient sur chaque agent, la rémunération à part       | acceptée, précisée par 0163                 |
-| [0159](0159-l-import-lit-le-fichier-de-la-dch.md)     | L'import lit le fichier de la DCH : corrections, réimport, postes et N+1 par leur nom   | acceptée, précisée par 0162, 0163 et 0164   |
+| [0159](0159-l-import-lit-le-fichier-de-la-dch.md)     | L'import lit le fichier de la DCH : corrections, réimport, postes et N+1 par leur nom   | acceptée, précisée par 0162 à 0164 et 0178  |
 | [0160](0160-l-import-ecrit-les-unites-sans-faute.md)  | L'import écrit les unités sans faute, lit « 01-mars-04 » et prend « NA » pour vide      | acceptée, précisée par 0161                 |
 | [0161](0161-les-intitules-de-poste-sans-faute.md)     | Les intitulés de poste sortent de l'import sans faute, accordés au sexe de la personne  | acceptée                                    |
 | [0162](0162-import-de-la-prime-de-transport.md)       | L'import reprend la prime de transport du fichier de la DCH sur la fiche                | acceptée, précisée par 0163                 |
@@ -183,3 +183,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0175](0175-date-entre-numero-et-emetteur.md)         | La date de l'en-tête, à égale distance du numéro et de l'émetteur                       | acceptée                                    |
 | [0176](0176-sans-dossier-ou-avant-le-depart.md)       | Certificat de travail et attestation de stage, sans dossier ou avant le départ          | acceptée                                    |
 | [0177](0177-fiche-d-une-unite-stable.md)              | La fiche d'une unité s'ouvre entière, et les fenêtres se posent sans flou               | acceptée                                    |
+| [0178](0178-services-sous-un-departement.md)          | Les services se rangent sous un département ; le N+1 d'office est le chef de l'unité    | acceptée                                    |

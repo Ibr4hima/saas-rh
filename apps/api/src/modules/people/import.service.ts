@@ -19,6 +19,7 @@ import {
   type LigneImport,
   type OrgUnitType,
   type RapportImportEmployes,
+  type RattachementImport,
   type SessionUser,
   type UpdateEmployeeInput,
   type VueRemuneration,
@@ -28,7 +29,15 @@ import { problem, ProblemException } from '../../common/problem';
 import { lirePremiereFeuille, XlsxIllisible, type CelluleXlsx } from '../../common/xlsx';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import { reconcilierLeCircuit } from '../time/visas';
-import { directionDeLUnite, rattacherDOffice, SOMMET, verrouillerLaChaine } from './chaine';
+import {
+  directeurGeneral,
+  directionDeLUnite,
+  dirigeUneDirection,
+  rattacherDOffice,
+  SOMMET,
+  superieurAttendu,
+  verrouillerLaChaine,
+} from './chaine';
 import { contratEchu } from './en-activite';
 import {
   CHAMPS_DE_LA_REMUNERATION,
@@ -83,6 +92,9 @@ import { PeopleService } from './people.service';
       se départage avant l'import.
    6. Une ligne fautive n'arrête pas les autres : chaque écriture a son point
       de reprise dans la transaction.
+   7. Dans une direction qui compte des départements, un service se range
+      sous l'un d'eux : celui que nomme la ligne, le seul que compte la
+      direction, ou celui que la DCH choisit à l'aperçu (ADR-0178).
    ──────────────────────────────────────────────────────────────── */
 
 /** Au-delà, ce n'est plus un fichier qu'on importe : c'est une migration. */
@@ -109,7 +121,8 @@ export class ImportEmployesService {
    * Lit le fichier et le joue. `appliquer` faux : tout est annulé, seul le
    * rapport reste. `choix` : les homonymes départagés, de la clé du choix au
    * candidat retenu. `noms` : les noms d'unités corrigés à l'aperçu, de la
-   * clé de l'unité à son nom.
+   * clé de l'unité à son nom. `rattachements` : les services rangés à
+   * l'aperçu, de la clé du service à celle de son département.
    */
   async importer(
     user: SessionUser,
@@ -117,6 +130,7 @@ export class ImportEmployesService {
     appliquer: boolean,
     choix: Record<string, string> = {},
     noms: Record<string, string> = {},
+    rattachements: Record<string, string> = {},
   ): Promise<RapportImportEmployes> {
     const feuille = this.lire(fichier);
     // Les intitulés sont sur la première ligne, ou plus bas sous un titre :
@@ -142,8 +156,10 @@ export class ImportEmployesService {
         : colonnesRemplies(corr, donnees, CHAMPS_DE_LA_REMUNERATION),
       lignes: [],
       unitesCreees: [],
+      servicesRanges: [],
       designations: [],
       choix: [],
+      rattachements: [],
       total: 0,
       aCreer: 0,
       aModifier: 0,
@@ -168,6 +184,7 @@ export class ImportEmployesService {
             this.crypto,
             choix,
             noms,
+            rattachements,
             this.journal,
           );
           // La ligne du tableur où commencent les agents : le rapport la cite.
@@ -364,6 +381,7 @@ interface Unite {
   adjoint: string | null;
   directionId: string | null;
   sommet: boolean;
+  creeParLImport: boolean;
 }
 
 /** Une unité que le fichier nomme et que l'organigramme n'a pas encore. */
@@ -381,6 +399,21 @@ interface UniteACreer {
 
 /** Une unité de l'organigramme, ou une unité que l'import crée. */
 type Place = { unite: Unite } | { nouvelle: UniteACreer };
+
+/**
+ * Un service rangé directement sous sa direction, alors qu'elle peut compter
+ * des départements (ADR-0178) : un service que l'import crée, ou qu'un
+ * import précédent a créé.
+ */
+interface ServiceARanger {
+  /** La clé de l'unité à créer, ou `u:<id>` pour un service de l'organigramme. */
+  cle: string;
+  service: Place;
+  direction: Unite;
+  /** Le département que nomme une ligne du fichier. */
+  departement: Place | null;
+  lignes: number[];
+}
 
 interface Plan {
   lue: LigneLue;
@@ -471,7 +504,11 @@ class Passe {
   private aCreer: UniteACreer[] = [];
   private personnes: Personne[] = [];
   private readonly choixDemandes = new Map<string, ChoixImport>();
+  private readonly aRanger = new Map<string, ServiceARanger>();
+  private readonly rattachementsDemandes: RattachementImport[] = [];
+  private readonly deplacements: { service: Unite; vers: Place; lignes: number[] }[] = [];
   private readonly unitesCreees: RapportImportEmployes['unitesCreees'] = [];
+  private readonly servicesRanges: RapportImportEmployes['servicesRanges'] = [];
   private readonly designations: RapportImportEmployes['designations'] = [];
   private readonly organigramme: OrgUnitsService;
 
@@ -483,6 +520,7 @@ class Passe {
     private readonly crypto: EncryptionService,
     private readonly choix: Record<string, string>,
     private readonly noms: Record<string, string>,
+    private readonly rattachements: Record<string, string>,
     private readonly journal: Logger,
   ) {
     this.organigramme = new OrgUnitsService(db);
@@ -546,6 +584,7 @@ class Passe {
     this.refuserCeQuiNeSeModifiePas();
 
     await this.creerLesUnites();
+    await this.deplacerLesServices();
     // Les responsables d'abord, désignés aussitôt : les agents qui suivent
     // relèvent d'eux dès leur création, et chaque désignation n'a plus toute
     // une direction à rattacher derrière elle.
@@ -566,8 +605,10 @@ class Passe {
       ...vide,
       lignes,
       unitesCreees: this.unitesCreees,
+      servicesRanges: this.servicesRanges,
       designations: this.designations,
       choix: [...this.choixDemandes.values()],
+      rattachements: this.rattachementsDemandes,
       total: lignes.length,
       aCreer: lignes.filter((l) => l.etat === 'a-creer').length,
       aModifier: lignes.filter((l) => l.etat === 'a-modifier').length,
@@ -601,10 +642,11 @@ class Passe {
       adjoint_employee_id: string | null;
       direction_id: string | null;
       sommet: boolean;
+      cree_par_l_import: boolean;
     }>(sql`
       SELECT o.id, o.name, o.short_name, o.unit_type, o.parent_id, o.manager_employee_id,
              o.adjoint_employee_id, ${directionDeLUnite(sql`o.id`, 'id')} AS direction_id,
-             (o.id = ${SOMMET}) AS sommet
+             (o.id = ${SOMMET}) AS sommet, o.cree_par_l_import
         FROM org_units o WHERE o.deleted_at IS NULL`);
     this.unites = unites.map((u) => ({
       id: u.id,
@@ -616,6 +658,7 @@ class Passe {
       adjoint: u.adjoint_employee_id,
       directionId: u.direction_id ?? (u.unit_type === 'direction' ? u.id : null),
       sommet: Boolean(u.sommet),
+      creeParLImport: Boolean(u.cree_par_l_import),
     }));
 
     const { rows } = await this.tx.execute<Record<string, unknown>>(sql`
@@ -1069,12 +1112,103 @@ class Passe {
               : trouverOuCreer('service', nom, departement ?? { unite: direction }, direction, p);
           p.place = unite ?? parDefaut;
           if (unite) p.designation = { place: 'tete', unite };
+          if (unite && nature.type === 'service') {
+            this.aRangerSous(unite, direction, departement, p.lue.ligne);
+          }
           break;
         }
         default:
           p.place = parDefaut;
       }
       p.rapport.unite = p.place ? nomDeLaPlace(p.place) : null;
+    }
+    // Les départements que le fichier crée sont tous connus : chaque service
+    // trouve le sien.
+    this.rangerLesServices();
+  }
+
+  /**
+   * Un service rangé directement sous sa direction, que l'import crée ou
+   * qu'un import précédent a créé, attend de savoir si elle compte des
+   * départements. Un service saisi à la main reste où la DCH l'a mis.
+   */
+  private aRangerSous(
+    service: Place,
+    direction: Unite,
+    departement: Place | null,
+    ligne: number,
+  ): void {
+    let cle: string;
+    if ('nouvelle' in service) {
+      const parent = service.nouvelle.parent;
+      if (!('unite' in parent) || parent.unite.id !== direction.id) return;
+      cle = service.nouvelle.cle;
+    } else {
+      const u = service.unite;
+      if (u.parentId !== direction.id || !u.creeParLImport) return;
+      if (!peut(this.user, 'organigramme')) return;
+      cle = `u:${u.id}`;
+    }
+    const deja = this.aRanger.get(cle);
+    if (deja) {
+      deja.lignes.push(ligne);
+      deja.departement ??= departement;
+      return;
+    }
+    this.aRanger.set(cle, { cle, service, direction, departement, lignes: [ligne] });
+  }
+
+  /** Les départements d'une direction : ceux de l'organigramme, puis ceux que l'import crée. */
+  private departementsDe(direction: Unite): Place[] {
+    const places: Place[] = [
+      ...this.unites
+        .filter((u) => u.type === 'department' && u.parentId === direction.id)
+        .map((unite) => ({ unite })),
+      ...this.aCreer
+        .filter(
+          (u) =>
+            u.type === 'department' && 'unite' in u.parent && u.parent.unite.id === direction.id,
+        )
+        .map((nouvelle) => ({ nouvelle })),
+    ];
+    return places.sort((a, b) => nomDeLaPlace(a).localeCompare(nomDeLaPlace(b), 'fr'));
+  }
+
+  /**
+   * Un service se range sous un département de sa direction (ADR-0178) :
+   * celui que nomme la ligne, sinon le seul que compte la direction, sinon
+   * celui que la DCH choisit à l'aperçu. Une direction sans département
+   * garde ses services.
+   */
+  private rangerLesServices(): void {
+    const cleDe = (d: Place) => ('unite' in d ? `u:${d.unite.id}` : d.nouvelle.cle);
+    for (const s of this.aRanger.values()) {
+      const departements = this.departementsDe(s.direction);
+      let cible = s.departement ?? (departements.length === 1 ? departements[0]! : null);
+      if (!cible && departements.length > 1) {
+        const voulu = this.rattachements[s.cle];
+        cible = departements.find((d) => cleDe(d) === voulu) ?? null;
+        this.rattachementsDemandes.push({
+          cle: s.cle,
+          service: nomDeLaPlace(s.service),
+          direction: s.direction.sigle ?? s.direction.nom,
+          lignes: s.lignes,
+          departements: departements.map((d) => ({ cle: cleDe(d), nom: nomDeLaPlace(d) })),
+          retenu: cible ? cleDe(cible) : null,
+        });
+        if (!cible) {
+          for (const p of this.plans) {
+            if (!s.lignes.includes(p.lue.ligne)) continue;
+            p.rapport.avertissements.push({
+              colonne: p.lue.colonne('poste'),
+              texte: `Choisissez le département auquel rattacher « ${nomDeLaPlace(s.service)} »`,
+            });
+          }
+        }
+      }
+      if (!cible) continue;
+      if ('nouvelle' in s.service) s.service.nouvelle.parent = cible;
+      else this.deplacements.push({ service: s.service.unite, vers: cible, lignes: s.lignes });
     }
   }
 
@@ -1647,6 +1781,7 @@ class Passe {
         adjoint: null,
         directionId: this.directionDeLaPlace(u.parent)?.id ?? null,
         sommet: false,
+        creeParLImport: true,
       });
       this.unitesCreees.push({
         cle: u.cle,
@@ -1675,6 +1810,37 @@ class Passe {
       ) {
         p.affectation.unite = place ?? undefined;
       }
+    }
+  }
+
+  /**
+   * Les services de l'organigramme que l'import range sous un département,
+   * une fois les départements créés : le chef de chacun relève alors du chef
+   * de ce département (règle 3 bis), comme l'organigramme le fait.
+   */
+  private async deplacerLesServices(): Promise<void> {
+    const journal: Parameters<OrgUnitsService['designerDansLaTransaction']>[2] = [];
+    for (const d of this.deplacements) {
+      const parentId = this.idDeLaPlace(d.vers);
+      const r = parentId
+        ? await this.essayer((sp) =>
+            this.organigramme.designerDansLaTransaction(sp, this.user, journal, d.service.id, {
+              parentId,
+            }),
+          )
+        : { erreur: 'le département n’a pas pu être créé' };
+      if ('erreur' in r) {
+        for (const p of this.plans) {
+          if (!d.lignes.includes(p.lue.ligne)) continue;
+          p.rapport.avertissements.push({
+            colonne: p.lue.colonne('poste'),
+            texte: `« ${d.service.nom} » reste rattaché à sa direction : ${r.erreur.replace(/\.$/, '')}`,
+          });
+        }
+        continue;
+      }
+      d.service.parentId = parentId;
+      this.servicesRanges.push({ service: d.service.nom, departement: nomDeLaPlace(d.vers) });
     }
   }
 
@@ -1919,6 +2085,17 @@ class Passe {
           FROM employees WHERE id = ${p.employeeId}`);
       const actuel = role === 'n1' ? rows[0]?.n1 : rows[0]?.f;
       if (actuel === id) continue;
+      // Le N+1 d'un responsable s'impose (règle 3 bis) : le fichier qui en
+      // nomme un autre est corrigé.
+      const impose = role === 'n1' ? await this.n1Impose(p.employeeId) : null;
+      if (impose && impose.id !== id) {
+        p.rapport.corrections.push({
+          colonne: p.lue.colonne('n1'),
+          lu: p.lue.n1 ?? '',
+          retenu: impose.libelle,
+        });
+        continue;
+      }
       const employe = p.employeeId;
       const r = await this.essayer((sp) =>
         this.people.update(
@@ -1948,7 +2125,23 @@ class Passe {
     }
   }
 
-  /** Sans N+1 écrit, l'agent relève d'office du responsable de sa direction (règle 5). */
+  /**
+   * Le N+1 qu'impose une place de responsable : le DG pour un directeur,
+   * l'unité au-dessus pour le chef d'un département ou d'un service.
+   * `null` : rien n'est imposé.
+   */
+  private async n1Impose(employeeId: string): Promise<{ id: string; libelle: string } | null> {
+    const place = await superieurAttendu(this.tx, employeeId);
+    if (place) {
+      const s = place.superieur;
+      return s ? { id: s.id, libelle: `${s.nom}, responsable de « ${s.unite} »` } : null;
+    }
+    if (!(await dirigeUneDirection(this.tx, employeeId))) return null;
+    const dg = await directeurGeneral(this.tx);
+    return dg ? { id: dg, libelle: `${this.nomDuDossier(dg)}, DG` } : null;
+  }
+
+  /** Sans N+1 écrit, l'agent relève d'office du responsable de son unité (règle 5). */
   private async rattacherDOffice(): Promise<void> {
     for (const p of this.plans) {
       const id = p.employeeId;

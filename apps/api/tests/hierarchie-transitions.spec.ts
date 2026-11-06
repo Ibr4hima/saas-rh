@@ -403,8 +403,12 @@ describe('les réorganisations', () => {
   it('déplacer une unité est permis ; l’aperçu dit d’abord les rattachements qu’il rend faux', async () => {
     await leDG();
     const dsid = await unDirecteur('DSID', uDSID);
-    await unDirecteur('DCH', uDCH);
-    await agent('A', uEtudes, dsid);
+    const dch = await unDirecteur('DCH', uDCH);
+    // Un N+1 choisi dans l'ancienne direction ne suit pas l'unité ; le N+1
+    // d'office la suit (ADR-0178).
+    const collegue = await agent('COLLEGUE', uDSID, dsid);
+    await agent('A', uEtudes, collegue);
+    const b = await agent('B', uEtudes, dsid);
 
     const apercu = await organigramme.apercu(user, uEtudes, { parentId: uDCH });
     expect(apercu.aRevoir.map((a) => `${a.matricule}:${a.type}`)).toEqual(['A:hors_direction']);
@@ -413,6 +417,10 @@ describe('les réorganisations', () => {
     const r = await organigramme.update(user, uEtudes, { parentId: uDCH });
     expect(r.aRevoir).toEqual(apercu.aRevoir);
     expect(await anomalies()).toEqual(['A:hors_direction']);
+    expect(await n1(b)).toBe(dch);
+    expect(r.changements).toContainEqual(
+      expect.objectContaining({ employeeId: b, motif: 'responsable_de_sa_direction' }),
+    );
   });
 
   it('dissoudre sans unité d’accueil : l’aperçu dit qui se retrouvera sans direction', async () => {
