@@ -6,7 +6,9 @@
  * après son embauche. Elle cite un stage du dossier, du premier jour (un
  * renouvellement dans le mois ne fait pas un nouveau stage) au dernier (la
  * fin du contrat, ou le départ s'il vient avant), et le poste occupé pendant
- * le stage. À plusieurs stages, la DCH choisit lequel (ADR-0132).
+ * le stage. À plusieurs stages, la DCH choisit lequel (ADR-0132). Pour une
+ * personne sans dossier dans l'application, la DCH renseigne une fiche
+ * (ADR-0176).
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -17,7 +19,9 @@ import { runMigrations } from '../src/db/migrate';
 import { TenantDb, type Tx } from '../src/db/tenant-db';
 import {
   attestationDeStage,
+  attestationDeStageHorsDossier,
   textesDeLAttestationDeStage,
+  textesDeStageHorsDossierPour,
   textesDeStagePour,
   type StageData,
 } from '../src/modules/documents/attestation-stage';
@@ -65,7 +69,6 @@ async function codeOf(fn: () => Promise<unknown>): Promise<string> {
 /** Les données d'un stage ordinaire, à varier d'un test à l'autre. */
 const dossier = (d: Partial<StageData> = {}): StageData => ({
   agent: { nom: 'Awa DIOP', genre: 'female' },
-  employeeNumber: 'STG-001',
   debut: '2026-01-05',
   fin: '2026-06-30',
   poste: 'Stagiaire juriste',
@@ -370,5 +373,50 @@ describe('le stage que l’attestation cite', () => {
     } finally {
       await raw('DELETE FROM contracts WHERE id = $1', [futur]);
     }
+  });
+});
+
+describe('une personne sans dossier dans l’application (ADR-0176)', () => {
+  /** Une fiche ordinaire : un stage d'il y a dix ans, saisi en minuscules. */
+  const fiche = (f: Record<string, unknown> = {}) => ({
+    civilite: 'madame',
+    prenom: 'coumba',
+    nom: 'ndiaye',
+    debut: '2014-03-03',
+    fin: '2014-08-29',
+    poste: 'stagiaire juriste',
+    ...f,
+  });
+  const textesDeLaFiche = (corps: unknown) =>
+    enTenant((tx) => textesDeStageHorsDossierPour(tx, corps));
+
+  it('la fiche tient lieu de dossier : la personne, le stage et le poste ; la DCH atteste', async () => {
+    const textes = await textesDeLaFiche(fiche());
+    expect(textes.timbre).toBe('La Directrice du Capital Humain');
+    expect(enClair(textes, 0)).toBe(
+      'Je soussignée, Madame Mariama CISSÉ, Directrice du Capital Humain, atteste par la présente que ' +
+        'Madame Coumba NDIAYE a effectué un stage sur la période allant du 3 mars 2014 au 29 août 2014, ' +
+        'en qualité de Stagiaire juriste.',
+    );
+    expect(enClair(textes, 1)).toContain('délivrée à l’intéressée pour servir');
+  });
+
+  it('tient sur une feuille, et le nom de la personne fait celui du fichier', async () => {
+    const { filename, pdf } = await enTenant((tx) =>
+      attestationDeStageHorsDossier.pdf(tx, fiche()),
+    );
+    expect(filename).toBe('attestation-stage-NDIAYE-Coumba.pdf');
+    expect((pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length).toBe(1);
+  });
+
+  it('tout est obligatoire, sans catégorie ; le dernier jour ne précède pas le premier', async () => {
+    expect(await codeOf(() => textesDeLaFiche(fiche({ poste: '' })))).toBe('validation_failed');
+    expect(await codeOf(() => textesDeLaFiche(fiche({ fin: '2014-03-02' })))).toBe(
+      'validation_failed',
+    );
+    // La catégorie est celle du certificat de travail : l'attestation la refuse.
+    expect(await codeOf(() => textesDeLaFiche(fiche({ categorie: '7B' })))).toBe(
+      'validation_failed',
+    );
   });
 });

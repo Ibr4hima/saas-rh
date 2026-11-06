@@ -74,6 +74,51 @@ export function Choix({ titre, children }: { titre: string; children: ReactNode 
   );
 }
 
+/**
+ * Oui ou Non, à la mesure des onglets (36 px), sur toute la largeur du choix :
+ * la question est l'intitulé de la section (ADR-0176).
+ */
+export function OuiNon({
+  libelle,
+  oui,
+  onChoisir,
+}: {
+  /** La question, pour les lecteurs d'écran. */
+  libelle: string;
+  oui: boolean;
+  onChoisir: (oui: boolean) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={libelle}
+      className="flex gap-1 rounded-groupe border border-line-soft bg-bg p-[3px]"
+    >
+      {[
+        { reponse: true, label: 'Oui' },
+        { reponse: false, label: 'Non' },
+      ].map((o) => (
+        <button
+          key={o.label}
+          type="button"
+          role="radio"
+          aria-checked={oui === o.reponse}
+          onClick={() => onChoisir(o.reponse)}
+          className={cn(
+            'h-7 flex-1 rounded-controle-sm px-3.5 text-[12.5px] font-bold whitespace-nowrap transition-colors',
+            'focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
+            oui === o.reponse
+              ? 'bg-surface text-primary shadow-sm'
+              : 'text-ink-muted hover:text-ink',
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Un champ sur deux colonnes : une adresse, une affectation, un nom d'unité. */
 export const SUR_DEUX_COLONNES = '@lg:col-span-2';
 

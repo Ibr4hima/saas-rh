@@ -1,11 +1,13 @@
 /**
  * La cible de chaque document (ADR-0130) : « Générer des documents » ne
  * propose que les agents à qui le document s'adresse, et le serveur refuse
- * de le générer pour un autre. Une attestation de travail ne se délivre pas
- * pour un stage, ni un certificat de travail pour un dossier en activité ;
- * le congé de maternité suppose le genre féminin, le départ à la retraite
- * 40 ans au moins et un CDI ou un CDD (ADR-0131). « Demander un document »
- * n'offre à l'agent que les documents de sa cible (ADR-0137).
+ * de le générer pour un autre. Une attestation de travail ne se délivre ni
+ * pour un stage, ni pour un dossier inactif ; le certificat de travail se
+ * prépare aussi pour un agent encore en poste (ADR-0176), mais ne se demande
+ * qu'une fois parti. Le congé de maternité suppose le genre féminin, le
+ * départ à la retraite 40 ans au moins et un CDI ou un CDD (ADR-0131).
+ * « Demander un document » n'offre à l'agent que les documents de sa cible
+ * (ADR-0137).
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -189,8 +191,11 @@ describe('la liste des agents, document par document', () => {
     }
   });
 
-  it('le certificat de travail : les dossiers inactifs, sous contrat de travail', async () => {
-    expect(await noms('certificat_travail')).toEqual(['Aminata']);
+  it('le certificat de travail : sous contrat de travail, parti ou encore en poste (ADR-0176)', async () => {
+    // Ni Binta, en stage, ni Ousmane, parti après un stage ; ni soi.
+    expect((await noms('certificat_travail')).sort()).toEqual(
+      ['Aminata', 'Awa', 'Cheikh', 'Fatou', 'Khady', 'Moussa', 'Ndèye', 'Samba'].sort(),
+    );
   });
 
   it('l’attestation de stage : un stage commencé, en activité ou non', async () => {
@@ -233,8 +238,10 @@ describe('le refus', () => {
       'documents.stage',
     );
     expect(
-      await codeOf(() => service.pdf(dch, 'certificat_travail', employes.awa, { categorie: '7B' })),
-    ).toBe('documents.en_activite');
+      await codeOf(() =>
+        service.pdf(dch, 'certificat_travail', employes.binta, { categorie: '7B' }),
+      ),
+    ).toBe('documents.stage');
     expect(
       await codeOf(() =>
         service.pdf(dch, 'attestation_cessation', employes.fatou, { debut: '2026-11-02' }),
@@ -273,6 +280,12 @@ describe('le refus', () => {
       categorie: '7B',
     });
     expect(certificat.filename).toBe('certificat-travail-CIB-007.pdf');
+    // Encore en poste : le dernier jour que prévoit son départ.
+    const avantLeDepart = await service.pdf(dch, 'certificat_travail', employes.awa, {
+      categorie: '7B',
+      fin: '2026-12-31',
+    });
+    expect(avantLeDepart.filename).toBe('certificat-travail-CIB-002.pdf');
   });
 });
 

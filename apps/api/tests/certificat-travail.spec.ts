@@ -2,10 +2,13 @@
  * Le certificat de travail, sur le modèle officiel de l'APIX (ADR-0091) : ce
  * qu'il DIT, avec la catégorie saisie par la DCH, et quel emploi il cite.
  *
- * Il se délivre au départ : le dossier est inactif. Il cite l'emploi du
+ * Il se délivre au départ, ou se prépare avant pour un agent encore en poste,
+ * jusqu'au dernier jour que la DCH saisit (ADR-0176). Il cite l'emploi du
  * premier jour de l'ancienneté au dernier jour d'activité, le dernier poste
  * occupé, et la catégorie de ce poste dans la convention collective, que le
  * dossier ne porte pas. Qui certifie dirige le sommet de l'organigramme.
+ * Pour une personne sans dossier dans l'application, la DCH renseigne une
+ * fiche.
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -16,6 +19,8 @@ import { runMigrations } from '../src/db/migrate';
 import { TenantDb, type Tx } from '../src/db/tenant-db';
 import {
   certificatDeTravail,
+  certificatHorsDossier,
+  textesDeCertificatHorsDossierPour,
   textesDeCertificatPour,
   textesDuCertificatDeTravail,
   type CertificatData,
@@ -49,8 +54,19 @@ const enGras = (textes: TextesDUneAttestation, i: number) =>
 const enTenant = <T>(fn: (tx: Tx) => Promise<T>) =>
   db.withTenant({ tenantId, userId: adminUserId }, fn);
 
-const textesDe = (employeeId: string, categorie = '7B') =>
-  enTenant((tx) => textesDeCertificatPour(tx, employeeId, categorie));
+const textesDe = (employeeId: string, categorie = '7B', fin?: string) =>
+  enTenant((tx) => textesDeCertificatPour(tx, employeeId, categorie, fin));
+
+/** Le détail d'un refus : la règle enfreinte, champ par champ. */
+async function detailOf(fn: () => Promise<unknown>): Promise<string> {
+  try {
+    await fn();
+    return 'AUCUNE ERREUR';
+  } catch (err) {
+    if (err instanceof ProblemException) return err.problem.detail ?? '';
+    throw err;
+  }
+}
 
 async function codeOf(fn: () => Promise<unknown>): Promise<string> {
   try {
@@ -65,7 +81,6 @@ async function codeOf(fn: () => Promise<unknown>): Promise<string> {
 /** Les données d'un emploi ordinaire, à varier d'un test à l'autre. */
 const dossier = (d: Partial<CertificatData> = {}): CertificatData => ({
   agent: { nom: 'Moussa NDIAYE', genre: 'male' },
-  employeeNumber: 'CRT-001',
   debut: '2023-07-01',
   fin: '2026-03-31',
   poste: 'Chargé d’Information',
@@ -303,8 +318,27 @@ describe('l’emploi que le certificat cite', () => {
     );
   });
 
-  it('un dossier en activité relève de l’attestation de travail ; un stage, de l’attestation de stage', async () => {
-    expect(await codeOf(() => textesDe(employes.actif!))).toBe('documents.en_activite');
+  it('un agent encore en poste : jusqu’au dernier jour saisi, celui que prévoit son départ', async () => {
+    expect(enClair(await textesDe(employes.actif!, '7B', '2026-12-31'), 0)).toContain(
+      'Madame Fatou SALL a été employée à APIX-SA, sur la période allant du 2 mai 2022 ' +
+        'au 31 décembre 2026, en qualité de Comptable.',
+    );
+  });
+
+  it('en poste, sans dernier jour, pas de certificat ; un dernier jour avant le premier, non plus', async () => {
+    expect(await codeOf(() => textesDe(employes.actif!))).toBe('documents.fin');
+    expect(await codeOf(() => textesDe(employes.actif!, '7B', '2022-05-01'))).toBe(
+      'documents.fin_avant_le_debut',
+    );
+  });
+
+  it('parti, le dernier jour est celui du départ, quoi que la saisie dise', async () => {
+    expect(enClair(await textesDe(employes.demission!, '7B', '2026-12-31'), 0)).toContain(
+      'du 1er juillet 2023 au 31 mars 2026',
+    );
+  });
+
+  it('un stage relève de l’attestation de stage', async () => {
     expect(await codeOf(() => textesDe(employes.stage!))).toBe('documents.stage');
   });
 
@@ -312,5 +346,62 @@ describe('l’emploi que le certificat cite', () => {
     expect(
       await codeOf(() => enTenant((tx) => certificatDeTravail.pdf(tx, employes.cdd!, {}))),
     ).toBe('documents.categorie');
+  });
+});
+
+describe('une personne sans dossier dans l’application (ADR-0176)', () => {
+  /** Une fiche ordinaire : partie il y a dix ans, saisie en minuscules. */
+  const fiche = (f: Record<string, unknown> = {}) => ({
+    civilite: 'monsieur',
+    prenom: 'ibrahima',
+    nom: 'sarr',
+    debut: '2009-01-05',
+    fin: '2016-06-30',
+    poste: 'chargé de mission',
+    categorie: '8a',
+    ...f,
+  });
+  const textesDeLaFiche = (corps: unknown) =>
+    enTenant((tx) => textesDeCertificatHorsDossierPour(tx, corps));
+
+  it('la fiche tient lieu de dossier : la personne, l’emploi, le poste et sa catégorie', async () => {
+    const textes = await textesDeLaFiche(fiche());
+    expect(enClair(textes, 0)).toBe(
+      'Je soussigné, Monsieur Cheikh MBAYE, Directeur Général de la Société APIX-SA, certifie que ' +
+        'Monsieur Ibrahima SARR a été employé à APIX-SA, sur la période allant du 5 janvier 2009 ' +
+        'au 30 juin 2016, en qualité de Chargé de mission.',
+    );
+    expect(enClair(textes, 1)).toBe(
+      'Ce poste de Chargé de mission est classé à la catégorie 8A de la Convention Collective du Commerce.',
+    );
+    const madame = await textesDeLaFiche(fiche({ civilite: 'madame', prenom: 'aïda' }));
+    expect(enClair(madame, 0)).toContain('Madame Aïda SARR a été employée à APIX-SA');
+  });
+
+  it('tient sur une feuille, et le nom de la personne fait celui du fichier', async () => {
+    const { filename, pdf } = await enTenant((tx) => certificatHorsDossier.pdf(tx, fiche()));
+    expect(filename).toBe('certificat-travail-SARR-Ibrahima.pdf');
+    expect((pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length).toBe(1);
+  });
+
+  it('un départ déjà prévu : le dernier jour peut être à venir', async () => {
+    expect(enClair(await textesDeLaFiche(fiche({ fin: '2030-01-31' })), 0)).toContain(
+      'au 31 janvier 2030',
+    );
+  });
+
+  it('tout est obligatoire ; le dernier jour ne précède pas le premier, qui n’est pas à venir', async () => {
+    expect(await codeOf(() => textesDeLaFiche(fiche({ categorie: undefined })))).toBe(
+      'validation_failed',
+    );
+    expect(await detailOf(() => textesDeLaFiche(fiche({ fin: '2008-12-31' })))).toBe(
+      'fin : Pas avant le premier jour',
+    );
+    expect(await detailOf(() => textesDeLaFiche(fiche({ debut: '2099-01-05' })))).toContain(
+      'debut : Ne peut pas être dans le futur',
+    );
+    expect(await codeOf(() => textesDeLaFiche(fiche({ matricule: 'M0012' })))).toBe(
+      'validation_failed',
+    );
   });
 });

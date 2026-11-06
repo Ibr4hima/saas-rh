@@ -4,6 +4,7 @@ import type {
   AgentDeLaCible,
   CodeDeBanque,
   DocumentGenere,
+  DocumentHorsDossier,
   DocumentSansAgent,
   DossierPourLaFiche,
   SaisiesDuDocument,
@@ -15,6 +16,7 @@ import {
   depuisLeDossier,
   estGenere,
   genereQuelqueChose,
+  horsDossier,
   peut,
   peutGenerer,
   REQUESTABLE_DOC_LABELS,
@@ -30,8 +32,8 @@ import { attestationDeConge } from './attestation-conge';
 import { attestationDeReprise } from './attestation-reprise';
 import { attestationDeRetraite } from './attestation-retraite';
 import { attestationDeRevenu } from './attestation-revenu';
-import { attestationDeStage } from './attestation-stage';
-import { certificatDeTravail } from './certificat-travail';
+import { attestationDeStage, attestationDeStageHorsDossier } from './attestation-stage';
+import { certificatDeTravail, certificatHorsDossier } from './certificat-travail';
 import { agentsDeLaCible, exigerLaCible } from './cibles';
 import { attestationDeCessation, attestationDeRepriseDeService } from './conge-de-maternite';
 import { contratDeStage, type ModeleSansAgent } from './contrat-stage';
@@ -56,7 +58,9 @@ import type { DocumentPdf, Modele } from './feuille';
  * Un document sans agent (les contrats de travail et de stage, ADR-0094,
  * ADR-0098) se génère d'une fiche que la DCH renseigne : la personne n'est
  * pas encore dans l'application. Un document avec agent ne se génère que
- * pour un agent de sa cible (ADR-0130).
+ * pour un agent de sa cible (ADR-0130). Le certificat de travail et
+ * l'attestation de stage se génèrent aussi d'une fiche, pour une personne
+ * sans dossier dans l'application (ADR-0176).
  */
 @Injectable()
 export class GenerationService {
@@ -76,6 +80,11 @@ export class GenerationService {
     ),
     domiciliation_bancaire: domiciliationBancaire,
     declaration_mouvement: declarationDeMouvement,
+  };
+  /** Les mêmes documents qu'avec un agent, d'après la fiche d'une personne sans dossier. */
+  private readonly horsDossier: Record<DocumentHorsDossier, ModeleSansAgent> = {
+    certificat_travail: certificatHorsDossier,
+    attestation_stage: attestationDeStageHorsDossier,
   };
 
   constructor(
@@ -219,13 +228,21 @@ export class GenerationService {
     });
   }
 
-  /** Un document sans agent, d'après la fiche que la DCH renseigne. */
+  /**
+   * Un document d'après la fiche que la DCH renseigne : un document sans
+   * agent, ou le certificat de travail et l'attestation de stage d'une
+   * personne sans dossier (ADR-0176).
+   */
   async pdfSansAgent(user: SessionUser, type: string, corps: unknown): Promise<DocumentPdf> {
     const doc = this.documentConfigure(user, type);
-    if (!sansAgent(doc)) {
+    const modele = sansAgent(doc)
+      ? this.sansAgent[doc]
+      : horsDossier(doc)
+        ? this.horsDossier[doc]
+        : null;
+    if (!modele) {
       problem(422, 'documents.avec_agent', `${REQUESTABLE_DOC_LABELS[doc]} : un agent à choisir`);
     }
-    const modele = this.sansAgent[doc];
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
       modele.pdf(tx, corps),
     );

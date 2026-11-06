@@ -94,9 +94,9 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0086](0086-modeles-de-l-apix.md)                     | Les documents de la DCH sur les modèles de l'APIX : sections composées, Google Sans     | acceptée, précisée 4 fois, de 0087 à 0173   |
 | [0087](0087-attestation-de-revenu.md)                 | L'attestation de revenu : le salaire saisi, le montant en chiffres et en lettres        | acceptée, précisée (0088, 0091, 0094, 0121) |
 | [0088](0088-apix-sa-et-montant-en-gras.md)            | Les attestations : « APIX-SA » partout, le montant en gras                              | acceptée                                    |
-| [0089](0089-attestation-de-stage.md)                  | L'attestation de stage : le dernier stage commencé, dossier en activité ou non          | acceptée, précisée par 0132                 |
+| [0089](0089-attestation-de-stage.md)                  | L'attestation de stage : le dernier stage commencé, dossier en activité ou non          | acceptée, précisée (0132, 0176)             |
 | [0090](0090-arial-police-des-documents.md)            | Arial, police principale des documents de la DCH, prise là où la machine l'a            | précisée (0098), en partie remplacée (0173) |
-| [0091](0091-certificat-de-travail.md)                 | Le certificat de travail : l'emploi d'un dossier inactif, la catégorie saisie           | acceptée, précisée par 0092                 |
+| [0091](0091-certificat-de-travail.md)                 | Le certificat de travail : l'emploi d'un dossier inactif, la catégorie saisie           | acceptée, précisée (0092, 0176)             |
 | [0092](0092-attestation-de-conge.md)                  | L'attestation de congé : les dates saisies, la reprise au premier jour ouvré            | acceptée, précisée par 0093, 0104 et 0133   |
 | [0093](0093-attestation-de-depart-a-la-retraite.md)   | L'attestation de départ à la retraite : le jour du départ saisi                         | acceptée, précisée par 0130                 |
 | [0094](0094-contrat-de-stage.md)                      | Le contrat de stage : sans agent, la personne et le stage renseignés par la DCH         | acceptée, précisée 7 fois, de 0095 à 0174   |
@@ -135,14 +135,14 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0127](0127-dga-par-nouvelle-affectation.md)          | « Nouvelle affectation » donne aussi la place de DGA                                    | acceptée                                    |
 | [0128](0128-principal-et-backups.md)                  | Principal et backups : 48 heures ouvrées à la personne principale, 72 pour traiter      | acceptée, précisée par 0129                 |
 | [0129](0129-continuite-du-service.md)                 | La continuité du service : l'alerte, l'appréciation de la DCH, la suppléance            | acceptée                                    |
-| [0130](0130-cible-des-documents.md)                   | Chaque document a sa cible : la liste ne propose que les agents concernés               | acceptée, précisée 4 fois, de 0131 à 0174   |
+| [0130](0130-cible-des-documents.md)                   | Chaque document a sa cible : la liste ne propose que les agents concernés               | acceptée, précisée 5 fois, de 0131 à 0176   |
 | [0131](0131-retraite-des-40-ans.md)                   | Le départ à la retraite dès 40 ans, sous CDI ou CDD ; deux retouches de la liste        | acceptée                                    |
 | [0132](0132-stage-au-choix.md)                        | L'attestation de stage : le stage au choix, quand le dossier en compte plusieurs        | acceptée                                    |
 | [0133](0133-dates-des-fiches.md)                      | Les dates des fiches : la CNI à jour, rien dans l'avenir, chaque fin après son début    | acceptée, précisée par 0134 et 0136         |
 | [0134](0134-delivrance-de-la-cni.md)                  | La délivrance de la CNI dans chaque fiche ; le renouvellement demandé sans date limite  | acceptée, précisée par 0168                 |
 | [0135](0135-disponibilite.md)                         | La disponibilité, trois ans au plus, renouvelable ; l'agent demande le renouvellement   | acceptée, précisée par 0172                 |
 | [0136](0136-reprise-au-plus-trois-ans.md)             | La disponibilité dure trois ans au plus : les décisions et l'attestation de reprise     | acceptée, précisée par 0172                 |
-| [0137](0137-documents-demandables.md)                 | « Demander un document » n'offre à l'agent que les documents de sa cible                | acceptée                                    |
+| [0137](0137-documents-demandables.md)                 | « Demander un document » n'offre à l'agent que les documents de sa cible                | acceptée, précisée par 0176                 |
 | [0138](0138-cadre-du-focus-au-clavier.md)             | Le cadre du focus ne paraît qu'à la navigation au clavier                               | acceptée                                    |
 | [0139](0139-retour-a-gauche-du-titre.md)              | Le retour à la page précédente, un rond à gauche du titre de l'écran                    | acceptée, précisée par 0140                 |
 | [0140](0140-retour-sans-cadre.md)                     | Le retour à la page précédente, sans cadre, comme la cloche du menu                     | acceptée                                    |
@@ -181,3 +181,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0173](0173-papier-de-la-charte.md)                   | Les documents de la DCH sur le papier de la charte de l'APIX ; le fond clair #F5F7F9    | acceptée, précisée par 0175                 |
 | [0174](0174-fiches-depuis-le-dossier.md)              | Fiches préremplies au dossier, prime de transport facultative, stage de 1 à 6 mois      | acceptée                                    |
 | [0175](0175-date-entre-numero-et-emetteur.md)         | La date de l'en-tête, à égale distance du numéro et de l'émetteur                       | acceptée                                    |
+| [0176](0176-sans-dossier-ou-avant-le-depart.md)       | Certificat de travail et attestation de stage, sans dossier ou avant le départ          | acceptée                                    |

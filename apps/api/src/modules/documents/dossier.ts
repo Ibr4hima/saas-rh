@@ -5,7 +5,7 @@ import { adjointEnPlace, DG } from '../people/chaine';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
 import type { Tx } from '../../db/tenant-db';
-import type { Personne } from './redaction';
+import { frDate, type Personne } from './redaction';
 
 /*
  * Ce que les actes de la DCH lisent au dossier (ADR-0086) : l'agent, sa date
@@ -246,11 +246,16 @@ export interface EmploiDeLAgent {
 }
 
 /**
- * L'emploi d'un agent dont le dossier est inactif (ADR-0091) : le certificat
- * de travail se délivre au départ. Un dossier en activité relève de
- * l'attestation de travail ; un stage, de l'attestation de stage.
+ * L'emploi d'un agent que cite le certificat de travail (ADR-0091) : parti,
+ * jusqu'au jour de son départ ; encore en poste, jusqu'au `dernierJour` que la
+ * DCH saisit, celui que son départ prévoit (ADR-0176). Un stage relève de
+ * l'attestation de stage.
  */
-export async function emploiDeLAgent(tx: Tx, employeeId: string): Promise<EmploiDeLAgent> {
+export async function emploiDeLAgent(
+  tx: Tx,
+  employeeId: string,
+  dernierJour?: string,
+): Promise<EmploiDeLAgent> {
   const { rows } = await tx.execute<{
     employee_number: string;
     status: string;
@@ -273,17 +278,22 @@ export async function emploiDeLAgent(tx: Tx, employeeId: string): Promise<Emploi
   if (!row) {
     problem(404, 'people.employee_not_found', 'Employé introuvable');
   }
-  if (row.status === 'active') {
+  // En poste, le dossier n'a pas encore de dernier jour : il se saisit. Parti,
+  // c'est celui du départ, que la saisie ne remplace pas.
+  const enPoste = row.status === 'active';
+  const fin = enPoste ? (dernierJour ?? null) : row.fin;
+  if (enPoste && !fin) {
     problem(
-      422,
-      'documents.en_activite',
-      'Certificat réservé aux dossiers inactifs',
-      'Pour un agent en activité, établissez une attestation de travail.',
+      400,
+      'documents.fin',
+      'Dernier jour de travail à saisir',
+      'L’agent est encore en poste : saisissez le dernier jour de travail que prévoit son départ.',
     );
   }
 
-  // Les dates se lisent au dernier jour ; sans lui, aujourd'hui.
-  const jour = row.fin ? sql`${row.fin}::date` : sql`CURRENT_DATE`;
+  // Les dates se lisent au dernier jour, ou aujourd'hui s'il est encore à
+  // venir : l'emploi en cours a déjà commencé. Sans lui, aujourd'hui.
+  const jour = fin ? sql`LEAST(${fin}::date, CURRENT_DATE)` : sql`CURRENT_DATE`;
   const { rows: au } = await tx.execute<{ contrat: string | null; debut: string | null }>(sql`
     SELECT (SELECT c.contract_type FROM contracts c
              WHERE c.employee_id = ${employeeId} AND c.start_date <= ${jour}
@@ -304,12 +314,20 @@ export async function emploiDeLAgent(tx: Tx, employeeId: string): Promise<Emploi
     debut,
     `${row.given_name} ${row.family_name}`,
   );
+  if (fin && fin < debut) {
+    problem(
+      422,
+      'documents.fin_avant_le_debut',
+      'Dernier jour de travail avant le premier',
+      `L’emploi de ${row.given_name} ${row.family_name} commence le ${frDate(debut)}.`,
+    );
+  }
 
   // Le poste du dernier jour : celui de la dernière affectation de l'emploi.
   const { rows: postes } = await tx.execute<{ position_title: string }>(sql`
     SELECT a.position_title FROM assignments a
      WHERE a.employee_id = ${employeeId}
-       AND a.validity && daterange(${debut}::date, (${row.fin}::date + 1))
+       AND a.validity && daterange(${debut}::date, (${fin}::date + 1))
      ORDER BY lower(a.validity) DESC LIMIT 1`);
 
   return {
@@ -319,7 +337,7 @@ export async function emploiDeLAgent(tx: Tx, employeeId: string): Promise<Emploi
     },
     employeeNumber: row.employee_number,
     debut,
-    fin: row.fin,
+    fin,
     poste: postes[0]?.position_title ?? null,
   };
 }

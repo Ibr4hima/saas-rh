@@ -7,6 +7,7 @@ import type {
   DocumentAChoixDAgent,
   DocumentAvecAgent,
   DocumentGenere,
+  DocumentHorsDossier,
   DossierPourLaFiche,
   FicheDepuisLeDossier,
   Saisie,
@@ -24,13 +25,15 @@ import {
   ficheDeLaDecisionSchema,
   ficheDomiciliationSchema,
   ficheDuContratSchema,
+  ficheHorsDossierSchema,
   ficheStagiaireSchema,
   horsCible,
+  horsDossier,
   nomDuDocumentGenere,
   peutGenerer,
   plusJours,
   REQUESTABLE_DOC_LABELS,
-  saisiesDe,
+  saisiesPour,
   sansAgent,
 } from '@teranga/contracts';
 import { Badge, Button, Card, cn, DateInput, EmptyState, Field, Select } from '@teranga/ui';
@@ -74,12 +77,18 @@ import {
   type SaisieDeLaDomiciliation,
 } from '../../../components/fiche-domiciliation';
 import {
+  FicheHorsDossier,
+  HORS_DOSSIER_VIDE,
+  versLaFicheHorsDossier,
+  type SaisieHorsDossier,
+} from '../../../components/fiche-hors-dossier';
+import {
   FicheDuStagiaire,
   STAGIAIRE_VIDE,
   versLaFiche,
   type SaisieDuStagiaire,
 } from '../../../components/fiche-stagiaire';
-import { CADRE, Choix, Groupe, Preremplissage } from '../../../components/saisie-de-fiche';
+import { CADRE, Choix, Groupe, OuiNon, Preremplissage } from '../../../components/saisie-de-fiche';
 import { api, ApiError } from '../../../lib/api';
 import { enregistrerFichier, lireFichier } from '../../../lib/fichiers';
 import { formatDate, useMe } from '../../../lib/hooks';
@@ -107,7 +116,10 @@ import { champDuMontant } from '../../../lib/montant';
    renseigne (ADR-0094, ADR-0098) ; les décisions de disponibilité, la
    domiciliation bancaire et la déclaration de mouvement du travailleur
    aussi, la DCH renseignant tout ce qu'elles impriment (ADR-0100, ADR-0102,
-   ADR-0106).
+   ADR-0106). Le certificat de travail et l'attestation de stage demandent
+   d'abord si la personne a un dossier dans l'application : sinon, la DCH
+   renseigne une fiche (ADR-0176). Le certificat d'un agent encore en poste
+   fait saisir son dernier jour de travail.
 
    L'aperçu EST le PDF, peint par pdf.js : un modèle de l'APIX se vérifie sur
    ce qui sortira, pas sur une imitation à l'écran.
@@ -143,7 +155,7 @@ const SECTION_DES_SAISIES: Partial<Record<DocumentGenere, string>> = {
   attestation_reprise_disponibilite: 'Renseigner la disponibilité et la reprise',
   attestation_depart_retraite: 'Renseigner le départ à la retraite',
   attestation_revenu: 'Renseigner le salaire',
-  certificat_travail: 'Renseigner le poste',
+  certificat_travail: 'Renseigner l’emploi',
 };
 
 /** Le nom de chaque champ de date, au-dessus du champ et à voix haute. */
@@ -157,7 +169,9 @@ const LIBELLES_DES_DATES = {
 /**
  * Les dates qu'un document nomme autrement : le début et la fin sont ceux de
  * la disponibilité pour l'attestation de reprise après disponibilité ; le
- * début, celui du congé de maternité pour la cessation de paiement.
+ * début, celui du congé de maternité pour la cessation de paiement ; la fin,
+ * le dernier jour de travail d'un agent encore en poste pour le certificat de
+ * travail (ADR-0176).
  */
 const DATES_DU_DOCUMENT: Partial<
   Record<DocumentGenere, Partial<Record<'debut' | 'fin', { libelle: string }>>>
@@ -168,6 +182,9 @@ const DATES_DU_DOCUMENT: Partial<
   attestation_reprise_disponibilite: {
     debut: { libelle: 'Premier jour de la disponibilité' },
     fin: { libelle: 'Dernier jour de la disponibilité' },
+  },
+  certificat_travail: {
+    fin: { libelle: 'Dernier jour de travail' },
   },
 };
 const libelleDe = (doc: DocumentGenere, s: keyof typeof LIBELLES_DES_DATES) =>
@@ -185,6 +202,9 @@ const remplie = (v: Valeurs, s: Saisie) => {
   const valeur = valeurDe(v, s);
   return valeur !== null && valeur !== '';
 };
+
+/** Ce que demandent d'abord le certificat de travail et l'attestation de stage (ADR-0176). */
+const QUESTION_DU_DOSSIER = 'Existe-t-il un dossier de la personne dans l’application ?';
 
 /** « 1er mars 2012 » : un jour d'un stage. */
 const jourDuStage = (iso: string) => formatDate(iso).replace(/^1 /, '1er ');
@@ -216,6 +236,11 @@ export default function GenererDesDocumentsPage() {
   const [disponibilite, setDisponibilite] = useState<SaisieDeLaDecision>(DECISION_VIDE);
   const [domiciliation, setDomiciliation] = useState<SaisieDeLaDomiciliation>(DOMICILIATION_VIDE);
   const [declaration, setDeclaration] = useState<SaisieDeLaDeclaration>(DECLARATION_VIDE);
+  // Le certificat de travail ou l'attestation de stage d'une personne sans
+  // dossier : sa fiche, que les deux documents partagent (ADR-0176).
+  const [sansDossier, setSansDossier] = useState(false);
+  const [personneHorsDossier, setPersonneHorsDossier] =
+    useState<SaisieHorsDossier>(HORS_DOSSIER_VIDE);
   // Ce que « Valider » a retenu ; null tant que le préremplissage est ouvert.
   const [validation, setValidation] = useState<Validation | null>(null);
   // L'agent choisi pour une fiche que son dossier préremplit (ADR-0174) : pour
@@ -227,8 +252,14 @@ export default function GenererDesDocumentsPage() {
   const dossierAttendu = useRef<string | null>(null);
 
   const sansLAgent = choisi !== null && sansAgent(choisi);
-  const avecAgent: DocumentAvecAgent | null = choisi !== null && !sansAgent(choisi) ? choisi : null;
-  const demandees = choisi ? saisiesDe(choisi) : [];
+  const deHorsDossier: DocumentHorsDossier | null =
+    choisi !== null && horsDossier(choisi) ? choisi : null;
+  // La personne n'a pas de dossier : le document se génère de sa fiche.
+  const surFiche = deHorsDossier !== null && sansDossier;
+  const avecAgent: DocumentAvecAgent | null =
+    choisi !== null && !sansAgent(choisi) && !surFiche ? choisi : null;
+  // Le certificat d'un agent encore en poste fait saisir son dernier jour.
+  const demandees = choisi ? saisiesPour(choisi, agent?.situation.enActivite ?? false) : [];
   const courantes: Valeurs = saisies && saisies.agentId === agent?.id ? saisies : VIDES;
   const saisir = (valeur: Partial<Valeurs>) => {
     if (agent) setSaisies({ ...courantes, ...valeur, agentId: agent.id });
@@ -294,6 +325,11 @@ export default function GenererDesDocumentsPage() {
         : choisi === 'declaration_mouvement'
           ? versLaFicheDeLaDeclaration(declaration)
           : versLaFiche(stagiaire);
+  const ficheDeLaPersonne = deHorsDossier
+    ? ficheHorsDossierSchema(deHorsDossier).safeParse(
+        versLaFicheHorsDossier(personneHorsDossier, deHorsDossier),
+      )
+    : null;
   const fiche = deTravail
     ? ficheDuContratSchema(deTravail).safeParse(ficheSansAgent)
     : deDisponibilite
@@ -308,10 +344,12 @@ export default function GenererDesDocumentsPage() {
   const stages = useQuery({
     queryKey: ['stages', agent?.id],
     queryFn: () => api<StageAuDossier[]>(`/employees/${agent?.id}/stages`),
-    enabled: choisi === 'attestation_stage' && agent !== null,
+    enabled: choisi === 'attestation_stage' && !surFiche && agent !== null,
   });
   const stagesAChoisir =
-    choisi === 'attestation_stage' && stages.data && stages.data.length > 1 ? stages.data : null;
+    choisi === 'attestation_stage' && !surFiche && stages.data && stages.data.length > 1
+      ? stages.data
+      : null;
   const stageCourant = stage && stage.agentId === agent?.id ? stage.debut : '';
   // Les dates saisies dans l'ordre (ADR-0133) : le dernier jour d'un congé
   // ou d'une disponibilité après le premier, la reprise pas avant le dernier.
@@ -322,27 +360,33 @@ export default function GenererDesDocumentsPage() {
     choisi !== null &&
     (sansLAgent
       ? fiche.success && (deLaFiche === null || agentDeLaFiche !== null)
-      : agent !== null &&
-        demandees.every((s) => remplie(courantes, s)) &&
-        Object.keys(erreursDesDates).length === 0 &&
-        (choisi !== 'attestation_stage' ||
-          (stages.isSuccess && (!stagesAChoisir || stageCourant !== ''))));
+      : surFiche
+        ? ficheDeLaPersonne?.success === true
+        : agent !== null &&
+          demandees.every((s) => remplie(courantes, s)) &&
+          Object.keys(erreursDesDates).length === 0 &&
+          (choisi !== 'attestation_stage' ||
+            (stages.isSuccess && (!stagesAChoisir || stageCourant !== ''))));
 
   const valider = () => {
     if (!choisi || !pret) return;
-    if (sansLAgent) {
-      if (!fiche.success) return;
+    if (sansLAgent || surFiche) {
+      // La fiche d'un document sans agent, ou d'une personne sans dossier.
+      const personne =
+        sansLAgent && fiche.success
+          ? fiche.data
+          : surFiche && ficheDeLaPersonne?.success
+            ? ficheDeLaPersonne.data
+            : null;
+      if (!personne) return;
       setValidation({
         cible: {
           cle: 'fiche',
           chemin: `/documents/generer/${choisi}`,
-          fichier: nomDuDocumentGenere(
-            choisi,
-            `${fiche.data.nom.toUpperCase()}-${fiche.data.prenom}`,
-          ),
-          titre: `${REQUESTABLE_DOC_LABELS[choisi]} : ${fiche.data.prenom} ${fiche.data.nom}`,
+          fichier: nomDuDocumentGenere(choisi, `${personne.nom.toUpperCase()}-${personne.prenom}`),
+          titre: `${REQUESTABLE_DOC_LABELS[choisi]} : ${personne.prenom} ${personne.nom}`,
         },
-        saisies: fiche.data,
+        saisies: personne,
       });
     } else if (agent) {
       setValidation({
@@ -391,6 +435,24 @@ export default function GenererDesDocumentsPage() {
           onValider={valider}
           onModifier={() => setValidation(null)}
         >
+          {deHorsDossier ? (
+            // Une personne partie avant l'application, ou un stage mené sans
+            // dossier : la DCH renseigne une fiche (ADR-0176).
+            <Choix titre={QUESTION_DU_DOSSIER}>
+              <OuiNon
+                libelle={QUESTION_DU_DOSSIER}
+                oui={!sansDossier}
+                onChoisir={(oui) => setSansDossier(!oui)}
+              />
+            </Choix>
+          ) : null}
+          {surFiche && deHorsDossier ? (
+            <FicheHorsDossier
+              doc={deHorsDossier}
+              valeur={personneHorsDossier}
+              onChange={setPersonneHorsDossier}
+            />
+          ) : null}
           {deLaFiche ? (
             // L'agent d'abord : son dossier remplit la fiche (ADR-0174).
             <Choix titre="Sélectionner l’agent">

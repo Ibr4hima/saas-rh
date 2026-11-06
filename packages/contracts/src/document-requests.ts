@@ -168,6 +168,15 @@ export const saisiesDe = (doc: string): readonly Saisie[] =>
   (estGenere(doc) && SAISIES_DES_DOCUMENTS[doc]) || [];
 
 /**
+ * Ce que la DCH saisit pour l'agent choisi : les saisies du document ; pour
+ * le certificat de travail d'un agent encore en poste, d'abord son dernier
+ * jour de travail, que le dossier ne porte pas encore (ADR-0176). Celui d'un
+ * dossier inactif est le jour de son départ.
+ */
+export const saisiesPour = (doc: string, enActivite: boolean): readonly Saisie[] =>
+  doc === 'certificat_travail' && enActivite ? ['fin', ...saisiesDe(doc)] : saisiesDe(doc);
+
+/**
  * Une disponibilité dure deux ans au plus, sa prorogation aussi (ADR-0135,
  * ADR-0136, ADR-0172). Le type « Disponibilité » posé d'office prend la même
  * durée.
@@ -245,7 +254,10 @@ export const saisiesDuDocumentSchema = z
     categorie: z.string().trim().min(1).max(CATEGORIE_MAX).optional(),
     /** Le premier jour du congé, de maternité ou non, ou de la disponibilité. */
     debut: z.iso.date().optional(),
-    /** Son dernier jour, inclus. */
+    /**
+     * Son dernier jour, inclus ; pour le certificat de travail d'un agent
+     * encore en poste, son dernier jour de travail (ADR-0176).
+     */
     fin: z.iso.date().optional(),
     /** Le jour du départ à la retraite. */
     depart: z.iso.date().optional(),
@@ -295,6 +307,21 @@ export type DocumentSansAgent = (typeof DOCS_SANS_AGENT)[number];
 
 export const sansAgent = (doc: string): doc is DocumentSansAgent =>
   (DOCS_SANS_AGENT as readonly string[]).includes(doc);
+
+/**
+ * Ceux qui se génèrent aussi pour une personne sans dossier dans
+ * l'application, d'une fiche que la DCH renseigne (ADR-0176) : le certificat
+ * de travail et l'attestation de stage. Pour un agent qui a son dossier, ils
+ * se génèrent d'après ce dossier, comme avant.
+ */
+export const DOCS_HORS_DOSSIER = [
+  'certificat_travail',
+  'attestation_stage',
+] as const satisfies readonly Exclude<DocumentGenere, DocumentSansAgent>[];
+export type DocumentHorsDossier = (typeof DOCS_HORS_DOSSIER)[number];
+
+export const horsDossier = (doc: string): doc is DocumentHorsDossier =>
+  (DOCS_HORS_DOSSIER as readonly string[]).includes(doc);
 
 /** Un stage dure de un à six mois (ADR-0174). */
 export const DUREE_DE_STAGE_MAX = 6;
@@ -710,6 +737,50 @@ export function ribGroupe(rib: string): string {
     .filter(Boolean)
     .join(' ');
 }
+
+/*
+   Le certificat de travail et l'attestation de stage d'une personne sans
+   dossier dans l'application (ADR-0176) : partie avant son arrivée, il y a
+   dix ans par exemple, ou stagiaire dont le contrat s'est fait sur une fiche.
+   La DCH renseigne ce que le document imprime. Tout est obligatoire.
+*/
+
+/** Les dates croisées d'un emploi ou d'un stage : le dernier jour ne précède pas le premier. */
+export function datesDeLaPeriode(f: Record<string, unknown>): ReglesDesDates {
+  const [debut, fin] = [jourDe(f.debut), jourDe(f.fin)];
+  return debut && fin && fin < debut ? { fin: 'Pas avant le premier jour' } : {};
+}
+
+/** La personne, la période et le poste, que les deux documents impriment. */
+const ficheDUnePeriode = z.object({
+  civilite: z.enum(['madame', 'monsieur']),
+  prenom: nomPropre(80),
+  nom: nomPropre(80),
+  /** Le premier jour : l'emploi ou le stage a commencé. */
+  debut: jusquAujourdhuiSchema,
+  /** Le dernier jour, inclus ; à venir, pour un départ déjà prévu. */
+  fin: z.iso.date(),
+  /** Le poste occupé ; pour le certificat, le dernier. */
+  poste: intitule(120),
+});
+
+/** Le certificat de travail : la catégorie du poste en plus. */
+export const ficheDuCertificatDeTravailSchema = ficheDUnePeriode
+  .extend({ categorie: z.string().trim().min(1).max(CATEGORIE_MAX) })
+  .strict()
+  .superRefine((f, ctx) => poser(ctx, datesDeLaPeriode(f)));
+export type FicheDuCertificatDeTravail = z.infer<typeof ficheDuCertificatDeTravailSchema>;
+
+export const ficheDeLAttestationDeStageSchema = ficheDUnePeriode
+  .strict()
+  .superRefine((f, ctx) => poser(ctx, datesDeLaPeriode(f)));
+export type FicheDeLAttestationDeStage = z.infer<typeof ficheDeLAttestationDeStageSchema>;
+
+/** La fiche d'un document hors dossier, telle que l'API la valide. */
+export const ficheHorsDossierSchema = (doc: DocumentHorsDossier) =>
+  doc === 'certificat_travail'
+    ? ficheDuCertificatDeTravailSchema
+    : ficheDeLAttestationDeStageSchema;
 
 /*
    La déclaration de mouvement du travailleur (ADR-0106, ADR-0107) :

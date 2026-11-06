@@ -1,6 +1,12 @@
-import { nomDuDocumentGenere } from '@teranga/contracts';
+import {
+  ficheDuCertificatDeTravailSchema,
+  nomDuDocumentGenere,
+  type FicheDuCertificatDeTravail,
+} from '@teranga/contracts';
 import { problem } from '../../common/problem';
+import { ZodValidationPipe } from '../../common/zod.pipe';
 import type { Tx } from '../../db/tenant-db';
+import type { ModeleSansAgent } from './contrat-stage';
 import { emploiDeLAgent, quiDirigeLeSommet, type EmploiDeLAgent } from './dossier';
 import { ENTETE } from './entete';
 import { pdfDUneAttestation, type Modele, type TextesDUneAttestation } from './feuille';
@@ -20,9 +26,15 @@ import {
  * mise en page des attestations, le numéro de la direction générale, puis
  * l'emploi, ses dates et le dernier poste occupé, et la catégorie de ce
  * poste, que la DCH saisit. Qui certifie dirige le sommet de l'organigramme.
+ *
+ * Il se délivre au départ, ou se prépare avant pour un agent encore en poste :
+ * la DCH saisit alors le dernier jour que prévoit son départ (ADR-0176). Pour
+ * une personne sans dossier dans l'application, partie il y a dix ans par
+ * exemple, la DCH renseigne une fiche : la personne, l'emploi, le poste et sa
+ * catégorie.
  */
 
-export interface CertificatData extends EmploiDeLAgent {
+export interface CertificatData extends Omit<EmploiDeLAgent, 'employeeNumber'> {
   /** Qui certifie : qui dirige le sommet de l'organigramme ; null : la place est vacante. */
   signataire: Personne | null;
   /** La catégorie du poste dans la convention collective, saisie par la DCH. */
@@ -83,25 +95,31 @@ export function pdfDuCertificatDeTravail(
   return pdfDUneAttestation(textes, { titre: 'Certificat de travail', logo });
 }
 
-/** Ce que le certificat imprimerait aujourd'hui pour ce dossier et cette catégorie, sans contrôle des droits. */
+/**
+ * Ce que le certificat imprimerait aujourd'hui pour ce dossier et cette
+ * catégorie, sans contrôle des droits ; `fin` : le dernier jour saisi d'un
+ * agent encore en poste.
+ */
 export async function textesDeCertificatPour(
   tx: Tx,
   employeeId: string,
   categorie: string,
+  fin?: string,
 ): Promise<TextesDUneAttestation> {
-  return textesDuCertificatDeTravail(await donnees(tx, employeeId, categorie), new Date());
+  return textesDuCertificatDeTravail(await donnees(tx, employeeId, categorie, fin), new Date());
 }
 
 /**
  * Le modèle, tel que « Générer des documents » l'appelle (ADR-0085), droits
  * vérifiés. Sans catégorie, pas de certificat : le dossier ne la porte pas.
+ * Sans dernier jour, pas de certificat pour un agent en poste.
  */
 export const certificatDeTravail: Modele = {
-  async pdf(tx, employeeId, { categorie }) {
+  async pdf(tx, employeeId, { categorie, fin }) {
     if (!categorie) {
       problem(400, 'documents.categorie', 'Catégorie du poste à saisir');
     }
-    const d = await donnees(tx, employeeId, categorie);
+    const d = await donnees(tx, employeeId, categorie, fin);
     return {
       filename: nomDuDocumentGenere('certificat_travail', d.employeeNumber),
       pdf: await pdfDuCertificatDeTravail(textesDuCertificatDeTravail(d, new Date())),
@@ -109,10 +127,58 @@ export const certificatDeTravail: Modele = {
   },
 };
 
-async function donnees(tx: Tx, employeeId: string, categorie: string): Promise<CertificatData> {
+async function donnees(
+  tx: Tx,
+  employeeId: string,
+  categorie: string,
+  fin?: string,
+): Promise<CertificatData & { employeeNumber: string }> {
   return {
-    ...(await emploiDeLAgent(tx, employeeId)),
+    ...(await emploiDeLAgent(tx, employeeId, fin)),
     signataire: await quiDirigeLeSommet(tx),
     categorie,
+  };
+}
+
+/** La fiche d'une personne sans dossier, validée : ce que la page envoie, comme une route le ferait. */
+const valider = new ZodValidationPipe(ficheDuCertificatDeTravailSchema);
+
+/** Ce que le certificat imprimerait aujourd'hui pour cette fiche, sans contrôle des droits. */
+export async function textesDeCertificatHorsDossierPour(
+  tx: Tx,
+  corps: unknown,
+): Promise<TextesDUneAttestation> {
+  return textesDuCertificatDeTravail(await depuisLaFiche(tx, valider.transform(corps)), new Date());
+}
+
+/**
+ * Le certificat d'une personne sans dossier dans l'application, d'après la
+ * fiche que la DCH renseigne (ADR-0176), droits vérifiés.
+ */
+export const certificatHorsDossier: ModeleSansAgent = {
+  async pdf(tx, corps) {
+    const fiche = valider.transform(corps);
+    const textes = textesDuCertificatDeTravail(await depuisLaFiche(tx, fiche), new Date());
+    return {
+      filename: nomDuDocumentGenere(
+        'certificat_travail',
+        `${fiche.nom.toUpperCase()}-${fiche.prenom}`,
+      ),
+      pdf: await pdfDuCertificatDeTravail(textes),
+    };
+  },
+};
+
+async function depuisLaFiche(tx: Tx, f: FicheDuCertificatDeTravail): Promise<CertificatData> {
+  return {
+    agent: {
+      nom: `${f.prenom} ${f.nom.toUpperCase()}`,
+      genre: f.civilite === 'madame' ? 'female' : 'male',
+    },
+    debut: f.debut,
+    fin: f.fin,
+    poste: f.poste,
+    signataire: await quiDirigeLeSommet(tx),
+    categorie: f.categorie,
   };
 }

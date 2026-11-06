@@ -165,7 +165,7 @@ describe('quoi', () => {
     );
   });
 
-  it('le certificat de travail, avec la catégorie saisie, pour un dossier inactif seulement', async () => {
+  it('le certificat de travail, avec la catégorie saisie ; en poste, avec le dernier jour', async () => {
     const { filename } = await service.pdf(dch, 'certificat_travail', employes.archive, {
       categorie: '7B',
     });
@@ -173,11 +173,42 @@ describe('quoi', () => {
     expect(await codeOf(() => service.pdf(dch, 'certificat_travail', employes.archive))).toBe(
       'documents.categorie',
     );
+    // Encore en poste : le dernier jour que prévoit son départ (ADR-0176).
     expect(
       await codeOf(() =>
         service.pdf(dch, 'certificat_travail', employes.actif, { categorie: '7B' }),
       ),
-    ).toBe('documents.en_activite');
+    ).toBe('documents.fin');
+    const avantLeDepart = await service.pdf(dch, 'certificat_travail', employes.actif, {
+      categorie: '7B',
+      fin: '2026-12-31',
+    });
+    expect(avantLeDepart.filename).toBe('certificat-travail-GEN-002.pdf');
+  });
+
+  it('le certificat et l’attestation de stage d’une personne sans dossier, d’après sa fiche (ADR-0176)', async () => {
+    const personne = {
+      civilite: 'madame',
+      prenom: 'Aïda',
+      nom: 'Sarr',
+      debut: '2010-02-01',
+      fin: '2015-12-31',
+      poste: 'Assistante de direction',
+    };
+    const certificat = await service.pdfSansAgent(dch, 'certificat_travail', {
+      ...personne,
+      categorie: '6A',
+    });
+    expect(certificat.filename).toBe('certificat-travail-SARR-Aida.pdf');
+    const stage = await service.pdfSansAgent(dch, 'attestation_stage', personne);
+    expect(stage.filename).toBe('attestation-stage-SARR-Aida.pdf');
+    // Les droits sont ceux de la génération ; les autres documents d'agent n'ont pas de fiche.
+    expect(await codeOf(() => service.pdfSansAgent(agent, 'certificat_travail', personne))).toBe(
+      'auth.forbidden',
+    );
+    expect(await codeOf(() => service.pdfSansAgent(dch, 'attestation_travail', personne))).toBe(
+      'documents.avec_agent',
+    );
   });
 
   it('l’attestation de congé, avec les dates saisies ; sans elles, ou à rebours, refusée', async () => {

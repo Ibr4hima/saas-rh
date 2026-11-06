@@ -11,8 +11,8 @@ import type { ContractType, EmployeeStatus, Gender } from './employees';
  * À qui chaque document s'adresse (ADR-0130). « Générer des documents » ne
  * propose que les agents de la cible du document choisi, et le serveur
  * refuse de le générer pour un autre : une attestation de travail ne se
- * délivre pas pour un stage, ni un certificat de travail pour un dossier en
- * activité. La règle vit ici, une fois, pour la page et pour le serveur.
+ * délivre ni pour un stage, ni pour un dossier inactif. La règle vit ici, une
+ * fois, pour la page et pour le serveur.
  */
 
 /** Un document qui se génère pour un agent de l'application. */
@@ -76,8 +76,9 @@ export const CIBLES_DES_DOCUMENTS: Record<DocumentAvecAgent, CibleDuDocument> = 
   attestation_stage: { dossiers: 'tous', stage: true },
   attestation_cessation: { ...SOUS_CONTRAT_DE_TRAVAIL, genre: 'female' },
   attestation_revenu: SOUS_CONTRAT_DE_TRAVAIL,
-  // Le certificat de travail se délivre au départ.
-  certificat_travail: { dossiers: 'inactifs', contratDeTravail: true },
+  // Le certificat de travail se délivre au départ, ou se prépare avant, pour
+  // un agent encore en poste dont le départ est prévu (ADR-0176).
+  certificat_travail: { dossiers: 'tous', contratDeTravail: true },
 };
 
 /** Un CDI ou un CDD en cours : ce que supposent les documents d'un emploi à l'APIX. */
@@ -90,9 +91,13 @@ const SOUS_CDI_OU_CDD: CibleDuDocument = { dossiers: 'en_activite', contrats: ['
  * « Générer des documents » ; ceux que la DCH renseigne sur une fiche
  * reçoivent la leur : la domiciliation bancaire, les décisions de
  * disponibilité et la déclaration de mouvement supposent un CDI ou un CDD.
+ * Le certificat de travail se demande une fois parti, pendant les trente
+ * jours où le portail reste ouvert : un agent en poste demande une
+ * attestation de travail (ADR-0176).
  */
 export const CIBLES_DES_DEMANDES: Record<DocumentDemandable, CibleDuDocument> = {
   ...CIBLES_DES_DOCUMENTS,
+  certificat_travail: { dossiers: 'inactifs', contratDeTravail: true },
   domiciliation_bancaire: SOUS_CDI_OU_CDD,
   decision_disponibilite: SOUS_CDI_OU_CDD,
   decision_renouvellement_disponibilite: SOUS_CDI_OU_CDD,

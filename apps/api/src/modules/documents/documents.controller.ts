@@ -92,8 +92,10 @@ export class DocumentsController {
   }
 
   /**
-   * Un document sans agent, le contrat de stage (ADR-0094) : la personne
-   * n'est pas encore dans l'application, sa fiche part dans le corps.
+   * Un document d'après une fiche, qui part dans le corps : un document sans
+   * agent, comme le contrat de stage (ADR-0094), dont la personne n'est pas
+   * encore dans l'application ; le certificat de travail ou l'attestation de
+   * stage d'une personne sans dossier (ADR-0176).
    */
   @Post('documents/generer/:type')
   @HttpCode(200)
