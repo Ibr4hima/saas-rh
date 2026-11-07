@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build-test:
+    # Version fixée : « ubuntu-latest » change de système sans prévenir.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: teranga
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d teranga"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # La version de pnpm est celle du champ « packageManager » de package.json :
+      # la redonner ici fait échouer l'action (« Multiple versions of pnpm »).
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Configure environment
+        run: |
+          cat > .env << 'EOF'
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/teranga
+          APP_DATABASE_URL=postgres://app_user:app_user_dev_password@localhost:5432/teranga
+          DATA_ENCRYPTION_KEY=mfM8qEsFfS1lIiWvm8hrM8zqi+O/PFhzPku1whgaMoU=
+          EOF
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Migrate database
+        run: pnpm db:migrate
+
+      # L'API compilée démarre comme en production, répond sur sa santé, puis
+      # s'arrête proprement sur SIGTERM (ADR-0067). Un défaut qui ne se voit
+      # qu'au démarrage (une injection mal résolue) arrête la CI ici.
+      - name: Start compiled API
+        run: |
+          cd apps/api
+          node dist/main.js > /tmp/api.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:3001/v1/health > /dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://localhost:3001/v1/health || { cat /tmp/api.log; exit 1; }
+          kill -TERM "$PID"
+          wait "$PID" || { cat /tmp/api.log; exit 1; }
+
+      # LE gate de la Phase 0 : étanchéité inter-tenant contre un Postgres réel
+      # (rôle non-owner + pool), effective dating, audit append-only.
+      - name: Tests
+        run: pnpm test
