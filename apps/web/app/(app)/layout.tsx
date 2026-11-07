@@ -513,7 +513,7 @@ function navigationGestion(
         // seulement : traiter les congés n'y donne pas accès.
         items.push(...demandes);
         // Générer, à sa guise, les documents de la liste (ADR-0085) ; un
-        // membre, les contrats qu'on lui délègue (ADR-0114).
+        // membre, les documents délégués (ADR-0114, ADR-0198).
         if (genereQuelqueChose(user)) {
           items.push({
             href: '/generer',

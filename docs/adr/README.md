@@ -111,7 +111,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0103](0103-destinataire-de-la-domiciliation.md)      | Le destinataire de la domiciliation tient sur une ligne, sans « Sénégal »               | acceptée                                    |
 | [0104](0104-reprise-apres-disponibilite.md)           | L'attestation de reprise après disponibilité : les dates saisies, l'agent au dossier    | acceptée, précisée par 0105 et 0133         |
 | [0105](0105-conge-de-maternite.md)                    | Le congé de maternité : la cessation de paiement et la reprise de service               | acceptée, précisée par 0130                 |
-| [0106](0106-declaration-de-mouvement.md)              | La déclaration de mouvement du travailleur : la fiche, le Code du travail de 2026       | acceptée, précisée par 0107, 0133 et 0134   |
+| [0106](0106-declaration-de-mouvement.md)              | La déclaration de mouvement du travailleur : la fiche, le Code du travail de 2026       | acceptée, précisée 4 fois, de 0107 à 0198   |
 | [0107](0107-declaration-ancien-code.md)               | La déclaration de mouvement cite le Code du travail de 1997, comme les autres documents | acceptée                                    |
 | [0108](0108-boutons-aux-coins-d-e-voting.md)          | Les boutons et les champs aux coins d'e-Voting                                          | précisée (0110, 0115, 0119), révisée (0183) |
 | [0109](0109-delegation-sans-bandeau.md)               | La délégation se règle dans « Déléguer des tâches », sans bandeau sur les pages         | acceptée, précisée par 0128                 |
@@ -119,7 +119,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0111](0111-liste-des-documents-a-generer.md)         | La liste des documents à générer : des libellés courts, une hauteur bornée              | acceptée, précisée par 0112, 0113 et 0131   |
 | [0112](0112-cinq-familles-de-documents.md)            | La liste des documents à générer en cinq familles                                       | acceptée, précisée par 0131                 |
 | [0113](0113-demander-un-document-en-liste.md)         | Demander un document : la liste de « Générer des documents », à choix multiple          | acceptée                                    |
-| [0114](0114-contrats-etablis-par-la-dch.md)           | Les contrats, la DCH les établit : ils ne se demandent pas, leur génération se délègue  | acceptée                                    |
+| [0114](0114-contrats-etablis-par-la-dch.md)           | Les contrats, la DCH les établit : ils ne se demandent pas, leur génération se délègue  | acceptée, précisée par 0198                 |
 | [0115](0115-coquille-posee-sur-le-fond.md)            | La coquille posée sur le fond : ni bandeau bleu, ni colonne blanche                     | acceptée, précisée 7 fois, de 0116 à 0142   |
 | [0116](0116-fond-de-l-ecran-de-connexion.md)          | Le fond de l'application, celui de l'écran de connexion                                 | précisée (0143, 0144), révisée (0187)       |
 | [0117](0117-date-en-haut-a-droite.md)                 | La date du jour en haut à droite de chaque écran                                        | acceptée                                    |
@@ -203,3 +203,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0195](0195-lecteur-pdf-fluide.md)                    | Le lecteur PDF peint une page à la fois et ne bouge rien pendant le défilement          | acceptée                                    |
 | [0196](0196-temps-reel-de-la-demande.md)              | Le temps d'une demande de document se lit en temps réel                                 | acceptée                                    |
 | [0197](0197-agent-choisi-fiche-figee.md)              | Sur « Générer des documents », l'agent choisi fige ce que son dossier donne             | acceptée                                    |
+| [0198](0198-declaration-de-mouvement-de-la-dch.md)    | La déclaration de mouvement du travailleur, la DCH la produit : elle ne se demande pas  | acceptée                                    |

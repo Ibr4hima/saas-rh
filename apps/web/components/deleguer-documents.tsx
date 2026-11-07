@@ -13,7 +13,8 @@ import {
 /* ————————————————————————————————————————————————————————————————
    Ce qui se délègue type par type, sur « Déléguer des tâches » : les
    demandes de documents, la vérification des documents officiels, et la
-   génération des contrats que la DCH établit d'elle-même (ADR-0114). Un
+   génération de ce que la DCH établit d'elle-même : les contrats
+   (ADR-0114) et la déclaration de mouvement du travailleur (ADR-0198). Un
    type de document par ligne, et pour chacun les membres de la DCH qui
    peuvent le traiter.
 
@@ -33,7 +34,7 @@ export interface TypeDelegable {
   capacites: readonly Capacite[];
 }
 
-/** Les documents qu'un agent demande : la liste de la DCH, hors les contrats (ADR-0114). */
+/** Les documents qu'un agent demande : la liste de la DCH, hors ce qu'elle établit d'elle-même. */
 export const DOCUMENTS_DELEGABLES = DOCUMENTS_DEMANDABLES;
 
 /** Les documents officiels qu'un agent dépose, par familles. */
@@ -71,7 +72,7 @@ export const TYPES_PIECES: readonly TypeDelegable[] = FAMILLES_DE_PIECES.map((f)
   capacites: f.types.map(capaciteDeLaPiece),
 }));
 
-/** Les contrats que la DCH établit d'elle-même : leur génération se délègue, un par un. */
+/** Ce que la DCH établit d'elle-même : sa génération se délègue, document par document. */
 export const TYPES_GENERATION: readonly TypeDelegable[] = DOCUMENTS_DE_LA_DCH.map((d) => ({
   libelle: REQUESTABLE_DOC_LABELS[d],
   capacites: [`generation.${d}` as const],

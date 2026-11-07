@@ -125,7 +125,7 @@ const SECTIONS: { titre: string; lignes: Ligne[] }[] = [
       {
         cle: 'generation',
         description:
-          'La personne déléguée pourra générer les contrats choisis ici depuis « Générer des documents ».',
+          'La personne déléguée pourra générer les documents choisis ici depuis « Générer des documents ».',
         libelle: 'Génération de documents',
         icone: 'description',
         types: TYPES_GENERATION,

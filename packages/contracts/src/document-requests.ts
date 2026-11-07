@@ -28,7 +28,8 @@ import { NATIONALITY_LABELS } from './nationalities';
 
 /**
  * La liste de la DCH, dans son ordre (ADR-0084) : ce qu'elle génère, et ce
- * qu'un agent demande, hors ce qu'elle établit d'elle-même (ADR-0114).
+ * qu'un agent demande, hors ce qu'elle établit d'elle-même (ADR-0114,
+ * ADR-0198).
  */
 export const requestableDocSchema = z.enum([
   'contrat_cdd',
@@ -120,14 +121,16 @@ export const estGenere = (doc: string): doc is DocumentGenere =>
   (GENERATED_DOCS as readonly string[]).includes(doc);
 
 /**
- * Ce que la DCH établit d'elle-même, selon la situation de la personne : les
- * contrats. Un agent ne les demande pas ; leur génération se délègue, contrat
- * par contrat (ADR-0114).
+ * Ce que la DCH établit d'elle-même : les contrats, selon la situation de la
+ * personne (ADR-0114), et la déclaration de mouvement du travailleur, qu'elle
+ * produit au besoin (ADR-0198). Un agent ne les demande pas ; leur génération
+ * se délègue, document par document.
  */
 export const DOCUMENTS_DE_LA_DCH = [
   'contrat_cdd',
   'contrat_cdi',
   'contrat_stage',
+  'declaration_mouvement',
 ] as const satisfies readonly DocumentGenere[];
 export type DocumentDeLaDch = (typeof DOCUMENTS_DE_LA_DCH)[number];
 

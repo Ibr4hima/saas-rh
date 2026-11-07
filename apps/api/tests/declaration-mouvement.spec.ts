@@ -495,6 +495,16 @@ describe('la génération', () => {
     expect(await codeOf(() => service.pdfSansAgent(agent, 'declaration_mouvement', fiche()))).toBe(
       'auth.forbidden',
     );
+    // Sa génération se délègue, comme celle d'un contrat (ADR-0198) ; un
+    // contrat délégué n'y donne pas droit.
+    const delegue = session({ capacites: ['generation.declaration_mouvement'] });
+    expect((await service.pdfSansAgent(delegue, 'declaration_mouvement', fiche())).filename).toBe(
+      'declaration-mouvement-DIOP-Awa_Marie.pdf',
+    );
+    const contrats = session({ capacites: ['generation.contrat_cdi'] });
+    expect(
+      await codeOf(() => service.pdfSansAgent(contrats, 'declaration_mouvement', fiche())),
+    ).toBe('auth.forbidden');
     expect(await codeOf(() => service.pdf(dch, 'declaration_mouvement', randomUUID()))).toBe(
       'documents.sans_agent',
     );

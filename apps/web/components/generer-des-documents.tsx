@@ -253,7 +253,7 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
   const docDeLaDemande =
     premierDemande !== undefined && depuisLeDossier(premierDemande) ? premierDemande : null;
   const demandeLe = demande ? dateDeLaDemande(demande) : null;
-  // Qui dirige la DCH génère tout ; un membre, les contrats qu'on lui délègue (ADR-0114).
+  // Qui dirige la DCH génère tout ; un membre, les documents délégués (ADR-0114, ADR-0198).
   const generables = DANS_L_ORDRE.filter((d) => peutGenerer(me.data, d));
   const [choisi, setChoisi] = useState<DocumentGenere | null>(docDeLaDemande);
   const [agent, setAgent] = useState<AgentDeLaCible | null>(null);

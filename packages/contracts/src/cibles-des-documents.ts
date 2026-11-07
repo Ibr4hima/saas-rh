@@ -89,11 +89,10 @@ const SOUS_CDI_OU_CDD: CibleDuDocument = { dossiers: 'en_activite', contrats: ['
  * n'offre à l'agent que les documents de sa cible, et le serveur refuse les
  * autres. Un document qui se génère pour un agent garde la cible de
  * « Générer des documents » ; ceux que la DCH renseigne sur une fiche
- * reçoivent la leur : la domiciliation bancaire, les décisions de
- * disponibilité et la déclaration de mouvement supposent un CDI ou un CDD.
- * Le certificat de travail se demande une fois parti, pendant les trente
- * jours où le portail reste ouvert : un agent en poste demande une
- * attestation de travail (ADR-0176).
+ * reçoivent la leur : la domiciliation bancaire et les décisions de
+ * disponibilité supposent un CDI ou un CDD. Le certificat de travail se
+ * demande une fois parti, pendant les trente jours où le portail reste
+ * ouvert : un agent en poste demande une attestation de travail (ADR-0176).
  */
 export const CIBLES_DES_DEMANDES: Record<DocumentDemandable, CibleDuDocument> = {
   ...CIBLES_DES_DOCUMENTS,
@@ -101,7 +100,6 @@ export const CIBLES_DES_DEMANDES: Record<DocumentDemandable, CibleDuDocument> = 
   domiciliation_bancaire: SOUS_CDI_OU_CDD,
   decision_disponibilite: SOUS_CDI_OU_CDD,
   decision_renouvellement_disponibilite: SOUS_CDI_OU_CDD,
-  declaration_mouvement: SOUS_CDI_OU_CDD,
 };
 
 /**

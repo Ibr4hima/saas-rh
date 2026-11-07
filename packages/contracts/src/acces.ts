@@ -84,13 +84,14 @@ export const CAPACITES_DEMANDES = [
 
 /**
  * Générer, depuis « Générer des documents », un document que la DCH établit
- * d'elle-même : une habilitation par contrat (ADR-0114). Qui en détient une a
- * la page, pour ces contrats-là.
+ * d'elle-même : une habilitation par document (ADR-0114, ADR-0198). Qui en
+ * détient une a la page, pour ces documents-là.
  */
 export const CAPACITES_GENERATION = [
   'generation.contrat_cdd',
   'generation.contrat_cdi',
   'generation.contrat_stage',
+  'generation.declaration_mouvement',
 ] as const satisfies readonly `generation.${DocumentDeLaDch}`[];
 
 /** Les accès : plusieurs membres peuvent détenir le même. */
@@ -418,6 +419,11 @@ export const CAPACITE_INFOS: Record<Capacite, InfoCapacite> = {
   },
   'generation.contrat_stage': {
     libelle: 'Génération des contrats de stage',
+    description: 'Les générer depuis « Générer des documents », d’après la fiche renseignée.',
+    groupe: 'Génération',
+  },
+  'generation.declaration_mouvement': {
+    libelle: 'Génération des déclarations de mouvement du travailleur',
     description: 'Les générer depuis « Générer des documents », d’après la fiche renseignée.',
     groupe: 'Génération',
   },

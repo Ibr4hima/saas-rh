@@ -350,11 +350,12 @@ describe('les documents qu’un agent demande (ADR-0137)', () => {
 
   it('la liste n’offre que les documents de sa cible : le contrat, le genre, l’âge, le stage en décident', async () => {
     const liste = (cle: (typeof agents)[number]) => demandes.demandables(comptes[cle]);
+    // La déclaration de mouvement du travailleur n'y est pas : la DCH la
+    // produit, un agent ne la demande pas (ADR-0198).
     const emploi = [
       'domiciliation_bancaire',
       'decision_disponibilite',
       'decision_renouvellement_disponibilite',
-      'declaration_mouvement',
     ];
     // Awa : un CDI, 42 ans, le genre féminin ; ni stage, ni départ.
     expect(await liste('awa')).toEqual([

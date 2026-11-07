@@ -564,7 +564,7 @@ describe('les demandes de documents', () => {
     for (const doc of ['autre', 'contrat_travail', 'bulletin_salaire', 'attestation_salaire']) {
       expect(createDocumentRequestSchema.safeParse({ docTypes: [doc] }).success).toBe(false);
     }
-    // Les treize documents qu'un agent demande partent d'un coup, avec les
+    // Les douze documents qu'un agent demande partent d'un coup, avec les
     // lettres de ceux qui se demandent par lettre (ADR-0189).
     expect(
       createDocumentRequestSchema.safeParse({
@@ -638,9 +638,10 @@ describe('les demandes de documents', () => {
     for (const doc of ['contrat_cdd', 'contrat_cdi', 'contrat_stage']) {
       expect(createDocumentRequestSchema.safeParse({ docTypes: [doc] }).success).toBe(false);
     }
+    // La déclaration de mouvement les a rejoints (ADR-0198).
     expect(
       requestableDocSchema.options.filter((d) => !(DOCUMENTS_DEMANDABLES as string[]).includes(d)),
-    ).toEqual(['contrat_cdd', 'contrat_cdi', 'contrat_stage']);
+    ).toEqual(['contrat_cdd', 'contrat_cdi', 'contrat_stage', 'declaration_mouvement']);
     await habiliter(awa, 'demandes.documents.contrat_stage');
     await habiliter(awa, 'demandes.documents.certificat_travail');
     // Une demande de contrat de stage d'avant, qu'Awa traitait.
@@ -660,6 +661,35 @@ describe('les demandes de documents', () => {
     expect(rows.map((r) => r.capacite)).toEqual(['demandes.documents.certificat_travail']);
     // La demande ancienne revient à qui dirige la DCH, qui la traite toujours.
     expect(await appels('document', contrat)).toEqual(['dch:Mariama']);
+  });
+
+  it('la déclaration de mouvement ne se demande pas, la DCH la produit ; ses délégations se closent (0134)', async () => {
+    expect(
+      createDocumentRequestSchema.safeParse({ docTypes: ['declaration_mouvement'] }).success,
+    ).toBe(false);
+    await habiliter(khady, 'demandes.documents.declaration_mouvement');
+    // Une demande de déclaration d'avant, que Khady traitait.
+    const [declaration] = (
+      await documents.create(moussa.session, { docTypes: ['declaration_mouvement'] as never })
+    ).ids as [string];
+    expect(await appels('document', declaration)).toEqual(['dch:Khady']);
+
+    await raw(
+      readFileSync(
+        join(__dirname, '../src/db/sql/0134_declaration_de_mouvement_de_la_dch.sql'),
+        'utf8',
+      ),
+    );
+    await reconcilier();
+
+    const { rows } = await raw(
+      `SELECT fin_motif FROM habilitations
+        WHERE tenant_id = $1 AND employee_id = $2 AND capacite = $3`,
+      [tenantId, khady.employeeId, 'demandes.documents.declaration_mouvement'],
+    );
+    expect(rows).toEqual([{ fin_motif: 'retiree' }]);
+    // La demande ancienne revient à qui dirige la DCH, qui la traite toujours.
+    expect(await appels('document', declaration)).toEqual(['dch:Mariama']);
   });
 
   it('chacun suit les siennes dans son espace ; la file, qui la traite (l’administrateur la lit)', async () => {
@@ -1714,6 +1744,18 @@ describe('on ne contourne pas le système : rien sur soi-même', () => {
       )),
     };
     expect(genereQuelqueChose(commeAdmin)).toBe(false);
+  });
+
+  it('la génération de la déclaration de mouvement se délègue de même (ADR-0198)', async () => {
+    await habiliter(awa, 'generation.declaration_mouvement');
+    try {
+      const delegue = await session(awa);
+      expect(genereQuelqueChose(delegue)).toBe(true);
+      expect(peutGenerer(delegue, 'declaration_mouvement')).toBe(true);
+      expect(peutGenerer(delegue, 'contrat_cdd')).toBe(false);
+    } finally {
+      await habiliter(awa, 'generation.declaration_mouvement', false);
+    }
   });
 
   it('l’administrateur ne lit pas les candidatures, sauf à la DCH qui les lui confie', async () => {
