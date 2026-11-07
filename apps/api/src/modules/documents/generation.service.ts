@@ -14,9 +14,11 @@ import type {
 } from '@teranga/contracts';
 import {
   aChoixDAgent,
+  dateDeLaDemande,
   depuisLeDossier,
   estGenere,
   ficheDeLaDecisionSchema,
+  ficheReprise,
   ficheDomiciliationSchema,
   genereQuelqueChose,
   horsDossier,
@@ -178,7 +180,7 @@ export class GenerationService {
     employeeId: string,
     demandeId?: string,
   ): Promise<DossierPourLaFiche> {
-    const parDemande = parLaDemande(user, type, demandeId);
+    const parDemande = parLaDemande(demandeId);
     const doc = parDemande ? documentDeLaDemande(type) : this.documentConfigure(user, type);
     if (!depuisLeDossier(doc)) {
       problem(
@@ -193,33 +195,7 @@ export class GenerationService {
       }
       await pasSurSoi(tx, user.userId, [employeeId], 'générer un document pour');
       await exigerLaCible(tx, doc, employeeId);
-      const { rows } = await tx.execute<{
-        gender: string | null;
-        given_name: string;
-        family_name: string;
-        position_title: string | null;
-        org_unit_id: string | null;
-        contract_type: 'cdd' | 'cdi';
-        start_date: string;
-      }>(sql`
-        SELECT p.gender, p.given_name, p.family_name, a.position_title, a.org_unit_id,
-               c.contract_type, to_char(c.start_date, 'YYYY-MM-DD') AS start_date
-          FROM employees e
-          JOIN persons p ON p.id = e.person_id
-          -- Le poste en cours, sinon le prochain.
-          LEFT JOIN LATERAL (
-            SELECT position_title, org_unit_id FROM assignments
-             WHERE employee_id = e.id
-             ORDER BY validity @> CURRENT_DATE DESC, lower(validity) DESC LIMIT 1
-          ) a ON true
-          -- Le contrat qui fait foi, comme pour la cible : le dernier commencé.
-          JOIN LATERAL (
-            SELECT contract_type, start_date FROM contracts
-             WHERE employee_id = e.id AND start_date <= CURRENT_DATE
-             ORDER BY start_date DESC, created_at DESC LIMIT 1
-          ) c ON true
-         WHERE e.id = ${employeeId}`);
-      const dossier = rows[0]!;
+      const dossier = await identiteAuDossier(tx, employeeId);
       const banqueEtRib = doc === 'domiciliation_bancaire' && peut(user, 'personnel.sensible');
       const { rows: comptes } = banqueEtRib
         ? await tx.execute<{ banque: string | null; rib_chiffre: string | null }>(sql`
@@ -227,14 +203,7 @@ export class GenerationService {
         : { rows: [] };
       const compte = comptes[0];
       return {
-        civilite:
-          dossier.gender === 'female' ? 'madame' : dossier.gender === 'male' ? 'monsieur' : null,
-        prenom: dossier.given_name,
-        nom: dossier.family_name,
-        poste: dossier.position_title,
-        affectation: dossier.org_unit_id,
-        contrat: dossier.contract_type,
-        debut: dossier.start_date,
+        ...dossier,
         banque: (compte?.banque as CodeDeBanque | null | undefined) ?? null,
         rib: compte?.rib_chiffre ? this.crypto.decrypt(compte.rib_chiffre) : null,
       };
@@ -252,7 +221,7 @@ export class GenerationService {
     corps: unknown,
     demandeId?: string,
   ): Promise<DocumentPdf> {
-    const parDemande = parLaDemande(user, type, demandeId);
+    const parDemande = parLaDemande(demandeId);
     const doc = parDemande ? documentDeLaDemande(type) : this.documentConfigure(user, type);
     const modele = sansAgent(doc)
       ? this.sansAgent[doc]
@@ -265,7 +234,9 @@ export class GenerationService {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       if (parDemande && parLettre(doc)) {
         // Au titre d'une demande, le document est celui de l'agent qui l'a
-        // faite : la fiche le nomme, aux capitales et aux accents près.
+        // faite : la fiche le nomme, aux capitales et aux accents près. Ce
+        // que son dossier porte, et la date de la demande, la fiche les
+        // reprend tels quels (ADR-0190).
         const agent = await agentDeLaDemande(tx, user, doc, parDemande);
         await pasSurSoi(tx, user.userId, [agent.id], 'générer un document pour');
         const fiche = ficheDeLaDemande(doc).safeParse(corps);
@@ -276,6 +247,13 @@ export class GenerationService {
             'La fiche doit nommer l’agent qui a fait la demande',
           );
         }
+        return modele.pdf(
+          tx,
+          ficheFigee(
+            corps,
+            ficheReprise(doc, await identiteAuDossier(tx, agent.id), agent.demandeLe),
+          ),
+        );
       }
       return modele.pdf(tx, corps);
     });
@@ -291,7 +269,7 @@ export class GenerationService {
     type: string,
     demandeId?: string,
   ): Promise<Record<string, unknown>> {
-    const parDemande = parLaDemande(user, type, demandeId);
+    const parDemande = parLaDemande(demandeId);
     const doc = parDemande ? documentDeLaDemande(type) : this.documentConfigure(user, type);
     if (!sansAgent(doc)) {
       problem(422, 'documents.avec_agent', `${REQUESTABLE_DOC_LABELS[doc]} : un agent à choisir`);
@@ -333,16 +311,12 @@ export class GenerationService {
 /* ──── Au titre d'une demande (ADR-0189) ───────────────────────────────── */
 
 /**
- * La demande au titre de laquelle on génère, si l'appelant n'a pas déjà le
- * droit de générer ce document : qui l'a, la direction de la DCH, génère
- * comme avant, demande ou pas.
+ * La demande au titre de laquelle on génère. Pour tous, qui dirige la DCH
+ * compris : la page d'une demande fige ce que le dossier de l'agent porte
+ * (ADR-0190). Sans demande, « Générer des documents » reste ce qu'il était.
  */
-function parLaDemande(
-  user: SessionUser,
-  type: string,
-  demandeId: string | undefined,
-): string | null {
-  return demandeId !== undefined && !peutGenerer(user, type) ? demandeId : null;
+function parLaDemande(demandeId: string | undefined): string | null {
+  return demandeId ?? null;
 }
 
 /** Le document d'une demande par lettre, configuré ; aucun autre ne se génère à ce titre. */
@@ -365,7 +339,7 @@ async function agentDeLaDemande(
   user: SessionUser,
   doc: DocumentGenere,
   demandeId: string,
-): Promise<{ id: string; prenom: string; nom: string }> {
+): Promise<{ id: string; prenom: string; nom: string; demandeLe: string }> {
   const [row] = await tx
     .select({
       request: t.documentRequests,
@@ -397,7 +371,21 @@ async function agentDeLaDemande(
   if (!peutTraiter) {
     problem(403, 'demandes.pas_traitant', 'Réservé à la personne qui traite cette demande');
   }
-  return { id: row.request.employeeId, prenom: row.prenom, nom: row.nom };
+  // La date que la fiche reprend : celle de la lettre, ou le jour de l'envoi.
+  const [lettre] = await tx
+    .select({ datee: t.documentRequestLettres.datee })
+    .from(t.documentRequestLettres)
+    .where(eq(t.documentRequestLettres.requestId, demandeId))
+    .limit(1);
+  return {
+    id: row.request.employeeId,
+    prenom: row.prenom,
+    nom: row.nom,
+    demandeLe: dateDeLaDemande({
+      createdAt: row.request.createdAt.toISOString(),
+      lettre: lettre ? { datee: lettre.datee } : null,
+    }),
+  };
 }
 
 /** Le schéma de la fiche d'un document par lettre. */
@@ -417,3 +405,66 @@ const memePersonne = (
   fiche: { prenom: string; nom: string },
   agent: { prenom: string; nom: string },
 ) => aplati(fiche.prenom) === aplati(agent.prenom) && aplati(fiche.nom) === aplati(agent.nom);
+
+/**
+ * La fiche, ce qu'elle reprend remis à sa place : au titre d'une demande,
+ * ni l'identité de l'agent, ni son poste, ni la date de la demande ne se
+ * corrigent (ADR-0190). Une fiche qui n'est pas un objet part telle quelle :
+ * le modèle la refuse.
+ */
+function ficheFigee(corps: unknown, figes: object): unknown {
+  return typeof corps === 'object' && corps !== null && !Array.isArray(corps)
+    ? { ...corps, ...figes }
+    : corps;
+}
+
+/* ──── Le dossier de l'agent ───────────────────────────────────────────── */
+
+/**
+ * Ce que le dossier dit de l'agent pour une fiche (ADR-0174) : son état
+ * civil, son poste et son unité en cours, le contrat qui fait foi et son
+ * premier jour.
+ */
+async function identiteAuDossier(
+  tx: Tx,
+  employeeId: string,
+): Promise<Omit<DossierPourLaFiche, 'banque' | 'rib'>> {
+  const { rows } = await tx.execute<{
+    gender: string | null;
+    given_name: string;
+    family_name: string;
+    position_title: string | null;
+    org_unit_id: string | null;
+    contract_type: 'cdd' | 'cdi';
+    start_date: string;
+  }>(sql`
+    SELECT p.gender, p.given_name, p.family_name, a.position_title, a.org_unit_id,
+           c.contract_type, to_char(c.start_date, 'YYYY-MM-DD') AS start_date
+      FROM employees e
+      JOIN persons p ON p.id = e.person_id
+      -- Le poste en cours, sinon le prochain.
+      LEFT JOIN LATERAL (
+        SELECT position_title, org_unit_id FROM assignments
+         WHERE employee_id = e.id
+         ORDER BY validity @> CURRENT_DATE DESC, lower(validity) DESC LIMIT 1
+      ) a ON true
+      -- Le contrat qui fait foi, comme pour la cible : le dernier commencé.
+      JOIN LATERAL (
+        SELECT contract_type, start_date FROM contracts
+         WHERE employee_id = e.id AND start_date <= CURRENT_DATE
+         ORDER BY start_date DESC, created_at DESC LIMIT 1
+      ) c ON true
+     WHERE e.id = ${employeeId}`);
+  const dossier = rows[0];
+  if (!dossier) problem(404, 'people.employee_not_found', 'Dossier introuvable');
+  return {
+    civilite:
+      dossier.gender === 'female' ? 'madame' : dossier.gender === 'male' ? 'monsieur' : null,
+    prenom: dossier.given_name,
+    nom: dossier.family_name,
+    poste: dossier.position_title,
+    affectation: dossier.org_unit_id,
+    contrat: dossier.contract_type,
+    debut: dossier.start_date,
+  };
+}

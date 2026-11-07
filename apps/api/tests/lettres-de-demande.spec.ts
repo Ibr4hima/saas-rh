@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FicheDisponibilite, FicheDomiciliation, SessionUser } from '@teranga/contracts';
-import { createDocumentRequestSchema, dateDeLaDemande } from '@teranga/contracts';
+import { createDocumentRequestSchema, dateDeLaDemande, ficheReprise } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { ProblemException } from '../src/common/problem';
 import { loadEnv } from '../src/config/env';
@@ -333,6 +333,49 @@ describe('la demande et sa lettre', () => {
   });
 });
 
+describe('ce que la fiche reprend, au titre d’une demande (ADR-0190)', () => {
+  const dossier = {
+    civilite: 'monsieur' as const,
+    prenom: 'Moussa',
+    nom: 'Sarr',
+    poste: ' Comptable ',
+    affectation: 'unite-de-la-dsid',
+    contrat: 'cdi' as const,
+    debut: '2024-01-01',
+  };
+
+  it('l’identité, le poste et la date ; l’affectation ou le contrat selon le document', () => {
+    expect(ficheReprise('decision_disponibilite', dossier, '2026-11-02')).toEqual({
+      civilite: 'monsieur',
+      prenom: 'Moussa',
+      nom: 'Sarr',
+      poste: 'Comptable',
+      demandeLe: '2026-11-02',
+    });
+    expect(
+      ficheReprise('decision_renouvellement_disponibilite', dossier, '2026-11-03'),
+    ).toMatchObject({ affectation: 'unite-de-la-dsid', demandeLe: '2026-11-03' });
+    expect(ficheReprise('domiciliation_bancaire', dossier, '2026-11-06')).toEqual({
+      civilite: 'monsieur',
+      prenom: 'Moussa',
+      nom: 'Sarr',
+      poste: 'Comptable',
+      contrat: 'cdi',
+      debut: '2024-01-01',
+      demandeLe: '2026-11-06',
+    });
+  });
+
+  it('ce que le dossier ne porte pas reste à saisir', () => {
+    const reprise = ficheReprise(
+      'decision_renouvellement_disponibilite',
+      { ...dossier, civilite: null, poste: '  ', affectation: null },
+      '2026-11-03',
+    );
+    expect(Object.keys(reprise).sort()).toEqual(['demandeLe', 'nom', 'prenom']);
+  });
+});
+
 describe('le document, généré au titre de la demande', () => {
   it('qui traite lit le dossier de l’agent de la demande, et lui seul', async () => {
     const id = await demande('decision_disponibilite', '2026-11-02');
@@ -398,6 +441,51 @@ describe('le document, généré au titre de la demande', () => {
         generation.pdfSansAgent(awa.session, 'decision_disponibilite', ficheDeMoussa()),
       ),
     ).toBe('auth.forbidden');
+  });
+
+  it('la fiche reprend le dossier et la date de la demande, quoi qu’on y écrive (ADR-0190)', async () => {
+    const id = await demande('decision_disponibilite', '2026-11-02');
+    // Sans civilité ni poste, avec une demande d'après la prise d'effet : la
+    // fiche seule serait refusée. Reprise du dossier et de la lettre, elle passe.
+    const { filename } = await generation.pdfSansAgent(
+      awa.session,
+      'decision_disponibilite',
+      ficheDeMoussa({
+        civilite: undefined,
+        prenom: 'MOUSSA',
+        nom: 'sarr',
+        poste: '',
+        demandeLe: '2026-12-15',
+      }),
+      id,
+    );
+    // Le nom du fichier suit le dossier : « Moussa », pas « MOUSSA ».
+    expect(filename).toBe('decision-disponibilite-SARR-Moussa.pdf');
+  });
+
+  it('qui dirige la DCH passe aussi par la demande ; sans elle, rien ne change', async () => {
+    const direction = { ...mariama.session, dirigeLaDCH: true } as SessionUser;
+    const id = await demande('decision_disponibilite', '2026-11-02');
+    const parLaDemande = await generation.pdfSansAgent(
+      direction,
+      'decision_disponibilite',
+      ficheDeMoussa({ prenom: 'MOUSSA' }),
+      id,
+    );
+    expect(parLaDemande.filename).toBe('decision-disponibilite-SARR-Moussa.pdf');
+    // « Générer des documents », sans demande : la fiche telle qu'elle est saisie.
+    const libre = await generation.pdfSansAgent(
+      direction,
+      'decision_disponibilite',
+      ficheDeMoussa({ prenom: 'MOUSSA' }),
+    );
+    expect(libre.filename).toBe('decision-disponibilite-SARR-MOUSSA.pdf');
+    await demandes.batchAdvance(direction, { ids: [id], status: 'ready' });
+    expect(
+      await codeOf(() =>
+        generation.pdfSansAgent(direction, 'decision_disponibilite', ficheDeMoussa(), id),
+      ),
+    ).toBe('documents.deja_traitee');
   });
 
   it('une demande d’un autre document, ou close, n’ouvre rien', async () => {

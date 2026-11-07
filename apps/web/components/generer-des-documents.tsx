@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import type {
   AgentDeLaCible,
+  ChampRepris,
   DocumentAChoixDAgent,
   DocumentAvecAgent,
   DocumentGenere,
@@ -29,6 +30,7 @@ import {
   ficheDuContratSchema,
   ficheHorsDossierSchema,
   ficheStagiaireSchema,
+  ficheReprise,
   horsCible,
   horsDossier,
   nomDuDocumentGenere,
@@ -279,8 +281,11 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
   const dossierAttendu = useRef<string | null>(null);
   // Au titre d'une demande, la fiche se remplit à l'ouverture : le dossier de
   // l'agent, puis la date de la demande (ADR-0189). Une seule fois : ce que
-  // la personne corrige ensuite reste.
+  // la personne corrige ensuite reste. Ce que le dossier donne de l'agent, et
+  // la date de la demande, ne se corrigent pas : leurs champs sont figés
+  // (ADR-0190).
   const [dossierLu, setDossierLu] = useState(false);
+  const [figes, setFiges] = useState<readonly ChampRepris[]>([]);
   useEffect(() => {
     if (!demandeId || !agentDeLaDemande || !docDeLaDemande || !demandeLe) return;
     let abandonne = false;
@@ -294,6 +299,7 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
         } else {
           setDisponibilite((s) => ({ ...decisionDepuisLeDossier(s, d), demandeLe }));
         }
+        setFiges(Object.keys(ficheReprise(docDeLaDemande, d, demandeLe)) as ChampRepris[]);
         setDossierLu(true);
       },
       (e: unknown) => {
@@ -541,6 +547,7 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
               // Un autre agent : le RIB repart de sa propre saisie.
               key={agentDeLaDomiciliation?.id ?? 'aucun'}
               valeur={domiciliation}
+              figes={figes}
               onChange={setDomiciliation}
             />
           ) : null}
@@ -551,6 +558,7 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
             <FicheDeLaDecision
               doc={deDisponibilite}
               valeur={disponibilite}
+              figes={figes}
               onChange={setDisponibilite}
             />
           ) : null}

@@ -7,6 +7,7 @@ import {
   datesDeLaDomiciliation,
   ficheDomiciliationSchema,
   ribGroupe,
+  type ChampRepris,
   type CodeDeBanque,
   type DossierPourLaFiche,
 } from '@teranga/contracts';
@@ -17,7 +18,9 @@ import {
   champsDeTexte,
   ChampDeLaCivilite,
   ChampDuMontant,
+  ChampFige,
   Groupe,
+  jourEcrit,
   reglesEnfreintes,
 } from './saisie-de-fiche';
 
@@ -120,12 +123,16 @@ export function versLaFicheDeLaDomiciliation(s: SaisieDeLaDomiciliation) {
 
 export function FicheDeLaDomiciliation({
   valeur,
+  figes = [],
   onChange,
 }: {
   valeur: SaisieDeLaDomiciliation;
+  /** Ce que la demande et le dossier de l'agent donnent : figé (ADR-0190). */
+  figes?: readonly ChampRepris[];
   onChange: (valeur: SaisieDeLaDomiciliation) => void;
 }) {
   const id = useId();
+  const fige = (champ: ChampRepris) => figes.includes(champ);
   const poser = (champ: Partial<SaisieDeLaDomiciliation>) => onChange({ ...valeur, ...champ });
   const { texte, nomPropre, intitule } = champsDeTexte(id, valeur, poser);
   // Les règles des dates, dites sous les champs (ADR-0133) : le contrat a
@@ -151,41 +158,69 @@ export function FicheDeLaDomiciliation({
         <ChampDeLaCivilite
           id={`${id}-civilite`}
           civilite={valeur.civilite}
+          fige={fige('civilite')}
           onSaisir={(civilite) => poser({ civilite })}
         />
-        <Field label="Prénom" htmlFor={`${id}-prenom`} required>
-          <Input {...nomPropre('prenom')} />
+        <Field label="Prénom" htmlFor={`${id}-prenom`} required={!fige('prenom')}>
+          {fige('prenom') ? (
+            <ChampFige id={`${id}-prenom`} valeur={valeur.prenom} />
+          ) : (
+            <Input {...nomPropre('prenom')} />
+          )}
         </Field>
-        <Field label="Nom" htmlFor={`${id}-nom`} required>
-          <Input {...nomPropre('nom')} />
+        <Field label="Nom" htmlFor={`${id}-nom`} required={!fige('nom')}>
+          {fige('nom') ? (
+            <ChampFige id={`${id}-nom`} valeur={valeur.nom} />
+          ) : (
+            <Input {...nomPropre('nom')} />
+          )}
         </Field>
-        <Field label="Fonction" htmlFor={`${id}-poste`} required>
-          <Input {...intitule('poste', 120)} />
+        <Field label="Fonction" htmlFor={`${id}-poste`} required={!fige('poste')}>
+          {fige('poste') ? (
+            <ChampFige id={`${id}-poste`} valeur={valeur.poste} />
+          ) : (
+            <Input {...intitule('poste', 120)} />
+          )}
         </Field>
-        <Field label="Type de contrat" htmlFor={`${id}-contrat`} required>
-          <Select
-            id={`${id}-contrat`}
-            aria-label="Type de contrat"
-            value={valeur.contrat}
-            onChange={(e) =>
-              poser({ contrat: e.target.value as SaisieDeLaDomiciliation['contrat'] })
-            }
-            className={CADRE}
-          >
-            <option value="" hidden>
-              Choisir
-            </option>
-            <option value="cdd">Contrat à durée déterminée</option>
-            <option value="cdi">Contrat à durée indéterminée</option>
-          </Select>
+        <Field label="Type de contrat" htmlFor={`${id}-contrat`} required={!fige('contrat')}>
+          {fige('contrat') ? (
+            <ChampFige
+              id={`${id}-contrat`}
+              valeur={
+                valeur.contrat === 'cdd'
+                  ? 'Contrat à durée déterminée'
+                  : 'Contrat à durée indéterminée'
+              }
+            />
+          ) : (
+            <Select
+              id={`${id}-contrat`}
+              aria-label="Type de contrat"
+              value={valeur.contrat}
+              onChange={(e) =>
+                poser({ contrat: e.target.value as SaisieDeLaDomiciliation['contrat'] })
+              }
+              className={CADRE}
+            >
+              <option value="" hidden>
+                Choisir
+              </option>
+              <option value="cdd">Contrat à durée déterminée</option>
+              <option value="cdi">Contrat à durée indéterminée</option>
+            </Select>
+          )}
         </Field>
         <Field
           label="Date de début du contrat"
           htmlFor={`${id}-debut`}
-          required
+          required={!fige('debut')}
           error={erreurs.debut}
         >
-          <Input {...date('debut')} />
+          {fige('debut') ? (
+            <ChampFige id={`${id}-debut`} valeur={jourEcrit(valeur.debut)} />
+          ) : (
+            <Input {...date('debut')} />
+          )}
         </Field>
       </Groupe>
 
@@ -230,10 +265,14 @@ export function FicheDeLaDomiciliation({
         <Field
           label="Date de la demande de domiciliation"
           htmlFor={`${id}-demandeLe`}
-          required
+          required={!fige('demandeLe')}
           error={erreurs.demandeLe}
         >
-          <Input {...date('demandeLe', valeur.debut)} />
+          {fige('demandeLe') ? (
+            <ChampFige id={`${id}-demandeLe`} valeur={jourEcrit(valeur.demandeLe)} />
+          ) : (
+            <Input {...date('demandeLe', valeur.debut)} />
+          )}
         </Field>
         <ChampsDuRib
           id={id}

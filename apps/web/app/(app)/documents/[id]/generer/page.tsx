@@ -17,7 +17,8 @@ import { api } from '../../../../../lib/api';
    Le document d'une demande de mise en disponibilité, de renouvellement ou
    de domiciliation, généré par qui la traite (ADR-0189) : la page de
    « Générer des documents », pour ce seul document et l'agent qui l'a
-   demandé, la fiche préremplie de son dossier et de la date de la demande.
+   demandé, la fiche préremplie de son dossier et de la date de la demande,
+   qui ne s'y corrigent pas (ADR-0190).
 */
 
 const RETOUR = { href: '/documents', libelle: 'Demandes de documents' };

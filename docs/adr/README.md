@@ -194,4 +194,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0186](0186-courriels-a-la-charte.md)                 | Les courriels à la charte de l'APIX                                                     | acceptée                                    |
 | [0187](0187-connexion-a-la-charte.md)                 | Les écrans de connexion à la charte de l'APIX, toujours en clair                        | acceptée                                    |
 | [0188](0188-verification-a-la-charte.md)              | La vérification d'un certificat à la charte de l'APIX                                   | acceptée                                    |
-| [0189](0189-lettre-de-demande.md)                     | La lettre de demande, jointe par l'agent, lue et reprise par qui traite la demande      | acceptée                                    |
+| [0189](0189-lettre-de-demande.md)                     | La lettre de demande, jointe par l'agent, lue et reprise par qui traite la demande      | acceptée, précisée par 0190                 |
+| [0190](0190-demande-figee.md)                         | Au titre d'une demande, l'identité de l'agent et la date de la demande sont figées      | acceptée                                    |

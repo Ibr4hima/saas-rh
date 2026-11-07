@@ -295,12 +295,22 @@ export function reglesEnfreintes(
 export function ChampDeLaCivilite({
   id,
   civilite,
+  fige = false,
   onSaisir,
 }: {
   id: string;
   civilite: '' | 'madame' | 'monsieur';
+  /** Reprise du dossier de l'agent, au titre d'une demande : elle ne se corrige pas. */
+  fige?: boolean;
   onSaisir: (civilite: 'madame' | 'monsieur') => void;
 }) {
+  if (fige) {
+    return (
+      <Field label="Civilité" htmlFor={id}>
+        <ChampFige id={id} valeur={civilite === 'madame' ? 'Madame' : 'Monsieur'} />
+      </Field>
+    );
+  }
   return (
     <Field label="Civilité" htmlFor={id} required>
       <Select
@@ -319,6 +329,30 @@ export function ChampDeLaCivilite({
     </Field>
   );
 }
+
+/**
+ * Un champ que la fiche reprend du dossier de l'agent, au titre de sa
+ * demande (ADR-0190) : grisé, il se lit et se copie, mais ne se saisit pas.
+ * Hors du parcours au clavier, qui va de saisie en saisie.
+ */
+export function ChampFige({ id, valeur }: { id: string; valeur: string }) {
+  return (
+    <Input
+      id={id}
+      value={valeur}
+      readOnly
+      aria-readonly
+      tabIndex={-1}
+      className={cn(
+        CADRE,
+        'cursor-not-allowed bg-bg text-ink-muted focus-visible:border-line focus-visible:outline-none',
+      )}
+    />
+  );
+}
+
+/** « 02/11/2026 » : une date figée, telle qu'un champ de date l'écrit. */
+export const jourEcrit = (iso: string) => iso.split('-').reverse().join('/');
 
 /**
  * Le numéro de la CNI, groupé à la frappe comme sur la carte : « 1 234 0000

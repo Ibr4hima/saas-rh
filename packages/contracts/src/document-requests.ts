@@ -751,6 +751,52 @@ export interface DossierPourLaFiche {
 }
 
 /**
+ * Ce que la fiche d'un document par lettre reprend, au titre d'une demande :
+ * du dossier de l'agent, et la date de la demande.
+ */
+export type ChampRepris =
+  'civilite' | 'prenom' | 'nom' | 'poste' | 'affectation' | 'contrat' | 'debut' | 'demandeLe';
+
+/** Les valeurs reprises d'une fiche, champ par champ. */
+export interface FicheReprise {
+  civilite?: 'madame' | 'monsieur';
+  prenom: string;
+  nom: string;
+  poste?: string;
+  affectation?: string;
+  contrat?: 'cdd' | 'cdi';
+  debut?: string;
+  demandeLe: string;
+}
+
+/**
+ * Au titre d'une demande, ce que la fiche reprend sans qu'il se corrige
+ * (ADR-0190) : du dossier de l'agent, son identité et son poste, son
+ * affectation pour un renouvellement, son contrat et sa date de début pour
+ * la domiciliation ; et la date de la demande (`dateDeLaDemande`). Ce que le
+ * dossier ne porte pas reste à saisir. La page fige ces champs, et le serveur
+ * les reprend.
+ */
+export function ficheReprise(
+  doc: DocumentParLettre,
+  d: Pick<DossierPourLaFiche, Exclude<ChampRepris, 'demandeLe'>>,
+  demandeLe: string,
+): FicheReprise {
+  const poste = d.poste?.trim();
+  return {
+    ...(d.civilite ? { civilite: d.civilite } : {}),
+    prenom: d.prenom,
+    nom: d.nom,
+    ...(poste ? { poste } : {}),
+    ...(doc === 'decision_renouvellement_disponibilite' && d.affectation
+      ? { affectation: d.affectation }
+      : {}),
+    ...(doc === 'domiciliation_bancaire' ? { contrat: d.contrat, debut: d.debut } : {}),
+    demandeLe,
+  };
+}
+
+/**
  * Un RIB tel qu'il s'imprime : « SN012 01001 036123456789 54 », le code de la
  * banque, celui du guichet, le numéro du compte et la clé. Commencé, il se
  * groupe déjà.

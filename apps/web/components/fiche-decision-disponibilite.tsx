@@ -3,6 +3,7 @@
 import { useEffect, useId, type Dispatch, type SetStateAction } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type {
+  ChampRepris,
   DecisionDeDisponibilite,
   DossierPourLaFiche,
   OrgUnitView,
@@ -26,7 +27,9 @@ import {
   champsDeTexte,
   ChampDeLaCivilite,
   ChampDeLaDuree,
+  ChampFige,
   Groupe,
+  jourEcrit,
   reglesEnfreintes,
   SUR_DEUX_COLONNES,
 } from './saisie-de-fiche';
@@ -169,13 +172,17 @@ const parLibelle = (unites: OrgUnitView[]) =>
 export function FicheDeLaDecision({
   doc,
   valeur,
+  figes = [],
   onChange,
 }: {
   doc: DecisionDeDisponibilite;
   valeur: SaisieDeLaDecision;
+  /** Ce que la demande et le dossier de l'agent donnent : figé (ADR-0190). */
+  figes?: readonly ChampRepris[];
   onChange: (valeur: SaisieDeLaDecision) => void;
 }) {
   const id = useId();
+  const fige = (champ: ChampRepris) => figes.includes(champ);
   const renouvellement = doc === 'decision_renouvellement_disponibilite';
   const poser = (champ: Partial<SaisieDeLaDecision>) => {
     const suivante = { ...valeur, ...champ };
@@ -238,10 +245,14 @@ export function FicheDeLaDecision({
           : 'Date de la demande de disponibilité'
       }
       htmlFor={`${id}-demandeLe`}
-      required
+      required={!fige('demandeLe')}
       error={erreurs.demandeLe}
     >
-      <Input {...date('demandeLe', { max: aujourdhui })} />
+      {fige('demandeLe') ? (
+        <ChampFige id={`${id}-demandeLe`} valeur={jourEcrit(valeur.demandeLe)} />
+      ) : (
+        <Input {...date('demandeLe', { max: aujourdhui })} />
+      )}
     </Field>
   );
 
@@ -251,40 +262,63 @@ export function FicheDeLaDecision({
         <ChampDeLaCivilite
           id={`${id}-civilite`}
           civilite={valeur.civilite}
+          fige={fige('civilite')}
           onSaisir={(civilite) => poser({ civilite })}
         />
-        <Field label="Prénom" htmlFor={`${id}-prenom`} required>
-          <Input {...nomPropre('prenom')} />
+        <Field label="Prénom" htmlFor={`${id}-prenom`} required={!fige('prenom')}>
+          {fige('prenom') ? (
+            <ChampFige id={`${id}-prenom`} valeur={valeur.prenom} />
+          ) : (
+            <Input {...nomPropre('prenom')} />
+          )}
         </Field>
-        <Field label="Nom" htmlFor={`${id}-nom`} required>
-          <Input {...nomPropre('nom')} />
+        <Field label="Nom" htmlFor={`${id}-nom`} required={!fige('nom')}>
+          {fige('nom') ? (
+            <ChampFige id={`${id}-nom`} valeur={valeur.nom} />
+          ) : (
+            <Input {...nomPropre('nom')} />
+          )}
         </Field>
-        <Field label="Poste" htmlFor={`${id}-poste`} required>
-          <Input {...intitule('poste', 120)} />
+        <Field label="Poste" htmlFor={`${id}-poste`} required={!fige('poste')}>
+          {fige('poste') ? (
+            <ChampFige id={`${id}-poste`} valeur={valeur.poste} />
+          ) : (
+            <Input {...intitule('poste', 120)} />
+          )}
         </Field>
         {renouvellement ? (
           <Field
             label="Affectation"
             htmlFor={`${id}-affectation`}
-            required
+            required={!fige('affectation')}
             className={SUR_DEUX_COLONNES}
           >
-            <Select
-              id={`${id}-affectation`}
-              aria-label="Affectation"
-              value={valeur.affectation}
-              onChange={(e) => poser({ affectation: e.target.value })}
-              className={CADRE}
-            >
-              <option value="" hidden>
-                Choisir une direction, un département ou un service
-              </option>
-              {parLibelle(unites.data ?? []).map((u) => (
-                <option key={u.id} value={u.id}>
-                  {orgUnitLabel(u)}
+            {fige('affectation') ? (
+              <ChampFige
+                id={`${id}-affectation`}
+                valeur={(() => {
+                  const u = unites.data?.find((x) => x.id === valeur.affectation);
+                  return u ? orgUnitLabel(u) : '';
+                })()}
+              />
+            ) : (
+              <Select
+                id={`${id}-affectation`}
+                aria-label="Affectation"
+                value={valeur.affectation}
+                onChange={(e) => poser({ affectation: e.target.value })}
+                className={CADRE}
+              >
+                <option value="" hidden>
+                  Choisir une direction, un département ou un service
                 </option>
-              ))}
-            </Select>
+                {parLibelle(unites.data ?? []).map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {orgUnitLabel(u)}
+                  </option>
+                ))}
+              </Select>
+            )}
           </Field>
         ) : (
           demandeLe
