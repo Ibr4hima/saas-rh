@@ -36,18 +36,14 @@ function nomDuFichier(nom: string): string {
  *
  * `lot` : une demande parmi d'autres, en carte, avec le nom de l'agent. Sinon,
  * la demande seule : ses fichiers, puis la zone où les déposer.
- * `attendu` : le dépôt est ce qu'attend la demande pour partir ; tant
- * qu'elle n'a aucun document, l'appel à déposer est orange.
  */
 export function DocumentsDeposes({
   demande: r,
   lot = false,
-  attendu = false,
   onErreur,
 }: {
   demande: DocumentRequestView;
   lot?: boolean;
-  attendu?: boolean;
   onErreur: (texte: string | null) => void;
 }) {
   const queryClient = useQueryClient();
@@ -117,7 +113,6 @@ export function DocumentsDeposes({
       }}
     />
   );
-  const enAttente = attendu && r.fichiers.length === 0;
 
   // Prête et sans point de retrait, la demande garde au moins un document :
   // on dépose d'abord le bon, puis on retire le mauvais.
@@ -171,21 +166,12 @@ export function DocumentsDeposes({
             'flex cursor-pointer flex-col items-center gap-2 rounded-bloc border-[1.5px] border-dashed px-6 py-6 text-center transition-colors duration-150 focus-within:ring-2 focus-within:ring-primary/40',
             survol
               ? 'border-primary bg-primary/[0.05]'
-              : enAttente
-                ? 'border-badge-orange-line bg-surface-raised hover:bg-accent-soft'
-                : 'border-line bg-surface-raised hover:border-primary/45 hover:bg-primary/[0.03]',
+              : 'border-line bg-surface-raised hover:border-primary/45 hover:bg-primary/[0.03]',
             deposer.isPending && 'pointer-events-none opacity-60',
           )}
         >
           {champ}
-          <span
-            className={cn(
-              'flex size-10 items-center justify-center rounded-full',
-              enAttente && !survol
-                ? 'bg-accent-soft text-badge-orange-ink'
-                : 'bg-primary-soft text-primary',
-            )}
-          >
+          <span className="flex size-10 items-center justify-center rounded-full bg-primary-soft text-primary">
             <Icon name="upload_file" size={20} />
           </span>
           <span className="text-[12.5px] text-ink">
@@ -228,9 +214,7 @@ export function DocumentsDeposes({
           aria-disabled={deposer.isPending}
           className={cn(
             'inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-controle-sm border px-3 py-1.5 text-[12px] font-semibold transition-colors focus-within:ring-2 focus-within:ring-primary/40',
-            enAttente
-              ? 'border-badge-orange-line text-badge-orange-ink hover:bg-accent-soft'
-              : 'border-line text-primary hover:border-primary/40 hover:bg-primary/[0.07]',
+            'border-line text-primary hover:border-primary/40 hover:bg-primary/[0.07]',
             deposer.isPending && 'pointer-events-none opacity-60',
           )}
         >

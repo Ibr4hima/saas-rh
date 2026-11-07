@@ -324,6 +324,27 @@ describe('la demande et sa lettre', () => {
     expect(rows[0].n).toBe(0);
   });
 
+  it('les avis disent ce que l’agent demande : une disponibilité, pas une décision', async () => {
+    const titres = async (id: string, motif: string) =>
+      (
+        await raw(`SELECT title FROM notifications WHERE dedupe_key LIKE $1`, [
+          `document:${id}:${motif}%`,
+        ])
+      ).rows.map((r: { title: string }) => r.title);
+    const dispo = await demande('decision_disponibilite', '2026-11-02');
+    const renouvellement = await demande('decision_renouvellement_disponibilite', '2026-11-03');
+    expect(await titres(dispo, 'appel')).toContain('Moussa Sarr demande une disponibilité');
+    expect(await titres(renouvellement, 'appel')).toContain(
+      'Moussa Sarr demande le renouvellement de sa disponibilité',
+    );
+    await demandes.batchAdvance(awa.session, {
+      ids: [dispo],
+      status: 'rejected',
+      message: 'La lettre ne porte pas de signature',
+    });
+    expect(await titres(dispo, 'suivi')).toContain('Votre demande de disponibilité a été refusée');
+  });
+
   it('qui traite la retrouve dans la file, avec la lettre', async () => {
     const id = await demande('decision_disponibilite', '2026-11-02');
     const vue = await demandes.une(awa.session, id);

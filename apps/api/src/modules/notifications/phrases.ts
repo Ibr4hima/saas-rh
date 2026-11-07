@@ -104,6 +104,29 @@ export const DOCUMENT: Record<RequestableDoc, Nom> = {
   autre: nom('document', false),
 };
 
+/**
+ * Ce qu'un agent demande quand ce n'est pas le document qui y répond : une
+ * disponibilité, que la décision accorde. « Moussa Sarr demande une
+ * disponibilité », « sa demande de disponibilité » ; jamais « une décision ».
+ */
+const DEMANDE_DU_DOCUMENT: Partial<Record<RequestableDoc, { avecArticle: string; nom: string }>> = {
+  decision_disponibilite: { avecArticle: 'une disponibilité', nom: 'disponibilité' },
+  decision_renouvellement_disponibilite: {
+    avecArticle: 'le renouvellement de sa disponibilité',
+    nom: 'renouvellement de disponibilité',
+  },
+};
+
+/** « une attestation de travail », « une disponibilité » : ce que l'agent demande. */
+export const ceQuiSeDemande = (doc: RequestableDoc): string => {
+  const d = DOCUMENT[doc] ?? DOCUMENT.autre;
+  return DEMANDE_DU_DOCUMENT[doc]?.avecArticle ?? `${d.article} ${d.nom}`;
+};
+
+/** « de disponibilité », « d’attestation de travail » : la demande de quoi. */
+export const deLaDemande = (doc: RequestableDoc): string =>
+  de(DEMANDE_DU_DOCUMENT[doc]?.nom ?? (DOCUMENT[doc] ?? DOCUMENT.autre).nom);
+
 /** « le CDD », « le stage » : tous masculins. */
 export const CONTRAT: Record<ContractType, string> = {
   cdi: 'CDI',

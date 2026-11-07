@@ -15,7 +15,13 @@ import {
 } from '@teranga/contracts';
 import { problem } from '../../common/problem';
 import type { Tx } from '../../db/tenant-db';
-import { bulletins, DOCUMENT, enumerer, leJourALHeure, PIECE } from '../notifications/phrases';
+import {
+  bulletins,
+  ceQuiSeDemande,
+  enumerer,
+  leJourALHeure,
+  PIECE,
+} from '../notifications/phrases';
 import { periodeDu } from '../docs/bulletin';
 import { appelerPourLaDCH, retirerLesAppels, tenirLesAppels } from './appels';
 import {
@@ -98,12 +104,7 @@ const DEFINITIONS: Record<TypeDCH, Definition> = {
         const b = bulletins(periode);
         return `${nom} demande ${b.pluriel ? 'ses' : 'son'} ${b.texte}`;
       }
-      return `${nom} demande ${enumerer(
-        types.map((x) => {
-          const doc = DOCUMENT[x] ?? DOCUMENT.autre;
-          return `${doc.article} ${doc.nom}`;
-        }),
-      )}`;
+      return `${nom} demande ${enumerer(types.map((x) => ceQuiSeDemande(x)))}`;
     },
     lien: '/documents',
   },

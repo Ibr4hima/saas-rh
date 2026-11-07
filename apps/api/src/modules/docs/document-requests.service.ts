@@ -42,7 +42,7 @@ import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
-import { accord, bulletins, de, deBulletins, DOCUMENT } from '../notifications/phrases';
+import { accord, bulletins, deBulletins, deLaDemande, DOCUMENT } from '../notifications/phrases';
 import { periodeDu } from './bulletin';
 import { agentDuCompte, detenteursDe, directionDuPersonnel, joursFeries } from '../acces/dch';
 import { heuresOuvreesEntre } from '../time/heures-ouvrees';
@@ -690,9 +690,10 @@ export class DocumentRequestsService {
 
       if (row.status !== 'processing' || !row.handledByUserId) return;
       if (row.handledByUserId === user.userId) return;
-      const doc = DOCUMENT[row.docTypes[0] as RequestableDoc] ?? DOCUMENT.autre;
       const periode = periodeDu(row.payslipFrom, row.payslipTo, row.payslipLastMonths);
-      const quoi = periode ? deBulletins(bulletins(periode)) : de(doc.nom);
+      const quoi = periode
+        ? deBulletins(bulletins(periode))
+        : deLaDemande(row.docTypes[0] as RequestableDoc);
       await this.notifications.notifyUser(tx, user.tenantId, row.handledByUserId, {
         type: 'document_request_cancelled',
         sujet: 'dch.documents',
@@ -862,7 +863,11 @@ export class DocumentRequestsService {
         : 'Vos documents sont';
     const accorde = (mot: string) =>
       b ? (b.pluriel ? `${mot}s` : mot) : seul ? accord(mot, seul) : `${mot}s`;
-    const demande = b ? deBulletins(b) : seul ? de(seul.nom) : 'de documents';
+    const demande = b
+      ? deBulletins(b)
+      : seul
+        ? deLaDemande(e.docTypes[0] as RequestableDoc)
+        : 'de documents';
     const retrait = `à retirer auprès de ${e.pickupContact ?? 'la DCH'}`;
     const titres: Partial<Record<DocumentRequestStatus, string>> = {
       processing: `${votre} en préparation`,

@@ -880,11 +880,11 @@ function TraiterModal({
             {requests.length > 1 ? (
               <div className="flex flex-col gap-2">
                 {requests.map((r) => (
-                  <DocumentsDeposes key={r.id} demande={r} lot attendu onErreur={setErreur} />
+                  <DocumentsDeposes key={r.id} demande={r} lot onErreur={setErreur} />
                 ))}
               </div>
             ) : requests[0] ? (
-              <DocumentsDeposes demande={requests[0]} attendu onErreur={setErreur} />
+              <DocumentsDeposes demande={requests[0]} onErreur={setErreur} />
             ) : null}
           </ModalSection>
         ) : (
@@ -1177,7 +1177,6 @@ function DeclinerModal({
       open
       onClose={onClose}
       title={`Décliner ${requests.length} demande${requests.length > 1 ? 's' : ''}`}
-      subtitle="Le motif sera envoyé tel quel à chaque demandeur."
       maxWidth="max-w-xl"
       footer={
         <>
@@ -1216,15 +1215,13 @@ function DeclinerModal({
           ))}
         </ul>
       </ModalSection>
-      <ModalSection title="Motif">
-        <Field label="Transmis au demandeur" htmlFor="motif">
-          <Input
-            id="motif"
-            placeholder="Ex. : le bulletin de salaire est délivré par le service paie."
-            value={motif}
-            onChange={(e) => setMotif(e.target.value)}
-          />
-        </Field>
+      <ModalSection title="Motif du refus">
+        <Input
+          id="motif"
+          aria-label="Motif du refus"
+          value={motif}
+          onChange={(e) => setMotif(e.target.value)}
+        />
       </ModalSection>
     </Modal>
   );
