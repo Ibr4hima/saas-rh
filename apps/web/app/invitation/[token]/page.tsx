@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AcceptResult, InvitationInfo } from '@teranga/contracts';
 import { Skeleton } from '@teranga/ui';
 import { BoutonMarque } from '../../../components/bouton-marque';
@@ -46,12 +46,6 @@ export default function InvitationPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const info = useQuery({
-    queryKey: ['invitation', token],
-    queryFn: () => api<InvitationInfo>(`/invitations/${token}`),
-    retry: false,
-  });
-
   const accept = useMutation({
     mutationFn: () =>
       api<AcceptResult>(`/invitations/${token}/accept`, { method: 'POST', body: { password } }),
@@ -62,6 +56,24 @@ export default function InvitationPage() {
     onError: (err) =>
       setServerError(err instanceof ApiError ? err.message : 'Activation impossible, réessayez.'),
   });
+
+  const info = useQuery({
+    queryKey: ['invitation', token],
+    queryFn: () => api<InvitationInfo>(`/invitations/${token}`),
+    retry: false,
+    // Acceptée, l'invitation ne se relit plus : l'ouverture de la session
+    // vide le cache, et relue, elle répondrait « déjà utilisée » le temps que
+    // le portail se charge.
+    enabled: accept.isIdle || accept.isError,
+  });
+
+  // Ce que l'invitation disait, gardé jusqu'à l'arrivée sur le portail : le
+  // cache vidé, la page reste celle qu'on vient de valider.
+  const [lue, setLue] = useState<InvitationInfo | null>(null);
+  useEffect(() => {
+    if (info.data) setLue(info.data);
+  }, [info.data]);
+  const invitation = info.data ?? lue;
 
   if (info.isLoading) {
     return (
@@ -75,11 +87,11 @@ export default function InvitationPage() {
     );
   }
 
-  if (!info.data?.valid) {
+  if (!invitation?.valid) {
     return (
       <EcranMarque
         titre="Invitation indisponible"
-        sousTitre={INVALID_MESSAGES[info.data?.reason ?? 'not_found']}
+        sousTitre={INVALID_MESSAGES[invitation?.reason ?? 'not_found']}
         pied={
           <Link href="/login" className="font-bold text-primary underline-offset-4 hover:underline">
             Aller à la connexion
@@ -91,7 +103,7 @@ export default function InvitationPage() {
     );
   }
 
-  const invite = info.data;
+  const invite = invitation;
   // Un compte en service porte cette adresse : son mot de passe le relie au
   // dossier, sans en choisir un autre.
   const relier = invite.accueil === 'compte';
@@ -215,7 +227,7 @@ export default function InvitationPage() {
         ) : null}
 
         <BoutonMarque
-          enCours={accept.isPending}
+          enCours={accept.isPending || accept.isSuccess}
           libelleEnCours={relier ? 'Connexion…' : 'Activation…'}
           disabled={
             relier ? password.length === 0 : !conforme || confirm.length === 0 || discordance

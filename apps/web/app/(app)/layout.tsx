@@ -1324,11 +1324,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
     /* Coquille d'application : la page elle-même ne défile pas. Le menu et
        l'en-tête restent en place, seul le contenu bouge.
 
+       `relative` : un élément placé en absolu sans ancêtre positionné (le
+       « Non renseigné » réservé aux lecteurs d'écran, par exemple) se
+       rattacherait à la page entière, échapperait au masquage et
+       l'allongerait d'autant ; Safari la laissait alors défiler dans le vide.
+
        Tout se pose sur le fond de la page (ADR-0115) : ni bandeau bleu, ni
        colonne blanche. Le menu, le titre, les commandes sont écrits à même
        le fond ; seuls les blocs et les tableaux sont blancs. Le blanc
        désigne ainsi ce qu'on lit et ce qu'on remplit, et rien d'autre. */
-    <div className="flex h-dvh overflow-hidden">
+    <div className="relative flex h-dvh overflow-hidden">
       {/* Le menu, à même le fond */}
       <aside className="hidden w-[16.5rem] shrink-0 flex-col lg:flex">
         {/* La marque en tête du menu, en ses couleurs, à la hauteur de
@@ -1509,7 +1514,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
             gardent la même largeur (ADR-0170). */}
         <main
           data-scroll-root
-          className="min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-24 [scrollbar-gutter:stable] lg:px-7 lg:pt-1 lg:pb-10"
+          className="relative min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-24 [scrollbar-gutter:stable] lg:px-7 lg:pt-1 lg:pb-10"
         >
           <div className="mb-4 flex min-w-0 items-center gap-1 lg:hidden">
             <div id={ANCRE_RETOUR_TELEPHONE} className="-ml-2 flex shrink-0 empty:hidden" />
