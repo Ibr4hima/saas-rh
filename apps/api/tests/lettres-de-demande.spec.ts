@@ -378,10 +378,26 @@ describe('la demande et sa lettre', () => {
     const vue = await demandes.une(awa.session, id);
     expect(vue.employeeId).toBe(moussa.employeeId);
     expect(vue.lettre?.datee).toBe('2026-11-02');
-    // Le temps ouvré se compte aussi à la minute (ADR-0194).
-    expect(vue.minutesOuvrees).not.toBeNull();
-    expect(Math.floor((vue.minutesOuvrees ?? 0) / 60)).toBe(vue.heuresOuvrees);
     expect(await codeOf(() => demandes.une(khady.session, id))).toBe('documents.request_not_found');
+  });
+
+  it('la durée de traitement est le temps réellement écoulé jusqu’au traitement (ADR-0196)', async () => {
+    const id = await demande('decision_disponibilite', '2026-11-02');
+    // Envoyée il y a 95 minutes, un samedi comme un mardi.
+    await raw(
+      `UPDATE document_requests SET created_at = now() - interval '95 minutes' WHERE id = $1`,
+      [id],
+    );
+    const ouverte = await demandes.une(awa.session, id);
+    expect(ouverte.minutesEcoulees).toBeGreaterThanOrEqual(95);
+    expect(ouverte.minutesEcoulees).toBeLessThanOrEqual(96);
+    await demandes.batchAdvance(awa.session, { ids: [id], status: 'ready' });
+    await raw(
+      `UPDATE document_requests SET ready_at = created_at + interval '95 minutes' WHERE id = $1`,
+      [id],
+    );
+    // Traitée, la durée ne bouge plus.
+    expect((await demandes.une(awa.session, id)).minutesEcoulees).toBe(95);
   });
 });
 
@@ -425,6 +441,15 @@ describe('ce que la fiche reprend, au titre d’une demande (ADR-0190)', () => {
       '2026-11-03',
     );
     expect(Object.keys(reprise).sort()).toEqual(['demandeLe', 'nom', 'prenom']);
+  });
+
+  it('sans demande, rien que le dossier : la date se saisit (ADR-0197)', () => {
+    expect(ficheReprise('decision_disponibilite', dossier)).toEqual({
+      civilite: 'monsieur',
+      prenom: 'Moussa',
+      nom: 'Sarr',
+      poste: 'Comptable',
+    });
   });
 });
 
@@ -513,6 +538,38 @@ describe('le document, généré au titre de la demande', () => {
     );
     // Le nom du fichier suit le dossier : « Moussa », pas « MOUSSA ».
     expect(filename).toBe('decision-disponibilite-SARR-Moussa.pdf');
+  });
+
+  it('sans demande, l’agent choisi : la fiche reprend son dossier, la date se saisit (ADR-0197)', async () => {
+    const direction = { ...mariama.session, dirigeLaDCH: true } as SessionUser;
+    // Identité et poste réécrits : le dossier les remet à leur place.
+    const libre = await generation.pdfSansAgent(
+      direction,
+      'decision_disponibilite',
+      ficheDeMoussa({
+        civilite: undefined,
+        prenom: 'MOUSSA',
+        nom: 'sarr',
+        poste: '',
+        demandeLe: '2026-10-28',
+      }),
+      undefined,
+      moussa.employeeId,
+    );
+    expect(libre.filename).toBe('decision-disponibilite-SARR-Moussa.pdf');
+    // La date de la demande, elle, reste celle qu'on saisit : après la prise
+    // d'effet, la fiche se refuse.
+    expect(
+      await codeOf(() =>
+        generation.pdfSansAgent(
+          direction,
+          'decision_disponibilite',
+          ficheDeMoussa({ demandeLe: '2026-12-15' }),
+          undefined,
+          moussa.employeeId,
+        ),
+      ),
+    ).toBe('validation_failed');
   });
 
   it('qui dirige la DCH passe aussi par la demande ; sans elle, rien ne change', async () => {

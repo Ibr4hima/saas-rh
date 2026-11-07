@@ -276,6 +276,11 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
   // la domiciliation, et pour les décisions, qui partagent leur fiche.
   const [agentDeLaDomiciliation, setAgentDeLaDomiciliation] = useState<AgentDeLaCible | null>(null);
   const [agentDeLaDecision, setAgentDeLaDecision] = useState<AgentDeLaCible | null>(null);
+  // Le dossier lu de l'agent choisi : ce qu'il porte se fige dans la fiche
+  // (ADR-0197).
+  const [dossierDeLaDomiciliation, setDossierDeLaDomiciliation] =
+    useState<DossierPourLaFiche | null>(null);
+  const [dossierDeLaDecision, setDossierDeLaDecision] = useState<DossierPourLaFiche | null>(null);
   const [erreurDuDossier, setErreurDuDossier] = useState<string | null>(null);
   // Le dernier agent demandé : une réponse en retard ne remplit pas la fiche d'un autre.
   const dossierAttendu = useRef<string | null>(null);
@@ -355,6 +360,7 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
     try {
       const d = await api<DossierPourLaFiche>(`/documents/generer/${doc}/agents/${a.id}/fiche`);
       if (dossierAttendu.current !== a.id) return;
+      (domiciliationChoisie ? setDossierDeLaDomiciliation : setDossierDeLaDecision)(d);
       if (domiciliationChoisie) {
         setDomiciliation((s) => domiciliationDepuisLeDossier(autre ? DOMICILIATION_VIDE : s, d));
       } else {
@@ -373,11 +379,26 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
       }
     } catch (e) {
       if (dossierAttendu.current !== a.id) return;
+      (domiciliationChoisie ? setDossierDeLaDomiciliation : setDossierDeLaDecision)(null);
       setErreurDuDossier(
         e instanceof ApiError ? e.message : 'Le dossier de l’agent n’a pas pu être lu',
       );
     }
   };
+  // Ce que le dossier de l'agent choisi porte ne se corrige pas : ses champs
+  // sont figés (ADR-0197). Au titre d'une demande, la date de la demande
+  // aussi (ADR-0190).
+  const dossierDeLaFiche =
+    deLaFiche === 'domiciliation_bancaire'
+      ? dossierDeLaDomiciliation
+      : deLaFiche
+        ? dossierDeLaDecision
+        : null;
+  const figesDeLaFiche: readonly ChampRepris[] = demande
+    ? figes
+    : deLaFiche && dossierDeLaFiche
+      ? (Object.keys(ficheReprise(deLaFiche, dossierDeLaFiche)) as ChampRepris[])
+      : [];
   // La fiche du document sans agent, telle qu'elle partira à l'API.
   const ficheSansAgent = deTravail
     ? versLaFicheDuContrat(contrat, deTravail)
@@ -445,7 +466,15 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
       setValidation({
         cible: {
           cle: 'fiche',
-          chemin: `/documents/generer/${choisi}${demandeId ? `?demande=${demandeId}` : ''}`,
+          // Au titre d'une demande, ou de l'agent choisi : le serveur reprend
+          // son dossier (ADR-0190, ADR-0197).
+          chemin: `/documents/generer/${choisi}${
+            demandeId
+              ? `?demande=${demandeId}`
+              : agentDeLaFiche && deLaFiche
+                ? `?agent=${agentDeLaFiche.id}`
+                : ''
+          }`,
           fichier: nomDuDocumentGenere(choisi, `${personne.nom.toUpperCase()}-${personne.prenom}`),
           titre: `${REQUESTABLE_DOC_LABELS[choisi]} : ${personne.prenom} ${personne.nom}`,
         },
@@ -547,7 +576,7 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
               // Un autre agent : le RIB repart de sa propre saisie.
               key={agentDeLaDomiciliation?.id ?? 'aucun'}
               valeur={domiciliation}
-              figes={figes}
+              figes={figesDeLaFiche}
               onChange={setDomiciliation}
             />
           ) : null}
@@ -558,7 +587,7 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
             <FicheDeLaDecision
               doc={deDisponibilite}
               valeur={disponibilite}
-              figes={figes}
+              figes={figesDeLaFiche}
               onChange={setDisponibilite}
             />
           ) : null}

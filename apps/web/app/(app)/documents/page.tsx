@@ -132,15 +132,19 @@ function GestesDeLaDemande({ demande: r }: { demande: DocumentRequestView }) {
 }
 
 /**
- * Une durée ouvrée, à la minute (ADR-0194) : « 12 min » sous l'heure, puis
- * « 3 h 5 min », « 52 h ». Les week-ends et les jours fériés ne comptent pas
- * (ADR-0128) ; la couleur de la colonne porte l'urgence.
+ * Le temps réellement écoulé depuis la demande (ADR-0196) : « 12 min » sous
+ * l'heure, « 3 h 5 min » sous le jour, puis « 2 j 4 h ». La couleur de la
+ * colonne, elle, compte les heures ouvrées (ADR-0128).
  */
 function duree(minutes: number): string {
   if (minutes < 60) return `${minutes} min`;
   const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m === 0 ? `${h} h` : `${h} h ${m} min`;
+  if (h < 24) {
+    const m = minutes % 60;
+    return m === 0 ? `${h} h` : `${h} h ${m} min`;
+  }
+  const j = Math.floor(h / 24);
+  return h % 24 === 0 ? `${j} j` : `${j} j ${h % 24} h`;
 }
 
 export default function DocumentRequestsPage() {
@@ -370,7 +374,7 @@ export default function DocumentRequestsPage() {
                       )}
                       style={{ fontVariantNumeric: 'tabular-nums' }}
                     >
-                      {duree(r.minutesOuvrees ?? 0)}
+                      {duree(r.minutesEcoulees ?? 0)}
                     </Td>
                     {traite ? null : (
                       <Td className="text-[12px] text-ink-muted">{r.traitement?.traitants}</Td>
@@ -437,10 +441,17 @@ export default function DocumentRequestsPage() {
                     {formatDate(r.createdAt.slice(0, 10))}
                   </Td>
                   <Td
-                    className="text-right font-semibold whitespace-nowrap text-ink-muted"
+                    className={cn(
+                      'text-right font-semibold whitespace-nowrap',
+                      // Traitée hors délai : plus de 72 heures ouvrées, sans
+                      // les week-ends ni les jours fériés (ADR-0196).
+                      r.heuresOuvrees !== null && r.heuresOuvrees >= DELAI_DE_TRAITEMENT_HEURES
+                        ? 'text-danger'
+                        : 'text-ink-muted',
+                    )}
                     style={{ fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {r.handledAt && r.minutesOuvrees !== null ? duree(r.minutesOuvrees) : null}
+                    {r.handledAt && r.minutesEcoulees !== null ? duree(r.minutesEcoulees) : null}
                   </Td>
                   {/* Ce qui a été RÉPONDU au demandeur, pas l'étiquette d'un
                         automate : le document déposé dans son espace, le

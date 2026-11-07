@@ -133,7 +133,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0125](0125-acces-ferme-par-les-regles.md)            | L'accès au portail ne se coupe plus à la main                                           | acceptée                                    |
 | [0126](0126-directeur-general-adjoint.md)             | Le DGA se désigne à côté du DG ; son poste s'écrit au genre                             | acceptée, précisée par 0127                 |
 | [0127](0127-dga-par-nouvelle-affectation.md)          | « Nouvelle affectation » donne aussi la place de DGA                                    | acceptée                                    |
-| [0128](0128-principal-et-backups.md)                  | Principal et backups : 48 heures ouvrées à la personne principale, 72 pour traiter      | acceptée, précisée par 0129, 0194           |
+| [0128](0128-principal-et-backups.md)                  | Principal et backups : 48 heures ouvrées à la personne principale, 72 pour traiter      | acceptée, précisée par 0129, 0194, 0196     |
 | [0129](0129-continuite-du-service.md)                 | La continuité du service : l'alerte, l'appréciation de la DCH, la suppléance            | acceptée                                    |
 | [0130](0130-cible-des-documents.md)                   | Chaque document a sa cible : la liste ne propose que les agents concernés               | acceptée, précisée 5 fois, de 0131 à 0176   |
 | [0131](0131-retraite-des-40-ans.md)                   | Le départ à la retraite dès 40 ans, sous CDI ou CDD ; deux retouches de la liste        | acceptée                                    |
@@ -179,7 +179,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0171](0171-maladie-visible-du-n1.md)                 | La maladie se lit comme les autres motifs d'absence : le N+1 la voit                    | acceptée                                    |
 | [0172](0172-disponibilite-deux-ans.md)                | La disponibilité dure deux ans au plus, renouvelable, pour le type comme les documents  | acceptée                                    |
 | [0173](0173-papier-de-la-charte.md)                   | Les documents de la DCH sur le papier de la charte de l'APIX ; le fond clair #F5F7F9    | précisée par 0175, révisée (0185, 0186)     |
-| [0174](0174-fiches-depuis-le-dossier.md)              | Fiches préremplies au dossier, prime de transport facultative, stage de 1 à 6 mois      | acceptée, précisée par 0189                 |
+| [0174](0174-fiches-depuis-le-dossier.md)              | Fiches préremplies au dossier, prime de transport facultative, stage de 1 à 6 mois      | acceptée, précisée par 0189, 0197           |
 | [0175](0175-date-entre-numero-et-emetteur.md)         | La date de l'en-tête, à égale distance du numéro et de l'émetteur                       | acceptée                                    |
 | [0176](0176-sans-dossier-ou-avant-le-depart.md)       | Certificat de travail et attestation de stage, sans dossier ou avant le départ          | acceptée                                    |
 | [0177](0177-fiche-d-une-unite-stable.md)              | La fiche d'une unité s'ouvre entière, et les fenêtres se posent sans flou               | acceptée, en partie remplacée (0180)        |
@@ -195,9 +195,11 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0187](0187-connexion-a-la-charte.md)                 | Les écrans de connexion à la charte de l'APIX, toujours en clair                        | acceptée                                    |
 | [0188](0188-verification-a-la-charte.md)              | La vérification d'un certificat à la charte de l'APIX                                   | acceptée                                    |
 | [0189](0189-lettre-de-demande.md)                     | La lettre de demande, jointe par l'agent, lue et reprise par qui traite la demande      | acceptée, précisée par 0190, 0191, 0193     |
-| [0190](0190-demande-figee.md)                         | Au titre d'une demande, l'identité de l'agent et la date de la demande sont figées      | acceptée                                    |
+| [0190](0190-demande-figee.md)                         | Au titre d'une demande, l'identité de l'agent et la date de la demande sont figées      | acceptée, précisée par 0197                 |
 | [0191](0191-une-demande-a-la-fois.md)                 | Une demande de document se traite seule, en un écran                                    | acceptée, précisée par 0192                 |
 | [0192](0192-une-demande-cochee.md)                    | Une demande de document se coche, une seule à la fois                                   | acceptée                                    |
 | [0193](0193-traitee-cote-agent.md)                    | Côté agent, une demande traitée sans filet, sans « Nouveau », sans lettre               | acceptée                                    |
-| [0194](0194-temps-a-la-minute.md)                     | Le temps d'une demande de document se lit à la minute                                   | acceptée                                    |
+| [0194](0194-temps-a-la-minute.md)                     | Le temps d'une demande de document se lit à la minute                                   | acceptée, précisée par 0196                 |
 | [0195](0195-lecteur-pdf-fluide.md)                    | Le lecteur PDF peint une page à la fois et ne bouge rien pendant le défilement          | acceptée                                    |
+| [0196](0196-temps-reel-de-la-demande.md)              | Le temps d'une demande de document se lit en temps réel                                 | acceptée                                    |
+| [0197](0197-agent-choisi-fiche-figee.md)              | Sur « Générer des documents », l'agent choisi fige ce que son dossier donne             | acceptée                                    |

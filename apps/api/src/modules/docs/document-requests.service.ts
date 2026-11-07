@@ -452,7 +452,8 @@ export class DocumentRequestsService {
           r.request.readyAt ??
           r.request.deliveredAt ??
           (['rejected', 'cancelled'].includes(r.request.status) ? r.request.updatedAt : null);
-        // Le temps ouvré de la demande à sa clôture, ou jusqu'à maintenant.
+        // Le temps ouvré de la demande à sa clôture, ou jusqu'à maintenant :
+        // il donne l'urgence (ADR-0128). La file affiche le temps réel.
         const ouvrees =
           r.request.status === 'cancelled'
             ? null
@@ -487,7 +488,12 @@ export class DocumentRequestsService {
           deliveredAt: r.request.deliveredAt?.toISOString() ?? null,
           handledAt: cloture?.toISOString() ?? null,
           heuresOuvrees: ouvrees === null ? null : Math.floor(ouvrees),
-          minutesOuvrees: ouvrees === null ? null : Math.floor(ouvrees * 60),
+          minutesEcoulees:
+            ouvrees === null
+              ? null
+              : Math.floor(
+                  ((cloture ?? maintenant).getTime() - r.request.createdAt.getTime()) / 60_000,
+                ),
           nouvelle: !ouverte && nonVues.has(r.request.id),
           canAdvance: peutAvancer && (ALLOWED_TRANSITIONS[r.request.status]?.length ?? 0) > 0,
           canCancel: ouverte && r.request.employeeId === soi?.employeeId,

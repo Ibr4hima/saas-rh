@@ -213,13 +213,16 @@ export class GenerationService {
   /**
    * Un document d'après la fiche que la DCH renseigne : un document sans
    * agent, ou le certificat de travail et l'attestation de stage d'une
-   * personne sans dossier (ADR-0176).
+   * personne sans dossier (ADR-0176). Une fiche que le dossier d'un agent
+   * préremplit reprend ce que ce dossier porte : au titre d'une demande
+   * (ADR-0190), ou de l'agent choisi sur « Générer des documents » (ADR-0197).
    */
   async pdfSansAgent(
     user: SessionUser,
     type: string,
     corps: unknown,
     demandeId?: string,
+    agentId?: string,
   ): Promise<DocumentPdf> {
     const parDemande = parLaDemande(demandeId);
     const doc = parDemande ? documentDeLaDemande(type) : this.documentConfigure(user, type);
@@ -253,6 +256,17 @@ export class GenerationService {
             corps,
             ficheReprise(doc, await identiteAuDossier(tx, agent.id), agent.demandeLe),
           ),
+        );
+      }
+      if (!parDemande && agentId && depuisLeDossier(doc)) {
+        // L'agent choisi sur « Générer des documents » : ce que son dossier
+        // porte, la fiche le reprend tel quel. La date de la demande, elle,
+        // se saisit (ADR-0197).
+        await pasSurSoi(tx, user.userId, [agentId], 'générer un document pour');
+        await exigerLaCible(tx, doc, agentId);
+        return modele.pdf(
+          tx,
+          ficheFigee(corps, ficheReprise(doc, await identiteAuDossier(tx, agentId))),
         );
       }
       return modele.pdf(tx, corps);

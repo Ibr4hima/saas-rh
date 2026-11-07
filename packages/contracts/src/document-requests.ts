@@ -751,8 +751,8 @@ export interface DossierPourLaFiche {
 }
 
 /**
- * Ce que la fiche d'un document par lettre reprend, au titre d'une demande :
- * du dossier de l'agent, et la date de la demande.
+ * Ce que la fiche d'un document par lettre reprend du dossier de l'agent, et,
+ * au titre d'une demande, la date de la demande.
  */
 export type ChampRepris =
   'civilite' | 'prenom' | 'nom' | 'poste' | 'affectation' | 'contrat' | 'debut' | 'demandeLe';
@@ -766,21 +766,22 @@ export interface FicheReprise {
   affectation?: string;
   contrat?: 'cdd' | 'cdi';
   debut?: string;
-  demandeLe: string;
+  demandeLe?: string;
 }
 
 /**
- * Au titre d'une demande, ce que la fiche reprend sans qu'il se corrige
- * (ADR-0190) : du dossier de l'agent, son identité et son poste, son
+ * Ce que la fiche reprend sans qu'il se corrige, dès qu'un agent est choisi
+ * (ADR-0190, ADR-0197) : de son dossier, son identité et son poste, son
  * affectation pour un renouvellement, son contrat et sa date de début pour
- * la domiciliation ; et la date de la demande (`dateDeLaDemande`). Ce que le
- * dossier ne porte pas reste à saisir. La page fige ces champs, et le serveur
- * les reprend.
+ * la domiciliation. Au titre d'une demande, aussi la date de la demande
+ * (`dateDeLaDemande`) ; sans demande, elle se saisit. Ce que le dossier ne
+ * porte pas reste à saisir. La page fige ces champs, et le serveur les
+ * reprend.
  */
 export function ficheReprise(
   doc: DocumentParLettre,
   d: Pick<DossierPourLaFiche, Exclude<ChampRepris, 'demandeLe'>>,
-  demandeLe: string,
+  demandeLe?: string,
 ): FicheReprise {
   const poste = d.poste?.trim();
   return {
@@ -792,7 +793,7 @@ export function ficheReprise(
       ? { affectation: d.affectation }
       : {}),
     ...(doc === 'domiciliation_bancaire' ? { contrat: d.contrat, debut: d.debut } : {}),
-    demandeLe,
+    ...(demandeLe ? { demandeLe } : {}),
   };
 }
 
@@ -1350,7 +1351,11 @@ export function dateDeLaDemande(r: {
  * demande le génère, pour ce seul document et l'agent qui l'a demandé, sans
  * avoir « Générer des documents ».
  */
-export const pourLaDemandeQuerySchema = z.object({ demande: z.uuid().optional() });
+export const pourLaDemandeQuerySchema = z.object({
+  demande: z.uuid().optional(),
+  /** Sans demande, l'agent choisi : la fiche reprend son dossier (ADR-0197). */
+  agent: z.uuid().optional(),
+});
 export type PourLaDemandeQuery = z.infer<typeof pourLaDemandeQuerySchema>;
 
 /** Une demande par document demandé. */
@@ -1485,8 +1490,12 @@ export interface DocumentRequestView {
    * jours fériés ne comptent pas. Null : annulée.
    */
   heuresOuvrees: number | null;
-  /** Les mêmes, en minutes : ce que la file affiche (ADR-0194). Null : annulée. */
-  minutesOuvrees: number | null;
+  /**
+   * Le temps réellement écoulé, en minutes, de la demande à sa clôture, ou
+   * jusqu'à maintenant tant qu'elle est ouverte : ce que la file affiche
+   * (ADR-0196). Les heures ouvrées, elles, donnent l'urgence. Null : annulée.
+   */
+  minutesEcoulees: number | null;
   /**
    * Traitée, et l'avis qui l'annonce n'est pas encore lu : l'agent ne l'a
    * pas encore vue (ADR-0048). Dans son propre suivi seulement

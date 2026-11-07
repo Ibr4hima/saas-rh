@@ -113,6 +113,7 @@ export class DocumentsController {
       type,
       corps,
       query.demande,
+      query.agent,
     );
     this.send(res, filename, pdf);
   }
