@@ -37,8 +37,11 @@ const BANDE_L = 1440;
 const BANDE_H = 120;
 const n = (v: number) => Number(v.toFixed(1));
 const enX = (x: number) => (x * BANDE_L) / 595.28;
-/** La courbe part à 62 du haut, à gauche, et monte à 10, à droite. */
-const enY = (y: number) => 10 + ((y - 705.59) * 52) / (769.7 - 705.59);
+/**
+ * La courbe part à 52 du haut, à gauche, et monte à 4, à droite. Sous son
+ * creux, le pied garde de l'air, même quand la bande s'abaisse.
+ */
+const enY = (y: number) => 4 + ((y - 705.59) * 48) / (769.7 - 705.59);
 const ARCS_BANDE = ARCS.map((arc) => arc.map(([x, y]) => [enX(x), enY(y)] as const));
 
 /** Le bord de la courbe, échantillonné de gauche à droite. */
@@ -74,7 +77,7 @@ const TRACE_BANDE =
   `L${BANDE_L} ${BANDE_H}L0 ${BANDE_H}Z`;
 
 /** Les ondulations de la bande : des lignes qui suivent la courbe. */
-const ONDES_BANDE = Array.from({ length: 10 }, (_, i) => {
+const ONDES_BANDE = Array.from({ length: 12 }, (_, i) => {
   const points: string[] = [];
   for (let x = 0; x <= BANDE_L; x += 12) {
     const y =
@@ -244,7 +247,7 @@ export function EcranMarque({
       {/* Le pied, en blanc sur la courbe de la charte. */}
       <footer className="relative shrink-0">
         <CourbeDeLaCharte />
-        <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-0.5 px-6 pb-4 text-[11.5px] text-white/85 sm:flex-row sm:justify-between sm:px-10 sm:pb-5">
+        <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-0.5 px-6 pb-4 text-[11.5px] text-white/85 sm:flex-row sm:justify-between sm:px-10 sm:pb-5 sm:court:pb-3.5">
           <span>© {new Date().getFullYear()} APIX S.A · DCH. Tous droits réservés.</span>
           <span>Plateforme à usage interne</span>
         </div>
