@@ -134,7 +134,8 @@ export class DocumentsController {
   /**
    * Ce que le dossier d'un agent donne d'avance à la fiche d'une
    * domiciliation bancaire (ADR-0174) ; au titre d'une demande, à qui la
-   * traite (ADR-0189).
+   * traite (ADR-0189). Pour une déclaration de mouvement, ce que le dossier
+   * en porte (ADR-0199).
    */
   @Get('documents/generer/:type/agents/:employeeId/fiche')
   dossierPourLaFiche(
@@ -143,6 +144,9 @@ export class DocumentsController {
     @Param('employeeId', ParseUUIDPipe) employeeId: string,
     @Query(new ZodValidationPipe(pourLaDemandeQuerySchema)) query: PourLaDemandeQuery,
   ) {
+    if (type === 'declaration_mouvement' && !query.demande) {
+      return this.generation.dossierPourLaDeclaration(req.sessionUser, employeeId);
+    }
     return this.generation.dossierPourLaFiche(req.sessionUser, type, employeeId, query.demande);
   }
 

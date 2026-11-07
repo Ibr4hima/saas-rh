@@ -1139,6 +1139,177 @@ export const ficheDeclarationMouvementSchema = z
   });
 export type FicheDeclarationMouvement = z.infer<typeof ficheDeclarationMouvementSchema>;
 
+/**
+ * Ce que le dossier d'un agent donne d'avance à sa déclaration de mouvement
+ * (ADR-0199) : l'état civil, la filiation, l'adresse et la ville, la famille,
+ * l'entrée dans l'établissement, le poste, la catégorie et le contrat qui fait
+ * foi ; le numéro de la CNI, celui de l'IPRES et le salaire de base, à qui a
+ * l'accès aux données sensibles (ADR-0158). Null : le dossier ne le porte pas,
+ * ou ne le montre pas.
+ */
+export interface DossierPourLaDeclaration {
+  civilite: 'madame' | 'monsieur' | null;
+  prenom: string;
+  nom: string;
+  naissanceLe: string | null;
+  /** La ville de naissance. */
+  naissanceA: string | null;
+  /** Le code du pays de naissance. */
+  naissancePays: string | null;
+  /** Le code du pays de la nationalité. */
+  nationalite: string | null;
+  perePrenom: string | null;
+  merePrenom: string | null;
+  mereNom: string | null;
+  adresse: string | null;
+  /** La ville où la personne habite : sa résidence habituelle. */
+  residence: string | null;
+  /** Le numéro de la CNI, sans espace ; null pour une autre pièce. */
+  cni: string | null;
+  /** La délivrance de la CNI ; null pour une autre pièce. */
+  cniDelivreeLe: string | null;
+  ipres: string | null;
+  situationDeFamille: SituationDeFamille | null;
+  /** Les épouses d'un homme marié : prénom et nom. */
+  epouses: string[];
+  nombreDEnfants: number | null;
+  /** L'entrée dans l'établissement ; null quand le dossier n'en connaît que le mois. */
+  entreeLe: string | null;
+  /** Le poste en cours : l'emploi dans l'établissement. */
+  emploi: string | null;
+  categorie: string | null;
+  /** Le contrat qui fait foi, quand c'est un CDI ou un CDD, son premier et son dernier jour. */
+  contrat: 'cdd' | 'cdi' | null;
+  debut: string | null;
+  fin: string | null;
+  /** Le salaire de base mensuel, en francs CFA. */
+  salaire: number | null;
+}
+
+/** Les champs de la déclaration que le dossier peut donner. */
+export type ChampDeLaDeclarationRepris =
+  | 'civilite'
+  | 'prenom'
+  | 'nom'
+  | 'naissanceLe'
+  | 'naissanceA'
+  | 'naissancePays'
+  | 'nationalite'
+  | 'perePrenom'
+  | 'merePrenom'
+  | 'mereNom'
+  | 'adresse'
+  | 'residence'
+  | 'cni'
+  | 'cniDelivreeLe'
+  | 'ipres'
+  | 'situationDeFamille'
+  | 'conjoints'
+  | 'entreeLe'
+  | 'emploi'
+  | 'categorie'
+  | 'contrat'
+  | 'cddDu'
+  | 'cddAu'
+  | 'salaire';
+
+/**
+ * Ce que la déclaration reprend du dossier : les champs de la fiche, et le
+ * nombre d'enfants à charge, dont les noms restent à saisir.
+ */
+export type RepriseDeLaDeclaration = Partial<
+  Pick<FicheDeclarationMouvement, ChampDeLaDeclarationRepris>
+> & { nombreDEnfants?: number };
+
+/** Le code de la situation de famille d'un dossier, sous celui de la déclaration. */
+export const SITUATION_DE_FAMILLE_DU_DOSSIER: Record<string, SituationDeFamille> = {
+  single: 'celibataire',
+  married: 'marie',
+  divorced: 'divorce',
+  widowed: 'veuf',
+};
+
+/**
+ * Ce que la déclaration reprend du dossier de l'agent choisi, sans qu'il se
+ * corrige (ADR-0199) : ce que le dossier porte et que la fiche admet telle
+ * quelle. Une valeur que la fiche refuserait, une CNI échue par exemple,
+ * reste à saisir. La CNI et sa délivrance se reprennent avec la nationalité,
+ * qui en fixe la règle ; les épouses d'un homme marié, avec sa situation de
+ * famille. La page fige ces champs, et le serveur les reprend.
+ */
+export function repriseDeLaDeclaration(d: DossierPourLaDeclaration): RepriseDeLaDeclaration {
+  const champs = ficheDeclarationMouvementSchema.shape;
+  const valide = <T>(schema: z.ZodType<T>, valeur: unknown): T | undefined => {
+    if (valeur === null || valeur === undefined) return undefined;
+    const v = schema.safeParse(valeur);
+    return v.success ? v.data : undefined;
+  };
+  const naissanceLe = valide(champs.naissanceLe, d.naissanceLe);
+  const nationalite = valide(champs.nationalite, d.nationalite);
+  const civilite = valide(champs.civilite, d.civilite);
+  const situationDeFamille = valide(champs.situationDeFamille, d.situationDeFamille);
+  const senegalaise = nationalite === 'SN';
+
+  const cni = nationalite ? valide(champs.cni, d.cni) : undefined;
+  const delivreeLe = nationalite ? valide(champs.cniDelivreeLe, d.cniDelivreeLe) : undefined;
+  const cniDelivreeLe =
+    delivreeLe &&
+    (senegalaise ? delivreeLe >= cniDelivreeAuPlusTot() : !naissanceLe || delivreeLe > naissanceLe)
+      ? delivreeLe
+      : undefined;
+  const entreeLe = valide(champs.entreeLe, d.entreeLe);
+  const conjoints =
+    civilite === 'monsieur' &&
+    situationDeFamille === 'marie' &&
+    d.epouses.length > 0 &&
+    d.epouses.length <= EPOUSES_MAX
+      ? valide(champs.conjoints, d.epouses)
+      : undefined;
+  const nombreDEnfants =
+    d.nombreDEnfants !== null &&
+    Number.isInteger(d.nombreDEnfants) &&
+    d.nombreDEnfants >= 0 &&
+    d.nombreDEnfants <= ENFANTS_MAX
+      ? d.nombreDEnfants
+      : undefined;
+  const contrat = valide(champs.contrat, d.contrat);
+  const cddDu = contrat === 'cdd' ? valide(champs.cddDu, d.debut) : undefined;
+  const cddAu = cddDu && d.fin && d.fin >= cddDu ? valide(champs.cddAu, d.fin) : undefined;
+
+  const reprise: RepriseDeLaDeclaration = {
+    civilite,
+    prenom: valide(champs.prenom, d.prenom),
+    nom: valide(champs.nom, d.nom),
+    naissanceLe,
+    naissanceA: valide(champs.naissanceA, d.naissanceA),
+    naissancePays: valide(champs.naissancePays, d.naissancePays),
+    nationalite,
+    perePrenom: valide(champs.perePrenom, d.perePrenom),
+    merePrenom: valide(champs.merePrenom, d.merePrenom),
+    mereNom: valide(champs.mereNom, d.mereNom),
+    adresse: valide(champs.adresse, d.adresse),
+    residence: valide(champs.residence, d.residence),
+    // Treize chiffres pour une CNI sénégalaise.
+    cni: cni && (!senegalaise || /^\d{13}$/.test(cni)) ? cni : undefined,
+    cniDelivreeLe,
+    ipres: valide(champs.ipres, d.ipres),
+    situationDeFamille,
+    conjoints,
+    nombreDEnfants,
+    entreeLe: entreeLe && (!naissanceLe || entreeLe > naissanceLe) ? entreeLe : undefined,
+    emploi: valide(champs.emploi, d.emploi),
+    categorie: valide(champs.categorie, d.categorie?.trim().toLocaleUpperCase('fr-FR')),
+    contrat,
+    cddDu,
+    cddAu,
+    salaire: valide(champs.salaire, d.salaire),
+  };
+  // Seuls restent les champs repris : ce sont ceux que la page fige.
+  return Object.fromEntries(
+    Object.entries(reprise).filter(([, v]) => v !== undefined),
+  ) as RepriseDeLaDeclaration;
+}
+
 /** `delivered` : statut historique, conservé en lecture (voir en-tête). */
 export const documentRequestStatusSchema = z.enum([
   'received',

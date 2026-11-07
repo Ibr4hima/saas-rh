@@ -1,7 +1,11 @@
 'use client';
 
 import { useId, useState, type ChangeEvent } from 'react';
-import type { NatureDuMouvement, SituationDeFamille } from '@teranga/contracts';
+import type {
+  NatureDuMouvement,
+  RepriseDeLaDeclaration,
+  SituationDeFamille,
+} from '@teranga/contracts';
 import {
   aujourdhuiIso,
   CATEGORIE_MAX,
@@ -10,9 +14,11 @@ import {
   CHANGEMENTS_DU_TRAVAILLEUR,
   CHIFFRES_DE_L_IMMATRICULATION,
   cniDelivreeAuPlusTot,
+  cniGroupee,
   DEPARTS_DU_TRAVAILLEUR,
   DISPOSITION_MAX,
   DISPOSITIONS_MAX,
+  enChiffres,
   ENFANTS_MAX,
   EPOUSES_MAX,
   ficheDeclarationMouvementSchema,
@@ -33,8 +39,10 @@ import {
   ChampDeLaCivilite,
   ChampDeLaCNI,
   ChampDuMontant,
+  ChampFige,
   EN_DEBUT_DE_LIGNE,
   Groupe,
+  jourEcrit,
   PLEINE_LIGNE,
   reglesEnfreintes,
   SUR_DEUX_COLONNES,
@@ -53,6 +61,11 @@ import {
    pour l'écrire à la main ; la catégorie d'enregistrement n'est alors pas
    encadrée. La date de délivrance de la carte d'identité, que le formulaire
    n'écrit pas, dit qu'une CNI sénégalaise est à jour (ADR-0134).
+
+   L'état civil vient en premier : c'est la personne que la déclaration
+   nomme. Pour un agent qui a son dossier dans l'application, ce que le
+   dossier porte se reprend, grisé, et ne se corrige pas ; le reste se
+   saisit (ADR-0199).
 */
 
 type Depart = (typeof DEPARTS_DU_TRAVAILLEUR)[number];
@@ -258,6 +271,34 @@ export function versLaFicheDeLaDeclaration(s: SaisieDeLaDeclaration) {
   };
 }
 
+/** Un champ de la fiche telle qu'elle se tape. */
+export type ChampDeLaSaisie = keyof SaisieDeLaDeclaration;
+
+/**
+ * La fiche, ce que le dossier de l'agent choisi en donne posé dessus
+ * (ADR-0199) : les épouses d'un homme marié avec leur nombre, le nombre
+ * d'enfants à charge, dont les noms restent à saisir.
+ */
+export function declarationDepuisLeDossier(
+  s: SaisieDeLaDeclaration,
+  r: RepriseDeLaDeclaration,
+): SaisieDeLaDeclaration {
+  const { conjoints, nombreDEnfants, ...champs } = r;
+  return {
+    ...s,
+    ...champs,
+    ...(conjoints ? { epouses: String(conjoints.length), conjoints } : {}),
+    ...(nombreDEnfants !== undefined ? { nombreDEnfants: String(nombreDEnfants) } : {}),
+  };
+}
+
+/** Les champs que la reprise fige ; les épouses, avec leur nombre. */
+export function champsFigesDeLaDeclaration(r: RepriseDeLaDeclaration): ChampDeLaSaisie[] {
+  return (Object.keys(r) as (keyof RepriseDeLaDeclaration)[]).flatMap((k): ChampDeLaSaisie[] =>
+    k === 'conjoints' ? ['epouses', 'conjoints'] : [k],
+  );
+}
+
 /** Les dates que la fiche range dans une pièce : leur chemin, celui des règles enfreintes. */
 const CHEMINS_DES_DATES: Partial<Record<keyof SaisieDeLaDeclaration, string>> = {
   declarationLe: 'declarationDEmbauche.le',
@@ -275,9 +316,12 @@ const ETAT_CIVIL = {
 
 export function FicheDeLaDeclaration({
   valeur,
+  figes = [],
   onChange,
 }: {
   valeur: SaisieDeLaDeclaration;
+  /** Ce que le dossier de l'agent choisi donne : figé (ADR-0199). */
+  figes?: readonly ChampDeLaSaisie[];
   onChange: (valeur: SaisieDeLaDeclaration) => void;
 }) {
   const id = useId();
@@ -304,6 +348,27 @@ export function FicheDeLaDeclaration({
     erreurs[CHEMINS_DES_DATES[champ] ?? champ];
   const aujourdhui = aujourdhuiIso();
   const veille = plusJours(aujourdhui, -1);
+  const fige = (champ: ChampDeLaSaisie) => figes.includes(champ);
+  /**
+   * Un champ que le dossier de l'agent donne : sa valeur telle qu'elle
+   * s'écrit, grisée. Une règle qui le lie à un champ saisi se dit dessous.
+   */
+  const repris = (
+    champ: ChampDeLaSaisie & string,
+    libelle: string,
+    ecrit: string,
+    className?: string,
+  ) => (
+    <Field
+      key={champ}
+      label={libelle}
+      htmlFor={`${id}-${champ}`}
+      className={className}
+      error={erreurDe(champ)}
+    >
+      <ChampFige id={`${id}-${champ}`} valeur={ecrit} />
+    </Field>
+  );
   const date = (
     champ: keyof SaisieDeLaDeclaration & string,
     { min, max }: { min?: string; max?: string } = {},
@@ -317,7 +382,8 @@ export function FicheDeLaDeclaration({
   });
   /**
    * Une liste à choisir : son libellé, ses options, sa place dans la grille ;
-   * grisée, et facultative, quand elle ne vaut pas encore.
+   * grisée, et facultative, quand elle ne vaut pas encore. Reprise du
+   * dossier, elle s'écrit.
    */
   const liste = <K extends keyof SaisieDeLaDeclaration & string>(
     champ: K,
@@ -328,55 +394,73 @@ export function FicheDeLaDeclaration({
       className,
       grisee = false,
     }: { choisir?: string; className?: string; grisee?: boolean } = {},
-  ) => (
-    <Field label={libelle} htmlFor={`${id}-${champ}`} required={!grisee} className={className}>
-      <Select
-        id={`${id}-${champ}`}
-        aria-label={libelle}
-        disabled={grisee}
-        value={String(valeur[champ])}
-        onChange={(e) => poser({ [champ]: e.target.value } as Partial<SaisieDeLaDeclaration>)}
-        className={CADRE}
-      >
-        <option value="" hidden>
-          {choisir}
-        </option>
-        {options.map(([v, l]) => (
-          <option key={v} value={v}>
-            {l}
+  ) =>
+    fige(champ) ? (
+      repris(
+        champ,
+        libelle,
+        options.find(([v]) => v === String(valeur[champ]))?.[1] ?? '',
+        className,
+      )
+    ) : (
+      <Field label={libelle} htmlFor={`${id}-${champ}`} required={!grisee} className={className}>
+        <Select
+          id={`${id}-${champ}`}
+          aria-label={libelle}
+          disabled={grisee}
+          value={String(valeur[champ])}
+          onChange={(e) => poser({ [champ]: e.target.value } as Partial<SaisieDeLaDeclaration>)}
+          className={CADRE}
+        >
+          <option value="" hidden>
+            {choisir}
           </option>
-        ))}
-      </Select>
-    </Field>
-  );
+          {options.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </Select>
+      </Field>
+    );
   /** Un nom d'une liste, épouse ou enfant : la capitale à chaque mot, à la frappe. */
   const nomDeLaListe = (
     champ: 'conjoints' | 'enfants',
     i: number,
     libelle: string,
     className?: string,
-  ) => (
-    <Field
-      key={`${champ}-${i}`}
-      label={libelle}
-      htmlFor={`${id}-${champ}-${i}`}
-      required
-      className={className}
-    >
-      <Input
-        id={`${id}-${champ}-${i}`}
-        value={valeur[champ][i] ?? ''}
-        maxLength={120}
-        autoCapitalize="words"
-        onChange={(e: ChangeEvent<HTMLInputElement>) => {
-          const noms = [...valeur[champ]];
-          noms[i] = majusculesInitiales(e.target.value);
-          poser({ [champ]: noms });
-        }}
-        className={CADRE}
-      />
-    </Field>
-  );
+  ) =>
+    fige(champ) ? (
+      <Field
+        key={`${champ}-${i}`}
+        label={libelle}
+        htmlFor={`${id}-${champ}-${i}`}
+        className={className}
+      >
+        <ChampFige id={`${id}-${champ}-${i}`} valeur={valeur[champ][i] ?? ''} />
+      </Field>
+    ) : (
+      <Field
+        key={`${champ}-${i}`}
+        label={libelle}
+        htmlFor={`${id}-${champ}-${i}`}
+        required
+        className={className}
+      >
+        <Input
+          id={`${id}-${champ}-${i}`}
+          value={valeur[champ][i] ?? ''}
+          maxLength={120}
+          autoCapitalize="words"
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            const noms = [...valeur[champ]];
+            noms[i] = majusculesInitiales(e.target.value);
+            poser({ [champ]: noms });
+          }}
+          className={CADRE}
+        />
+      </Field>
+    );
   /** Des caractères en capitales, sans espace : le numéro d'une carte d'identité étrangère. */
   const codeEnCapitales = (champ: 'cni', max: number) => ({
     ...texte(champ, max),
@@ -401,6 +485,130 @@ export function FicheDeLaDeclaration({
 
   return (
     <>
+      {/* L'état civil d'abord : c'est la personne que la déclaration nomme. */}
+      <Groupe titre="Renseigner l’état civil">
+        <ChampDeLaCivilite
+          id={`${id}-civilite`}
+          civilite={valeur.civilite}
+          fige={fige('civilite')}
+          onSaisir={(civilite) => poser({ civilite })}
+        />
+        {fige('prenom') ? (
+          repris('prenom', 'Prénom(s)', valeur.prenom)
+        ) : (
+          <Field label="Prénom(s)" htmlFor={`${id}-prenom`} required>
+            <Input {...nomPropre('prenom', 120)} />
+          </Field>
+        )}
+        {fige('nom') ? (
+          repris('nom', 'Nom', valeur.nom)
+        ) : (
+          <Field label="Nom" htmlFor={`${id}-nom`} required>
+            <Input {...nomPropre('nom')} />
+          </Field>
+        )}
+        {fige('naissanceLe') ? (
+          repris('naissanceLe', 'Date de naissance', jourEcrit(valeur.naissanceLe))
+        ) : (
+          <Field
+            label="Date de naissance"
+            htmlFor={`${id}-naissanceLe`}
+            required
+            error={erreurDe('naissanceLe')}
+          >
+            <Input {...date('naissanceLe', { max: neAuPlusTard() })} />
+          </Field>
+        )}
+        {fige('naissanceA') ? (
+          repris('naissanceA', 'Lieu de naissance', valeur.naissanceA)
+        ) : (
+          <Field label="Lieu de naissance" htmlFor={`${id}-naissanceA`} required>
+            <Input {...lieu('naissanceA', 120)} />
+          </Field>
+        )}
+        {liste('naissancePays', 'Pays de naissance', pays, { choisir: 'Choisir un pays' })}
+        {liste('nationalite', 'Nationalité', pays, { choisir: 'Choisir un pays' })}
+        {fige('adresse') ? (
+          repris('adresse', 'Adresse', valeur.adresse, SUR_DEUX_COLONNES)
+        ) : (
+          <Field label="Adresse" htmlFor={`${id}-adresse`} required className={SUR_DEUX_COLONNES}>
+            <Input {...lieu('adresse', 200)} />
+          </Field>
+        )}
+        {fige('perePrenom') ? (
+          repris('perePrenom', 'Prénom du père', valeur.perePrenom, EN_DEBUT_DE_LIGNE)
+        ) : (
+          <Field
+            label="Prénom du père"
+            htmlFor={`${id}-perePrenom`}
+            required
+            className={EN_DEBUT_DE_LIGNE}
+          >
+            <Input {...nomPropre('perePrenom')} />
+          </Field>
+        )}
+        {fige('merePrenom') ? (
+          repris('merePrenom', 'Prénom de la mère', valeur.merePrenom)
+        ) : (
+          <Field label="Prénom de la mère" htmlFor={`${id}-merePrenom`} required>
+            <Input {...nomPropre('merePrenom')} />
+          </Field>
+        )}
+        {fige('mereNom') ? (
+          repris('mereNom', 'Nom de la mère', valeur.mereNom)
+        ) : (
+          <Field label="Nom de la mère" htmlFor={`${id}-mereNom`} required>
+            <Input {...nomPropre('mereNom')} />
+          </Field>
+        )}
+        {fige('cni') ? (
+          etrangere(valeur) ? (
+            repris('cni', 'N° de la carte d’identité', valeur.cni)
+          ) : (
+            repris('cni', 'N° de la CNI', cniGroupee(valeur.cni))
+          )
+        ) : etrangere(valeur) ? (
+          <Field label="N° de la carte d’identité" htmlFor={`${id}-cni`} required>
+            <Input {...codeEnCapitales('cni', 20)} />
+          </Field>
+        ) : (
+          <ChampDeLaCNI id={`${id}-cni`} cni={valeur.cni} onSaisir={(cni) => poser({ cni })} />
+        )}
+        {fige('cniDelivreeLe') ? (
+          repris('cniDelivreeLe', 'Date de délivrance', jourEcrit(valeur.cniDelivreeLe))
+        ) : (
+          <Field
+            label="Date de délivrance"
+            htmlFor={`${id}-cniDelivreeLe`}
+            required
+            error={erreurDe('cniDelivreeLe')}
+          >
+            <Input
+              {...date('cniDelivreeLe', {
+                min: etrangere(valeur) ? valeur.naissanceLe : cniDelivreeAuPlusTot(),
+                max: aujourdhui,
+              })}
+            />
+          </Field>
+        )}
+        <Field label="Lieu de délivrance" htmlFor={`${id}-cniDelivreeA`} required>
+          <Input {...lieu('cniDelivreeA', 120)} />
+        </Field>
+        <Field label="Autorité de délivrance" htmlFor={`${id}-cniDelivreePar`} required>
+          <Input {...intitule('cniDelivreePar', 120)} />
+        </Field>
+        <Field label="N° d’immatriculation à la CSS" htmlFor={`${id}-css`}>
+          <Input {...texte('css', 30)} className={cn(CADRE, 'tabular-nums')} />
+        </Field>
+        {fige('ipres') ? (
+          repris('ipres', 'N° d’immatriculation à l’IPRES', valeur.ipres)
+        ) : (
+          <Field label="N° d’immatriculation à l’IPRES" htmlFor={`${id}-ipres`}>
+            <Input {...texte('ipres', 30)} className={cn(CADRE, 'tabular-nums')} />
+          </Field>
+        )}
+      </Groupe>
+
       <Groupe titre="Renseigner le mouvement">
         {liste('nature', 'Mouvement', [
           ['embauche', 'Embauche'],
@@ -498,82 +706,6 @@ export function FicheDeLaDeclaration({
         </Field>
       </Groupe>
 
-      <Groupe titre="Renseigner l’état civil">
-        <ChampDeLaCivilite
-          id={`${id}-civilite`}
-          civilite={valeur.civilite}
-          onSaisir={(civilite) => poser({ civilite })}
-        />
-        <Field label="Prénom(s)" htmlFor={`${id}-prenom`} required>
-          <Input {...nomPropre('prenom', 120)} />
-        </Field>
-        <Field label="Nom" htmlFor={`${id}-nom`} required>
-          <Input {...nomPropre('nom')} />
-        </Field>
-        <Field
-          label="Date de naissance"
-          htmlFor={`${id}-naissanceLe`}
-          required
-          error={erreurDe('naissanceLe')}
-        >
-          <Input {...date('naissanceLe', { max: neAuPlusTard() })} />
-        </Field>
-        <Field label="Lieu de naissance" htmlFor={`${id}-naissanceA`} required>
-          <Input {...lieu('naissanceA', 120)} />
-        </Field>
-        {liste('naissancePays', 'Pays de naissance', pays, { choisir: 'Choisir un pays' })}
-        {liste('nationalite', 'Nationalité', pays, { choisir: 'Choisir un pays' })}
-        <Field label="Adresse" htmlFor={`${id}-adresse`} required className={SUR_DEUX_COLONNES}>
-          <Input {...lieu('adresse', 200)} />
-        </Field>
-        <Field
-          label="Prénom du père"
-          htmlFor={`${id}-perePrenom`}
-          required
-          className={EN_DEBUT_DE_LIGNE}
-        >
-          <Input {...nomPropre('perePrenom')} />
-        </Field>
-        <Field label="Prénom de la mère" htmlFor={`${id}-merePrenom`} required>
-          <Input {...nomPropre('merePrenom')} />
-        </Field>
-        <Field label="Nom de la mère" htmlFor={`${id}-mereNom`} required>
-          <Input {...nomPropre('mereNom')} />
-        </Field>
-        {etrangere(valeur) ? (
-          <Field label="N° de la carte d’identité" htmlFor={`${id}-cni`} required>
-            <Input {...codeEnCapitales('cni', 20)} />
-          </Field>
-        ) : (
-          <ChampDeLaCNI id={`${id}-cni`} cni={valeur.cni} onSaisir={(cni) => poser({ cni })} />
-        )}
-        <Field
-          label="Date de délivrance"
-          htmlFor={`${id}-cniDelivreeLe`}
-          required
-          error={erreurDe('cniDelivreeLe')}
-        >
-          <Input
-            {...date('cniDelivreeLe', {
-              min: etrangere(valeur) ? valeur.naissanceLe : cniDelivreeAuPlusTot(),
-              max: aujourdhui,
-            })}
-          />
-        </Field>
-        <Field label="Lieu de délivrance" htmlFor={`${id}-cniDelivreeA`} required>
-          <Input {...lieu('cniDelivreeA', 120)} />
-        </Field>
-        <Field label="Autorité de délivrance" htmlFor={`${id}-cniDelivreePar`} required>
-          <Input {...intitule('cniDelivreePar', 120)} />
-        </Field>
-        <Field label="N° d’immatriculation à la CSS" htmlFor={`${id}-css`}>
-          <Input {...texte('css', 30)} className={cn(CADRE, 'tabular-nums')} />
-        </Field>
-        <Field label="N° d’immatriculation à l’IPRES" htmlFor={`${id}-ipres`}>
-          <Input {...texte('ipres', 30)} className={cn(CADRE, 'tabular-nums')} />
-        </Field>
-      </Groupe>
-
       <Groupe titre="Renseigner la situation de famille">
         {liste(
           'situationDeFamille',
@@ -626,20 +758,32 @@ export function FicheDeLaDeclaration({
         <Field label="Profession" htmlFor={`${id}-profession`} required>
           <Input {...intitule('profession', 120)} />
         </Field>
-        <Field label="Emploi dans l’établissement" htmlFor={`${id}-emploi`} required>
-          <Input {...intitule('emploi', 120)} />
-        </Field>
-        <Field label="Catégorie" htmlFor={`${id}-categorie`} required>
-          <Input {...texte('categorie', CATEGORIE_MAX)} className={cn(CADRE, 'uppercase')} />
-        </Field>
-        <Field
-          label="Date d’entrée dans l’établissement"
-          htmlFor={`${id}-entreeLe`}
-          required
-          error={erreurDe('entreeLe')}
-        >
-          <Input {...date('entreeLe', { max: veille })} />
-        </Field>
+        {fige('emploi') ? (
+          repris('emploi', 'Emploi dans l’établissement', valeur.emploi)
+        ) : (
+          <Field label="Emploi dans l’établissement" htmlFor={`${id}-emploi`} required>
+            <Input {...intitule('emploi', 120)} />
+          </Field>
+        )}
+        {fige('categorie') ? (
+          repris('categorie', 'Catégorie', valeur.categorie)
+        ) : (
+          <Field label="Catégorie" htmlFor={`${id}-categorie`} required>
+            <Input {...texte('categorie', CATEGORIE_MAX)} className={cn(CADRE, 'uppercase')} />
+          </Field>
+        )}
+        {fige('entreeLe') ? (
+          repris('entreeLe', 'Date d’entrée dans l’établissement', jourEcrit(valeur.entreeLe))
+        ) : (
+          <Field
+            label="Date d’entrée dans l’établissement"
+            htmlFor={`${id}-entreeLe`}
+            required
+            error={erreurDe('entreeLe')}
+          >
+            <Input {...date('entreeLe', { max: veille })} />
+          </Field>
+        )}
         <Field label="Date du contrat" htmlFor={`${id}-contratLe`} error={erreurDe('contratLe')}>
           <Input {...date('contratLe', { max: veille })} />
         </Field>
@@ -650,17 +794,25 @@ export function FicheDeLaDeclaration({
         ])}
         {valeur.contrat === 'cdd' ? (
           <>
-            <Field label="Début du contrat" htmlFor={`${id}-cddDu`} required>
-              <Input {...date('cddDu')} />
-            </Field>
-            <Field
-              label="Fin du contrat"
-              htmlFor={`${id}-cddAu`}
-              required
-              error={erreurDe('cddAu')}
-            >
-              <Input {...date('cddAu', { min: valeur.cddDu })} />
-            </Field>
+            {fige('cddDu') ? (
+              repris('cddDu', 'Début du contrat', jourEcrit(valeur.cddDu))
+            ) : (
+              <Field label="Début du contrat" htmlFor={`${id}-cddDu`} required>
+                <Input {...date('cddDu')} />
+              </Field>
+            )}
+            {fige('cddAu') ? (
+              repris('cddAu', 'Fin du contrat', jourEcrit(valeur.cddAu))
+            ) : (
+              <Field
+                label="Fin du contrat"
+                htmlFor={`${id}-cddAu`}
+                required
+                error={erreurDe('cddAu')}
+              >
+                <Input {...date('cddAu', { min: valeur.cddDu })} />
+              </Field>
+            )}
           </>
         ) : null}
         {valeur.contrat === 'chantier' ? (
@@ -728,9 +880,13 @@ export function FicheDeLaDeclaration({
         >
           <Input {...texte('precedentEmployeur', 200)} />
         </Field>
-        <Field label="Lieu de résidence habituel" htmlFor={`${id}-residence`} required>
-          <Input {...lieu('residence', 120)} />
-        </Field>
+        {fige('residence') ? (
+          repris('residence', 'Lieu de résidence habituel', valeur.residence)
+        ) : (
+          <Field label="Lieu de résidence habituel" htmlFor={`${id}-residence`} required>
+            <Input {...lieu('residence', 120)} />
+          </Field>
+        )}
         {etrangere(valeur) ? (
           <Field
             label="Date d’entrée au Sénégal"
@@ -800,12 +956,16 @@ export function FicheDeLaDeclaration({
           'Horaire de travail hebdomadaire',
           HORAIRES_HEBDOMADAIRES.map((h) => [String(h), `${h} heures`] as const),
         )}
-        <ChampDuMontant
-          id={`${id}-salaire`}
-          libelle="Salaire mensuel"
-          montant={valeur.salaire}
-          onSaisir={(salaire) => poser({ salaire })}
-        />
+        {fige('salaire') && valeur.salaire !== null ? (
+          repris('salaire', 'Salaire mensuel', `${enChiffres(valeur.salaire)} FCFA`)
+        ) : (
+          <ChampDuMontant
+            id={`${id}-salaire`}
+            libelle="Salaire mensuel"
+            montant={valeur.salaire}
+            onSaisir={(salaire) => poser({ salaire })}
+          />
+        )}
         {valeur.dispositions.map((d, i) => (
           <Field
             key={i}

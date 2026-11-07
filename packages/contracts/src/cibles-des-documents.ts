@@ -116,17 +116,24 @@ export type FicheDepuisLeDossier = (typeof FICHES_DEPUIS_LE_DOSSIER)[number];
 
 /**
  * Les documents où « Générer des documents » fait choisir un agent : ceux
- * qui se génèrent pour un agent, et ceux dont la fiche se préremplit à son
- * dossier.
+ * qui se génèrent pour un agent, ceux dont la fiche se préremplit à son
+ * dossier, et la déclaration de mouvement d'une personne qui a le sien
+ * (ADR-0199).
  */
-export type DocumentAChoixDAgent = DocumentAvecAgent | FicheDepuisLeDossier;
+export type DocumentAChoixDAgent =
+  DocumentAvecAgent | FicheDepuisLeDossier | 'declaration_mouvement';
 
-/** Les agents que chacun de ces documents propose : pour une fiche, sous CDI ou CDD. */
+/**
+ * Les agents que chacun de ces documents propose : pour une fiche, sous CDI
+ * ou CDD. La déclaration de mouvement se fait aussi au départ : elle propose
+ * les dossiers inactifs avec les autres.
+ */
 export const CIBLES_DES_CHOIX: Record<DocumentAChoixDAgent, CibleDuDocument> = {
   ...CIBLES_DES_DOCUMENTS,
   domiciliation_bancaire: SOUS_CDI_OU_CDD,
   decision_disponibilite: SOUS_CDI_OU_CDD,
   decision_renouvellement_disponibilite: SOUS_CDI_OU_CDD,
+  declaration_mouvement: { dossiers: 'tous', contrats: ['cdi', 'cdd'] },
 };
 
 export const depuisLeDossier = (doc: string): doc is FicheDepuisLeDossier =>

@@ -8,7 +8,7 @@ import {
   type CibleDuDocument,
   type ContractType,
   type DocumentAChoixDAgent,
-  type DocumentDemandable,
+  type DocumentDeLaListe,
   type EmployeeStatus,
   type Gender,
   type HorsCible,
@@ -127,7 +127,7 @@ export async function situationDuDossier(
 
 /** Le refus, en le disant : le titre nomme le document, le détail la règle. */
 export function refuserHorsCible(
-  doc: DocumentDemandable,
+  doc: DocumentDeLaListe,
   cible: CibleDuDocument,
   s: SituationDeLAgent,
   raison: HorsCible,

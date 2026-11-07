@@ -219,3 +219,32 @@ export function nationalityLabel(code: string | null | undefined): string | null
   if (!code) return null;
   return NATIONALITY_LABELS[code.toUpperCase()] ?? code.toUpperCase();
 }
+
+/** Un nom de pays sans accents, capitales ni ponctuation : « Côte d’Ivoire » donne « cote d ivoire ». */
+const aplati = (nom: string) =>
+  nom
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z]+/g, ' ')
+    .trim();
+
+let codesParNom: Map<string, string> | null = null;
+
+/**
+ * Le code d'un pays d'après son nom en français, tel que le dossier garde le
+ * pays de naissance (« Sénégal » donne « SN ») ; null pour un nom qu'aucun
+ * pays de la liste ne porte. Les accents, les capitales et la ponctuation ne
+ * comptent pas. Les noms sont ceux qu'écrit `Intl.DisplayNames`, comme sur
+ * la fiche de l'agent.
+ */
+export function codeDuPays(nom: string | null | undefined): string | null {
+  if (!nom) return null;
+  if (!codesParNom) {
+    const noms = new Intl.DisplayNames(['fr'], { type: 'region' });
+    codesParNom = new Map(
+      Object.keys(NATIONALITY_LABELS).map((code) => [aplati(noms.of(code) ?? code), code]),
+    );
+  }
+  return codesParNom.get(aplati(nom)) ?? null;
+}

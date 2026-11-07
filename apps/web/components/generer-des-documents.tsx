@@ -10,8 +10,10 @@ import type {
   DocumentGenere,
   DocumentHorsDossier,
   DocumentRequestView,
+  DossierPourLaDeclaration,
   DossierPourLaFiche,
   FicheDepuisLeDossier,
+  RepriseDeLaDeclaration,
   Saisie,
   StageAuDossier,
 } from '@teranga/contracts';
@@ -36,6 +38,7 @@ import {
   nomDuDocumentGenere,
   peutGenerer,
   plusJours,
+  repriseDeLaDeclaration,
   REQUESTABLE_DOC_LABELS,
   saisiesPour,
   sansAgent,
@@ -71,7 +74,9 @@ import {
   type SaisieDuContrat,
 } from './fiche-contrat-travail';
 import {
+  champsFigesDeLaDeclaration,
   DECLARATION_VIDE,
+  declarationDepuisLeDossier,
   FicheDeLaDeclaration,
   versLaFicheDeLaDeclaration,
   type SaisieDeLaDeclaration,
@@ -134,7 +139,10 @@ import { champDuMontant } from '../lib/montant';
    ADR-0106). Le certificat de travail et l'attestation de stage demandent
    d'abord si la personne a un dossier dans l'application : sinon, la DCH
    renseigne une fiche (ADR-0176). Le certificat d'un agent encore en poste
-   fait saisir son dernier jour de travail.
+   fait saisir son dernier jour de travail. La déclaration de mouvement le
+   demande aussi : oui, l'agent choisi préremplit la fiche de son dossier, et
+   ce que le dossier porte se fige ; non, la DCH la renseigne en entier
+   (ADR-0199).
 
    L'aperçu EST le PDF, peint par pdf.js : un modèle de l'APIX se vérifie sur
    ce qui sortira, pas sur une imitation à l'écran.
@@ -218,7 +226,10 @@ const remplie = (v: Valeurs, s: Saisie) => {
   return valeur !== null && valeur !== '';
 };
 
-/** Ce que demandent d'abord le certificat de travail et l'attestation de stage (ADR-0176). */
+/**
+ * Ce que demandent d'abord le certificat de travail et l'attestation de stage
+ * (ADR-0176), et la déclaration de mouvement (ADR-0199).
+ */
 const QUESTION_DU_DOSSIER = 'Existe-t-il un dossier de la personne dans l’application ?';
 
 /** « 1er mars 2012 » : un jour d'un stage. */
@@ -282,6 +293,12 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
     useState<DossierPourLaFiche | null>(null);
   const [dossierDeLaDecision, setDossierDeLaDecision] = useState<DossierPourLaFiche | null>(null);
   const [erreurDuDossier, setErreurDuDossier] = useState<string | null>(null);
+  // La déclaration de mouvement, avec ou sans dossier dans l'application :
+  // avec, l'agent choisi et ce que son dossier en donne, qui se fige ; sans,
+  // la DCH renseigne tout (ADR-0199).
+  const [declarationSansDossier, setDeclarationSansDossier] = useState(false);
+  const [agentDeLaDeclaration, setAgentDeLaDeclaration] = useState<AgentDeLaCible | null>(null);
+  const [declarationReprise, setDeclarationReprise] = useState<RepriseDeLaDeclaration | null>(null);
   // Le dernier agent demandé : une réponse en retard ne remplit pas la fiche d'un autre.
   const dossierAttendu = useRef<string | null>(null);
   // Au titre d'une demande, la fiche se remplit à l'ouverture : le dossier de
@@ -399,6 +416,59 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
     : deLaFiche && dossierDeLaFiche
       ? (Object.keys(ficheReprise(deLaFiche, dossierDeLaFiche)) as ChampRepris[])
       : [];
+  /**
+   * L'agent choisi pour une déclaration de mouvement : son dossier remplit la
+   * fiche, et ce qu'il porte se fige. Pour un autre agent que le précédent,
+   * la fiche repart de zéro.
+   */
+  const choisirPourLaDeclaration = async (a: AgentDeLaCible) => {
+    const autre = agentDeLaDeclaration !== null && agentDeLaDeclaration.id !== a.id;
+    setAgentDeLaDeclaration(a);
+    setDeclarationReprise(null);
+    setErreurDuDossier(null);
+    if (autre) setDeclaration(DECLARATION_VIDE);
+    dossierAttendu.current = a.id;
+    try {
+      const d = await api<DossierPourLaDeclaration>(
+        `/documents/generer/declaration_mouvement/agents/${a.id}/fiche`,
+      );
+      if (dossierAttendu.current !== a.id) return;
+      const reprise = repriseDeLaDeclaration(d);
+      setDeclarationReprise(reprise);
+      setDeclaration((s) => declarationDepuisLeDossier(s, reprise));
+    } catch (e) {
+      if (dossierAttendu.current !== a.id) return;
+      setErreurDuDossier(
+        e instanceof ApiError ? e.message : 'Le dossier de l’agent n’a pas pu être lu',
+      );
+    }
+  };
+  /**
+   * Une autre réponse à la question du dossier : ce que le dossier d'un agent
+   * avait rempli s'efface ; sans agent choisi, la saisie reste.
+   */
+  const repondrePourLaDeclaration = (oui: boolean) => {
+    if (oui !== declarationSansDossier) return;
+    setDeclarationSansDossier(!oui);
+    if (agentDeLaDeclaration) setDeclaration(DECLARATION_VIDE);
+    setAgentDeLaDeclaration(null);
+    setDeclarationReprise(null);
+    setErreurDuDossier(null);
+    dossierAttendu.current = null;
+  };
+  // La déclaration d'un agent choisi : son dossier lu, la fiche se fige.
+  const declarationDuDossier = choisi === 'declaration_mouvement' && !declarationSansDossier;
+  const figesDeLaDeclaration =
+    declarationDuDossier && declarationReprise
+      ? champsFigesDeLaDeclaration(declarationReprise)
+      : [];
+  // L'agent dont le dossier préremplit la fiche : le serveur reprend ce qu'il
+  // porte (ADR-0197, ADR-0199).
+  const agentQuiPreremplit = deLaFiche
+    ? agentDeLaFiche
+    : declarationDuDossier
+      ? agentDeLaDeclaration
+      : null;
   // La fiche du document sans agent, telle qu'elle partira à l'API.
   const ficheSansAgent = deTravail
     ? versLaFicheDuContrat(contrat, deTravail)
@@ -443,7 +513,9 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
   const pret =
     choisi !== null &&
     (sansLAgent
-      ? fiche.success && (deLaFiche === null || (demande ? dossierLu : agentDeLaFiche !== null))
+      ? fiche.success &&
+        (deLaFiche === null || (demande ? dossierLu : agentDeLaFiche !== null)) &&
+        (!declarationDuDossier || declarationReprise !== null)
       : surFiche
         ? ficheDeLaPersonne?.success === true
         : agent !== null &&
@@ -471,8 +543,8 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
           chemin: `/documents/generer/${choisi}${
             demandeId
               ? `?demande=${demandeId}`
-              : agentDeLaFiche && deLaFiche
-                ? `?agent=${agentDeLaFiche.id}`
+              : agentQuiPreremplit
+                ? `?agent=${agentQuiPreremplit.id}`
                 : ''
           }`,
           fichier: nomDuDocumentGenere(choisi, `${personne.nom.toUpperCase()}-${personne.prenom}`),
@@ -581,7 +653,35 @@ export function GenererDesDocuments({ demande }: { demande?: DocumentRequestView
             />
           ) : null}
           {choisi === 'declaration_mouvement' ? (
-            <FicheDeLaDeclaration valeur={declaration} onChange={setDeclaration} />
+            <>
+              <Choix titre={QUESTION_DU_DOSSIER}>
+                <OuiNon
+                  libelle={QUESTION_DU_DOSSIER}
+                  oui={!declarationSansDossier}
+                  onChoisir={repondrePourLaDeclaration}
+                />
+              </Choix>
+              {declarationDuDossier ? (
+                <Choix titre="Sélectionner l’agent">
+                  <ChoixDeLAgent
+                    id={`${id}-agent`}
+                    doc="declaration_mouvement"
+                    agent={agentDeLaDeclaration}
+                    onChoisir={(a) => void choisirPourLaDeclaration(a)}
+                  />
+                  {erreurDuDossier ? (
+                    <p className="mt-1 text-xs text-danger">{erreurDuDossier}</p>
+                  ) : null}
+                </Choix>
+              ) : null}
+              <FicheDeLaDeclaration
+                // Une autre personne : les champs repartent de leur propre saisie.
+                key={agentDeLaDeclaration?.id ?? (declarationSansDossier ? 'sans' : 'aucun')}
+                valeur={declaration}
+                figes={figesDeLaDeclaration}
+                onChange={setDeclaration}
+              />
+            </>
           ) : null}
           {deDisponibilite ? (
             <FicheDeLaDecision

@@ -7,6 +7,7 @@ import type {
   DocumentHorsDossier,
   DocumentParLettre,
   DocumentSansAgent,
+  DossierPourLaDeclaration,
   DossierPourLaFiche,
   SaisiesDuDocument,
   SessionUser,
@@ -14,6 +15,7 @@ import type {
 } from '@teranga/contracts';
 import {
   aChoixDAgent,
+  codeDuPays,
   dateDeLaDemande,
   depuisLeDossier,
   estGenere,
@@ -26,8 +28,10 @@ import {
   peut,
   peutGenerer,
   REQUESTABLE_DOC_LABELS,
+  repriseDeLaDeclaration,
   requestableDocSchema,
   sansAgent,
+  SITUATION_DE_FAMILLE_DU_DOSSIER,
 } from '@teranga/contracts';
 import { agentDuCompte, directionDuPersonnel, pasSurSoi } from '../acces/dch';
 import { attenteDe, capaciteDesDocuments, vueDuTraitement } from '../acces/demandes';
@@ -70,7 +74,9 @@ import type { DocumentPdf, Modele } from './feuille';
  * pas encore dans l'application. Un document avec agent ne se génère que
  * pour un agent de sa cible (ADR-0130). Le certificat de travail et
  * l'attestation de stage se génèrent aussi d'une fiche, pour une personne
- * sans dossier dans l'application (ADR-0176).
+ * sans dossier dans l'application (ADR-0176). La déclaration de mouvement se
+ * génère d'une fiche que le dossier de l'agent choisi préremplit, ou que la
+ * DCH renseigne en entier pour une personne sans dossier (ADR-0199).
  */
 @Injectable()
 export class GenerationService {
@@ -211,6 +217,24 @@ export class GenerationService {
   }
 
   /**
+   * Ce que le dossier d'un agent donne d'avance à sa déclaration de mouvement
+   * (ADR-0199) ; le numéro de la CNI, celui de l'IPRES et le salaire de base,
+   * à qui a l'accès aux données sensibles (ADR-0158). L'agent est de la
+   * cible, et jamais soi.
+   */
+  async dossierPourLaDeclaration(
+    user: SessionUser,
+    employeeId: string,
+  ): Promise<DossierPourLaDeclaration> {
+    this.documentConfigure(user, 'declaration_mouvement');
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await pasSurSoi(tx, user.userId, [employeeId], 'générer un document pour');
+      await exigerLaCible(tx, 'declaration_mouvement', employeeId);
+      return declarationAuDossier(tx, this.crypto, employeeId, peut(user, 'personnel.sensible'));
+    });
+  }
+
+  /**
    * Un document d'après la fiche que la DCH renseigne : un document sans
    * agent, ou le certificat de travail et l'attestation de stage d'une
    * personne sans dossier (ADR-0176). Une fiche que le dossier d'un agent
@@ -268,6 +292,33 @@ export class GenerationService {
           tx,
           ficheFigee(corps, ficheReprise(doc, await identiteAuDossier(tx, agentId))),
         );
+      }
+      if (!parDemande && agentId && doc === 'declaration_mouvement') {
+        // La déclaration d'un agent choisi : ce que son dossier porte, elle le
+        // reprend tel quel, et nomme autant d'enfants à charge qu'il en
+        // compte (ADR-0199).
+        await pasSurSoi(tx, user.userId, [agentId], 'générer un document pour');
+        await exigerLaCible(tx, doc, agentId);
+        const { nombreDEnfants, ...reprise } = repriseDeLaDeclaration(
+          await declarationAuDossier(tx, this.crypto, agentId, peut(user, 'personnel.sensible')),
+        );
+        const fiche = ficheFigee(corps, reprise);
+        const enfants = (fiche as { enfants?: unknown } | null)?.enfants;
+        if (
+          nombreDEnfants !== undefined &&
+          Array.isArray(enfants) &&
+          enfants.length !== nombreDEnfants
+        ) {
+          problem(
+            422,
+            'documents.enfants',
+            `Enfants à charge : ${nombreDEnfants} au dossier`,
+            nombreDEnfants === 0
+              ? 'Le dossier ne compte aucun enfant à charge : la déclaration n’en nomme pas.'
+              : 'La déclaration nomme chacun des enfants à charge que compte le dossier.',
+          );
+        }
+        return modele.pdf(tx, fiche);
       }
       return modele.pdf(tx, corps);
     });
@@ -480,5 +531,117 @@ async function identiteAuDossier(
     affectation: dossier.org_unit_id,
     contrat: dossier.contract_type,
     debut: dossier.start_date,
+  };
+}
+
+/**
+ * Ce que le dossier dit d'un agent pour sa déclaration de mouvement
+ * (ADR-0199) : l'état civil et la filiation, l'adresse et la ville, la CNI,
+ * la famille, l'entrée, le poste en cours, la catégorie, le contrat qui fait
+ * foi s'il est un CDI ou un CDD ; avec l'accès aux données sensibles, le
+ * numéro de la CNI, celui de l'IPRES et le salaire de base. Une entrée connue
+ * au mois seulement ne se reprend pas : son jour n'est pas sûr.
+ */
+async function declarationAuDossier(
+  tx: Tx,
+  crypto: EncryptionService,
+  employeeId: string,
+  sensible: boolean,
+): Promise<DossierPourLaDeclaration> {
+  const { rows } = await tx.execute<{
+    gender: string | null;
+    given_name: string;
+    family_name: string;
+    birth_date: string | null;
+    lieu_de_naissance: string | null;
+    birth_place: string | null;
+    nationality: string | null;
+    prenom_du_pere: string | null;
+    prenom_de_la_mere: string | null;
+    nom_de_la_mere: string | null;
+    address_line: string | null;
+    ville: string | null;
+    national_id_encrypted: string | null;
+    id_document_type: string | null;
+    id_document_issued_on: string | null;
+    marital_status: string | null;
+    epouses: string[] | null;
+    nombre_enfants: number | null;
+    hired_on: string;
+    entree_au_mois: boolean;
+    categorie: string | null;
+    position_title: string | null;
+    contract_type: string | null;
+    start_date: string | null;
+    end_date: string | null;
+    salaire_de_base: number | null;
+    numero_ipres: string | null;
+  }>(sql`
+    SELECT p.gender, p.given_name, p.family_name,
+           to_char(p.birth_date, 'YYYY-MM-DD') AS birth_date,
+           p.lieu_de_naissance, p.birth_place, p.nationality,
+           p.prenom_du_pere, p.prenom_de_la_mere, p.nom_de_la_mere,
+           p.address_line, p.ville, p.national_id_encrypted, p.id_document_type,
+           to_char(p.id_document_issued_on, 'YYYY-MM-DD') AS id_document_issued_on,
+           p.marital_status, p.epouses, p.nombre_enfants,
+           to_char(e.hired_on, 'YYYY-MM-DD') AS hired_on, e.entree_au_mois, e.categorie,
+           a.position_title, c.contract_type,
+           to_char(c.start_date, 'YYYY-MM-DD') AS start_date,
+           to_char(c.end_date, 'YYYY-MM-DD') AS end_date,
+           r.salaire_de_base, r.numero_ipres
+      FROM employees e
+      JOIN persons p ON p.id = e.person_id
+      -- Le poste en cours, sinon le dernier.
+      LEFT JOIN LATERAL (
+        SELECT position_title FROM assignments
+         WHERE employee_id = e.id
+         ORDER BY validity @> CURRENT_DATE DESC, lower(validity) DESC LIMIT 1
+      ) a ON true
+      -- Le contrat qui fait foi, comme pour la cible : le dernier commencé.
+      LEFT JOIN LATERAL (
+        SELECT contract_type, start_date, end_date FROM contracts
+         WHERE employee_id = e.id AND start_date <= CURRENT_DATE
+         ORDER BY start_date DESC, created_at DESC LIMIT 1
+      ) c ON true
+      LEFT JOIN LATERAL (
+        SELECT salaire_de_base, numero_ipres FROM remunerations
+         WHERE employee_id = e.id LIMIT 1
+      ) r ON true
+     WHERE e.id = ${employeeId}`);
+  const d = rows[0];
+  if (!d) problem(404, 'people.employee_not_found', 'Dossier introuvable');
+  const cni = d.id_document_type === 'cni';
+  const contrat = d.contract_type === 'cdd' || d.contract_type === 'cdi' ? d.contract_type : null;
+  return {
+    civilite: d.gender === 'female' ? 'madame' : d.gender === 'male' ? 'monsieur' : null,
+    prenom: d.given_name,
+    nom: d.family_name,
+    naissanceLe: d.birth_date,
+    naissanceA: d.lieu_de_naissance,
+    naissancePays: codeDuPays(d.birth_place),
+    nationalite: d.nationality,
+    perePrenom: d.prenom_du_pere,
+    merePrenom: d.prenom_de_la_mere,
+    mereNom: d.nom_de_la_mere,
+    adresse: d.address_line,
+    residence: d.ville,
+    cni:
+      cni && sensible && d.national_id_encrypted
+        ? crypto.decrypt(d.national_id_encrypted).replace(/[\s-]/g, '')
+        : null,
+    cniDelivreeLe: cni ? d.id_document_issued_on : null,
+    ipres: sensible ? d.numero_ipres : null,
+    situationDeFamille: d.marital_status
+      ? (SITUATION_DE_FAMILLE_DU_DOSSIER[d.marital_status] ?? null)
+      : null,
+    epouses: d.epouses ?? [],
+    nombreDEnfants: d.nombre_enfants,
+    entreeLe: d.entree_au_mois ? null : d.hired_on,
+    emploi: d.position_title,
+    categorie: d.categorie,
+    contrat,
+    debut: contrat ? d.start_date : null,
+    fin: contrat ? d.end_date : null,
+    salaire: sensible ? d.salaire_de_base : null,
   };
 }

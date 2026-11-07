@@ -111,7 +111,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0103](0103-destinataire-de-la-domiciliation.md)      | Le destinataire de la domiciliation tient sur une ligne, sans « Sénégal »               | acceptée                                    |
 | [0104](0104-reprise-apres-disponibilite.md)           | L'attestation de reprise après disponibilité : les dates saisies, l'agent au dossier    | acceptée, précisée par 0105 et 0133         |
 | [0105](0105-conge-de-maternite.md)                    | Le congé de maternité : la cessation de paiement et la reprise de service               | acceptée, précisée par 0130                 |
-| [0106](0106-declaration-de-mouvement.md)              | La déclaration de mouvement du travailleur : la fiche, le Code du travail de 2026       | acceptée, précisée 4 fois, de 0107 à 0198   |
+| [0106](0106-declaration-de-mouvement.md)              | La déclaration de mouvement du travailleur : la fiche, le Code du travail de 2026       | acceptée, précisée 5 fois, de 0107 à 0199   |
 | [0107](0107-declaration-ancien-code.md)               | La déclaration de mouvement cite le Code du travail de 1997, comme les autres documents | acceptée                                    |
 | [0108](0108-boutons-aux-coins-d-e-voting.md)          | Les boutons et les champs aux coins d'e-Voting                                          | précisée (0110, 0115, 0119), révisée (0183) |
 | [0109](0109-delegation-sans-bandeau.md)               | La délégation se règle dans « Déléguer des tâches », sans bandeau sur les pages         | acceptée, précisée par 0128                 |
@@ -202,5 +202,6 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0194](0194-temps-a-la-minute.md)                     | Le temps d'une demande de document se lit à la minute                                   | acceptée, précisée par 0196                 |
 | [0195](0195-lecteur-pdf-fluide.md)                    | Le lecteur PDF peint une page à la fois et ne bouge rien pendant le défilement          | acceptée                                    |
 | [0196](0196-temps-reel-de-la-demande.md)              | Le temps d'une demande de document se lit en temps réel                                 | acceptée                                    |
-| [0197](0197-agent-choisi-fiche-figee.md)              | Sur « Générer des documents », l'agent choisi fige ce que son dossier donne             | acceptée                                    |
+| [0197](0197-agent-choisi-fiche-figee.md)              | Sur « Générer des documents », l'agent choisi fige ce que son dossier donne             | acceptée, précisée par 0199                 |
 | [0198](0198-declaration-de-mouvement-de-la-dch.md)    | La déclaration de mouvement du travailleur, la DCH la produit : elle ne se demande pas  | acceptée                                    |
+| [0199](0199-declaration-depuis-le-dossier.md)         | La déclaration de mouvement se préremplit du dossier de la personne                     | acceptée                                    |
