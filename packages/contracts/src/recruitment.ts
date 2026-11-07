@@ -46,6 +46,60 @@ export const LANGUE_LABELS: Record<Langue, string> = {
 };
 
 /**
+ * Le français, exigé sur toute offre (ADR-0182) : il ouvre la liste, coché,
+ * et ne s'enregistre pas.
+ */
+export const FRANCAIS = 'Français';
+
+/** Le niveau exigé dans une langue, du plus simple au plus exigeant. */
+export const NIVEAUX_LANGUE = ['notions', 'intermediaire', 'courant', 'bilingue'] as const;
+export const niveauLangueSchema = z.enum(NIVEAUX_LANGUE);
+export type NiveauLangue = z.infer<typeof niveauLangueSchema>;
+export const NIVEAU_LANGUE_LABELS: Record<NiveauLangue, string> = {
+  notions: 'Notions',
+  intermediaire: 'Intermédiaire',
+  courant: 'Courant',
+  bilingue: 'Bilingue',
+};
+
+/** Ce qu'on exige dans une langue : l'oral, l'écrit, la compréhension. */
+export const COMPETENCES_LANGUE = ['oral', 'ecrit', 'comprehension'] as const;
+export type CompetenceLangue = (typeof COMPETENCES_LANGUE)[number];
+export const COMPETENCE_LANGUE_LABELS: Record<CompetenceLangue, string> = {
+  oral: 'Oral',
+  ecrit: 'Écrit',
+  comprehension: 'Compréhension',
+};
+
+export const niveauxLangueSchema = z.object({
+  oral: niveauLangueSchema,
+  ecrit: niveauLangueSchema,
+  comprehension: niveauLangueSchema,
+});
+export type NiveauxLangue = z.infer<typeof niveauxLangueSchema>;
+
+/** Une langue exigée en plus du français, et son niveau dans chaque compétence. */
+export const langueExigeeSchema = z.object({
+  langue: langueSchema,
+  niveaux: niveauxLangueSchema,
+});
+export type LangueExigee = z.infer<typeof langueExigeeSchema>;
+
+/** Une langue de l'offre ; une offre d'avant l'ADR-0182 n'a pas ses niveaux. */
+export interface LangueDeLOffre {
+  langue: Langue;
+  niveaux: NiveauxLangue | null;
+}
+
+/** Les langues d'une offre telles que la base les garde : les codes, puis les niveaux. */
+export function languesDeLOffre(
+  codes: readonly string[],
+  niveaux: Partial<Record<string, NiveauxLangue>>,
+): LangueDeLOffre[] {
+  return codes.map((code) => ({ langue: code as Langue, niveaux: niveaux[code] ?? null }));
+}
+
+/**
  * Les contrats qu'une offre propose. Le consultant et le détachement restent
  * des contrats d'agent, mais ne se recrutent pas par une offre publiée.
  */
@@ -55,10 +109,20 @@ export const jobContractTypeSchema = z.enum(['cdi', 'cdd', 'stage']);
 export const CONTRATS_A_DUREE: readonly string[] = ['cdd', 'stage'];
 export const DUREES_MOIS = [3, 6, 12, 18, 24] as const;
 
+/** Une langue par entrée, dans l'ordre de la liste, quel que soit l'ordre des clics. */
 const languesSchema = z
-  .array(langueSchema)
+  .array(langueExigeeSchema)
   .max(LANGUES.length)
-  .transform((l) => [...new Set(l)]);
+  .transform((l) =>
+    LANGUES.map((code) => l.find((x) => x.langue === code)).filter(
+      (x): x is LangueExigee => x !== undefined,
+    ),
+  );
+
+/** L'expérience pour le poste ne dépasse pas l'expérience minimum (ADR-0182). */
+export function experiencePosteAdmise(experienceMin: number | null, poste: number | null): boolean {
+  return experienceMin === null || poste === null || poste <= experienceMin;
+}
 
 export const createJobPostingSchema = z.object({
   title: trimmed(140),
@@ -81,6 +145,7 @@ export const createJobPostingSchema = z.object({
   requiredDocuments: z.array(trimmed(60)).max(5).default([]),
   niveauEtudes: niveauEtudesSchema,
   experienceMin: z.literal(EXPERIENCES_MIN),
+  experiencePoste: z.literal(EXPERIENCES_MIN),
   langues: languesSchema.default([]),
   /** Exigée pour un CDD ou un stage, ignorée pour les autres contrats. */
   dureeMois: z.literal(DUREES_MOIS).nullish(),
@@ -97,6 +162,7 @@ export const updateJobPostingSchema = z.object({
   requiredDocuments: z.array(trimmed(60)).max(5).optional(),
   niveauEtudes: niveauEtudesSchema.optional(),
   experienceMin: z.literal(EXPERIENCES_MIN).optional(),
+  experiencePoste: z.literal(EXPERIENCES_MIN).optional(),
   langues: languesSchema.optional(),
   dureeMois: z.literal(DUREES_MOIS).nullable().optional(),
   status: jobStatusSchema.optional(),
@@ -118,7 +184,10 @@ export interface JobPostingView {
   /** Null sur une offre antérieure au profil recherché. */
   niveauEtudes: NiveauEtudes | null;
   experienceMin: number | null;
-  langues: Langue[];
+  /** Null sur une offre antérieure à l'ADR-0182. */
+  experiencePoste: number | null;
+  /** Les langues exigées en plus du français. */
+  langues: LangueDeLOffre[];
   dureeMois: number | null;
   status: JobStatus;
   publicSlug: string;
@@ -264,7 +333,8 @@ export type PublicJobInfo =
       requiredDocuments: string[];
       niveauEtudes: NiveauEtudes | null;
       experienceMin: number | null;
-      langues: Langue[];
+      experiencePoste: number | null;
+      langues: LangueDeLOffre[];
       dureeMois: number | null;
     };
 

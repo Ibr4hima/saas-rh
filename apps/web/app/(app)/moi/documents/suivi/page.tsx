@@ -389,7 +389,7 @@ function Ligne({
             {titre}
           </p>
           {nouvelle ? (
-            <span className="shrink-0 rounded-full bg-primary px-[7px] text-[9.5px] leading-[17px] font-extrabold tracking-[0.06em] text-primary-ink uppercase">
+            <span className="shrink-0 rounded-controle bg-primary px-[7px] text-[9.5px] leading-[17px] font-extrabold tracking-[0.06em] text-primary-ink uppercase">
               Nouveau
             </span>
           ) : null}

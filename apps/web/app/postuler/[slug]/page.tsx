@@ -7,7 +7,6 @@ import type { PublicJobInfo } from '@teranga/contracts';
 import {
   ALLOWED_DOCUMENT_TYPES,
   deElide,
-  LANGUE_LABELS,
   MAX_DOCUMENT_BYTES,
   NIVEAU_ETUDES_LABELS,
   premierPrenom,
@@ -25,6 +24,7 @@ import {
   FaitOffre,
   joursRestants,
   jourFr,
+  LanguesOffre,
 } from '../../../components/offre-fiche';
 import { useThemeClair } from '../../../components/preferences';
 import { anciennete, useHorlogeMinute } from '../../../lib/temps';
@@ -177,7 +177,7 @@ function Rubrique({ children, extra }: { children: React.ReactNode; extra?: Reac
 /** Un fait de l'offre, en pastille sous le titre. */
 function Etiquette({ icon, children }: { icon: IconName; children: React.ReactNode }) {
   return (
-    <li className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-[12.5px] font-semibold text-ink ring-1 ring-line-soft">
+    <li className="inline-flex items-center gap-1.5 rounded-controle bg-surface px-3 py-1.5 text-[12.5px] font-semibold text-ink ring-1 ring-line-soft">
       <Icon name={icon} size={15} className="shrink-0 text-primary/75" />
       {children}
     </li>
@@ -478,7 +478,8 @@ export default function ApplyPage() {
   const datePassee = restants !== null && restants < 0;
   const age = anciennete(offre.publishedAt);
   // Le profil recherché, ce que l'offre en dit : une offre antérieure peut ne
-  // rien en porter, la rubrique disparaît alors plutôt que d'afficher du vide.
+  // pas tout porter, ce qui manque ne s'affiche pas. Les langues, elles, ont
+  // toujours le français (ADR-0182).
   const profil: { label: string; valeur: string }[] = [
     offre.niveauEtudes
       ? { label: 'Niveau d’études', valeur: NIVEAU_ETUDES_LABELS[offre.niveauEtudes] }
@@ -486,8 +487,8 @@ export default function ApplyPage() {
     offre.experienceMin !== null
       ? { label: 'Expérience', valeur: experienceExigee(offre.experienceMin) }
       : null,
-    offre.langues.length > 0
-      ? { label: 'Langues', valeur: offre.langues.map((l) => LANGUE_LABELS[l]).join(', ') }
+    offre.experiencePoste !== null
+      ? { label: 'Expérience pour le poste', valeur: experienceExigee(offre.experiencePoste) }
       : null,
   ].filter((f): f is { label: string; valeur: string } => f !== null);
 
@@ -540,18 +541,23 @@ export default function ApplyPage() {
             ) : null}
           </div>
 
-          {profil.length > 0 ? (
-            <div className="mt-10 border-t border-ink/[0.08] pt-8 lg:mt-12 lg:pt-10">
-              <Rubrique>Profil recherché</Rubrique>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                {profil.map((f) => (
-                  <FaitOffre key={f.label} label={f.label}>
-                    {f.valeur}
-                  </FaitOffre>
-                ))}
+          <div className="mt-10 border-t border-ink/[0.08] pt-8 lg:mt-12 lg:pt-10">
+            <Rubrique>Profil recherché</Rubrique>
+            {/* La troisième colonne, plus large : « Expérience pour le poste »
+                tient sur une ligne, sa valeur à la hauteur des deux autres. */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_1fr_1.4fr]">
+              {profil.map((f) => (
+                <FaitOffre key={f.label} label={f.label}>
+                  {f.valeur}
+                </FaitOffre>
+              ))}
+              <div className="sm:col-span-3">
+                <FaitOffre label="Langues">
+                  <LanguesOffre langues={offre.langues} />
+                </FaitOffre>
               </div>
             </div>
-          ) : null}
+          </div>
 
           <div className="mt-10 border-t border-ink/[0.08] pt-8 lg:mt-12 lg:pt-10">
             <Rubrique>Description du poste</Rubrique>

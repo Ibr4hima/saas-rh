@@ -49,7 +49,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center rounded-full border bg-surface leading-none font-semibold tracking-[0.01em] whitespace-nowrap',
+        'inline-flex shrink-0 items-center rounded-controle border bg-surface leading-none font-semibold tracking-[0.01em] whitespace-nowrap',
         tailles[size],
         tones[tone],
         className,

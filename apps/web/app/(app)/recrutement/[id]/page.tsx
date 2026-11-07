@@ -4,19 +4,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import type { ApplicationView, JobPostingView } from '@teranga/contracts';
-import {
-  LANGUE_LABELS,
-  NIVEAU_ETUDES_LABELS,
-  nomAbrege,
-  peut,
-  premierPrenom,
-} from '@teranga/contracts';
+import { NIVEAU_ETUDES_LABELS, nomAbrege, peut, premierPrenom } from '@teranga/contracts';
 import { Badge, Button, Card, CardContent, cn, EmptyState, Skeleton } from '@teranga/ui';
 import { api, ApiError } from '../../../../lib/api';
 import { formatDate, useMe } from '../../../../lib/hooks';
 import { Telephone } from '../../../../components/telephone';
 import { experienceExigee, libelleContrat } from '../../../../lib/recruitment';
-import { DescriptionOffre, FaitOffre, jourFr } from '../../../../components/offre-fiche';
+import {
+  DescriptionOffre,
+  FaitOffre,
+  jourFr,
+  LanguesOffre,
+} from '../../../../components/offre-fiche';
 import { LoadFailure } from '../../../../components/load-failure';
 import { Icon, type IconName } from '../../../../components/icons';
 import { FenetreCandidat } from '../../../../components/fenetre-candidat';
@@ -216,13 +215,14 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
           <FaitOffre icon="trending_up" label="Expérience">
             {j.experienceMin === null ? <NonRenseigne /> : experienceExigee(j.experienceMin)}
           </FaitOffre>
-          <FaitOffre icon="translate" label="Langues">
-            {j.langues.length > 0 ? (
-              j.langues.map((l) => LANGUE_LABELS[l]).join(', ')
-            ) : (
-              <NonRenseigne />
-            )}
+          <FaitOffre icon="work_history" label="Expérience pour le poste">
+            {j.experiencePoste === null ? <NonRenseigne /> : experienceExigee(j.experiencePoste)}
           </FaitOffre>
+          <div className="sm:col-span-3">
+            <FaitOffre icon="translate" label="Langues">
+              <LanguesOffre langues={j.langues} />
+            </FaitOffre>
+          </div>
         </div>
 
         {j.description ? (

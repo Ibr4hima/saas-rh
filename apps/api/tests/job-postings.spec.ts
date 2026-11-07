@@ -48,6 +48,8 @@ async function raw(q: string, params: unknown[] = []) {
   return ownerPool.query(q, params as never[]);
 }
 
+const COURANT = { oral: 'courant', ecrit: 'courant', comprehension: 'courant' } as const;
+
 const offre = (titre: string): CreateJobPostingInput => ({
   title: titre,
   description: 'Description de poste suffisamment longue pour passer la validation.',
@@ -55,7 +57,8 @@ const offre = (titre: string): CreateJobPostingInput => ({
   requiredDocuments: ['cv'],
   niveauEtudes: 'bac3',
   experienceMin: 2,
-  langues: ['en'],
+  experiencePoste: 1,
+  langues: [{ langue: 'en', niveaux: COURANT }],
 });
 
 beforeAll(async () => {
@@ -228,18 +231,69 @@ describe('suppression d’offres', () => {
 });
 
 describe('profil recherché', () => {
-  it('enregistre et relit niveau, expérience et langues', async () => {
+  it('enregistre et relit niveau, expériences et langues avec leurs niveaux', async () => {
+    const mandarin = { oral: 'notions', ecrit: 'notions', comprehension: 'intermediaire' } as const;
     const { id } = await service.create(rh, {
       ...offre('Analyste'),
       niveauEtudes: 'bac5plus',
       experienceMin: 10,
-      langues: ['en', 'zh'],
+      experiencePoste: 5,
+      langues: [
+        { langue: 'zh', niveaux: mandarin },
+        { langue: 'en', niveaux: COURANT },
+      ],
     });
     const lue = await service.detail(rh, id);
     expect(lue.niveauEtudes).toBe('bac5plus');
     expect(lue.experienceMin).toBe(10);
-    expect(lue.langues).toEqual(['en', 'zh']);
+    expect(lue.experiencePoste).toBe(5);
+    // Dans l'ordre de la liste, quel que soit l'ordre des clics.
+    expect(lue.langues).toEqual([
+      { langue: 'en', niveaux: COURANT },
+      { langue: 'zh', niveaux: mandarin },
+    ]);
     expect(lue.dureeMois).toBeNull();
+
+    const publique = await new ApplyService(db, new EncryptionService()).info(lue.publicSlug);
+    expect(publique).toMatchObject({ valid: false });
+    await service.update(rh, id, { status: 'published' });
+    expect(await new ApplyService(db, new EncryptionService()).info(lue.publicSlug)).toMatchObject({
+      experiencePoste: 5,
+      langues: lue.langues,
+    });
+  });
+
+  it('garde l’expérience pour le poste sous l’expérience minimum', async () => {
+    await expect(
+      service.create(rh, { ...offre('Trop'), experienceMin: 2, experiencePoste: 3 }),
+    ).rejects.toMatchObject({ problem: { code: 'recruitment.experience_poste' } });
+
+    const { id } = await service.create(rh, {
+      ...offre('Poste'),
+      experienceMin: 5,
+      experiencePoste: 3,
+    });
+    // L'expérience minimum descendue sous celle du poste : refusé.
+    await expect(service.update(rh, id, { experienceMin: 2 })).rejects.toMatchObject({
+      problem: { code: 'recruitment.experience_poste' },
+    });
+    // Les deux ensemble : accepté.
+    await service.update(rh, id, { experienceMin: 2, experiencePoste: 2 });
+    expect(await service.detail(rh, id)).toMatchObject({ experienceMin: 2, experiencePoste: 2 });
+  });
+
+  it('relit sans niveaux les langues d’une offre d’avant les niveaux', async () => {
+    const { id } = await service.create(rh, offre('Ancienne'));
+    await raw(
+      `UPDATE job_postings SET niveaux_langues = '{}', experience_poste = NULL WHERE id = $1`,
+      [id],
+    );
+    const lue = await service.detail(rh, id);
+    expect(lue.langues).toEqual([{ langue: 'en', niveaux: null }]);
+    expect(lue.experiencePoste).toBeNull();
+    // Modifier les langues leur donne des niveaux.
+    await service.update(rh, id, { langues: [{ langue: 'en', niveaux: COURANT }] });
+    expect((await service.detail(rh, id)).langues).toEqual([{ langue: 'en', niveaux: COURANT }]);
   });
 
   it('exige la durée d’un CDD ou d’un stage, et l’ignore pour un CDI', async () => {
@@ -276,17 +330,29 @@ describe('profil recherché', () => {
   });
 
   it('refuse une valeur hors liste et dédoublonne les langues', () => {
-    const base = { ...offre('Poste'), langues: ['en', 'en', 'it'] };
-    expect(createJobPostingSchema.parse(base).langues).toEqual(['en', 'it']);
-    // Le français, le wolof, le portugais ne sont plus proposés ; ni le
-    // consultant ou le détachement comme contrat d'offre.
-    expect(createJobPostingSchema.safeParse({ ...base, langues: ['fr'] }).success).toBe(false);
+    const en = { langue: 'en', niveaux: COURANT };
+    const it_ = { langue: 'it', niveaux: { ...COURANT, ecrit: 'notions' } };
+    const base = { ...offre('Poste'), langues: [en, en, it_] };
+    expect(createJobPostingSchema.parse(base).langues).toEqual([en, it_]);
+    // Le français est exigé d'office, il ne se coche pas ; le wolof et le
+    // portugais ne sont plus proposés ; ni le consultant ou le détachement
+    // comme contrat d'offre.
+    const langue = (l: unknown) =>
+      createJobPostingSchema.safeParse({ ...base, langues: [l] }).success;
+    expect(langue({ langue: 'fr', niveaux: COURANT })).toBe(false);
+    expect(langue({ langue: 'de', niveaux: COURANT })).toBe(false);
+    // Chaque langue cochée a ses trois niveaux, pris dans la liste.
+    expect(langue({ langue: 'en' })).toBe(false);
+    expect(langue({ langue: 'en', niveaux: { oral: 'courant', ecrit: 'courant' } })).toBe(false);
+    expect(langue({ langue: 'en', niveaux: { ...COURANT, oral: 'expert' } })).toBe(false);
     expect(createJobPostingSchema.safeParse({ ...base, contractType: 'consultant' }).success).toBe(
       false,
     );
     expect(createJobPostingSchema.safeParse({ ...base, niveauEtudes: 'bac6' }).success).toBe(false);
     expect(createJobPostingSchema.safeParse({ ...base, experienceMin: 4 }).success).toBe(false);
-    expect(createJobPostingSchema.safeParse({ ...base, langues: ['de'] }).success).toBe(false);
+    expect(createJobPostingSchema.safeParse({ ...base, experiencePoste: 4 }).success).toBe(false);
+    const { experiencePoste: _p, ...sansPoste } = base;
+    expect(createJobPostingSchema.safeParse(sansPoste).success).toBe(false);
     const { niveauEtudes: _n, ...sansNiveau } = base;
     expect(createJobPostingSchema.safeParse(sansNiveau).success).toBe(false);
   });

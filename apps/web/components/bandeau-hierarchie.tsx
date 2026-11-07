@@ -187,7 +187,7 @@ function Ligne({ anomalie }: { anomalie: AnomalieHierarchie }) {
           </span>
         </span>
         <span className="flex shrink-0 flex-col items-end gap-1">
-          <Badge tone="gris" className="rounded-[var(--radius-bloc)]">
+          <Badge tone="gris">
             {mots.court}
           </Badge>
           {mots.explication ? (

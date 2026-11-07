@@ -2,12 +2,20 @@ import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import { CONTRATS_A_DUREE, correspond, premierPrenom } from '@teranga/contracts';
+import {
+  CONTRATS_A_DUREE,
+  correspond,
+  experiencePosteAdmise,
+  LANGUES,
+  languesDeLOffre,
+  premierPrenom,
+} from '@teranga/contracts';
 import type {
   ApplicationStage,
   ApplicationView,
   CreateJobPostingInput,
   DeleteApplicationsResult,
+  LangueExigee,
   DeleteJobPostingsInput,
   DeleteJobPostingsResult,
   JobPostingView,
@@ -46,6 +54,31 @@ function dureeSelonContrat(
     problem(422, 'recruitment.duree_requise', 'Choisissez la durée du contrat.');
   }
   return dureeMois;
+}
+
+/**
+ * L'expérience pour le poste se juge sur l'état final de l'offre : elle ne
+ * dépasse pas l'expérience minimum (ADR-0182).
+ */
+function exigerUneExperiencePosteAdmise(experienceMin: number | null, poste: number | null): void {
+  if (!experiencePosteAdmise(experienceMin, poste)) {
+    problem(
+      422,
+      'recruitment.experience_poste',
+      'L’expérience pour le poste ne peut pas dépasser l’expérience minimum.',
+    );
+  }
+}
+
+/**
+ * Les langues exigées telles que la base les garde : les codes, dans l'ordre
+ * de la liste, et les niveaux à part.
+ */
+function languesEnBase(langues: LangueExigee[]) {
+  return {
+    langues: LANGUES.filter((code) => langues.some((l) => l.langue === code)),
+    niveauxLangues: Object.fromEntries(langues.map((l) => [l.langue, l.niveaux])),
+  };
 }
 
 function ctxOf(user: SessionUser): { tenantId: string; userId: string } {
@@ -102,6 +135,7 @@ export class JobsService {
     // Le slug est un identifiant public non devinable (pas un secret) : il
     // rend l'offre accessible sans permettre d'énumérer les autres.
     const publicSlug = randomBytes(16).toString('base64url');
+    exigerUneExperiencePosteAdmise(input.experienceMin, input.experiencePoste);
     await this.db.withTenant(ctxOf(user), async (tx) => {
       if (input.orgUnitId) await this.requireOrgUnit(tx, input.orgUnitId);
       await refuserUneDateLimitePassee(tx, input.deadline ?? null);
@@ -119,7 +153,8 @@ export class JobsService {
         requiredDocuments: input.requiredDocuments,
         niveauEtudes: input.niveauEtudes,
         experienceMin: input.experienceMin,
-        langues: input.langues,
+        experiencePoste: input.experiencePoste,
+        ...languesEnBase(input.langues),
         dureeMois: dureeSelonContrat(input.contractType, input.dureeMois),
         publicSlug,
         createdByUserId: user.userId,
@@ -193,7 +228,14 @@ export class JobsService {
       }
       if (input.niveauEtudes !== undefined) changes.niveauEtudes = input.niveauEtudes;
       if (input.experienceMin !== undefined) changes.experienceMin = input.experienceMin;
-      if (input.langues !== undefined) changes.langues = input.langues;
+      if (input.experiencePoste !== undefined) changes.experiencePoste = input.experiencePoste;
+      if (input.experienceMin !== undefined || input.experiencePoste !== undefined) {
+        exigerUneExperiencePosteAdmise(
+          input.experienceMin ?? actuelle.experienceMin,
+          input.experiencePoste ?? actuelle.experiencePoste,
+        );
+      }
+      if (input.langues !== undefined) Object.assign(changes, languesEnBase(input.langues));
       // La durée se juge sur l'état FINAL de l'offre : contrat et durée
       // peuvent changer ensemble, ou l'un sans l'autre.
       if (input.contractType !== undefined || input.dureeMois !== undefined) {
@@ -669,7 +711,8 @@ export class JobsService {
       requiredDocuments: p.requiredDocuments,
       niveauEtudes: p.niveauEtudes as JobPostingView['niveauEtudes'],
       experienceMin: p.experienceMin,
-      langues: p.langues as JobPostingView['langues'],
+      experiencePoste: p.experiencePoste,
+      langues: languesDeLOffre(p.langues, p.niveauxLangues),
       dureeMois: p.dureeMois,
       status: p.status as JobPostingView['status'],
       publicSlug: p.publicSlug,

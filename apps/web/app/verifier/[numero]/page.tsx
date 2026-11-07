@@ -213,7 +213,7 @@ function Echec({
       <Verdict icone="error" couleur="text-danger" titre={titre} />
       <p className="mt-1.5 text-[13.5px] text-ink-muted">{detail}</p>
       {numero ? (
-        <p className="mt-4 rounded-full bg-bg px-3.5 py-1.5 font-mono text-[12.5px] font-bold tracking-[0.04em] text-ink">
+        <p className="mt-4 rounded-controle bg-bg px-3.5 py-1.5 font-mono text-[12.5px] font-bold tracking-[0.04em] text-ink">
           {numero}
         </p>
       ) : null}

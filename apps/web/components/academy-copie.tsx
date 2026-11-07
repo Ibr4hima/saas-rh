@@ -109,7 +109,7 @@ function Minuterie({ fin, onZero }: { fin: number; onZero: () => void }) {
       role="timer"
       aria-live={urgent ? 'polite' : 'off'}
       className={cn(
-        'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-bold ring-1',
+        'inline-flex shrink-0 items-center gap-1.5 rounded-controle px-3 py-1 text-[13px] font-bold ring-1',
         urgent
           ? 'bg-danger-soft text-danger ring-danger/30'
           : 'bg-primary-soft/70 text-primary ring-primary/20',

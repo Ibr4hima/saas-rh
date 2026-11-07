@@ -603,9 +603,9 @@ const ChampRiche = memo(function ChampRiche({
   );
 });
 
-/** Une formation en badge : le rayon vaut la moitié d'une ligne, un titre long passe à la ligne. */
+/** Une formation en badge, aux coins de tout badge (ADR-0183) : un titre long passe à la ligne. */
 const BADGE =
-  'inline-flex max-w-full items-center gap-1.5 rounded-[15px] border px-3 py-[5px] text-left text-[12px] font-semibold transition-colors duration-150';
+  'inline-flex max-w-full items-center gap-1.5 rounded-controle border px-3 py-[5px] text-left text-[12px] font-semibold transition-colors duration-150';
 
 /** Deux besoins n'en font qu'un : la même formation du catalogue, ou le même titre écrit. */
 const memeBesoin = (a: FormationDemandee, b: FormationDemandee) =>

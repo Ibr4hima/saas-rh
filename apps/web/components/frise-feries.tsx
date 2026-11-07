@@ -108,7 +108,7 @@ export function FriseFeries() {
             découpe le trait au lieu de le laisser traverser la pastille. */}
         <div className="relative flex justify-start md:justify-center">
           <span
-            className="rounded-full bg-primary px-4 py-[6px] text-[12.5px] leading-none font-bold text-primary-ink ring-[5px] ring-bg"
+            className="rounded-controle bg-primary px-4 py-[6px] text-[12.5px] leading-none font-bold text-primary-ink ring-[5px] ring-bg"
             style={TABULAIRE}
           >
             {annee}

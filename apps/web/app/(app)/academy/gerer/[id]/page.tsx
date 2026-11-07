@@ -812,7 +812,7 @@ function LigneLecon({
             }}
           />
           {l.support ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-line-soft py-0.5 pr-1 pl-2.5 text-[11.5px] font-semibold text-ink">
+            <span className="inline-flex items-center gap-1 rounded-controle border border-line-soft py-0.5 pr-1 pl-2.5 text-[11.5px] font-semibold text-ink">
               <button
                 type="button"
                 title="Voir le support"

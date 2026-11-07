@@ -124,7 +124,7 @@ function ChoixEcheance({
           if (!ouvert) onQuitter();
         }}
         className={cn(
-          'inline-flex shrink-0 items-center gap-1 rounded-full border bg-surface py-[3px] pr-2.5 pl-2 text-[11.5px] font-semibold whitespace-nowrap',
+          'inline-flex shrink-0 items-center gap-1 rounded-controle border bg-surface py-[3px] pr-2.5 pl-2 text-[11.5px] font-semibold whitespace-nowrap',
           'transition-colors duration-150 outline-none hover:border-primary/45 hover:text-primary focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30',
           valide ? 'border-line text-ink' : 'border-dashed border-line text-ink-muted',
           ouvert && 'border-primary text-primary',

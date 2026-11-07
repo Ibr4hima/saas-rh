@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import type { ApplyInput, Langue, NiveauEtudes, PublicJobInfo } from '@teranga/contracts';
-import { MAX_DOCUMENT_BYTES, premierPrenom } from '@teranga/contracts';
+import type { ApplyInput, NiveauEtudes, PublicJobInfo } from '@teranga/contracts';
+import { languesDeLOffre, MAX_DOCUMENT_BYTES, premierPrenom } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
 import { problem } from '../../common/problem';
 import * as t from '../../db/schema';
@@ -56,7 +56,9 @@ export class ApplyService {
           requiredDocuments: t.jobPostings.requiredDocuments,
           niveauEtudes: t.jobPostings.niveauEtudes,
           experienceMin: t.jobPostings.experienceMin,
+          experiencePoste: t.jobPostings.experiencePoste,
           langues: t.jobPostings.langues,
+          niveauxLangues: t.jobPostings.niveauxLangues,
           dureeMois: t.jobPostings.dureeMois,
           organizationName: t.tenants.name,
         })
@@ -79,7 +81,8 @@ export class ApplyService {
         requiredDocuments: row.requiredDocuments,
         niveauEtudes: row.niveauEtudes as NiveauEtudes | null,
         experienceMin: row.experienceMin,
-        langues: row.langues as Langue[],
+        experiencePoste: row.experiencePoste,
+        langues: languesDeLOffre(row.langues, row.niveauxLangues),
         dureeMois: row.dureeMois,
       };
     });

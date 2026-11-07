@@ -3,6 +3,7 @@
  * (src/db/sql). La source de vérité du DDL est le SQL — ce fichier ne sert
  * qu'au typage des requêtes. Toute divergence est un bug.
  */
+import type { NiveauxLangue } from '@teranga/contracts';
 import {
   boolean,
   char,
@@ -439,7 +440,14 @@ export const jobPostings = pgTable('job_postings', {
   /** Le profil recherché (cf. 0056) : des listes fermées, rien de saisi. */
   niveauEtudes: text('niveau_etudes'),
   experienceMin: smallint('experience_min'),
+  /** Jamais au-dessus de l'expérience minimum (cf. 0132). */
+  experiencePoste: smallint('experience_poste'),
+  /** Les langues exigées en plus du français ; leurs niveaux à part (cf. 0132). */
   langues: text('langues').array().notNull().default([]),
+  niveauxLangues: jsonb('niveaux_langues')
+    .$type<Partial<Record<string, NiveauxLangue>>>()
+    .notNull()
+    .default({}),
   dureeMois: smallint('duree_mois'),
   status: text('status').notNull().default('draft'),
   publicSlug: text('public_slug').notNull(),

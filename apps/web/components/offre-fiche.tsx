@@ -2,7 +2,15 @@
 
 import * as React from 'react';
 import { useMemo } from 'react';
-import { premierDuMois } from '@teranga/contracts';
+import type { LangueDeLOffre, NiveauxLangue } from '@teranga/contracts';
+import {
+  COMPETENCE_LANGUE_LABELS,
+  COMPETENCES_LANGUE,
+  FRANCAIS,
+  LANGUE_LABELS,
+  NIVEAU_LANGUE_LABELS,
+  premierDuMois,
+} from '@teranga/contracts';
 import { Icon, type IconName } from './icons';
 
 /**
@@ -107,5 +115,33 @@ export function FaitOffre({
         </p>
       </div>
     </div>
+  );
+}
+
+/** « Oral : courant · Écrit : intermédiaire · Compréhension : courant ». */
+export function niveauxEnClair(niveaux: NiveauxLangue): string {
+  return COMPETENCES_LANGUE.map(
+    (c) => `${COMPETENCE_LANGUE_LABELS[c]} : ${NIVEAU_LANGUE_LABELS[niveaux[c]].toLowerCase()}`,
+  ).join(' · ');
+}
+
+/**
+ * Les langues d'une offre, une par ligne : le français, exigé partout, puis
+ * chaque autre langue avec ses niveaux (ADR-0182). Une offre plus ancienne
+ * n'a pas les niveaux : la langue s'affiche seule.
+ */
+export function LanguesOffre({ langues }: { langues: LangueDeLOffre[] }) {
+  return (
+    <>
+      <span className="block">{FRANCAIS}</span>
+      {langues.map((l) => (
+        <span key={l.langue} className="block">
+          {LANGUE_LABELS[l.langue]}
+          {l.niveaux ? (
+            <span className="font-normal text-ink-muted"> · {niveauxEnClair(l.niveaux)}</span>
+          ) : null}
+        </span>
+      ))}
+    </>
   );
 }

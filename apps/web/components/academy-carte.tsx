@@ -81,7 +81,7 @@ export function CarteFormation({ formation }: { formation: CourseSummary }) {
         <CardInteractive className="flex h-full flex-col overflow-hidden group-focus-visible:ring-2 group-focus-visible:ring-primary/40 group-hover/carte:border-card-line-hover group-hover/carte:shadow-md hover:translate-y-0">
           <Couverture category={formation.category} className="h-[118px] shrink-0">
             <div className="relative flex h-full flex-col justify-between p-4">
-              <span className="w-fit rounded-full bg-white/15 px-2.5 py-[3px] text-[10.5px] font-bold tracking-[0.06em] uppercase ring-1 ring-white/20 backdrop-blur-sm">
+              <span className="w-fit rounded-controle bg-white/15 px-2.5 py-[3px] text-[10.5px] font-bold tracking-[0.06em] uppercase ring-1 ring-white/20 backdrop-blur-sm">
                 {famille.label}
               </span>
               <span className="flex items-center gap-1.5 text-[11.5px] font-semibold text-white/85">

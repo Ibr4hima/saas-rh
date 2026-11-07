@@ -113,9 +113,9 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0105](0105-conge-de-maternite.md)                    | Le congé de maternité : la cessation de paiement et la reprise de service               | acceptée, précisée par 0130                 |
 | [0106](0106-declaration-de-mouvement.md)              | La déclaration de mouvement du travailleur : la fiche, le Code du travail de 2026       | acceptée, précisée par 0107, 0133 et 0134   |
 | [0107](0107-declaration-ancien-code.md)               | La déclaration de mouvement cite le Code du travail de 1997, comme les autres documents | acceptée                                    |
-| [0108](0108-boutons-aux-coins-d-e-voting.md)          | Les boutons et les champs aux coins d'e-Voting                                          | acceptée, précisée (0110, 0115, 0119)       |
+| [0108](0108-boutons-aux-coins-d-e-voting.md)          | Les boutons et les champs aux coins d'e-Voting                                          | précisée (0110, 0115, 0119), révisée (0183) |
 | [0109](0109-delegation-sans-bandeau.md)               | La délégation se règle dans « Déléguer des tâches », sans bandeau sur les pages         | acceptée, précisée par 0128                 |
-| [0110](0110-blocs-aux-coins-des-boutons.md)           | Les blocs et les tableaux aux coins des boutons                                         | acceptée, précisée par 0115                 |
+| [0110](0110-blocs-aux-coins-des-boutons.md)           | Les blocs et les tableaux aux coins des boutons                                         | acceptée, précisée par 0115, révisée (0183) |
 | [0111](0111-liste-des-documents-a-generer.md)         | La liste des documents à générer : des libellés courts, une hauteur bornée              | acceptée, précisée par 0112, 0113 et 0131   |
 | [0112](0112-cinq-familles-de-documents.md)            | La liste des documents à générer en cinq familles                                       | acceptée, précisée par 0131                 |
 | [0113](0113-demander-un-document-en-liste.md)         | Demander un document : la liste de « Générer des documents », à choix multiple          | acceptée                                    |
@@ -187,3 +187,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0179](0179-organigramme-avant-l-import.md)           | Avant d'importer, l'organigramme final : agents à placer, responsables à désigner       | acceptée                                    |
 | [0180](0180-fiches-au-centre.md)                      | Les fiches s'ouvrent au centre de l'écran                                               | acceptée                                    |
 | [0181](0181-matricule-en-double-et-anciennete.md)     | Un matricule en double : 50A et 50B, la lettre selon l'ancienneté                       | acceptée                                    |
+| [0182](0182-profil-de-l-offre.md)                     | L'offre : le français d'office, le niveau de chaque langue, l'expérience pour le poste  | acceptée                                    |
+| [0183](0183-badges-aux-coins-de-8-px.md)              | Les badges aux coins de 8 px                                                            | acceptée                                    |

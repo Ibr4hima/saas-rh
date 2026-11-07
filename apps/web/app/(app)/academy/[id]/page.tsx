@@ -97,7 +97,7 @@ export default function FormationPage() {
       <Card className="shrink-0 overflow-hidden">
         <div className="grid md:grid-cols-[260px_minmax(0,1fr)]">
           <Couverture category={f.category} className="h-28 md:h-auto md:min-h-[196px]">
-            <span className="absolute top-4 left-4 rounded-full bg-white/15 px-2.5 py-[3px] text-[10.5px] font-bold tracking-[0.06em] uppercase ring-1 ring-white/20 backdrop-blur-sm">
+            <span className="absolute top-4 left-4 rounded-controle bg-white/15 px-2.5 py-[3px] text-[10.5px] font-bold tracking-[0.06em] uppercase ring-1 ring-white/20 backdrop-blur-sm">
               {famille.label}
             </span>
           </Couverture>
