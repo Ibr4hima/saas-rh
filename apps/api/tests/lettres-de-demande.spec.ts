@@ -345,6 +345,34 @@ describe('la demande et sa lettre', () => {
     expect(await titres(dispo, 'suivi')).toContain('Votre demande de disponibilité a été refusée');
   });
 
+  it('prête, la décision est annoncée comme une demande traitée (ADR-0193)', async () => {
+    const avis = async (id: string) =>
+      (
+        await raw(`SELECT title FROM notifications WHERE dedupe_key = $1`, [
+          `document:${id}:suivi:ready`,
+        ])
+      ).rows.map((r: { title: string }) => r.title);
+    // Déposée en ligne : la demande est traitée, la décision dans l'espace.
+    const dispo = await demande('decision_disponibilite', '2026-11-02');
+    await demandes.deposer(awa.session, dispo, {
+      filename: 'Décision.pdf',
+      contentType: 'application/pdf',
+      contentBase64: pdf('décision'),
+    });
+    await demandes.batchAdvance(awa.session, { ids: [dispo], status: 'ready' });
+    expect(await avis(dispo)).toEqual(['Votre demande de disponibilité a été traitée']);
+    // En main propre : l'avis dit où retirer la décision.
+    const renouvellement = await demande('decision_renouvellement_disponibilite', '2026-11-03');
+    await demandes.batchAdvance(awa.session, {
+      ids: [renouvellement],
+      status: 'ready',
+      pickupContact: 'Fatou Sall',
+    });
+    expect(await avis(renouvellement)).toEqual([
+      'Votre demande de renouvellement de disponibilité a été traitée, la décision à retirer auprès de Fatou Sall',
+    ]);
+  });
+
   it('qui traite la retrouve dans la file, avec la lettre', async () => {
     const id = await demande('decision_disponibilite', '2026-11-02');
     const vue = await demandes.une(awa.session, id);

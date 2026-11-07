@@ -127,6 +127,14 @@ export const ceQuiSeDemande = (doc: RequestableDoc): string => {
 export const deLaDemande = (doc: RequestableDoc): string =>
   de(DEMANDE_DU_DOCUMENT[doc]?.nom ?? (DOCUMENT[doc] ?? DOCUMENT.autre).nom);
 
+/**
+ * La DCH répond par une décision : une disponibilité, son renouvellement.
+ * L'avis à l'agent dit que sa demande est traitée, sans annoncer « votre
+ * décision de mise en disponibilité » avant qu'on l'ait lue (ADR-0193).
+ */
+export const repondParDecision = (doc: RequestableDoc): boolean =>
+  DEMANDE_DU_DOCUMENT[doc] !== undefined;
+
 /** « le CDD », « le stage » : tous masculins. */
 export const CONTRAT: Record<ContractType, string> = {
   cdi: 'CDI',

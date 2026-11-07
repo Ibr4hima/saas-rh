@@ -42,7 +42,14 @@ import { problem, ProblemException } from '../../common/problem';
 import * as t from '../../db/schema';
 import { TenantDb, Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
-import { accord, bulletins, deBulletins, deLaDemande, DOCUMENT } from '../notifications/phrases';
+import {
+  accord,
+  bulletins,
+  deBulletins,
+  deLaDemande,
+  DOCUMENT,
+  repondParDecision,
+} from '../notifications/phrases';
 import { periodeDu } from './bulletin';
 import { agentDuCompte, detenteursDe, directionDuPersonnel, joursFeries } from '../acces/dch';
 import { heuresOuvreesEntre } from '../time/heures-ouvrees';
@@ -869,10 +876,20 @@ export class DocumentRequestsService {
         ? deLaDemande(e.docTypes[0] as RequestableDoc)
         : 'de documents';
     const retrait = `à retirer auprès de ${e.pickupContact ?? 'la DCH'}`;
+    // Une disponibilité, son renouvellement : la demande est traitée, et la
+    // décision se lit dans l'espace ou se retire (ADR-0193).
+    const parDecision = seul !== undefined && repondParDecision(e.docTypes[0] as RequestableDoc);
     const titres: Partial<Record<DocumentRequestStatus, string>> = {
       processing: `${votre} en préparation`,
-      ready:
-        e.fichiers > 0
+      ready: parDecision
+        ? `Votre demande ${demande} a été traitée${
+            e.fichiers > 0
+              ? e.pickupContact
+                ? `, l’original de la décision ${retrait}`
+                : ''
+              : `, la décision ${retrait}`
+          }`
+        : e.fichiers > 0
           ? `${votre} ${accorde('déposé')} dans votre espace${
               e.pickupContact ? `, l’original ${retrait}` : ''
             }`

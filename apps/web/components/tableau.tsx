@@ -48,14 +48,22 @@ export interface Selection<T> {
  * dossiers traités, et une sélection gardée en mémoire désignerait des
  * lignes qui n'existent plus — d'où des barres d'action qui comptent des
  * fantômes. On garde les identifiants, on croise à chaque rendu.
+ *
+ * `unique` : une ligne à la fois. En cocher une autre décoche la première,
+ * comme pour les demandes de documents, qui se traitent une par une
+ * (ADR-0192).
  */
-export function useSelection<T extends { id: string }>(lignes: T[]): Selection<T> {
+export function useSelection<T extends { id: string }>(
+  lignes: T[],
+  { unique = false }: { unique?: boolean } = {},
+): Selection<T> {
   const [ids, setIds] = React.useState<string[]>([]);
   const choisis = React.useMemo(() => lignes.filter((l) => ids.includes(l.id)), [lignes, ids]);
   return {
     choisis,
     coche: (id) => ids.includes(id),
-    bascule: (id) => setIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id])),
+    bascule: (id) =>
+      setIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : unique ? [id] : [...s, id])),
     toutBasculer: () =>
       setIds((s) =>
         lignes.length > 0 && choisis.length === lignes.length ? [] : lignes.map((l) => l.id),

@@ -31,7 +31,6 @@ import { formatDate } from '../../../../../lib/hooks';
 import { timeAgo } from '../../../../../components/document-request-list';
 import { FenetreDocument } from '../../../../../components/fenetre-document';
 import { Icon } from '../../../../../components/icons';
-import { VoirLaLettre } from '../../../../../components/lettre-de-demande';
 import { CartePleine, CorpsDefilant, Page } from '../../../../../components/gabarit';
 import { Pagination, usePagination } from '../../../../../components/pagination';
 import { useMesSignalements } from '../../../../../components/signalement';
@@ -348,9 +347,9 @@ function TableauDesDemandes({
  * Une mise à jour d'informations dit ce qui change, avant et après ;
  * refusée, son motif suit, comme celui d'une demande de documents.
  *
- * Nouvellement traitée, la ligne se teinte du bleu de la marque, un filet
- * la borde à gauche et « Nouveau » suit le document : à l'arrivée, elle
- * s'éclaire un instant, puis se pose (ADR-0048).
+ * Nouvellement traitée, la ligne se teinte du bleu de la marque : à
+ * l'arrivée, elle s'éclaire un instant, puis se pose (ADR-0048), sans filet
+ * ni étiquette (ADR-0193).
  */
 function Ligne({
   demande: x,
@@ -379,22 +378,10 @@ function Ligne({
   const r = x.d;
   return (
     <Tr className={cn(nouvelle && 'tg-nouvelle bg-primary-soft/60 hover:bg-primary-soft')}>
-      <Td
-        className={cn(
-          nouvelle &&
-            'relative before:absolute before:inset-y-2.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary',
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          <p className="min-w-0 truncate font-semibold text-ink-strong" title={titre}>
-            {titre}
-          </p>
-          {nouvelle ? (
-            <span className="shrink-0 rounded-controle bg-primary px-[7px] text-[9.5px] leading-[17px] font-extrabold tracking-[0.06em] text-primary-ink uppercase">
-              Nouveau
-            </span>
-          ) : null}
-        </div>
+      <Td>
+        <p className="min-w-0 truncate font-semibold text-ink-strong" title={titre}>
+          {titre}
+        </p>
         {x.genre === 'informations'
           ? x.d.fields.map((f) => (
               <p key={f.field} className="mt-0.5 text-[11.5px] text-ink-muted">
@@ -407,12 +394,6 @@ function Ligne({
           <p className="mt-0.5 truncate text-[11.5px] text-ink-muted italic" title={r.note}>
             « {r.note} »
           </p>
-        ) : null}
-        {/* La lettre jointe à la demande, telle que la DCH la lit (ADR-0189). */}
-        {x.genre === 'document' && x.d.lettre ? (
-          <span className="mt-1.5 flex">
-            <VoirLaLettre demande={x.d} />
-          </span>
         ) : null}
         {r.status === 'rejected' && r.hrMessage ? (
           <p className="mt-0.5 text-[11.5px] font-semibold text-danger">Motif : {r.hrMessage}</p>

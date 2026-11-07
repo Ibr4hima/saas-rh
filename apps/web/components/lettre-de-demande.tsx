@@ -13,7 +13,7 @@ import { Icon } from './icons';
    La lettre de demande (ADR-0189) : une mise en disponibilité, son
    renouvellement et une domiciliation bancaire se demandent par lettre.
    L'agent la joint à sa demande ; qui la traite la lit avant d'établir le
-   document, et l'agent la retrouve dans son suivi.
+   document.
 */
 
 /** La lettre choisie, prête à partir avec la demande. */
@@ -106,9 +106,9 @@ export const GESTE_DE_LA_LIGNE =
   'inline-flex items-center gap-1 rounded-[6px] border border-line px-2.5 py-[3px] text-[11px] font-semibold whitespace-nowrap text-primary transition-colors hover:border-primary/40 hover:bg-primary/[0.07] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none';
 
 /**
- * La lettre jointe à une demande, à lire dans la fenêtre d'aperçu : pour qui
- * la traite, dans la file et sur la page du document ; pour l'agent, dans
- * son suivi. Sans lettre, rien ne s'affiche.
+ * La lettre jointe à une demande, à lire dans la fenêtre d'aperçu, pour qui
+ * la traite : dans la file et sur la page du document. Sans lettre, rien ne
+ * s'affiche.
  */
 export function VoirLaLettre({
   demande: r,

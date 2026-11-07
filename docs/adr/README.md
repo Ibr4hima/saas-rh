@@ -53,7 +53,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0045](0045-autre-document-retire.md)                 | « Autre document » ne se demande plus                                                   | acceptée, précisée par 0084                 |
 | [0046](0046-formateur-obligatoire.md)                 | Le formateur d'une formation est obligatoire                                            | acceptée, précisée par 0070                 |
 | [0047](0047-sessions-et-signalement.md)               | Plus de « Se déconnecter partout » ; un signalement part sans précision                 | acceptée, précisée par 0125                 |
-| [0048](0048-nouvellement-traitees-en-evidence.md)     | Arrivé par l'avis, les demandes nouvellement traitées en évidence                       | acceptée, précisée par 0081                 |
+| [0048](0048-nouvellement-traitees-en-evidence.md)     | Arrivé par l'avis, les demandes nouvellement traitées en évidence                       | acceptée, précisée par 0081, 0193           |
 | [0049](0049-evaluation-sans-minuterie.md)             | Academy : l'évaluation sans limite de temps, un certificat sans évaluation              | acceptée, minuterie rétablie par 0073       |
 | [0050](0050-sans-evaluation-sans-echeance.md)         | Sans évaluation, un certificat sans limite de validité                                  | acceptée                                    |
 | [0051](0051-fiche-objectifs-crayon.md)                | La fiche d'objectifs s'ouvre au crayon et s'enregistre d'un clic                        | remplacée par ADR-0149                      |
@@ -194,6 +194,8 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0186](0186-courriels-a-la-charte.md)                 | Les courriels à la charte de l'APIX                                                     | acceptée                                    |
 | [0187](0187-connexion-a-la-charte.md)                 | Les écrans de connexion à la charte de l'APIX, toujours en clair                        | acceptée                                    |
 | [0188](0188-verification-a-la-charte.md)              | La vérification d'un certificat à la charte de l'APIX                                   | acceptée                                    |
-| [0189](0189-lettre-de-demande.md)                     | La lettre de demande, jointe par l'agent, lue et reprise par qui traite la demande      | acceptée, précisée par 0190, 0191           |
+| [0189](0189-lettre-de-demande.md)                     | La lettre de demande, jointe par l'agent, lue et reprise par qui traite la demande      | acceptée, précisée par 0190, 0191, 0193     |
 | [0190](0190-demande-figee.md)                         | Au titre d'une demande, l'identité de l'agent et la date de la demande sont figées      | acceptée                                    |
-| [0191](0191-une-demande-a-la-fois.md)                 | Une demande de document se traite seule, en un écran                                    | acceptée                                    |
+| [0191](0191-une-demande-a-la-fois.md)                 | Une demande de document se traite seule, en un écran                                    | acceptée, précisée par 0192                 |
+| [0192](0192-une-demande-cochee.md)                    | Une demande de document se coche, une seule à la fois                                   | acceptée                                    |
+| [0193](0193-traitee-cote-agent.md)                    | Côté agent, une demande traitée sans filet, sans « Nouveau », sans lettre               | acceptée                                    |

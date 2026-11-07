@@ -46,10 +46,14 @@ import {
   type Message,
 } from '../../../components/traitement-dch';
 import {
+  BarreSelection,
+  LIGNE_COCHEE,
   SqueletteTableau,
+  TdCase,
   TdGouttiere,
   ThGouttiere,
   ThTri,
+  useSelection,
   useTriLocal,
 } from '../../../components/tableau';
 
@@ -148,10 +152,7 @@ export default function DocumentRequestsPage() {
 
   const me = useMe();
   const estDirecteur = Boolean(me.data?.dirigeLaDCH);
-  // La demande qu'on traite ou qu'on décline : une à la fois (ADR-0191).
-  const [enCours, setEnCours] = useState<{ id: string; geste: 'traiter' | 'decliner' } | null>(
-    null,
-  );
+  const [panneau, setPanneau] = useState<'traiter' | 'decliner' | null>(null);
   const [message, setMessage] = useState<Message>(null);
   const [traiteesOuvertes, setTraiteesOuvertes] = useState(false);
   // La demande prête dont on ouvre les documents remis : on la relit dans la
@@ -209,8 +210,13 @@ export default function DocumentRequestsPage() {
   // Quinze par page.
   const fileVue = usePagination(aTraiter, `${tri.colonne}|${tri.sens}`);
   const historique = usePagination(traitees);
+  // Ne se coche que ce qu'on traite : jamais sa propre demande, qui
+  // s'annule depuis l'espace personnel (ADR-0060). Et une seule à la fois :
+  // une demande se traite seule (ADR-0192).
+  const cochables = useMemo(() => fileVue.tranche.filter((r) => r.canAdvance), [fileVue.tranche]);
+  const sel = useSelection(cochables, { unique: true });
   // Relue dans la liste à chaque rendu : un document déposé s'y voit aussitôt.
-  const demandeEnCours = enCours ? (items.find((r) => r.id === enCours.id) ?? null) : null;
+  const choisie = sel.choisis[0] ?? null;
 
   if (requests.isError) {
     return <LoadFailure error={requests.error} onRetry={() => void requests.refetch()} />;
@@ -223,6 +229,17 @@ export default function DocumentRequestsPage() {
       <CartePleine>
         <CardHeader className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
           <CardTitle className="min-w-0 flex-1">Demandes à traiter</CardTitle>
+          {traite ? (
+            <BarreSelection sel={sel} quoi="demande" feminin>
+              <Button size="sm" onClick={() => setPanneau('traiter')}>
+                <Icon name="folder_managed" size={15} />
+                Traiter
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setPanneau('decliner')}>
+                Décliner
+              </Button>
+            </BarreSelection>
+          ) : null}
           {aTraiter.length > 0 ? <Pastille n={aTraiter.length} /> : null}
         </CardHeader>
         {requests.isLoading ? (
@@ -274,17 +291,19 @@ export default function DocumentRequestsPage() {
                     en-têtes pour le même ordre seraient deux fois le même
                     bouton. Celui-ci reste un intitulé. */}
                 <Th className="text-right">Temps écoulé</Th>
-                <Th className={traite ? 'text-right' : undefined}>
-                  {traite ? 'Décision' : 'Traitée par'}
-                </Th>
+                {traite ? null : <Th>Traitée par</Th>}
               </tr>
             </THead>
             <TBody>
               {fileVue.tranche.map((r) => {
                 const h = r.heuresOuvrees ?? 0;
                 return (
-                  <Tr key={r.id}>
-                    <TdGouttiere />
+                  <Tr key={r.id} className={cn(sel.coche(r.id) && LIGNE_COCHEE)}>
+                    {traite && r.canAdvance ? (
+                      <TdCase sel={sel} id={r.id} quoi={`la demande de ${r.employeeName}`} />
+                    ) : (
+                      <TdGouttiere />
+                    )}
                     <Td>
                       {docLabels(r)}
                       {r.traitement?.aConfier ? (
@@ -353,27 +372,7 @@ export default function DocumentRequestsPage() {
                     >
                       {heures(h)}
                     </Td>
-                    {traite ? (
-                      <Td className="text-right whitespace-nowrap">
-                        {r.canAdvance ? (
-                          <span className="inline-flex items-center gap-1.5">
-                            <Button
-                              size="sm"
-                              onClick={() => setEnCours({ id: r.id, geste: 'traiter' })}
-                            >
-                              Traiter
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => setEnCours({ id: r.id, geste: 'decliner' })}
-                            >
-                              Décliner
-                            </Button>
-                          </span>
-                        ) : null}
-                      </Td>
-                    ) : (
+                    {traite ? null : (
                       <Td className="text-[12px] text-ink-muted">{r.traitement?.traitants}</Td>
                     )}
                   </Tr>
@@ -463,11 +462,14 @@ export default function DocumentRequestsPage() {
       </CartePleine>
       {traiteesOuvertes ? <Pagination {...historique.barre} /> : null}
 
-      {enCours?.geste === 'traiter' && demandeEnCours ? (
+      {panneau === 'traiter' && choisie ? (
         <TraiterModal
-          demande={demandeEnCours}
-          onClose={() => setEnCours(null)}
-          onDone={() => setEnCours(null)}
+          demande={choisie}
+          onClose={() => setPanneau(null)}
+          onDone={() => {
+            setPanneau(null);
+            sel.vider();
+          }}
         />
       ) : null}
       {documentsDe ? (
@@ -476,11 +478,14 @@ export default function DocumentRequestsPage() {
           onClose={() => setDocumentsDe(null)}
         />
       ) : null}
-      {enCours?.geste === 'decliner' && demandeEnCours ? (
+      {panneau === 'decliner' && choisie ? (
         <DeclinerModal
-          demande={demandeEnCours}
-          onClose={() => setEnCours(null)}
-          onDone={() => setEnCours(null)}
+          demande={choisie}
+          onClose={() => setPanneau(null)}
+          onDone={() => {
+            setPanneau(null);
+            sel.vider();
+          }}
         />
       ) : null}
     </Page>
@@ -488,10 +493,10 @@ export default function DocumentRequestsPage() {
 }
 
 /**
- * La suite donnée à une demande prête : déposée dans l'espace de l'agent
- * (l'original parfois à retirer), ou à retirer auprès de quelqu'un. Qui
- * traite ce document ouvre ses fichiers pour les vérifier ou les corriger,
- * et peut encore en déposer un pour qui ne peut pas passer au bureau.
+ * La suite donnée à une demande prête : déposée en ligne (l'original parfois
+ * à retirer), ou à retirer auprès de quelqu'un. Qui traite ce document ouvre
+ * d'un clic ce qui est déposé, pour le vérifier ou le corriger, et peut
+ * encore déposer pour qui ne peut pas passer au bureau (ADR-0040).
  */
 function SuiteDonnee({
   demande: r,
@@ -500,31 +505,39 @@ function SuiteDonnee({
   demande: DocumentRequestView;
   onDocuments: () => void;
 }) {
-  const n = r.fichiers.length;
-  const fichiers = `${n} fichier${n > 1 ? 's' : ''}`;
+  const deposee = r.fichiers.length > 0;
+  const gere = r.canHandleFiles && r.status === 'ready';
+  const suite = deposee
+    ? `Déposée en ligne${r.pickupContact ? ` · Original auprès de ${r.pickupContact}` : ''}`
+    : r.pickupContact
+      ? `À retirer auprès de ${r.pickupContact}`
+      : 'Prête';
+  const deposer = gere && !deposee;
   return (
     <>
-      <span className="text-ink">
-        {n > 0
-          ? `Déposée en ligne${r.pickupContact ? ` · Original auprès de ${r.pickupContact}` : ''}`
-          : r.pickupContact
-            ? `À retirer auprès de ${r.pickupContact}`
-            : 'Prête'}
-      </span>
-      {n > 0 || r.hrMessage || (r.canHandleFiles && r.status === 'ready') ? (
+      {deposee && gere ? (
+        <button
+          type="button"
+          onClick={onDocuments}
+          className="text-left text-ink hover:text-primary hover:underline"
+        >
+          {suite}
+        </button>
+      ) : (
+        <span className="text-ink">{suite}</span>
+      )}
+      {deposer || r.hrMessage ? (
         <span className="block text-[11px] text-ink-muted">
-          {r.canHandleFiles && r.status === 'ready' ? (
+          {deposer ? (
             <button
               type="button"
               onClick={onDocuments}
               className="font-semibold text-primary hover:underline"
             >
-              {n > 0 ? fichiers : 'Déposer en ligne'}
+              Déposer en ligne
             </button>
-          ) : n > 0 ? (
-            fichiers
           ) : null}
-          {(n > 0 || (r.canHandleFiles && r.status === 'ready')) && r.hrMessage ? ' · ' : null}
+          {deposer && r.hrMessage ? ' · ' : null}
           {r.hrMessage}
         </span>
       ) : null}
