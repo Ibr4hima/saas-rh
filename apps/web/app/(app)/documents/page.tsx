@@ -132,15 +132,15 @@ function GestesDeLaDemande({ demande: r }: { demande: DocumentRequestView }) {
 }
 
 /**
- * Une durée, toujours en heures ouvrées : les week-ends et les jours fériés
- * ne comptent pas (ADR-0128).
- *
- * C'est l'unité de la file : deux demandes ne se comparent d'un coup d'œil que
- * dans la même unité, et une demande de document se compte en heures, pas en
- * jours. L'urgence, elle, est portée par la couleur de la colonne.
+ * Une durée ouvrée, à la minute (ADR-0194) : « 12 min » sous l'heure, puis
+ * « 3 h 5 min », « 52 h ». Les week-ends et les jours fériés ne comptent pas
+ * (ADR-0128) ; la couleur de la colonne porte l'urgence.
  */
-function heures(h: number): string {
-  return h < 1 ? '< 1 h' : `${h} h`;
+function duree(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
 export default function DocumentRequestsPage() {
@@ -370,7 +370,7 @@ export default function DocumentRequestsPage() {
                       )}
                       style={{ fontVariantNumeric: 'tabular-nums' }}
                     >
-                      {heures(h)}
+                      {duree(r.minutesOuvrees ?? 0)}
                     </Td>
                     {traite ? null : (
                       <Td className="text-[12px] text-ink-muted">{r.traitement?.traitants}</Td>
@@ -440,7 +440,7 @@ export default function DocumentRequestsPage() {
                     className="text-right font-semibold whitespace-nowrap text-ink-muted"
                     style={{ fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {r.handledAt && r.heuresOuvrees !== null ? heures(r.heuresOuvrees) : null}
+                    {r.handledAt && r.minutesOuvrees !== null ? duree(r.minutesOuvrees) : null}
                   </Td>
                   {/* Ce qui a été RÉPONDU au demandeur, pas l'étiquette d'un
                         automate : le document déposé dans son espace, le

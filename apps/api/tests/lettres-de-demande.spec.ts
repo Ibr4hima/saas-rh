@@ -378,6 +378,9 @@ describe('la demande et sa lettre', () => {
     const vue = await demandes.une(awa.session, id);
     expect(vue.employeeId).toBe(moussa.employeeId);
     expect(vue.lettre?.datee).toBe('2026-11-02');
+    // Le temps ouvré se compte aussi à la minute (ADR-0194).
+    expect(vue.minutesOuvrees).not.toBeNull();
+    expect(Math.floor((vue.minutesOuvrees ?? 0) / 60)).toBe(vue.heuresOuvrees);
     expect(await codeOf(() => demandes.une(khady.session, id))).toBe('documents.request_not_found');
   });
 });

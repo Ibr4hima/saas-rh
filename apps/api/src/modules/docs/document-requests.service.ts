@@ -452,6 +452,11 @@ export class DocumentRequestsService {
           r.request.readyAt ??
           r.request.deliveredAt ??
           (['rejected', 'cancelled'].includes(r.request.status) ? r.request.updatedAt : null);
+        // Le temps ouvré de la demande à sa clôture, ou jusqu'à maintenant.
+        const ouvrees =
+          r.request.status === 'cancelled'
+            ? null
+            : heuresOuvreesEntre(r.request.createdAt, cloture ?? maintenant, feries);
         lignes.push({
           id: r.request.id,
           employeeId: r.request.employeeId,
@@ -481,10 +486,8 @@ export class DocumentRequestsService {
           readyAt: r.request.readyAt?.toISOString() ?? null,
           deliveredAt: r.request.deliveredAt?.toISOString() ?? null,
           handledAt: cloture?.toISOString() ?? null,
-          heuresOuvrees:
-            r.request.status === 'cancelled'
-              ? null
-              : Math.floor(heuresOuvreesEntre(r.request.createdAt, cloture ?? maintenant, feries)),
+          heuresOuvrees: ouvrees === null ? null : Math.floor(ouvrees),
+          minutesOuvrees: ouvrees === null ? null : Math.floor(ouvrees * 60),
           nouvelle: !ouverte && nonVues.has(r.request.id),
           canAdvance: peutAvancer && (ALLOWED_TRANSITIONS[r.request.status]?.length ?? 0) > 0,
           canCancel: ouverte && r.request.employeeId === soi?.employeeId,

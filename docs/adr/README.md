@@ -133,7 +133,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0125](0125-acces-ferme-par-les-regles.md)            | L'accès au portail ne se coupe plus à la main                                           | acceptée                                    |
 | [0126](0126-directeur-general-adjoint.md)             | Le DGA se désigne à côté du DG ; son poste s'écrit au genre                             | acceptée, précisée par 0127                 |
 | [0127](0127-dga-par-nouvelle-affectation.md)          | « Nouvelle affectation » donne aussi la place de DGA                                    | acceptée                                    |
-| [0128](0128-principal-et-backups.md)                  | Principal et backups : 48 heures ouvrées à la personne principale, 72 pour traiter      | acceptée, précisée par 0129                 |
+| [0128](0128-principal-et-backups.md)                  | Principal et backups : 48 heures ouvrées à la personne principale, 72 pour traiter      | acceptée, précisée par 0129, 0194           |
 | [0129](0129-continuite-du-service.md)                 | La continuité du service : l'alerte, l'appréciation de la DCH, la suppléance            | acceptée                                    |
 | [0130](0130-cible-des-documents.md)                   | Chaque document a sa cible : la liste ne propose que les agents concernés               | acceptée, précisée 5 fois, de 0131 à 0176   |
 | [0131](0131-retraite-des-40-ans.md)                   | Le départ à la retraite dès 40 ans, sous CDI ou CDD ; deux retouches de la liste        | acceptée                                    |
@@ -199,3 +199,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0191](0191-une-demande-a-la-fois.md)                 | Une demande de document se traite seule, en un écran                                    | acceptée, précisée par 0192                 |
 | [0192](0192-une-demande-cochee.md)                    | Une demande de document se coche, une seule à la fois                                   | acceptée                                    |
 | [0193](0193-traitee-cote-agent.md)                    | Côté agent, une demande traitée sans filet, sans « Nouveau », sans lettre               | acceptée                                    |
+| [0194](0194-temps-a-la-minute.md)                     | Le temps d'une demande de document se lit à la minute                                   | acceptée                                    |

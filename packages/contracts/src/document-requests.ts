@@ -1485,6 +1485,8 @@ export interface DocumentRequestView {
    * jours fériés ne comptent pas. Null : annulée.
    */
   heuresOuvrees: number | null;
+  /** Les mêmes, en minutes : ce que la file affiche (ADR-0194). Null : annulée. */
+  minutesOuvrees: number | null;
   /**
    * Traitée, et l'avis qui l'annonce n'est pas encore lu : l'agent ne l'a
    * pas encore vue (ADR-0048). Dans son propre suivi seulement
