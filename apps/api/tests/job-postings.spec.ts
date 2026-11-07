@@ -232,7 +232,11 @@ describe('suppression d’offres', () => {
 
 describe('profil recherché', () => {
   it('enregistre et relit niveau, expériences et langues avec leurs niveaux', async () => {
-    const mandarin = { oral: 'notions', ecrit: 'notions', comprehension: 'intermediaire' } as const;
+    const mandarin = {
+      oral: 'intermediaire',
+      ecrit: 'intermediaire',
+      comprehension: 'bilingue',
+    } as const;
     const { id } = await service.create(rh, {
       ...offre('Analyste'),
       niveauEtudes: 'bac5plus',
@@ -289,11 +293,37 @@ describe('profil recherché', () => {
       [id],
     );
     const lue = await service.detail(rh, id);
-    expect(lue.langues).toEqual([{ langue: 'en', niveaux: null }]);
+    expect(lue.langues).toEqual([{ langue: 'en', niveaux: {} }]);
     expect(lue.experiencePoste).toBeNull();
     // Modifier les langues leur donne des niveaux.
     await service.update(rh, id, { langues: [{ langue: 'en', niveaux: COURANT }] });
     expect((await service.detail(rh, id)).langues).toEqual([{ langue: 'en', niveaux: COURANT }]);
+  });
+
+  it('enregistre les seuls niveaux précisés, et oublie « Notions »', async () => {
+    const { id } = await service.create(rh, {
+      ...offre('Partiel'),
+      langues: [
+        { langue: 'en', niveaux: {} },
+        { langue: 'es', niveaux: { oral: 'courant' } },
+      ],
+    });
+    expect((await service.detail(rh, id)).langues).toEqual([
+      { langue: 'en', niveaux: {} },
+      { langue: 'es', niveaux: { oral: 'courant' } },
+    ]);
+    // Une offre enregistrée avant le retrait de « Notions » : ce niveau se lit
+    // comme non précisé, les autres restent.
+    await raw(
+      `UPDATE job_postings
+          SET niveaux_langues = '{"en": {"oral": "notions", "ecrit": "courant"}}'
+        WHERE id = $1`,
+      [id],
+    );
+    expect((await service.detail(rh, id)).langues).toEqual([
+      { langue: 'en', niveaux: { ecrit: 'courant' } },
+      { langue: 'es', niveaux: {} },
+    ]);
   });
 
   it('exige la durée d’un CDD ou d’un stage, et l’ignore pour un CDI', async () => {
@@ -331,7 +361,7 @@ describe('profil recherché', () => {
 
   it('refuse une valeur hors liste et dédoublonne les langues', () => {
     const en = { langue: 'en', niveaux: COURANT };
-    const it_ = { langue: 'it', niveaux: { ...COURANT, ecrit: 'notions' } };
+    const it_ = { langue: 'it', niveaux: { ...COURANT, ecrit: 'intermediaire' } };
     const base = { ...offre('Poste'), langues: [en, en, it_] };
     expect(createJobPostingSchema.parse(base).langues).toEqual([en, it_]);
     // Le français est exigé d'office, il ne se coche pas ; le wolof et le
@@ -341,10 +371,12 @@ describe('profil recherché', () => {
       createJobPostingSchema.safeParse({ ...base, langues: [l] }).success;
     expect(langue({ langue: 'fr', niveaux: COURANT })).toBe(false);
     expect(langue({ langue: 'de', niveaux: COURANT })).toBe(false);
-    // Chaque langue cochée a ses trois niveaux, pris dans la liste.
-    expect(langue({ langue: 'en' })).toBe(false);
-    expect(langue({ langue: 'en', niveaux: { oral: 'courant', ecrit: 'courant' } })).toBe(false);
+    // Les niveaux se précisent ou non, mais pris dans la liste (ADR-0184).
+    expect(langue({ langue: 'en' })).toBe(true);
+    expect(langue({ langue: 'en', niveaux: { oral: 'courant', ecrit: 'courant' } })).toBe(true);
     expect(langue({ langue: 'en', niveaux: { ...COURANT, oral: 'expert' } })).toBe(false);
+    // « Notions » n'est plus proposé (ADR-0184).
+    expect(langue({ langue: 'en', niveaux: { ...COURANT, oral: 'notions' } })).toBe(false);
     expect(createJobPostingSchema.safeParse({ ...base, contractType: 'consultant' }).success).toBe(
       false,
     );

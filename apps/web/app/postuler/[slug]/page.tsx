@@ -552,7 +552,7 @@ export default function ApplyPage() {
                 </FaitOffre>
               ))}
               <div className="sm:col-span-3">
-                <FaitOffre label="Langues">
+                <FaitOffre label="Langues exigées">
                   <LanguesOffre langues={offre.langues} />
                 </FaitOffre>
               </div>

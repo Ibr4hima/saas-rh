@@ -74,10 +74,8 @@ function depuis(offre: JobPostingView): Champs {
     niveauEtudes: offre.niveauEtudes ?? '',
     experienceMin: offre.experienceMin === null ? '' : String(offre.experienceMin),
     experiencePoste: offre.experiencePoste === null ? '' : String(offre.experiencePoste),
-    // Une langue d'une offre plus ancienne n'a pas ses niveaux : ils restent
-    // à choisir avant d'enregistrer.
     langues: offre.langues.map((l) => l.langue),
-    niveaux: Object.fromEntries(offre.langues.map((l) => [l.langue, l.niveaux ?? {}])),
+    niveaux: Object.fromEntries(offre.langues.map((l) => [l.langue, l.niveaux])),
     dureeMois: offre.dureeMois === null ? '' : String(offre.dureeMois),
   };
 }
@@ -132,7 +130,6 @@ export function JobModal({
     v.niveauEtudes !== '' &&
     v.experienceMin !== '' &&
     v.experiencePoste !== '' &&
-    langues.every((l) => COMPETENCES_LANGUE.every((c) => Boolean(v.niveaux[l]?.[c]))) &&
     (!aDuree || v.dureeMois !== '');
 
   const enregistrer = useMutation({
@@ -146,8 +143,12 @@ export function JobModal({
         niveauEtudes: v.niveauEtudes,
         experienceMin: Number(v.experienceMin),
         experiencePoste: Number(v.experiencePoste),
-        // Dans l'ordre de la liste, quel que soit l'ordre des clics.
-        langues: langues.map((l) => ({ langue: l, niveaux: v.niveaux[l] })),
+        // Dans l'ordre de la liste, quel que soit l'ordre des clics ; seuls
+        // les niveaux précisés partent (ADR-0184).
+        langues: langues.map((l) => ({
+          langue: l,
+          niveaux: Object.fromEntries(Object.entries(v.niveaux[l] ?? {}).filter(([, n]) => n)),
+        })),
         dureeMois: aDuree ? Number(v.dureeMois) : null,
       };
       if (offre) {
@@ -335,20 +336,14 @@ export function JobModal({
               </legend>
               <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
                 {COMPETENCES_LANGUE.map((c) => (
-                  <Field
-                    key={c}
-                    label={COMPETENCE_LANGUE_LABELS[c]}
-                    htmlFor={`niveau-${l}-${c}`}
-                    required
-                  >
+                  <Field key={c} label={COMPETENCE_LANGUE_LABELS[c]} htmlFor={`niveau-${l}-${c}`}>
+                    {/* Facultatif : « Choisir » se reprend pour ne rien préciser. */}
                     <Select
                       id={`niveau-${l}-${c}`}
                       value={v.niveaux[l]?.[c] ?? ''}
                       onChange={(e) => choisirNiveau(l, c, e.target.value)}
                     >
-                      <option value="" hidden>
-                        Choisir
-                      </option>
+                      <option value="">Choisir</option>
                       {NIVEAUX_LANGUE.map((n) => (
                         <option key={n} value={n}>
                           {NIVEAU_LANGUE_LABELS[n]}

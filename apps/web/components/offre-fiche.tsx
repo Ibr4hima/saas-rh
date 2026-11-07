@@ -110,38 +110,57 @@ export function FaitOffre({
         <p className="text-[10px] font-extrabold tracking-[0.12em] text-ink-muted uppercase">
           {label}
         </p>
-        <p className="mt-0.5 text-[13.5px] leading-snug font-semibold text-ink-strong">
+        {/* Un bloc, pas un paragraphe : la valeur peut être une liste (les langues). */}
+        <div className="mt-0.5 text-[13.5px] leading-snug font-semibold text-ink-strong">
           {children}
-        </p>
+        </div>
       </div>
     </div>
   );
 }
 
-/** « Oral : courant · Écrit : intermédiaire · Compréhension : courant ». */
+/** « Oral : courant · Écrit : intermédiaire » : les niveaux précisés, et eux seuls. */
 export function niveauxEnClair(niveaux: NiveauxLangue): string {
-  return COMPETENCES_LANGUE.map(
-    (c) => `${COMPETENCE_LANGUE_LABELS[c]} : ${NIVEAU_LANGUE_LABELS[niveaux[c]].toLowerCase()}`,
-  ).join(' · ');
+  return COMPETENCES_LANGUE.flatMap((c) => {
+    const n = niveaux[c];
+    return n ? [`${COMPETENCE_LANGUE_LABELS[c]} : ${NIVEAU_LANGUE_LABELS[n].toLowerCase()}`] : [];
+  }).join(' · ');
 }
 
 /**
- * Les langues d'une offre, une par ligne : le français, exigé partout, puis
- * chaque autre langue avec ses niveaux (ADR-0182). Une offre plus ancienne
- * n'a pas les niveaux : la langue s'affiche seule.
+ * Les langues d'une offre, une puce chacune : le français, exigé partout,
+ * puis chaque autre langue. Les niveaux précisés suivent la langue, après un
+ * trait vertical fin (ADR-0182, ADR-0184) ; sans niveau, la langue est seule.
  */
 export function LanguesOffre({ langues }: { langues: LangueDeLOffre[] }) {
+  const lignes = [
+    { cle: 'fr', nom: FRANCAIS, niveaux: '' },
+    ...langues.map((l) => ({
+      cle: l.langue,
+      nom: LANGUE_LABELS[l.langue],
+      niveaux: niveauxEnClair(l.niveaux),
+    })),
+  ];
   return (
-    <>
-      <span className="block">{FRANCAIS}</span>
-      {langues.map((l) => (
-        <span key={l.langue} className="block">
-          {LANGUE_LABELS[l.langue]}
-          {l.niveaux ? (
-            <span className="font-normal text-ink-muted"> · {niveauxEnClair(l.niveaux)}</span>
-          ) : null}
-        </span>
+    <ul className="mt-1 flex flex-col gap-1.5">
+      {lignes.map((l) => (
+        <li key={l.cle} className="flex gap-2.5">
+          <span aria-hidden className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary/45" />
+          <span className="min-w-0">
+            {l.nom}
+            {l.niveaux ? (
+              <>
+                <span
+                  aria-hidden
+                  className="mx-2 inline-block h-3.5 w-px translate-y-0.5 bg-line"
+                />
+                <span className="sr-only"> : </span>
+                <span className="font-normal text-ink-muted">{l.niveaux}</span>
+              </>
+            ) : null}
+          </span>
+        </li>
       ))}
-    </>
+    </ul>
   );
 }

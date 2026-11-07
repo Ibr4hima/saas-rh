@@ -219,7 +219,7 @@ function CarteOffre({ offre: j }: { offre: JobPostingView }) {
             {j.experiencePoste === null ? <NonRenseigne /> : experienceExigee(j.experiencePoste)}
           </FaitOffre>
           <div className="sm:col-span-3">
-            <FaitOffre icon="translate" label="Langues">
+            <FaitOffre icon="translate" label="Langues exigées">
               <LanguesOffre langues={j.langues} />
             </FaitOffre>
           </div>

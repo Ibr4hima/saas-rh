@@ -187,5 +187,6 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0179](0179-organigramme-avant-l-import.md)           | Avant d'importer, l'organigramme final : agents à placer, responsables à désigner       | acceptée                                    |
 | [0180](0180-fiches-au-centre.md)                      | Les fiches s'ouvrent au centre de l'écran                                               | acceptée                                    |
 | [0181](0181-matricule-en-double-et-anciennete.md)     | Un matricule en double : 50A et 50B, la lettre selon l'ancienneté                       | acceptée                                    |
-| [0182](0182-profil-de-l-offre.md)                     | L'offre : le français d'office, le niveau de chaque langue, l'expérience pour le poste  | acceptée                                    |
+| [0182](0182-profil-de-l-offre.md)                     | L'offre : le français d'office, le niveau de chaque langue, l'expérience pour le poste  | acceptée, en partie remplacée (0184)        |
 | [0183](0183-badges-aux-coins-de-8-px.md)              | Les badges aux coins de 8 px                                                            | acceptée                                    |
+| [0184](0184-niveaux-de-langue-facultatifs.md)         | Les niveaux de langue d'une offre : sans « Notions », et facultatifs                    | acceptée                                    |

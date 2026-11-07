@@ -51,12 +51,11 @@ export const LANGUE_LABELS: Record<Langue, string> = {
  */
 export const FRANCAIS = 'Français';
 
-/** Le niveau exigé dans une langue, du plus simple au plus exigeant. */
-export const NIVEAUX_LANGUE = ['notions', 'intermediaire', 'courant', 'bilingue'] as const;
+/** Le niveau exigé dans une langue, du plus simple au plus exigeant (ADR-0184). */
+export const NIVEAUX_LANGUE = ['intermediaire', 'courant', 'bilingue'] as const;
 export const niveauLangueSchema = z.enum(NIVEAUX_LANGUE);
 export type NiveauLangue = z.infer<typeof niveauLangueSchema>;
 export const NIVEAU_LANGUE_LABELS: Record<NiveauLangue, string> = {
-  notions: 'Notions',
   intermediaire: 'Intermédiaire',
   courant: 'Courant',
   bilingue: 'Bilingue',
@@ -71,32 +70,45 @@ export const COMPETENCE_LANGUE_LABELS: Record<CompetenceLangue, string> = {
   comprehension: 'Compréhension',
 };
 
+/** Les niveaux d'une langue : chacun se précise, ou non (ADR-0184). */
 export const niveauxLangueSchema = z.object({
-  oral: niveauLangueSchema,
-  ecrit: niveauLangueSchema,
-  comprehension: niveauLangueSchema,
+  oral: niveauLangueSchema.optional(),
+  ecrit: niveauLangueSchema.optional(),
+  comprehension: niveauLangueSchema.optional(),
 });
 export type NiveauxLangue = z.infer<typeof niveauxLangueSchema>;
 
-/** Une langue exigée en plus du français, et son niveau dans chaque compétence. */
+/** Une langue exigée en plus du français, et les niveaux qu'on en précise. */
 export const langueExigeeSchema = z.object({
   langue: langueSchema,
-  niveaux: niveauxLangueSchema,
+  niveaux: niveauxLangueSchema.default({}),
 });
 export type LangueExigee = z.infer<typeof langueExigeeSchema>;
 
-/** Une langue de l'offre ; une offre d'avant l'ADR-0182 n'a pas ses niveaux. */
+/** Une langue de l'offre, et les niveaux précisés ; une offre ancienne n'en a pas. */
 export interface LangueDeLOffre {
   langue: Langue;
-  niveaux: NiveauxLangue | null;
+  niveaux: NiveauxLangue;
 }
 
-/** Les langues d'une offre telles que la base les garde : les codes, puis les niveaux. */
+/**
+ * Les langues d'une offre telles que la base les garde : les codes, puis les
+ * niveaux. Un niveau qui n'est plus proposé (« Notions », ADR-0184) se lit
+ * comme non précisé.
+ */
 export function languesDeLOffre(
   codes: readonly string[],
-  niveaux: Partial<Record<string, NiveauxLangue>>,
+  niveaux: Partial<Record<string, unknown>>,
 ): LangueDeLOffre[] {
-  return codes.map((code) => ({ langue: code as Langue, niveaux: niveaux[code] ?? null }));
+  return codes.map((code) => {
+    const lus = (niveaux[code] ?? {}) as Record<string, unknown>;
+    const precises: NiveauxLangue = {};
+    for (const c of COMPETENCES_LANGUE) {
+      const n = niveauLangueSchema.safeParse(lus[c]);
+      if (n.success) precises[c] = n.data;
+    }
+    return { langue: code as Langue, niveaux: precises };
+  });
 }
 
 /**
