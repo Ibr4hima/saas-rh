@@ -116,9 +116,9 @@ export type Coupe = 'normal' | 'bold' | 'italic' | 'bold-italic';
  * République, Anton pour les titres et Exo pour le pied de page (ADR-0173) ;
  * les pictogrammes du pied ; Arial (ADR-0090) et Times New Roman (ADR-0098),
  * celles de la déclaration de mouvement et des grilles d'évaluation ; Gill
- * Sans MT, celle des grilles (ADR-0149) ; Google Sans, celle du certificat
- * d'APIX Academy ; et une écriture manuscrite, celle des paraphes des
- * signataires d'une grille (ADR-0151).
+ * Sans MT, celle des grilles (ADR-0149) ; et une écriture manuscrite, celle
+ * des paraphes des signataires d'une grille (ADR-0151). Le certificat
+ * d'APIX Academy suit lui aussi la charte (ADR-0185).
  */
 export type Famille =
   | 'raleway'
@@ -131,7 +131,6 @@ export type Famille =
   | 'arial'
   | 'times'
   | 'gill-sans'
-  | 'google-sans'
   | 'signature';
 
 /**
@@ -211,11 +210,6 @@ const FICHIERS: Record<Famille, Partial<Record<Coupe, readonly string[]>>> = {
     bold: ['GILB____.TTF', ...surLeSysteme('GILB____.TTF'), 'fonts/cabin-bold.ttf'],
     italic: ['GILI____.TTF', ...surLeSysteme('GILI____.TTF'), 'fonts/cabin-italic.ttf'],
     'bold-italic': ['GILBI___.TTF', ...surLeSysteme('GILBI___.TTF'), 'fonts/cabin-bold-italic.ttf'],
-  },
-  'google-sans': {
-    normal: ['fonts/google-sans-regular.ttf'],
-    bold: ['fonts/google-sans-bold.ttf'],
-    italic: ['fonts/google-sans-italic.ttf'],
   },
   signature: {
     normal: ['fonts/allura-regular.ttf'],

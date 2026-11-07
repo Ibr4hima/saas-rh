@@ -22,9 +22,11 @@
  * OFL, dessinés aux MÊMES chasses : un mot y occupe la même largeur, une
  * ligne se coupe au même endroit. Gill Sans MT, celle des grilles
  * d'évaluation (ADR-0149), n'a pas d'équivalent aux mêmes chasses : Cabin, de
- * la même famille humaniste, en tient lieu. Google Sans reste celle du
- * certificat d'APIX Academy, comme du site. Allura, une écriture manuscrite,
+ * la même famille humaniste, en tient lieu. Allura, une écriture manuscrite,
  * trace les paraphes des signataires des grilles d'évaluation (ADR-0151).
+ * Google Sans, la police du site, n'est plus dans aucun PDF depuis que le
+ * certificat d'APIX Academy suit la charte (ADR-0185) : ses TTF restent pour
+ * les sous-titres des vidéos de démonstration (`scripts/demo-academy`).
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -274,8 +276,9 @@ writeFileSync(
   '# Polices des documents PDF\n\n' +
     'Fichiers GÉNÉRÉS par `scripts/fetch-pdf-fonts.mjs` — ne pas modifier à la main.\n\n' +
     '    pnpm --filter @teranga/api fonts:fetch\n\n' +
-    'pdfkit ne lit ni le woff2 ni le SVG : le web et les PDF ont chacun leur\n' +
-    'copie de Google Sans, dans le format que leur moteur sait ouvrir.\n\n' +
+    'pdfkit ne lit ni le woff2 ni le SVG : ces TTF sont une copie distincte\n' +
+    'de celle du site. Google Sans, la police du site, ne sert plus ici\n' +
+    "qu'aux sous-titres des vidéos de démonstration d'APIX Academy.\n\n" +
     "Arimo et Tinos tiennent la place d'Arial et de Times New Roman, que leur\n" +
     'licence interdit de versionner : mêmes chasses, licence OFL (fichiers\n' +
     "`*-OFL.txt`). Les polices d'origine se déposent à la racine de `assets/`\n" +

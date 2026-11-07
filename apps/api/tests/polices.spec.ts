@@ -5,7 +5,8 @@
  * versionnées. Arial (ADR-0090) et Times New Roman (ADR-0098) restent celles
  * de la déclaration de mouvement et des grilles d'évaluation : leur licence
  * interdisant de les versionner, Arimo et Tinos tiennent leur place, aux
- * mêmes chasses. Google Sans reste celle du certificat d'APIX Academy.
+ * mêmes chasses. Le certificat d'APIX Academy suit lui aussi la charte
+ * (ADR-0185).
  */
 import PDFDocument from 'pdfkit';
 import { describe, expect, it } from 'vitest';
@@ -75,21 +76,11 @@ describe('Arial', () => {
   });
 });
 
-describe('Google Sans', () => {
-  it('reste la police du certificat d’APIX Academy', () => {
-    const doc = new PDFDocument();
-    enregistrerPolices(doc);
-    expect(police(doc, 'normal', 'google-sans')).toBe('google-sans-normal');
-    expect(police(doc, 'bold', 'google-sans')).toBe('google-sans-bold');
-  });
-});
-
 describe('à défaut', () => {
   it('une coupe absente cède la place à sa voisine de la même famille', () => {
     const doc = new PDFDocument();
     enregistrerPolices(doc);
-    // Google Sans n'a pas de gras italique dans le dépôt ; Anton, que son romain.
-    expect(police(doc, 'bold-italic', 'google-sans')).toBe('google-sans-bold');
+    // Anton n'a que son romain.
     expect(police(doc, 'italic', 'anton')).toBe('anton-normal');
   });
 

@@ -4,8 +4,9 @@ Fichiers GÉNÉRÉS par `scripts/fetch-pdf-fonts.mjs` — ne pas modifier à la 
 
     pnpm --filter @teranga/api fonts:fetch
 
-pdfkit ne lit ni le woff2 ni le SVG : le web et les PDF ont chacun leur
-copie de Google Sans, dans le format que leur moteur sait ouvrir.
+pdfkit ne lit ni le woff2 ni le SVG : ces TTF sont une copie distincte
+de celle du site. Google Sans, la police du site, ne sert plus ici
+qu'aux sous-titres des vidéos de démonstration d'APIX Academy.
 
 Arimo et Tinos tiennent la place d'Arial et de Times New Roman, que leur
 licence interdit de versionner : mêmes chasses, licence OFL (fichiers

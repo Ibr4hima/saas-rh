@@ -51,9 +51,10 @@ avec l'autre.
 
 ## `fonts/`
 
-Raleway, Anton et Exo (la charte de l'APIX), Arimo, Tinos, Cabin, Allura et
-Google Sans (la police du certificat d'APIX Academy) en TTF, chacune avec sa
-licence OFL, et les pictogrammes du pied de page (Material Symbols, licence
+Raleway, Anton et Exo (la charte de l'APIX, que suit aussi le certificat
+d'APIX Academy), Arimo, Tinos, Cabin, Allura et Google Sans (celle des
+vidéos de démonstration d'APIX Academy) en TTF, chacune avec sa licence
+OFL, et les pictogrammes du pied de page (Material Symbols, licence
 Apache 2.0), **générés** par `pnpm --filter @teranga/api fonts:fetch` et
 versionnés : un dépôt fraîchement cloné sort des documents à la bonne
 typographie sans manipulation. pdfkit ne lit ni woff2 ni SVG, d'où cette

@@ -95,7 +95,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0087](0087-attestation-de-revenu.md)                 | L'attestation de revenu : le salaire saisi, le montant en chiffres et en lettres        | acceptée, précisée (0088, 0091, 0094, 0121) |
 | [0088](0088-apix-sa-et-montant-en-gras.md)            | Les attestations : « APIX-SA » partout, le montant en gras                              | acceptée                                    |
 | [0089](0089-attestation-de-stage.md)                  | L'attestation de stage : le dernier stage commencé, dossier en activité ou non          | acceptée, précisée (0132, 0176)             |
-| [0090](0090-arial-police-des-documents.md)            | Arial, police principale des documents de la DCH, prise là où la machine l'a            | précisée (0098), en partie remplacée (0173) |
+| [0090](0090-arial-police-des-documents.md)            | Arial, police principale des documents de la DCH, prise là où la machine l'a            | précisée (0098), révisée (0173, 0185)       |
 | [0091](0091-certificat-de-travail.md)                 | Le certificat de travail : l'emploi d'un dossier inactif, la catégorie saisie           | acceptée, précisée (0092, 0176)             |
 | [0092](0092-attestation-de-conge.md)                  | L'attestation de congé : les dates saisies, la reprise au premier jour ouvré            | acceptée, précisée par 0093, 0104 et 0133   |
 | [0093](0093-attestation-de-depart-a-la-retraite.md)   | L'attestation de départ à la retraite : le jour du départ saisi                         | acceptée, précisée par 0130                 |
@@ -178,7 +178,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0170](0170-page-montree-d-un-bloc.md)                | La page qui arrive se montre d'un bloc, sans squelette fugitif, à largeur constante     | acceptée                                    |
 | [0171](0171-maladie-visible-du-n1.md)                 | La maladie se lit comme les autres motifs d'absence : le N+1 la voit                    | acceptée                                    |
 | [0172](0172-disponibilite-deux-ans.md)                | La disponibilité dure deux ans au plus, renouvelable, pour le type comme les documents  | acceptée                                    |
-| [0173](0173-papier-de-la-charte.md)                   | Les documents de la DCH sur le papier de la charte de l'APIX ; le fond clair #F5F7F9    | acceptée, précisée par 0175                 |
+| [0173](0173-papier-de-la-charte.md)                   | Les documents de la DCH sur le papier de la charte de l'APIX ; le fond clair #F5F7F9    | acceptée, précisée par 0175, révisée (0185) |
 | [0174](0174-fiches-depuis-le-dossier.md)              | Fiches préremplies au dossier, prime de transport facultative, stage de 1 à 6 mois      | acceptée                                    |
 | [0175](0175-date-entre-numero-et-emetteur.md)         | La date de l'en-tête, à égale distance du numéro et de l'émetteur                       | acceptée                                    |
 | [0176](0176-sans-dossier-ou-avant-le-depart.md)       | Certificat de travail et attestation de stage, sans dossier ou avant le départ          | acceptée                                    |
@@ -190,3 +190,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0182](0182-profil-de-l-offre.md)                     | L'offre : le français d'office, le niveau de chaque langue, l'expérience pour le poste  | acceptée, en partie remplacée (0184)        |
 | [0183](0183-badges-aux-coins-de-8-px.md)              | Les badges aux coins de 8 px                                                            | acceptée                                    |
 | [0184](0184-niveaux-de-langue-facultatifs.md)         | Les niveaux de langue d'une offre : sans « Notions », et facultatifs                    | acceptée                                    |
+| [0185](0185-certificat-a-la-charte.md)                | Le certificat d'APIX Academy à la charte de l'APIX                                      | acceptée                                    |
