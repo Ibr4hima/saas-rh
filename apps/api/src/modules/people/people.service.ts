@@ -2679,6 +2679,21 @@ export class PeopleService {
         )
         .returning({ id: t.documentRequestFiles.id }),
     );
+    // Les lettres de demande aussi (ADR-0189).
+    recolter(
+      await tx
+        .delete(t.documentRequestLettres)
+        .where(
+          inArray(
+            t.documentRequestLettres.requestId,
+            tx
+              .select({ id: t.documentRequests.id })
+              .from(t.documentRequests)
+              .where(eq(t.documentRequests.employeeId, id)),
+          ),
+        )
+        .returning({ id: t.documentRequestLettres.id }),
+    );
     recolter(
       await tx
         .delete(t.documentRequests)

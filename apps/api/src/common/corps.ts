@@ -1,11 +1,13 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { json, raw } from 'express';
 import {
+  DOCUMENTS_PAR_LETTRE,
   MAX_DOCUMENT_BYTES,
   MAX_DOCUMENTS_PER_APPLICATION,
   MAX_EMPLOYEE_DOCUMENT_BYTES,
   MAX_FICHIER_REMIS_BYTES,
   MAX_JUSTIFICATIF_BYTES,
+  MAX_LETTRE_DE_DEMANDE_BYTES,
   MAX_REFERENCE_PDF_BYTES,
   MAX_SUPPORT_BYTES,
   MAX_VIDEO_LOCALE_BYTES,
@@ -105,6 +107,14 @@ export const ROUTES_A_FICHIER: Route[] = [
     chemin: /^\/v1\/absence-requests$/,
     analyseur: 'json',
     limite: enBase64(MAX_JUSTIFICATIF_BYTES) + MARGE_JSON,
+    acces: { session: true },
+  },
+  {
+    // Une demande de documents : jusqu'à trois lettres de demande (ADR-0189).
+    methode: 'POST',
+    chemin: /^\/v1\/document-requests$/,
+    analyseur: 'json',
+    limite: DOCUMENTS_PAR_LETTRE.length * enBase64(MAX_LETTRE_DE_DEMANDE_BYTES) + MARGE_JSON,
     acces: { session: true },
   },
   {

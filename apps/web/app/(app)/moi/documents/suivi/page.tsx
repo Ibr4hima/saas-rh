@@ -31,6 +31,7 @@ import { formatDate } from '../../../../../lib/hooks';
 import { timeAgo } from '../../../../../components/document-request-list';
 import { FenetreDocument } from '../../../../../components/fenetre-document';
 import { Icon } from '../../../../../components/icons';
+import { VoirLaLettre } from '../../../../../components/lettre-de-demande';
 import { CartePleine, CorpsDefilant, Page } from '../../../../../components/gabarit';
 import { Pagination, usePagination } from '../../../../../components/pagination';
 import { useMesSignalements } from '../../../../../components/signalement';
@@ -406,6 +407,12 @@ function Ligne({
           <p className="mt-0.5 truncate text-[11.5px] text-ink-muted italic" title={r.note}>
             « {r.note} »
           </p>
+        ) : null}
+        {/* La lettre jointe à la demande, telle que la DCH la lit (ADR-0189). */}
+        {x.genre === 'document' && x.d.lettre ? (
+          <span className="mt-1.5 flex">
+            <VoirLaLettre demande={x.d} />
+          </span>
         ) : null}
         {r.status === 'rejected' && r.hrMessage ? (
           <p className="mt-0.5 text-[11.5px] font-semibold text-danger">Motif : {r.hrMessage}</p>

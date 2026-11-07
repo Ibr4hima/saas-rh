@@ -127,15 +127,19 @@ export function decisionDepuisLeDossier(
  * Les sessions du conseil d'administration en place, que l'organisation
  * connaît (ADR-0123) : elles se posent dans les champs encore vides, la DCH
  * les corrige. La fiche passe d'une décision à l'autre ; une date corrigée le
- * reste.
+ * reste. Au titre d'une demande, qui la traite les lit aussi (ADR-0189).
  */
 export function usePreremplissageDeLaDecision(
   doc: DecisionDeDisponibilite | null,
   poser: Dispatch<SetStateAction<SaisieDeLaDecision>>,
+  demandeId?: string,
 ) {
   const { data } = useQuery({
-    queryKey: ['documents', 'preremplissage', doc],
-    queryFn: () => api<PreremplissageDeLaDecision>(`/documents/generer/${doc}/preremplissage`),
+    queryKey: ['documents', 'preremplissage', doc, demandeId ?? null],
+    queryFn: () =>
+      api<PreremplissageDeLaDecision>(
+        `/documents/generer/${doc}/preremplissage${demandeId ? `?demande=${demandeId}` : ''}`,
+      ),
     enabled: doc !== null,
     staleTime: Infinity,
   });

@@ -248,6 +248,10 @@ function pageTitle(pathname: string, givenName: string): string {
   if (pathname.startsWith('/employees/')) {
     return pathname.endsWith('/modifier') ? 'Modifier la fiche' : 'Gestion du personnel';
   }
+  // Le document d'une demande, généré par qui la traite (ADR-0189).
+  if (pathname.startsWith('/documents/') && pathname.endsWith('/generer')) {
+    return 'Générer le document';
+  }
   if (pathname.startsWith('/recrutement/')) return 'Offre de recrutement';
   if (pathname.startsWith('/academy/gerer/')) return 'Gérer le catalogue';
   if (pathname.startsWith('/moi/equipe/evaluations/')) return 'Évaluations';

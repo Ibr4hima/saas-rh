@@ -21,8 +21,10 @@ import {
   CAPACITES_GENERATION,
   createDocumentRequestSchema,
   DOCUMENTS_DEMANDABLES,
+  DOCUMENTS_PAR_LETTRE,
   genereQuelqueChose,
   gereQuelqueChose,
+  lettreDatee,
   peut,
   peutGenerer,
   requestableDocSchema,
@@ -562,10 +564,20 @@ describe('les demandes de documents', () => {
     for (const doc of ['autre', 'contrat_travail', 'bulletin_salaire', 'attestation_salaire']) {
       expect(createDocumentRequestSchema.safeParse({ docTypes: [doc] }).success).toBe(false);
     }
-    // Les treize documents qu'un agent demande partent d'un coup.
-    expect(createDocumentRequestSchema.safeParse({ docTypes: DOCUMENTS_DEMANDABLES }).success).toBe(
-      true,
-    );
+    // Les treize documents qu'un agent demande partent d'un coup, avec les
+    // lettres de ceux qui se demandent par lettre (ADR-0189).
+    expect(
+      createDocumentRequestSchema.safeParse({
+        docTypes: DOCUMENTS_DEMANDABLES,
+        lettres: DOCUMENTS_PAR_LETTRE.map((doc) => ({
+          doc,
+          filename: 'Lettre.pdf',
+          contentType: 'application/pdf',
+          contentBase64: PDF,
+          ...(lettreDatee(doc) ? { datee: '2026-11-02' } : {}),
+        })),
+      }).success,
+    ).toBe(true);
     // Des demandes faites avant (ADR-0045, ADR-0084) : qui dirige la DCH les a
     // dans sa file, et les traite.
     for (const doc of ['autre', 'attestation_salaire'] as const) {

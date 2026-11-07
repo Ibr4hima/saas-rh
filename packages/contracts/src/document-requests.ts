@@ -139,6 +139,30 @@ export const documentDemandableSchema = requestableDocSchema.exclude([...DOCUMEN
 export const DOCUMENTS_DEMANDABLES = documentDemandableSchema.options;
 export type DocumentDemandable = (typeof DOCUMENTS_DEMANDABLES)[number];
 
+/**
+ * Ce qui se demande par lettre (ADR-0189) : la mise en disponibilité, son
+ * renouvellement et la domiciliation bancaire. L'agent joint sa lettre de
+ * demande ; qui traite la demande la lit avant d'établir le document.
+ */
+export const DOCUMENTS_PAR_LETTRE = [
+  'decision_disponibilite',
+  'decision_renouvellement_disponibilite',
+  'domiciliation_bancaire',
+] as const satisfies readonly DocumentDemandable[];
+export type DocumentParLettre = (typeof DOCUMENTS_PAR_LETTRE)[number];
+
+export const parLettre = (doc: string): doc is DocumentParLettre =>
+  (DOCUMENTS_PAR_LETTRE as readonly string[]).includes(doc);
+
+/**
+ * Les deux décisions citent la lettre à sa date : « Vu la demande de … par
+ * lettre en date du … ». L'agent donne la date écrite sur sa lettre. La
+ * domiciliation dit le jour où l'APIX a reçu l'ordre de virement : c'est le
+ * jour de l'envoi, que l'agent n'a pas à donner (ADR-0189).
+ */
+export const lettreDatee = (doc: string): boolean =>
+  doc === 'decision_disponibilite' || doc === 'decision_renouvellement_disponibilite';
+
 /** Ce que la DCH saisit avant de générer un document : le dossier ne le porte pas. */
 export type Saisie = 'salaire' | 'categorie' | 'debut' | 'fin' | 'depart' | 'reprise';
 
@@ -1189,18 +1213,99 @@ export function documentDemande(doc: RequestableDoc, bulletin: PeriodeDuBulletin
     : libelle;
 }
 
-export const createDocumentRequestSchema = z.object({
-  /** Un ou plusieurs documents : chacun devient une demande, qui va à qui le traite. */
-  docTypes: z.array(documentDemandableSchema).min(1).max(documentDemandableSchema.options.length),
-  /** Le motif (banque, visa…) : facultatif mais utile à la RH. */
-  note: z
+/** La lettre de demande : un PDF de 5 Mo au plus, comme les pièces du dossier (ADR-0189). */
+export const MAX_LETTRE_DE_DEMANDE_BYTES = 5 * 1024 * 1024;
+
+export const lettreDeDemandeSchema = z.object({
+  /** Le document qu'elle demande. */
+  doc: z.enum(DOCUMENTS_PAR_LETTRE),
+  filename: z.string().trim().min(1).max(200),
+  contentType: z.literal('application/pdf'),
+  contentBase64: z
     .string()
-    .trim()
-    .max(500)
-    .transform((v) => (v === '' ? undefined : v))
-    .optional(),
+    .min(1)
+    .max(Math.ceil((MAX_LETTRE_DE_DEMANDE_BYTES * 4) / 3) + 4),
+  /** La date écrite sur la lettre : pour les deux décisions seulement. */
+  datee: jusquAujourdhuiSchema.optional(),
 });
+export type LettreDeDemandeInput = z.infer<typeof lettreDeDemandeSchema>;
+
+export const createDocumentRequestSchema = z
+  .object({
+    /** Un ou plusieurs documents : chacun devient une demande, qui va à qui le traite. */
+    docTypes: z.array(documentDemandableSchema).min(1).max(documentDemandableSchema.options.length),
+    /** Le motif (banque, visa…) : facultatif mais utile à la RH. */
+    note: z
+      .string()
+      .trim()
+      .max(500)
+      .transform((v) => (v === '' ? undefined : v))
+      .optional(),
+    /** Une lettre par document demandé par lettre, et pour lui seul (ADR-0189). */
+    lettres: z.array(lettreDeDemandeSchema).max(DOCUMENTS_PAR_LETTRE.length).optional(),
+  })
+  .superRefine((d, ctx) => {
+    const lettres = d.lettres ?? [];
+    for (const doc of d.docTypes.filter(parLettre)) {
+      const siennes = lettres.filter((l) => l.doc === doc);
+      if (siennes.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['lettres'],
+          message: `${REQUESTABLE_DOC_LABELS[doc]} : joignez votre lettre de demande`,
+        });
+      } else if (siennes.length > 1) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['lettres'],
+          message: `${REQUESTABLE_DOC_LABELS[doc]} : une seule lettre de demande`,
+        });
+      }
+    }
+    for (const [i, l] of lettres.entries()) {
+      if (!d.docTypes.includes(l.doc)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['lettres', i, 'doc'],
+          message: 'Cette lettre ne demande aucun des documents choisis',
+        });
+      } else if (lettreDatee(l.doc) && !l.datee) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['lettres', i, 'datee'],
+          message: 'Indiquez la date de votre lettre',
+        });
+      } else if (!lettreDatee(l.doc) && l.datee) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['lettres', i, 'datee'],
+          message: 'La domiciliation reprend le jour de l’envoi',
+        });
+      }
+    }
+  });
 export type CreateDocumentRequestInput = z.infer<typeof createDocumentRequestSchema>;
+
+/**
+ * La date de la demande que la fiche du document reprend (ADR-0189) : pour
+ * une décision de disponibilité, celle de la lettre ; sinon le jour de
+ * l'envoi, celui où l'APIX a reçu la demande. Une demande d'avant les
+ * lettres n'a que ce jour-là.
+ */
+export function dateDeLaDemande(r: {
+  createdAt: string;
+  lettre: { datee: string | null } | null;
+}): string {
+  return r.lettre?.datee ?? r.createdAt.slice(0, 10);
+}
+
+/**
+ * Le document généré au titre d'une demande (ADR-0189) : qui traite la
+ * demande le génère, pour ce seul document et l'agent qui l'a demandé, sans
+ * avoir « Générer des documents ».
+ */
+export const pourLaDemandeQuerySchema = z.object({ demande: z.uuid().optional() });
+export type PourLaDemandeQuery = z.infer<typeof pourLaDemandeQuerySchema>;
 
 /** Une demande par document demandé. */
 export interface CreateDocumentRequestResult {
@@ -1309,6 +1414,13 @@ export interface DocumentRequestView {
    * prête ; qui la traite, dès leur dépôt.
    */
   fichiers: FichierRemisView[];
+  /**
+   * La lettre de demande jointe par l'agent (ADR-0189), sans son contenu :
+   * seul le téléchargement le lit. `datee` : la date écrite sur la lettre,
+   * pour une décision de disponibilité. Null : document sans lettre, ou
+   * demande d'avant les lettres.
+   */
+  lettre: { filename: string; sizeBytes: number; datee: string | null } | null;
   hrMessage: string | null;
   handledByName: string | null;
   createdAt: string;

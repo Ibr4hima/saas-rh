@@ -89,8 +89,8 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0081](0081-suivi-des-mises-a-jour.md)                | Le suivi des demandes porte aussi les mises à jour d'informations                       | acceptée, précisée par 0082                 |
 | [0082](0082-mise-a-jour-validee-hors-du-suivi.md)     | Validée, une mise à jour d'informations ne figure pas au suivi                          | acceptée                                    |
 | [0083](0083-anciennete-du-contrat-en-cours.md)        | L'ancienneté est celle du contrat en cours ; le stage n'en donne pas                    | acceptée                                    |
-| [0084](0084-documents-de-la-dch.md)                   | La liste des documents à demander est celle de la DCH                                   | acceptée, précisée par 0085 et 0114         |
-| [0085](0085-generer-des-documents.md)                 | Générer des documents : qui dirige la DCH, à sa guise, sur les modèles de l'APIX        | acceptée, précisée 5 fois, de 0086 à 0130   |
+| [0084](0084-documents-de-la-dch.md)                   | La liste des documents à demander est celle de la DCH                                   | acceptée, précisée par 0085, 0114 et 0189   |
+| [0085](0085-generer-des-documents.md)                 | Générer des documents : qui dirige la DCH, à sa guise, sur les modèles de l'APIX        | acceptée, précisée 6 fois, de 0086 à 0189   |
 | [0086](0086-modeles-de-l-apix.md)                     | Les documents de la DCH sur les modèles de l'APIX : sections composées, Google Sans     | acceptée, précisée 4 fois, de 0087 à 0173   |
 | [0087](0087-attestation-de-revenu.md)                 | L'attestation de revenu : le salaire saisi, le montant en chiffres et en lettres        | acceptée, précisée (0088, 0091, 0094, 0121) |
 | [0088](0088-apix-sa-et-montant-en-gras.md)            | Les attestations : « APIX-SA » partout, le montant en gras                              | acceptée                                    |
@@ -179,7 +179,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0171](0171-maladie-visible-du-n1.md)                 | La maladie se lit comme les autres motifs d'absence : le N+1 la voit                    | acceptée                                    |
 | [0172](0172-disponibilite-deux-ans.md)                | La disponibilité dure deux ans au plus, renouvelable, pour le type comme les documents  | acceptée                                    |
 | [0173](0173-papier-de-la-charte.md)                   | Les documents de la DCH sur le papier de la charte de l'APIX ; le fond clair #F5F7F9    | précisée par 0175, révisée (0185, 0186)     |
-| [0174](0174-fiches-depuis-le-dossier.md)              | Fiches préremplies au dossier, prime de transport facultative, stage de 1 à 6 mois      | acceptée                                    |
+| [0174](0174-fiches-depuis-le-dossier.md)              | Fiches préremplies au dossier, prime de transport facultative, stage de 1 à 6 mois      | acceptée, précisée par 0189                 |
 | [0175](0175-date-entre-numero-et-emetteur.md)         | La date de l'en-tête, à égale distance du numéro et de l'émetteur                       | acceptée                                    |
 | [0176](0176-sans-dossier-ou-avant-le-depart.md)       | Certificat de travail et attestation de stage, sans dossier ou avant le départ          | acceptée                                    |
 | [0177](0177-fiche-d-une-unite-stable.md)              | La fiche d'une unité s'ouvre entière, et les fenêtres se posent sans flou               | acceptée, en partie remplacée (0180)        |
@@ -194,3 +194,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0186](0186-courriels-a-la-charte.md)                 | Les courriels à la charte de l'APIX                                                     | acceptée                                    |
 | [0187](0187-connexion-a-la-charte.md)                 | Les écrans de connexion à la charte de l'APIX, toujours en clair                        | acceptée                                    |
 | [0188](0188-verification-a-la-charte.md)              | La vérification d'un certificat à la charte de l'APIX                                   | acceptée                                    |
+| [0189](0189-lettre-de-demande.md)                     | La lettre de demande, jointe par l'agent, lue et reprise par qui traite la demande      | acceptée                                    |

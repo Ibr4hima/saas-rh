@@ -13,6 +13,7 @@ import type {
   DocumentRequestStatus,
   DocumentRequestView,
   FichierRemisView,
+  LettreDeDemandeInput,
   PeriodeDuBulletin,
   RequestableDoc,
   SessionUser,
@@ -26,6 +27,7 @@ import {
   horsCible,
   FICHIERS_REMIS_MAX,
   MAX_FICHIER_REMIS_BYTES,
+  MAX_LETTRE_DE_DEMANDE_BYTES,
   OPEN_DOCUMENT_REQUEST_STATUSES,
   REQUESTABLE_DOC_LABELS,
 } from '@teranga/contracts';
@@ -130,6 +132,26 @@ async function traiteCeDocument(
 }
 
 /**
+ * La lettre de demande envoyée (ADR-0189) : un PDF de 5 Mo au plus. Sa
+ * signature le prouve, pas son type annoncé.
+ */
+function lireLaLettre(lettre: LettreDeDemandeInput): Buffer {
+  const data = Buffer.from(lettre.contentBase64, 'base64');
+  if (data.length === 0 || data.length > MAX_LETTRE_DE_DEMANDE_BYTES) {
+    problem(422, 'documents.too_large', 'La lettre doit faire 5 Mo maximum');
+  }
+  if (data.subarray(0, 5).toString() !== '%PDF-') {
+    problem(
+      422,
+      'documents.bad_format',
+      'Cette lettre n’est pas un PDF valide',
+      'Seul le PDF est accepté.',
+    );
+  }
+  return data;
+}
+
+/**
  * Traite-t-on ce type de document pour la DCH, aujourd'hui ? Qui la dirige,
  * ou le membre à qui ce type est délégué (`vues`, cf. `capacitesVues`). La
  * délégation d'un autre type n'y suffit pas, et l'administrateur lit la file
@@ -166,6 +188,10 @@ export class DocumentRequestsService {
   ): Promise<CreateDocumentRequestResult> {
     const docTypes = [...new Set(input.docTypes)];
     const ids = docTypes.map(() => uuidv7());
+    // Une lettre illisible se refuse avant d'ouvrir la transaction.
+    const lettres = new Map(
+      (input.lettres ?? []).map((l) => [l.doc as string, { ...l, data: lireLaLettre(l) }]),
+    );
     await this.db.withTenant(ctxOf(user), async (tx) => {
       const self = await this.selfEmployee(tx, user);
       if (!self) {
@@ -219,6 +245,26 @@ export class DocumentRequestsService {
           note: input.note ?? null,
           requestedByUserId: user.userId,
         });
+        // La lettre de demande, chiffrée pour sa place (ADR-0189).
+        const lettre = lettres.get(docType);
+        if (lettre) {
+          const pieceId = uuidv7();
+          await tx.insert(t.documentRequestLettres).values({
+            id: pieceId,
+            tenantId: user.tenantId,
+            requestId: ids[i]!,
+            contentType: lettre.contentType,
+            sizeBytes: lettre.data.length,
+            ...chiffrerPiece(
+              this.crypto,
+              'document_request_lettres',
+              { tenantId: user.tenantId, id: pieceId },
+              { filename: lettre.filename, data: lettre.data },
+            ),
+            datee: lettre.datee ?? null,
+            uploadedByUserId: user.userId,
+          });
+        }
         // À qui traite ce document pour la DCH — et à eux seuls.
         await reconcilierUneDemande(tx, 'documents', ids[i]!);
         // La même demande, faite avant, s'efface : la nouvelle la remplace.
@@ -282,7 +328,13 @@ export class DocumentRequestsService {
    */
   async list(
     user: SessionUser,
-    filters: { employeeId?: string; status?: DocumentRequestStatus; scope?: 'mine' },
+    filters: {
+      employeeId?: string;
+      status?: DocumentRequestStatus;
+      scope?: 'mine';
+      /** Une seule demande, celle qu'on génère (ADR-0189). */
+      id?: string;
+    },
   ): Promise<DocumentRequestView[]> {
     return this.db.lire(ctxOf(user), async (tx) => {
       // « scope=mine » est honoré QUELLES QUE SOIENT ses habilitations :
@@ -322,6 +374,7 @@ export class DocumentRequestsService {
         conditions.push(eq(t.documentRequests.employeeId, filters.employeeId));
       }
       if (filters.status) conditions.push(eq(t.documentRequests.status, filters.status));
+      if (filters.id) conditions.push(eq(t.documentRequests.id, filters.id));
 
       const handler = t.users;
       // Les demandes ouvertes viennent toutes ; la limite ne porte que sur
@@ -354,6 +407,10 @@ export class DocumentRequestsService {
       const maintenant = new Date();
       const nonVues = selfOnly ? await this.traiteesNonVues(tx, user.userId) : new Set<string>();
       const fichiers = await this.fichiersDe(
+        tx,
+        rows.map((r) => r.request.id),
+      );
+      const lettres = await this.lettresDe(
         tx,
         rows.map((r) => r.request.id),
       );
@@ -409,6 +466,7 @@ export class DocumentRequestsService {
             ['ready', 'delivered'].includes(r.request.status) || peutAvancer
               ? (fichiers.get(r.request.id) ?? [])
               : [],
+          lettre: lettres.get(r.request.id) ?? null,
           hrMessage: r.request.hrMessage,
           handledByName: r.handlerGivenName ? `${r.handlerGivenName} ${r.handlerFamilyName}` : null,
           createdAt: r.request.createdAt.toISOString(),
@@ -1035,6 +1093,96 @@ export class DocumentRequestsService {
         data: contenuDeLaPiece(this.crypto, 'document_request_files', { ...ligne, data: f.data }),
       };
     });
+  }
+
+  /**
+   * Une demande, pour qui la voit dans sa file ou son suivi : celle dont on
+   * génère le document (ADR-0189).
+   */
+  async une(user: SessionUser, id: string): Promise<DocumentRequestView> {
+    const [demande] = await this.list(user, { id });
+    if (!demande) problem(404, 'documents.request_not_found', 'Demande introuvable');
+    return demande;
+  }
+
+  /**
+   * La lettre de demande (ADR-0189) : à l'agent qui l'a jointe ; à qui
+   * traite ce document pour la DCH, ou à qui la demande est confiée.
+   */
+  async lettre(
+    user: SessionUser,
+    requestId: string,
+  ): Promise<{ filename: string; contentType: string; data: Buffer }> {
+    return this.db.lire(ctxOf(user), async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(t.documentRequests)
+        .where(eq(t.documentRequests.id, requestId))
+        .limit(1);
+      const [l] = row
+        ? await tx
+            .select()
+            .from(t.documentRequestLettres)
+            .where(eq(t.documentRequestLettres.requestId, requestId))
+            .limit(1)
+        : [];
+      if (!row || !l) problem(404, 'documents.lettre_introuvable', 'Lettre introuvable');
+      const soi = await this.selfEmployee(tx, user);
+      if (
+        soi?.employeeId !== row.employeeId &&
+        !(await traiteCeDocument(
+          tx,
+          await agentDuCompte(tx, user.userId),
+          (await directionDuPersonnel(tx))?.directeurEmployeeId ?? null,
+          row,
+        ))
+      ) {
+        problem(
+          403,
+          'documents.forbidden_scope',
+          'Réservé à la personne qui traite ce document à la DCH',
+        );
+      }
+      const ligne = { tenantId: l.tenantId, id: l.id, cleVersion: l.cleVersion };
+      return {
+        filename: nomDeLaPiece(this.crypto, 'document_request_lettres', {
+          ...ligne,
+          filename: l.filename,
+        }),
+        contentType: l.contentType,
+        data: contenuDeLaPiece(this.crypto, 'document_request_lettres', { ...ligne, data: l.data }),
+      };
+    });
+  }
+
+  /** Les lettres de demande, sans leur contenu, noms déchiffrés. */
+  private async lettresDe(
+    tx: Tx,
+    ids: string[],
+  ): Promise<Map<string, NonNullable<DocumentRequestView['lettre']>>> {
+    if (ids.length === 0) return new Map();
+    const lignes = await tx
+      .select({
+        id: t.documentRequestLettres.id,
+        tenantId: t.documentRequestLettres.tenantId,
+        requestId: t.documentRequestLettres.requestId,
+        filename: t.documentRequestLettres.filename,
+        cleVersion: t.documentRequestLettres.cleVersion,
+        sizeBytes: t.documentRequestLettres.sizeBytes,
+        datee: t.documentRequestLettres.datee,
+      })
+      .from(t.documentRequestLettres)
+      .where(inArray(t.documentRequestLettres.requestId, ids));
+    return new Map(
+      lignes.map((l) => [
+        l.requestId,
+        {
+          filename: nomDeLaPiece(this.crypto, 'document_request_lettres', l),
+          sizeBytes: l.sizeBytes,
+          datee: l.datee,
+        },
+      ]),
+    );
   }
 
   /** La demande où l'on dépose ou retire un document : ouverte ou prête, et à soi de la traiter. */

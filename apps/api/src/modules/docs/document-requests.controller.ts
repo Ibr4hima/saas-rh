@@ -147,6 +147,30 @@ export class DocumentRequestsController {
     await this.requests.renommerFichier(req.sessionUser, id, fichierId, body.filename);
   }
 
+  /** Une demande : celle dont on génère le document (ADR-0189). */
+  @Get('document-requests/:id')
+  une(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.requests.une(req.sessionUser, id);
+  }
+
+  /** La lettre de demande jointe par l'agent, à lire avant d'établir le document (ADR-0189). */
+  @Get('document-requests/:id/lettre')
+  async lettre(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('download') download: string | undefined,
+    @Res() res: Response,
+  ) {
+    const l = await this.requests.lettre(req.sessionUser, id);
+    res.setHeader('Content-Type', l.contentType);
+    res.setHeader(
+      'Content-Disposition',
+      contentDisposition(download === '1' ? 'attachment' : 'inline', l.filename),
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(l.data);
+  }
+
   /** Le document remis, à enregistrer. */
   @Get('document-requests/:id/fichiers/:fichierId')
   async fichier(

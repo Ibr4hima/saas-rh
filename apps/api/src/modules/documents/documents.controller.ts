@@ -15,8 +15,10 @@ import {
 import type { Response } from 'express';
 import {
   agentsDeLaCibleQuerySchema,
+  pourLaDemandeQuerySchema,
   saisiesDuDocumentSchema,
   type AgentsDeLaCibleQuery,
+  type PourLaDemandeQuery,
   type SaisiesDuDocument,
 } from '@teranga/contracts';
 import { AccesGuard } from '../auth/acces.guard';
@@ -103,9 +105,15 @@ export class DocumentsController {
     @Req() req: AuthenticatedRequest,
     @Param('type') type: string,
     @Body() corps: unknown,
+    @Query(new ZodValidationPipe(pourLaDemandeQuerySchema)) query: PourLaDemandeQuery,
     @Res() res: Response,
   ) {
-    const { filename, pdf } = await this.generation.pdfSansAgent(req.sessionUser, type, corps);
+    const { filename, pdf } = await this.generation.pdfSansAgent(
+      req.sessionUser,
+      type,
+      corps,
+      query.demande,
+    );
     this.send(res, filename, pdf);
   }
 
@@ -124,15 +132,17 @@ export class DocumentsController {
 
   /**
    * Ce que le dossier d'un agent donne d'avance à la fiche d'une
-   * domiciliation bancaire (ADR-0174).
+   * domiciliation bancaire (ADR-0174) ; au titre d'une demande, à qui la
+   * traite (ADR-0189).
    */
   @Get('documents/generer/:type/agents/:employeeId/fiche')
   dossierPourLaFiche(
     @Req() req: AuthenticatedRequest,
     @Param('type') type: string,
     @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Query(new ZodValidationPipe(pourLaDemandeQuerySchema)) query: PourLaDemandeQuery,
   ) {
-    return this.generation.dossierPourLaFiche(req.sessionUser, type, employeeId);
+    return this.generation.dossierPourLaFiche(req.sessionUser, type, employeeId, query.demande);
   }
 
   /**
@@ -140,8 +150,12 @@ export class DocumentsController {
    * conseil d'administration d'une décision de disponibilité (ADR-0123).
    */
   @Get('documents/generer/:type/preremplissage')
-  preremplissage(@Req() req: AuthenticatedRequest, @Param('type') type: string) {
-    return this.generation.preremplissage(req.sessionUser, type);
+  preremplissage(
+    @Req() req: AuthenticatedRequest,
+    @Param('type') type: string,
+    @Query(new ZodValidationPipe(pourLaDemandeQuerySchema)) query: PourLaDemandeQuery,
+  ) {
+    return this.generation.preremplissage(req.sessionUser, type, query.demande);
   }
 
   private send(res: Response, filename: string, pdf: Buffer, inline = false) {

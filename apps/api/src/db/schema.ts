@@ -636,6 +636,25 @@ export const documentRequestFiles = pgTable('document_request_files', {
 });
 
 /**
+ * La lettre de demande jointe par l'agent à une demande de mise en
+ * disponibilité, de renouvellement ou de domiciliation, chiffrée au repos ;
+ * pour une décision, avec la date écrite sur la lettre (0133).
+ */
+export const documentRequestLettres = pgTable('document_request_lettres', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  requestId: uuid('request_id').notNull(),
+  filename: text('filename').notNull(),
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  data: bytea('data').notNull(),
+  cleVersion: smallint('cle_version').notNull(),
+  datee: date('datee'),
+  uploadedByUserId: uuid('uploaded_by_user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * Le certificat de mariage joint à une demande de mise à jour, le temps de
  * sa décision : validée, il rejoint les pièces du dossier (0114).
  */

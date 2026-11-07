@@ -1,10 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type {
   AgentDeLaCible,
   CodeDeBanque,
   DocumentGenere,
   DocumentHorsDossier,
+  DocumentParLettre,
   DocumentSansAgent,
   DossierPourLaFiche,
   SaisiesDuDocument,
@@ -15,18 +16,23 @@ import {
   aChoixDAgent,
   depuisLeDossier,
   estGenere,
+  ficheDeLaDecisionSchema,
+  ficheDomiciliationSchema,
   genereQuelqueChose,
   horsDossier,
+  parLettre,
   peut,
   peutGenerer,
   REQUESTABLE_DOC_LABELS,
   requestableDocSchema,
   sansAgent,
 } from '@teranga/contracts';
-import { pasSurSoi } from '../acces/dch';
+import { agentDuCompte, directionDuPersonnel, pasSurSoi } from '../acces/dch';
+import { attenteDe, capaciteDesDocuments, vueDuTraitement } from '../acces/demandes';
 import { EncryptionService } from '../../common/encryption.service';
 import { problem } from '../../common/problem';
-import { TenantDb } from '../../db/tenant-db';
+import * as t from '../../db/schema';
+import { TenantDb, type Tx } from '../../db/tenant-db';
 import { AbsencesService } from '../time/absences.service';
 import { attestationDeConge } from './attestation-conge';
 import { attestationDeReprise } from './attestation-reprise';
@@ -52,8 +58,10 @@ import type { DocumentPdf, Modele } from './feuille';
  *
  * Les membres de la DCH génèrent pour une demande dont le traitement leur
  * revient, depuis la file des documents ; et, depuis cette page, les contrats
- * dont la génération leur est déléguée (ADR-0114). Le compte
- * d'administration, technique, ne produit pas d'actes.
+ * dont la génération leur est déléguée (ADR-0114). Une demande de mise en
+ * disponibilité, de renouvellement ou de domiciliation se génère au titre de
+ * la demande, pour l'agent qui l'a faite, par qui la traite (ADR-0189). Le
+ * compte d'administration, technique, ne produit pas d'actes.
  *
  * Un document sans agent (les contrats de travail et de stage, ADR-0094,
  * ADR-0098) se génère d'une fiche que la DCH renseigne : la personne n'est
@@ -168,8 +176,10 @@ export class GenerationService {
     user: SessionUser,
     type: string,
     employeeId: string,
+    demandeId?: string,
   ): Promise<DossierPourLaFiche> {
-    const doc = this.documentConfigure(user, type);
+    const parDemande = parLaDemande(user, type, demandeId);
+    const doc = parDemande ? documentDeLaDemande(type) : this.documentConfigure(user, type);
     if (!depuisLeDossier(doc)) {
       problem(
         422,
@@ -178,6 +188,9 @@ export class GenerationService {
       );
     }
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      if (parDemande && (await agentDeLaDemande(tx, user, doc, parDemande)).id !== employeeId) {
+        problem(403, 'auth.forbidden', 'Ce dossier n’est pas celui de l’agent de la demande');
+      }
       await pasSurSoi(tx, user.userId, [employeeId], 'générer un document pour');
       await exigerLaCible(tx, doc, employeeId);
       const { rows } = await tx.execute<{
@@ -233,8 +246,14 @@ export class GenerationService {
    * agent, ou le certificat de travail et l'attestation de stage d'une
    * personne sans dossier (ADR-0176).
    */
-  async pdfSansAgent(user: SessionUser, type: string, corps: unknown): Promise<DocumentPdf> {
-    const doc = this.documentConfigure(user, type);
+  async pdfSansAgent(
+    user: SessionUser,
+    type: string,
+    corps: unknown,
+    demandeId?: string,
+  ): Promise<DocumentPdf> {
+    const parDemande = parLaDemande(user, type, demandeId);
+    const doc = parDemande ? documentDeLaDemande(type) : this.documentConfigure(user, type);
     const modele = sansAgent(doc)
       ? this.sansAgent[doc]
       : horsDossier(doc)
@@ -243,9 +262,23 @@ export class GenerationService {
     if (!modele) {
       problem(422, 'documents.avec_agent', `${REQUESTABLE_DOC_LABELS[doc]} : un agent à choisir`);
     }
-    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
-      modele.pdf(tx, corps),
-    );
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      if (parDemande && parLettre(doc)) {
+        // Au titre d'une demande, le document est celui de l'agent qui l'a
+        // faite : la fiche le nomme, aux capitales et aux accents près.
+        const agent = await agentDeLaDemande(tx, user, doc, parDemande);
+        await pasSurSoi(tx, user.userId, [agent.id], 'générer un document pour');
+        const fiche = ficheDeLaDemande(doc).safeParse(corps);
+        if (fiche.success && !memePersonne(fiche.data, agent)) {
+          problem(
+            422,
+            'documents.autre_personne',
+            'La fiche doit nommer l’agent qui a fait la demande',
+          );
+        }
+      }
+      return modele.pdf(tx, corps);
+    });
   }
 
   /**
@@ -253,10 +286,20 @@ export class GenerationService {
    * les sessions du conseil d'administration d'une décision de disponibilité
    * (ADR-0123). La page le pose dans les champs encore vides.
    */
-  preremplissage(user: SessionUser, type: string): Record<string, unknown> {
-    const doc = this.documentConfigure(user, type);
+  async preremplissage(
+    user: SessionUser,
+    type: string,
+    demandeId?: string,
+  ): Promise<Record<string, unknown>> {
+    const parDemande = parLaDemande(user, type, demandeId);
+    const doc = parDemande ? documentDeLaDemande(type) : this.documentConfigure(user, type);
     if (!sansAgent(doc)) {
       problem(422, 'documents.avec_agent', `${REQUESTABLE_DOC_LABELS[doc]} : un agent à choisir`);
+    }
+    if (parDemande) {
+      await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+        agentDeLaDemande(tx, user, doc, parDemande),
+      );
     }
     return this.sansAgent[doc].preremplissage?.() ?? {};
   }
@@ -286,3 +329,91 @@ export class GenerationService {
     return doc.data;
   }
 }
+
+/* ──── Au titre d'une demande (ADR-0189) ───────────────────────────────── */
+
+/**
+ * La demande au titre de laquelle on génère, si l'appelant n'a pas déjà le
+ * droit de générer ce document : qui l'a, la direction de la DCH, génère
+ * comme avant, demande ou pas.
+ */
+function parLaDemande(
+  user: SessionUser,
+  type: string,
+  demandeId: string | undefined,
+): string | null {
+  return demandeId !== undefined && !peutGenerer(user, type) ? demandeId : null;
+}
+
+/** Le document d'une demande par lettre, configuré ; aucun autre ne se génère à ce titre. */
+function documentDeLaDemande(type: string): DocumentGenere & DocumentParLettre {
+  const doc = requestableDocSchema.safeParse(type);
+  if (!doc.success) problem(404, 'documents.inconnu', 'Document inconnu');
+  if (!parLettre(doc.data) || !estGenere(doc.data)) {
+    problem(403, 'auth.forbidden', 'Vous n’avez pas les droits nécessaires pour cette action');
+  }
+  return doc.data;
+}
+
+/**
+ * L'agent d'une demande que l'appelant traite : ouverte, de ce document, et
+ * dont le traitement revient à l'appelant, comme dans la file (ADR-0128). Jamais la
+ * sienne : la règle de traitement l'écarte.
+ */
+async function agentDeLaDemande(
+  tx: Tx,
+  user: SessionUser,
+  doc: DocumentGenere,
+  demandeId: string,
+): Promise<{ id: string; prenom: string; nom: string }> {
+  const [row] = await tx
+    .select({
+      request: t.documentRequests,
+      prenom: t.persons.givenName,
+      nom: t.persons.familyName,
+    })
+    .from(t.documentRequests)
+    .innerJoin(t.employees, eq(t.employees.id, t.documentRequests.employeeId))
+    .innerJoin(t.persons, eq(t.persons.id, t.employees.personId))
+    .where(eq(t.documentRequests.id, demandeId))
+    .limit(1);
+  if (!row || row.request.docTypes[0] !== doc) {
+    problem(404, 'documents.request_not_found', 'Demande introuvable');
+  }
+  if (!['received', 'processing'].includes(row.request.status)) {
+    problem(422, 'documents.deja_traitee', 'Cette demande est clôturée');
+  }
+  const { peutTraiter } = await vueDuTraitement(
+    tx,
+    capaciteDesDocuments(row.request.docTypes),
+    {
+      employeeId: row.request.employeeId,
+      confieeA: row.request.confieeAEmployeeId,
+      attente: attenteDe(row.request),
+    },
+    await agentDuCompte(tx, user.userId),
+    await directionDuPersonnel(tx),
+  );
+  if (!peutTraiter) {
+    problem(403, 'demandes.pas_traitant', 'Réservé à la personne qui traite cette demande');
+  }
+  return { id: row.request.employeeId, prenom: row.prenom, nom: row.nom };
+}
+
+/** Le schéma de la fiche d'un document par lettre. */
+const ficheDeLaDemande = (doc: DocumentParLettre) =>
+  doc === 'domiciliation_bancaire' ? ficheDomiciliationSchema : ficheDeLaDecisionSchema(doc);
+
+/** Un nom sans capitales, accents ni tirets : « Fatou-Bintou » et « fatou bintou » se valent. */
+const aplati = (texte: string) =>
+  texte
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z]+/g, ' ')
+    .trim();
+
+const memePersonne = (
+  fiche: { prenom: string; nom: string },
+  agent: { prenom: string; nom: string },
+) => aplati(fiche.prenom) === aplati(agent.prenom) && aplati(fiche.nom) === aplati(agent.nom);

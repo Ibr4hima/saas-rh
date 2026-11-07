@@ -12,6 +12,7 @@ import type {
 import {
   capaciteDuDocument,
   DELAI_DE_TRAITEMENT_HEURES,
+  depuisLeDossier,
   documentDemande,
   FENETRE_DU_PRINCIPAL_HEURES,
   peut,
@@ -37,6 +38,7 @@ import { enregistrer, lireFichier } from '../../../lib/fichiers';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { DocumentsDeposes } from '../../../components/documents-deposes';
 import { Icon } from '../../../components/icons';
+import { GESTE_DE_LA_LIGNE, VoirLaLettre } from '../../../components/lettre-de-demande';
 import { LoadFailure } from '../../../components/load-failure';
 import { PdfViewer } from '../../../components/pdf-viewer';
 import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
@@ -70,6 +72,38 @@ const OPEN = ['received', 'processing'];
 /** « Bulletin de salaire · 3 derniers mois » : le bulletin se lit avec ses mois. */
 function docLabels(r: DocumentRequestView): string {
   return r.docTypes.map((d) => documentDemande(d, r.bulletin)).join(' · ');
+}
+
+/**
+ * Une décision de disponibilité ou une domiciliation demandée, ouverte, que
+ * la session traite : son document se génère depuis la demande (ADR-0189).
+ */
+function seGenereDepuisLaDemande(r: DocumentRequestView): boolean {
+  const doc = r.docTypes[0];
+  return (
+    r.canAdvance &&
+    OPEN.includes(r.status) &&
+    r.docTypes.length === 1 &&
+    doc !== undefined &&
+    depuisLeDossier(doc)
+  );
+}
+
+/** Lire la lettre de la demande, et générer son document : sous la requête. */
+function GestesDeLaDemande({ demande: r }: { demande: DocumentRequestView }) {
+  const generer = seGenereDepuisLaDemande(r);
+  if (!r.lettre && !generer) return null;
+  return (
+    <span className="mt-1.5 flex flex-wrap gap-1.5">
+      <VoirLaLettre demande={r} />
+      {generer ? (
+        <Link href={`/documents/${r.id}/generer`} className={GESTE_DE_LA_LIGNE}>
+          <Icon name="description" size={13} className="shrink-0" />
+          Générer le document
+        </Link>
+      ) : null}
+    </span>
+  );
 }
 
 /**
@@ -290,6 +324,7 @@ export default function DocumentRequestsPage() {
                             : '1 fichier déposé'}
                         </span>
                       ) : null}
+                      <GestesDeLaDemande demande={r} />
                     </Td>
                     <Td>
                       <Link
@@ -373,7 +408,10 @@ export default function DocumentRequestsPage() {
               {historique.tranche.map((r) => (
                 <Tr key={r.id}>
                   <TdGouttiere />
-                  <Td>{docLabels(r)}</Td>
+                  <Td>
+                    {docLabels(r)}
+                    <GestesDeLaDemande demande={r} />
+                  </Td>
                   <Td>
                     <Link
                       href={`/employees/${r.employeeId}`}
@@ -1011,6 +1049,29 @@ function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }
       ) : null}
     </div>
   );
+
+  if (depuisLeDossier(piece.doc)) {
+    // Une décision de disponibilité ou une domiciliation : son document se
+    // génère depuis la demande, la fiche préremplie (ADR-0189).
+    return (
+      <>
+        {entete}
+        <EmptyState
+          className="flex-1"
+          icon={<Icon name="description" size={22} />}
+          title="Document à générer depuis la demande"
+          action={
+            <Link href={`/documents/${piece.requestId}/generer`}>
+              <Button size="sm" variant="secondary">
+                <Icon name="description" size={15} />
+                Générer le document
+              </Button>
+            </Link>
+          }
+        />
+      </>
+    );
+  }
 
   if (!piece.generable) {
     // Deux raisons de ne rien avoir à montrer, et elles n'appellent pas le
