@@ -200,3 +200,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0192](0192-une-demande-cochee.md)                    | Une demande de document se coche, une seule à la fois                                   | acceptée                                    |
 | [0193](0193-traitee-cote-agent.md)                    | Côté agent, une demande traitée sans filet, sans « Nouveau », sans lettre               | acceptée                                    |
 | [0194](0194-temps-a-la-minute.md)                     | Le temps d'une demande de document se lit à la minute                                   | acceptée                                    |
+| [0195](0195-lecteur-pdf-fluide.md)                    | Le lecteur PDF peint une page à la fois et ne bouge rien pendant le défilement          | acceptée                                    |
