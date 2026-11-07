@@ -13,3 +13,17 @@ Régénérer après toute modification de `ICON_NAMES` (`components/icons.tsx`) 
 ```bash
 pnpm --filter @teranga/web icons:fetch
 ```
+
+# Polices des courriels
+
+`raleway-*.woff2`, `exo-*.woff2` et `anton-*.woff2` : Raleway, Exo et Anton,
+les polices de la charte de l'APIX, sous licence OFL (`*-OFL.txt`), en
+sous-ensembles `latin` et `latin-ext`. Les courriels les chargent d'ici
+(ADR-0186) ; une messagerie qui ne charge pas de police prend celles du
+système.
+
+Régénérer avec :
+
+```bash
+pnpm --filter @teranga/web fonts:mail
+```

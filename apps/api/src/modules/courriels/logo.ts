@@ -2,10 +2,10 @@
    Le logo des courriels.
 
    Le site le sert, dans ses encres (apps/web/app/courriel/logo.png) : celui
-   de l'écran de connexion en thème clair. Le courriel le charge de là, rien
-   ne voyage en pièce jointe. L'expéditeur s'assure qu'il existe et lit ses
-   dimensions (Outlook les veut écrites dans la balise) ; sans lui, le
-   courriel porte le nom de l'organisation.
+   de l'écran de connexion en thème clair, posé sur un fond blanc arrondi.
+   Le courriel le charge de là, rien ne voyage en pièce jointe. L'expéditeur
+   s'assure qu'il existe et lit ses dimensions (Outlook les veut écrites dans
+   la balise) ; sans lui, le courriel porte le nom de l'organisation.
    ──────────────────────────────────────────────────────────────── */
 
 export interface LogoCourriel {
@@ -16,6 +16,13 @@ export interface LogoCourriel {
 }
 
 export const CHEMIN_DU_LOGO = '/courriel/logo.png';
+
+/**
+ * Le fond blanc que le site met autour du logo, en pixels CSS, de chaque côté
+ * (apps/web/app/courriel/logo.png, ADR-0186) : le gabarit le retranche pour
+ * aligner le logo sur le texte.
+ */
+export const MARGE_DU_LOGO = 8;
 
 export async function sonderLogo(
   portail: string,

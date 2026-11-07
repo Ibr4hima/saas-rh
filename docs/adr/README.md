@@ -178,7 +178,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0170](0170-page-montree-d-un-bloc.md)                | La page qui arrive se montre d'un bloc, sans squelette fugitif, à largeur constante     | acceptée                                    |
 | [0171](0171-maladie-visible-du-n1.md)                 | La maladie se lit comme les autres motifs d'absence : le N+1 la voit                    | acceptée                                    |
 | [0172](0172-disponibilite-deux-ans.md)                | La disponibilité dure deux ans au plus, renouvelable, pour le type comme les documents  | acceptée                                    |
-| [0173](0173-papier-de-la-charte.md)                   | Les documents de la DCH sur le papier de la charte de l'APIX ; le fond clair #F5F7F9    | acceptée, précisée par 0175, révisée (0185) |
+| [0173](0173-papier-de-la-charte.md)                   | Les documents de la DCH sur le papier de la charte de l'APIX ; le fond clair #F5F7F9    | précisée par 0175, révisée (0185, 0186)     |
 | [0174](0174-fiches-depuis-le-dossier.md)              | Fiches préremplies au dossier, prime de transport facultative, stage de 1 à 6 mois      | acceptée                                    |
 | [0175](0175-date-entre-numero-et-emetteur.md)         | La date de l'en-tête, à égale distance du numéro et de l'émetteur                       | acceptée                                    |
 | [0176](0176-sans-dossier-ou-avant-le-depart.md)       | Certificat de travail et attestation de stage, sans dossier ou avant le départ          | acceptée                                    |
@@ -191,3 +191,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0183](0183-badges-aux-coins-de-8-px.md)              | Les badges aux coins de 8 px                                                            | acceptée                                    |
 | [0184](0184-niveaux-de-langue-facultatifs.md)         | Les niveaux de langue d'une offre : sans « Notions », et facultatifs                    | acceptée                                    |
 | [0185](0185-certificat-a-la-charte.md)                | Le certificat d'APIX Academy à la charte de l'APIX                                      | acceptée                                    |
+| [0186](0186-courriels-a-la-charte.md)                 | Les courriels à la charte de l'APIX                                                     | acceptée                                    |

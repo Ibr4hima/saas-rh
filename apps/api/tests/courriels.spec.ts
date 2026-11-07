@@ -577,7 +577,7 @@ describe('le gabarit', () => {
     expect(invitation('compte').html).not.toContain('Choisir mon mot de passe');
   });
 
-  it('porte l’habit de l’écran de connexion en thème clair : une couleur unique, Google Sans du site, le nom à défaut de logo', () => {
+  it('porte la charte de l’APIX : ses polices prises sur le site, la courbe du bas, le nom à défaut de logo', () => {
     const c = composer(
       {
         nom: 'notification',
@@ -589,18 +589,56 @@ describe('le gabarit', () => {
       rendu,
     );
     expect(c.subject).toBe('Hawa Ba demande son contrat de travail');
-    expect(c.html).toContain('<body style="margin:0;padding:0;background-color:#f5f7f9">');
-    expect(c.html).not.toContain('gradient(180deg');
-    expect(c.html).toContain("url('https://rh.apix.sn/fonts/google-sans-latin.woff2')");
+    expect(c.html).toContain(
+      '<body class="fond" style="margin:0;padding:0;background-color:#f5f7f9;word-spacing:normal">',
+    );
+    // Raleway, Exo et Anton, servies par le site ; plus de Google Sans.
+    for (const police of ['raleway', 'exo', 'anton']) {
+      expect(c.html).toContain(`url('https://rh.apix.sn/fonts/${police}-latin.woff2')`);
+    }
+    expect(c.html).not.toContain('google-sans');
     expect(c.html).toContain('>Direction du Capital Humain</td>');
+    expect(c.html).toContain('>Notification</p>');
+    // La courbe bleue de la charte, en image servie par le site.
+    expect(c.html).toContain(
+      '<img src="https://rh.apix.sn/courriel/bande.png" width="600" height="64" alt=""',
+    );
+    // Le bouton, arrondi jusque dans Outlook, et le même lien à copier dessous.
+    expect(c.html).toContain('arcsize="17%"');
+    // Le libellé seul, sans flèche.
+    expect(c.html).toContain('>Voir sur le portail</a>');
+    expect(c.html).not.toMatch(/&rarr;|\u2192/);
     expect(c.html).toContain(
       'Copiez ce <a href="https://rh.apix.sn/documents" target="_blank" style="color:#004f91;font-weight:700;text-decoration:none">lien</a>.',
     );
+    // Pas d'adresse en clair sous le bouton.
+    expect(c.html).not.toContain('>https://rh.apix.sn/documents<');
     expect(c.html).toContain('>APIX</div>');
     expect(c.html).not.toContain('cid:');
     expect(c.html).toContain('Voir sur le portail');
     expect(c.html).toContain('© 2026 APIX S.A · DCH. Tous droits réservés.');
+    expect(c.html).toContain('<a href="https://rh.apix.sn/notifications"');
+    // Le thème sombre assombrit le fond, la feuille reste blanche.
+    expect(c.html).toContain('@media (prefers-color-scheme:dark)');
     expect(c.html).not.toContain('\u2014');
+  });
+
+  it('écrit à la française : les dates et la ponctuation haute ne se coupent pas', () => {
+    const c = composer(
+      {
+        nom: 'reinitialisation',
+        prenom: 'Awa',
+        organisation: 'APIX',
+        lien: 'https://rh.apix.sn/mot-de-passe/abc',
+      },
+      rendu,
+    );
+    expect(c.html).toContain('ignorez ce courriel\u00a0: votre mot de passe restera inchangé.');
+    expect(c.html).toContain('Le bouton ne fonctionne pas\u00a0? Copiez ce <a');
+    // Le texte brut garde ses espaces ordinaires.
+    expect(c.text).toContain('ignorez ce courriel : votre mot de passe restera inchangé.');
+    // L'adresse, dans un attribut, n'est jamais retouchée.
+    expect(c.html).toContain('href="https://rh.apix.sn/mot-de-passe/abc"');
   });
 });
 

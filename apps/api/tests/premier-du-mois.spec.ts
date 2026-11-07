@@ -55,7 +55,8 @@ describe('premierDuMois', () => {
       { logo: null, portail: 'https://rh.apix.sn/', annee: 2026 },
     );
     expect(c.text).toContain('valable jusqu’au 1er juin 2026.');
-    expect(c.html).toContain('1er juin 2026');
-    expect(c.html).not.toMatch(/(^|[^\d])1 juin/);
+    // Dans le courriel, la date ne se coupe pas : des espaces insécables.
+    expect(c.html).toContain('1er\u00a0juin\u00a02026');
+    expect(c.html).not.toMatch(/(^|[^\d])1[ \u00a0]juin/);
   });
 });

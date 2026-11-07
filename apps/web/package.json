@@ -9,7 +9,8 @@
     "start": "next start --port ${WEB_PORT:-3000}",
     "typecheck": "tsc --noEmit",
     "lint": "prettier --check app",
-    "fonts:fetch": "node scripts/fetch-text-font.mjs"
+    "fonts:fetch": "node scripts/fetch-text-font.mjs",
+    "fonts:mail": "node scripts/fetch-mail-fonts.mjs"
   },
   "dependencies": {
     "@blocknote/core": "0.55.0",
