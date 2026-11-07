@@ -46,7 +46,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0038](0038-devenir-de-l-ancien-responsable.md)       | Responsable remplacé : il reste, change d'affectation, prend une autre tête ou part     | acceptée, précisée par 0126                 |
 | [0039](0039-bulletin-de-salaire-avec-ses-mois.md)     | Le bulletin de salaire se demande avec ses mois                                         | acceptée, bulletin retiré par 0084          |
 | [0040](0040-document-remis-en-ligne.md)               | Le document demandé peut se remettre en ligne                                           | acceptée, précisée par 0041, 0042           |
-| [0041](0041-remise-en-ligne-en-pdf.md)                | Remise en ligne : un PDF, un nom choisi, un aperçu                                      | acceptée                                    |
+| [0041](0041-remise-en-ligne-en-pdf.md)                | Remise en ligne : un PDF, un nom choisi, un aperçu                                      | acceptée, précisée par 0191                 |
 | [0042](0042-demandes-effacees-et-consultees.md)       | Demandes de documents : ce qui s'efface, ce qui se consulte                             | acceptée, précisée par 0043                 |
 | [0043](0043-suivi-en-cours-puis-traitees.md)          | Suivi des demandes de documents : en cours, puis traitées                               | acceptée, précisée par 0048 et 0081         |
 | [0044](0044-demander-un-document-en-fenetre.md)       | Demander un document : un bloc, une fenêtre, sans précision                             | acceptée, précisée par 0045, 0084 et 0113   |
@@ -194,5 +194,6 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0186](0186-courriels-a-la-charte.md)                 | Les courriels à la charte de l'APIX                                                     | acceptée                                    |
 | [0187](0187-connexion-a-la-charte.md)                 | Les écrans de connexion à la charte de l'APIX, toujours en clair                        | acceptée                                    |
 | [0188](0188-verification-a-la-charte.md)              | La vérification d'un certificat à la charte de l'APIX                                   | acceptée                                    |
-| [0189](0189-lettre-de-demande.md)                     | La lettre de demande, jointe par l'agent, lue et reprise par qui traite la demande      | acceptée, précisée par 0190                 |
+| [0189](0189-lettre-de-demande.md)                     | La lettre de demande, jointe par l'agent, lue et reprise par qui traite la demande      | acceptée, précisée par 0190, 0191           |
 | [0190](0190-demande-figee.md)                         | Au titre d'une demande, l'identité de l'agent et la date de la demande sont figées      | acceptée                                    |
+| [0191](0191-une-demande-a-la-fois.md)                 | Une demande de document se traite seule, en un écran                                    | acceptée                                    |

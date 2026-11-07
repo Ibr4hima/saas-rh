@@ -32,18 +32,14 @@ function nomDuFichier(nom: string): string {
  * Les documents remis en ligne d'une demande : qui la traite y dépose le
  * PDF (« Joindre », ou en y glissant le fichier), l'ouvre pour vérifier ce
  * qui part, le renomme, retire un mauvais fichier. Chaque geste part aussitôt
- * au serveur : rien ne se perd si la fenêtre se ferme.
- *
- * `lot` : une demande parmi d'autres, en carte, avec le nom de l'agent. Sinon,
- * la demande seule : ses fichiers, puis la zone où les déposer.
+ * au serveur : rien ne se perd si la fenêtre se ferme. Une demande se traite
+ * seule (ADR-0191) : ses fichiers, puis la zone où les déposer.
  */
 export function DocumentsDeposes({
   demande: r,
-  lot = false,
   onErreur,
 }: {
   demande: DocumentRequestView;
-  lot?: boolean;
   onErreur: (texte: string | null) => void;
 }) {
   const queryClient = useQueryClient();
@@ -102,8 +98,6 @@ export function DocumentsDeposes({
   const champ = (
     <input
       type="file"
-      // Dans un lot, chaque « Joindre » dit pour qui il dépose.
-      aria-label={lot ? `Joindre un document pour ${r.employeeName}` : undefined}
       multiple
       accept=".pdf,application/pdf"
       className="sr-only"
@@ -155,75 +149,40 @@ export function DocumentsDeposes({
         )
       : null;
 
-  if (!lot) {
-    return (
-      <div className="flex flex-col gap-3">
-        {liste}
-        <label
-          {...glisser}
-          aria-disabled={deposer.isPending}
-          className={cn(
-            'flex cursor-pointer flex-col items-center gap-2 rounded-bloc border-[1.5px] border-dashed px-6 py-6 text-center transition-colors duration-150 focus-within:ring-2 focus-within:ring-primary/40',
-            survol
-              ? 'border-primary bg-primary/[0.05]'
-              : 'border-line bg-surface-raised hover:border-primary/45 hover:bg-primary/[0.03]',
-            deposer.isPending && 'pointer-events-none opacity-60',
-          )}
-        >
-          {champ}
-          <span className="flex size-10 items-center justify-center rounded-full bg-primary-soft text-primary">
-            <Icon name="upload_file" size={20} />
-          </span>
-          <span className="text-[12.5px] text-ink">
-            {deposer.isPending ? (
-              'Envoi…'
-            ) : (
-              <>
-                Glissez le PDF ici, ou{' '}
-                <span className="font-semibold text-primary underline-offset-2 hover:underline">
-                  parcourez
-                </span>
-              </>
-            )}
-          </span>
-          <span className="text-[11.5px] text-ink-muted">
-            PDF · {taille(MAX_FICHIER_REMIS_BYTES)} maximum
-          </span>
-        </label>
-        {fenetre}
-      </div>
-    );
-  }
-
   return (
-    <div
-      {...glisser}
-      className={cn(
-        'rounded-bloc border px-3.5 py-3 transition-colors duration-150',
-        survol ? 'border-primary bg-primary/[0.05]' : 'border-line-soft bg-surface',
-      )}
-    >
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[12.5px] font-bold text-ink-strong">{r.employeeName}</p>
-          <p className="truncate text-[11.5px] text-ink-muted">
-            {r.docTypes.map((d) => documentDemande(d, r.bulletin)).join(' · ')}
-          </p>
-        </div>
-        <label
-          aria-disabled={deposer.isPending}
-          className={cn(
-            'inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-controle-sm border px-3 py-1.5 text-[12px] font-semibold transition-colors focus-within:ring-2 focus-within:ring-primary/40',
-            'border-line text-primary hover:border-primary/40 hover:bg-primary/[0.07]',
-            deposer.isPending && 'pointer-events-none opacity-60',
+    <div className="flex flex-col gap-3">
+      {liste}
+      <label
+        {...glisser}
+        aria-disabled={deposer.isPending}
+        className={cn(
+          'flex cursor-pointer flex-col items-center gap-2 rounded-bloc border-[1.5px] border-dashed px-6 py-6 text-center transition-colors duration-150 focus-within:ring-2 focus-within:ring-primary/40',
+          survol
+            ? 'border-primary bg-primary/[0.05]'
+            : 'border-line bg-surface-raised hover:border-primary/45 hover:bg-primary/[0.03]',
+          deposer.isPending && 'pointer-events-none opacity-60',
+        )}
+      >
+        {champ}
+        <span className="flex size-10 items-center justify-center rounded-full bg-primary-soft text-primary">
+          <Icon name="upload_file" size={20} />
+        </span>
+        <span className="text-[12.5px] text-ink">
+          {deposer.isPending ? (
+            'Envoi…'
+          ) : (
+            <>
+              Glissez le PDF ici, ou{' '}
+              <span className="font-semibold text-primary underline-offset-2 hover:underline">
+                parcourez
+              </span>
+            </>
           )}
-        >
-          <Icon name="upload_file" size={15} />
-          {deposer.isPending ? 'Envoi…' : 'Joindre'}
-          {champ}
-        </label>
-      </div>
-      {liste ? <div className="mt-2.5 border-t border-line-soft pt-2.5">{liste}</div> : null}
+        </span>
+        <span className="text-[11.5px] text-ink-muted">
+          PDF · {taille(MAX_FICHIER_REMIS_BYTES)} maximum
+        </span>
+      </label>
       {fenetre}
     </div>
   );

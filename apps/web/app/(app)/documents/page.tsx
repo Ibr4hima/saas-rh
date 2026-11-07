@@ -2,13 +2,8 @@
 
 import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import type {
-  BatchAdvanceResult,
-  DocumentRequestView,
-  PeriodeDuBulletin,
-  RequestableDoc,
-} from '@teranga/contracts';
+import { useMemo, useState } from 'react';
+import type { BatchAdvanceResult, DocumentRequestView } from '@teranga/contracts';
 import {
   capaciteDuDocument,
   DELAI_DE_TRAITEMENT_HEURES,
@@ -23,9 +18,7 @@ import {
   CardTitle,
   cn,
   EmptyState,
-  Field,
   Input,
-  Skeleton,
   TBody,
   Td,
   Th,
@@ -34,14 +27,13 @@ import {
   Tr,
 } from '@teranga/ui';
 import { api, ApiError, apiUrl } from '../../../lib/api';
-import { enregistrer, lireFichier } from '../../../lib/fichiers';
 import { formatDate, useMe } from '../../../lib/hooks';
 import { DocumentsDeposes } from '../../../components/documents-deposes';
+import { FenetreDocument } from '../../../components/fenetre-document';
 import { Icon } from '../../../components/icons';
 import { GESTE_DE_LA_LIGNE, VoirLaLettre } from '../../../components/lettre-de-demande';
 import { LoadFailure } from '../../../components/load-failure';
-import { PdfViewer } from '../../../components/pdf-viewer';
-import { Modal, ModalGrid, ModalSection } from '../../../components/modal';
+import { Modal, ModalSection } from '../../../components/modal';
 import { CartePleine, CorpsDefilant, Page } from '../../../components/gabarit';
 import { Pagination, usePagination } from '../../../components/pagination';
 import { DOCUMENTS_DELEGABLES } from '../../../components/deleguer-documents';
@@ -54,15 +46,10 @@ import {
   type Message,
 } from '../../../components/traitement-dch';
 import {
-  BarreSelection,
-  LIGNE_COCHEE,
   SqueletteTableau,
-  TdCase,
   TdGouttiere,
-  ThCases,
   ThGouttiere,
   ThTri,
-  useSelection,
   useTriLocal,
 } from '../../../components/tableau';
 
@@ -89,10 +76,26 @@ function seGenereDepuisLaDemande(r: DocumentRequestView): boolean {
   );
 }
 
+/**
+ * Une attestation de travail demandée, ouverte, que la session traite :
+ * l'application la produit, et on la génère avant de notifier l'agent. Le
+ * droit de la lire s'éteint avec la demande.
+ */
+function attestationAGenerer(r: DocumentRequestView): boolean {
+  return (
+    r.canAdvance &&
+    OPEN.includes(r.status) &&
+    r.docTypes.includes('attestation_travail') &&
+    r.employeeStatus === 'active'
+  );
+}
+
 /** Lire la lettre de la demande, et générer son document : sous la requête. */
 function GestesDeLaDemande({ demande: r }: { demande: DocumentRequestView }) {
+  const [attestation, setAttestation] = useState(false);
   const generer = seGenereDepuisLaDemande(r);
-  if (!r.lettre && !generer) return null;
+  const aGenerer = attestationAGenerer(r);
+  if (!r.lettre && !generer && !aGenerer) return null;
   return (
     <span className="mt-1.5 flex flex-wrap gap-1.5">
       <VoirLaLettre demande={r} />
@@ -101,6 +104,24 @@ function GestesDeLaDemande({ demande: r }: { demande: DocumentRequestView }) {
           <Icon name="description" size={13} className="shrink-0" />
           Générer le document
         </Link>
+      ) : null}
+      {aGenerer ? (
+        <button type="button" onClick={() => setAttestation(true)} className={GESTE_DE_LA_LIGNE}>
+          <Icon name="description" size={13} className="shrink-0" />
+          Générer le document
+        </button>
+      ) : null}
+      {attestation ? (
+        <FenetreDocument
+          doc={{
+            url: apiUrl(`/employees/${r.employeeId}/attestation?disposition=inline`),
+            filename: `attestation-travail-${r.employeeNumber}.pdf`,
+            contentType: 'application/pdf',
+            titre: `Attestation de travail · ${r.employeeName}`,
+          }}
+          telechargement={apiUrl(`/employees/${r.employeeId}/attestation`)}
+          onClose={() => setAttestation(false)}
+        />
       ) : null}
     </span>
   );
@@ -127,7 +148,10 @@ export default function DocumentRequestsPage() {
 
   const me = useMe();
   const estDirecteur = Boolean(me.data?.dirigeLaDCH);
-  const [panneau, setPanneau] = useState<'traiter' | 'decliner' | null>(null);
+  // La demande qu'on traite ou qu'on décline : une à la fois (ADR-0191).
+  const [enCours, setEnCours] = useState<{ id: string; geste: 'traiter' | 'decliner' } | null>(
+    null,
+  );
   const [message, setMessage] = useState<Message>(null);
   const [traiteesOuvertes, setTraiteesOuvertes] = useState(false);
   // La demande prête dont on ouvre les documents remis : on la relit dans la
@@ -182,15 +206,11 @@ export default function DocumentRequestsPage() {
     { createdAt: 'desc', employeeNumber: 'asc', employeeName: 'asc', requete: 'asc' },
   );
   const aTraiter = tri.lignes;
-  // Quinze par page ; comme pour le personnel, la sélection porte sur la
-  // page affichée.
+  // Quinze par page.
   const fileVue = usePagination(aTraiter, `${tri.colonne}|${tri.sens}`);
   const historique = usePagination(traitees);
-  // Ne se coche que ce qu'on traite : jamais sa propre demande, qui
-  // s'annule depuis l'espace personnel (ADR-0060).
-  const cochables = useMemo(() => fileVue.tranche.filter((r) => r.canAdvance), [fileVue.tranche]);
-  const sel = useSelection(cochables);
-  const selectionnees = sel.choisis;
+  // Relue dans la liste à chaque rendu : un document déposé s'y voit aussitôt.
+  const demandeEnCours = enCours ? (items.find((r) => r.id === enCours.id) ?? null) : null;
 
   if (requests.isError) {
     return <LoadFailure error={requests.error} onRetry={() => void requests.refetch()} />;
@@ -203,17 +223,6 @@ export default function DocumentRequestsPage() {
       <CartePleine>
         <CardHeader className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
           <CardTitle className="min-w-0 flex-1">Demandes à traiter</CardTitle>
-          {traite ? (
-            <BarreSelection sel={sel} quoi="demande" feminin>
-              <Button size="sm" onClick={() => setPanneau('traiter')}>
-                <Icon name="folder_managed" size={15} />
-                Prévisualiser
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => setPanneau('decliner')}>
-                Décliner
-              </Button>
-            </BarreSelection>
-          ) : null}
           {aTraiter.length > 0 ? <Pastille n={aTraiter.length} /> : null}
         </CardHeader>
         {requests.isLoading ? (
@@ -232,7 +241,7 @@ export default function DocumentRequestsPage() {
           <Table pleine>
             <THead>
               <tr>
-                {traite && cochables.length > 0 ? <ThCases sel={sel} /> : <ThGouttiere />}
+                <ThGouttiere />
                 <ThTri
                   label="Requête"
                   colonne="requete"
@@ -265,19 +274,17 @@ export default function DocumentRequestsPage() {
                     en-têtes pour le même ordre seraient deux fois le même
                     bouton. Celui-ci reste un intitulé. */}
                 <Th className="text-right">Temps écoulé</Th>
-                {traite ? null : <Th>Traitée par</Th>}
+                <Th className={traite ? 'text-right' : undefined}>
+                  {traite ? 'Décision' : 'Traitée par'}
+                </Th>
               </tr>
             </THead>
             <TBody>
               {fileVue.tranche.map((r) => {
                 const h = r.heuresOuvrees ?? 0;
                 return (
-                  <Tr key={r.id} className={cn(sel.coche(r.id) && LIGNE_COCHEE)}>
-                    {traite && r.canAdvance ? (
-                      <TdCase sel={sel} id={r.id} quoi={`la demande de ${r.employeeName}`} />
-                    ) : (
-                      <TdGouttiere />
-                    )}
+                  <Tr key={r.id}>
+                    <TdGouttiere />
                     <Td>
                       {docLabels(r)}
                       {r.traitement?.aConfier ? (
@@ -316,14 +323,6 @@ export default function DocumentRequestsPage() {
                           « {r.note} »
                         </span>
                       ) : null}
-                      {r.fichiers.length > 0 ? (
-                        <span className="mt-0.5 flex items-center gap-1 text-[11px] text-ink-muted">
-                          <Icon name="upload_file" size={13} className="shrink-0" />
-                          {r.fichiers.length > 1
-                            ? `${r.fichiers.length} fichiers déposés`
-                            : '1 fichier déposé'}
-                        </span>
-                      ) : null}
                       <GestesDeLaDemande demande={r} />
                     </Td>
                     <Td>
@@ -354,7 +353,27 @@ export default function DocumentRequestsPage() {
                     >
                       {heures(h)}
                     </Td>
-                    {traite ? null : (
+                    {traite ? (
+                      <Td className="text-right whitespace-nowrap">
+                        {r.canAdvance ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              onClick={() => setEnCours({ id: r.id, geste: 'traiter' })}
+                            >
+                              Traiter
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => setEnCours({ id: r.id, geste: 'decliner' })}
+                            >
+                              Décliner
+                            </Button>
+                          </span>
+                        ) : null}
+                      </Td>
+                    ) : (
                       <Td className="text-[12px] text-ink-muted">{r.traitement?.traitants}</Td>
                     )}
                   </Tr>
@@ -364,13 +383,7 @@ export default function DocumentRequestsPage() {
           </Table>
         )}
       </CartePleine>
-      <Pagination
-        {...fileVue.barre}
-        onPage={(p) => {
-          sel.vider();
-          fileVue.barre.onPage(p);
-        }}
-      />
+      <Pagination {...fileVue.barre} />
 
       <CartePleine>
         <EnTetePliable
@@ -450,14 +463,11 @@ export default function DocumentRequestsPage() {
       </CartePleine>
       {traiteesOuvertes ? <Pagination {...historique.barre} /> : null}
 
-      {panneau === 'traiter' ? (
+      {enCours?.geste === 'traiter' && demandeEnCours ? (
         <TraiterModal
-          requests={selectionnees}
-          onClose={() => setPanneau(null)}
-          onDone={() => {
-            setPanneau(null);
-            sel.vider();
-          }}
+          demande={demandeEnCours}
+          onClose={() => setEnCours(null)}
+          onDone={() => setEnCours(null)}
         />
       ) : null}
       {documentsDe ? (
@@ -466,14 +476,11 @@ export default function DocumentRequestsPage() {
           onClose={() => setDocumentsDe(null)}
         />
       ) : null}
-      {panneau === 'decliner' ? (
+      {enCours?.geste === 'decliner' && demandeEnCours ? (
         <DeclinerModal
-          requests={selectionnees}
-          onClose={() => setPanneau(null)}
-          onDone={() => {
-            setPanneau(null);
-            sel.vider();
-          }}
+          demande={demandeEnCours}
+          onClose={() => setEnCours(null)}
+          onDone={() => setEnCours(null)}
         />
       ) : null}
     </Page>
@@ -569,167 +576,76 @@ function DocumentsRemisModal({
   );
 }
 
-/** Un document à produire pour une demande donnée. */
-interface Piece {
-  key: string;
-  requestId: string;
-  employeeId: string;
-  employeeName: string;
-  /** Ce qui nomme le fichier téléchargé — un nom se répète, un matricule non. */
-  employeeNumber: string;
-  employeeStatus: string;
-  doc: RequestableDoc;
-  /** Les mois d'un bulletin de salaire. */
-  bulletin: PeriodeDuBulletin | null;
-  /** L'application sait la produire elle-même (attestation de travail). */
-  generable: boolean;
-}
-
-/**
- * Ce que la file produit elle-même : l'attestation de travail. L'attestation
- * de revenu demande un salaire, que seule « Générer des documents » fait
- * saisir (ADR-0087) : dans la file, elle se prépare comme les autres.
- */
-const seGenereDansLaFile = (doc: string) => doc === 'attestation_travail';
-
-/**
- * Enregistre sur le poste de la RH les pièces que l'application produit.
- *
- * Une pièce que l'application ne produit pas (contrat, décision) n'a rien à
- * télécharger : elle est préparée à la main, hors de l'outil.
- *
- * Rend le nombre de fichiers réellement enregistrés : un échec ne doit pas
- * passer pour un succès. Un fichier manquant n'arrête pas les autres.
- */
-async function telechargerLesPieces(pieces: Piece[]): Promise<number> {
-  let n = 0;
-  for (const p of pieces.filter((x) => x.generable)) {
-    const ok = await enregistrer(
-      `/employees/${p.employeeId}/attestation`,
-      `attestation-travail-${p.employeeNumber}.pdf`,
-    );
-    if (ok) n += 1;
-  }
-  return n;
-}
-
-function piecesOf(requests: DocumentRequestView[]): Piece[] {
-  return requests.flatMap((r) =>
-    r.docTypes.map((d) => ({
-      key: `${r.id}:${d}`,
-      requestId: r.id,
-      employeeId: r.employeeId,
-      employeeName: r.employeeName,
-      employeeNumber: r.employeeNumber,
-      employeeStatus: r.employeeStatus,
-      doc: d,
-      bulletin: r.bulletin,
-      generable: seGenereDansLaFile(d) && r.employeeStatus === 'active',
-    })),
-  );
-}
-
 /**
  * Qui demande quoi : le nom, le matricule et la demande. Sur téléphone, le
  * matricule passe à côté du nom et la demande dessous.
  */
-function DemandesDuLot({ requests }: { requests: DocumentRequestView[] }) {
+function LaDemande({ demande: r }: { demande: DocumentRequestView }) {
   return (
     <>
       <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,0.7fr)_minmax(0,1.5fr)] gap-x-4 gap-y-2 text-[12.5px] sm:grid">
         <span className="text-[11px] font-semibold text-ink-muted">Demandeur</span>
         <span className="text-[11px] font-semibold text-ink-muted">Matricule</span>
         <span className="text-[11px] font-semibold text-ink-muted">Demande</span>
-        {requests.map((r) => (
-          <Fragment key={r.id}>
-            <span className="truncate font-bold text-ink-strong" title={r.employeeName}>
-              {r.employeeName}
-            </span>
-            <span className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</span>
-            <span className="text-ink">{docLabels(r)}</span>
-          </Fragment>
-        ))}
+        <span className="truncate font-bold text-ink-strong" title={r.employeeName}>
+          {r.employeeName}
+        </span>
+        <span className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</span>
+        <span className="text-ink">{docLabels(r)}</span>
       </div>
-      <ul className="flex flex-col gap-2.5 text-[12.5px] sm:hidden">
-        {requests.map((r) => (
-          <li key={r.id}>
-            <p className="flex items-baseline gap-2">
-              <span className="font-bold text-ink-strong">{r.employeeName}</span>
-              <span className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</span>
-            </p>
-            <p className="text-ink">{docLabels(r)}</p>
-          </li>
-        ))}
-      </ul>
+      <div className="text-[12.5px] sm:hidden">
+        <p className="flex items-baseline gap-2">
+          <span className="font-bold text-ink-strong">{r.employeeName}</span>
+          <span className="font-mono text-[11.5px] text-ink-muted">{r.employeeNumber}</span>
+        </p>
+        <p className="text-ink">{docLabels(r)}</p>
+      </div>
     </>
   );
 }
 
 /**
- * Traiter un lot, en deux temps : PRÉVISUALISER, puis mettre à disposition.
- *
- * Valider annonce à l'employé que son document l'attend. Le faire sans avoir
- * regardé le document, c'est convoquer quelqu'un pour une feuille qu'on n'a
- * pas lue — et découvrir la coquille une fois qu'il est devant le bureau. La
- * première étape affiche donc chaque pièce telle qu'elle sera remise, et la
- * seconde ne s'ouvre qu'une fois toutes les pièces passées sous les yeux.
+ * Traiter une demande : la mise à disposition, en un écran (ADR-0191). Le
+ * document se prépare avant, depuis la ligne de la demande (« Générer le
+ * document ») ; ici, on dit comment il se remet, et l'agent est notifié. En
+ * main propre, avec le point de retrait ; en ligne, le PDF déposé dans son
+ * espace.
  */
 function TraiterModal({
-  requests,
+  demande,
   onClose,
   onDone,
 }: {
-  requests: DocumentRequestView[];
+  demande: DocumentRequestView;
   onClose: () => void;
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [etape, setEtape] = useState<'apercu' | 'remise'>('apercu');
-  // En main propre, ou dans l'espace de l'agent. Un lot dont un document
-  // est déjà déposé reprend là où on l'avait laissé.
+  // En main propre, ou dans l'espace de l'agent. Une demande dont un document
+  // est déjà déposé reprend là où on l'avait laissée.
   const [remise, setRemise] = useState<'main_propre' | 'en_ligne'>(() =>
-    requests.some((r) => r.fichiers.length > 0) ? 'en_ligne' : 'main_propre',
+    demande.fichiers.length > 0 ? 'en_ligne' : 'main_propre',
   );
   const envois = useIsMutating({ mutationKey: ['documents-deposes'] });
-  const [telechargement, setTelechargement] = useState(false);
-  const [courante, setCourante] = useState(0);
-  const [vues, setVues] = useState<string[]>([]);
   const [pickupContact, setPickupContact] = useState('');
-  const [message, setMessage] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
-  const [ecartees, setEcartees] = useState<BatchAdvanceResult['skipped']>([]);
-
-  const pieces = useMemo(() => piecesOf(requests), [requests]);
-  const piece = pieces[courante];
-  // Seules les pièces que l'application produit se vérifient ici : un contrat
-  // se prépare hors de l'outil, il n'y a rien à relire à l'écran.
-  const aVerifier = pieces.filter((p) => p.generable);
-  const restantes = aVerifier.filter((p) => !vues.includes(p.key)).length;
-
-  const marquerVue = useCallback((key: string) => {
-    setVues((v) => (v.includes(key) ? v : [...v, key]));
-  }, []);
 
   const valider = useMutation({
     mutationFn: async () => {
       if (remise === 'main_propre') {
         // Remis en main propre, rien ne part dans l'espace de l'agent : un
         // fichier déposé puis laissé de côté n'y apparaît pas.
-        for (const r of requests) {
-          for (const f of r.fichiers) {
-            await api(`/document-requests/${r.id}/fichiers/${f.id}`, { method: 'DELETE' });
-          }
+        for (const f of demande.fichiers) {
+          await api(`/document-requests/${demande.id}/fichiers/${f.id}`, { method: 'DELETE' });
         }
       }
-      // En ligne, ni point de retrait ni précision : le document est là.
-      const enMain = remise === 'main_propre';
+      // En ligne, pas de point de retrait : le document est là.
       return api<BatchAdvanceResult>('/document-requests/batch-advance', {
         method: 'POST',
         body: {
-          ids: requests.map((r) => r.id),
+          ids: [demande.id],
           status: 'ready',
-          pickupContact: (enMain && pickupContact.trim()) || undefined,
-          message: (enMain && message.trim()) || undefined,
+          pickupContact: (remise === 'main_propre' && pickupContact.trim()) || undefined,
         },
       });
     },
@@ -739,10 +655,11 @@ function TraiterModal({
       // La pastille de la barre de menu compte les demandes ouvertes : sans
       // ça elle continue d'annoncer un travail qui vient d'être fait.
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      // Un lot partiellement appliqué se dit : refermer sans rien montrer
-      // laisserait croire que tout est parti.
-      if (res.skipped.length > 0) {
-        setEcartees(res.skipped);
+      // Modifiée entre-temps (annulée, traitée par quelqu'un d'autre) : on le
+      // dit, plutôt que de refermer comme si tout était parti.
+      const ecartee = res.skipped[0];
+      if (ecartee) {
+        setErreur(ecartee.reason);
         return;
       }
       onDone();
@@ -751,96 +668,56 @@ function TraiterModal({
       setErreur(err instanceof ApiError ? err.message : 'Enregistrement impossible.'),
   });
 
-  if (ecartees.length > 0) {
-    return (
-      <Modal
-        open
-        onClose={onDone}
-        title="Certaines demandes n’ont pas été traitées"
-        maxWidth="max-w-lg"
-        footer={<Button onClick={onDone}>J&apos;ai compris</Button>}
-      >
-        <ModalSection title="Demandes non traitées">
-          <p className="mb-3 text-[12.5px] text-ink-muted">
-            Les autres demandes ont bien été traitées. Celles-ci avaient été modifiées entre-temps :
-          </p>
-          <ul className="flex flex-col gap-1.5">
-            {ecartees.map((s) => (
-              <li key={s.id} className="flex items-center gap-2 text-[12.5px]">
-                <Icon name="error" size={15} className="shrink-0 text-warning" />
-                <span className="font-semibold text-ink-strong">{s.employeeName || 'Demande'}</span>
-                <span className="text-ink-muted">· {s.reason}</span>
-              </li>
-            ))}
-          </ul>
-        </ModalSection>
-      </Modal>
-    );
-  }
+  const enLigne = remise === 'en_ligne';
+  const sansDocument = demande.fichiers.length === 0;
+  // Une demande ancienne peut porter deux documents.
+  const plusieurs = demande.docTypes.length > 1;
+  const notifier = () => {
+    setErreur(null);
+    valider.mutate();
+  };
 
-  const nbDemandes = `${requests.length} demande${requests.length > 1 ? 's' : ''}`;
-
-  if (etape === 'remise') {
-    const enLigne = remise === 'en_ligne';
-    const sansDocument = requests.some((r) => r.fichiers.length === 0);
-    // Le pluriel compte les DOCUMENTS, pas les demandes : une seule demande
-    // peut en porter deux (attestation de travail et de salaire).
-    const plusieurs = pieces.length > 1;
-    return (
-      <Modal
-        open
-        onClose={onClose}
-        title="Mise à disposition"
-        subtitle="Étape 2 sur 2 · Remise"
-        maxWidth="max-w-2xl"
-        footer={
-          <>
-            {erreur ? (
-              <p
-                role="alert"
-                className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
-              >
-                {erreur}
-              </p>
-            ) : null}
-            <Button variant="secondary" onClick={() => setEtape('apercu')}>
-              Retour à l&apos;aperçu
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Mise à disposition"
+      maxWidth="max-w-2xl"
+      footer={
+        <>
+          {erreur ? (
+            <p
+              role="alert"
+              className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+            >
+              {erreur}
+            </p>
+          ) : null}
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          {enLigne ? (
+            <Button
+              disabled={sansDocument || envois > 0}
+              loading={valider.isPending}
+              onClick={notifier}
+            >
+              Déposer et notifier
             </Button>
-            {enLigne ? (
-              <Button
-                disabled={sansDocument || envois > 0}
-                loading={valider.isPending}
-                onClick={() => {
-                  setErreur(null);
-                  valider.mutate();
-                }}
-              >
-                Déposer et prévenir
-              </Button>
-            ) : (
-              <Button
-                loading={telechargement || valider.isPending}
-                onClick={async () => {
-                  setErreur(null);
-                  // Les fichiers PARTENT D'ABORD. Annoncer le retrait puis
-                  // échouer au téléchargement annoncerait un document que la
-                  // RH n'a pas ; l'inverse se rattrape d'un clic.
-                  setTelechargement(true);
-                  await telechargerLesPieces(pieces);
-                  setTelechargement(false);
-                  valider.mutate();
-                }}
-              >
-                Télécharger et prévenir
-              </Button>
-            )}
-          </>
-        }
-      >
-        <ModalSection title={plusieurs ? 'Documents demandés' : 'Document demandé'}>
-          <DemandesDuLot requests={requests} />
-        </ModalSection>
+          ) : (
+            <Button loading={valider.isPending} onClick={notifier}>
+              Notifier
+            </Button>
+          )}
+        </>
+      }
+    >
+      <ModalSection title={plusieurs ? 'Documents demandés' : 'Document demandé'}>
+        <LaDemande demande={demande} />
+      </ModalSection>
 
+      {/* La remise, et en main propre le point de retrait à côté. */}
+      <div className={cn('grid gap-3', !enLigne && 'sm:grid-cols-2')}>
         <ModalSection title="Remise">
           <div
             role="radiogroup"
@@ -874,280 +751,36 @@ function TraiterModal({
             ))}
           </div>
         </ModalSection>
-
-        {enLigne ? (
-          <ModalSection title={plusieurs ? 'Documents à déposer' : 'Document à déposer'}>
-            {requests.length > 1 ? (
-              <div className="flex flex-col gap-2">
-                {requests.map((r) => (
-                  <DocumentsDeposes key={r.id} demande={r} lot onErreur={setErreur} />
-                ))}
-              </div>
-            ) : requests[0] ? (
-              <DocumentsDeposes demande={requests[0]} onErreur={setErreur} />
-            ) : null}
-          </ModalSection>
-        ) : (
+        {enLigne ? null : (
           <ModalSection title="Point de retrait">
-            <ModalGrid>
-              <Field label="À retirer auprès de" htmlFor="pickupContact">
-                <Input
-                  id="pickupContact"
-                  placeholder="Par défaut : vous"
-                  value={pickupContact}
-                  onChange={(e) => setPickupContact(e.target.value)}
-                />
-              </Field>
-              <Field label="Précision (facultatif)" htmlFor="pickupMessage">
-                <Input
-                  id="pickupMessage"
-                  placeholder="Ex. : bureau 204, 9h–16h"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                />
-              </Field>
-            </ModalGrid>
+            <Input
+              id="pickupContact"
+              aria-label="À retirer auprès de"
+              placeholder="Par défaut : vous"
+              value={pickupContact}
+              onChange={(e) => setPickupContact(e.target.value)}
+              className="h-9"
+            />
           </ModalSection>
         )}
-      </Modal>
-    );
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`Prévisualiser ${nbDemandes}`}
-      subtitle="Étape 1 sur 2 · Vérification des informations"
-      maxWidth="max-w-6xl"
-      footer={
-        <>
-          <p className="min-w-0 flex-1 text-[11.5px] text-ink-muted">
-            {restantes > 0
-              ? `${restantes} document${restantes > 1 ? 's' : ''} encore à vérifier.`
-              : 'Tous les documents ont été vérifiés.'}
-          </p>
-          <Button variant="secondary" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button disabled={restantes > 0} onClick={() => setEtape('remise')}>
-            Continuer
-            <Icon name="chevron_right" size={15} />
-          </Button>
-        </>
-      }
-    >
-      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-        {/* La pile de documents, dans l'ordre où elle sera signée. */}
-        <ul className="flex shrink-0 flex-col gap-1.5 self-start lg:w-[14rem]">
-          {pieces.map((p, i) => {
-            // Une pièce que l'application ne produit pas n'entre pas dans le
-            // contrôle : lui poser une coche « vérifiée » serait mentir, et la
-            // laisser numérotée ferait croire qu'il reste quelque chose à voir.
-            const vue = p.generable && vues.includes(p.key);
-            const active = i === courante;
-            return (
-              <li key={p.key}>
-                <button
-                  type="button"
-                  onClick={() => setCourante(i)}
-                  className={cn(
-                    'flex w-full items-center gap-2.5 rounded-bloc px-3 py-2.5 text-left',
-                    'ring-1 ring-inset transition-all duration-150',
-                    active
-                      ? 'bg-primary/[0.06] ring-primary/35'
-                      : 'bg-surface ring-line-soft hover:bg-hover hover:ring-line',
-                  )}
-                >
-                  {/* La pastille dit où l'on en est : un numéro tant qu'il
-                      reste à voir, une coche une fois vu, un point pour ce qui
-                      n'entre pas dans le contrôle. */}
-                  <span
-                    className={cn(
-                      'flex size-[20px] shrink-0 items-center justify-center rounded-full text-[10px] font-bold transition-colors',
-                      vue
-                        ? 'bg-success-soft text-success ring-1 ring-success/35 ring-inset'
-                        : active
-                          ? 'bg-primary text-primary-ink'
-                          : 'text-ink-muted ring-1 ring-line ring-inset',
-                    )}
-                  >
-                    {vue ? <Icon name="check" size={13} /> : p.generable ? i + 1 : '·'}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={cn(
-                        'block truncate text-[12px] leading-tight font-bold',
-                        active ? 'text-primary' : 'text-ink-strong',
-                      )}
-                    >
-                      {documentDemande(p.doc, p.bulletin)}
-                    </span>
-                    <span className="mt-0.5 block truncate text-[11px] leading-tight text-ink-muted">
-                      {p.employeeName}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-
-        {/* L'aperçu : le document tel qu'il sera remis, pas une promesse. */}
-        <div className="flex min-h-[19rem] min-w-0 flex-1 flex-col overflow-hidden rounded-bloc border border-card-line bg-surface shadow-xs">
-          {piece ? <Apercu piece={piece} onVue={marquerVue} /> : null}
-        </div>
       </div>
+
+      {enLigne ? (
+        <ModalSection title={plusieurs ? 'Documents à déposer' : 'Document à déposer'}>
+          <DocumentsDeposes demande={demande} onErreur={setErreur} />
+        </ModalSection>
+      ) : null}
     </Modal>
   );
 }
 
-/**
- * Aperçu d'une pièce : le PDF lui-même, celui qui sera remis (ADR-0086).
- *
- * L'écran recomposait les textes de l'attestation ; le modèle de l'APIX a un
- * en-tête, un cadre et un pied de page qu'une recomposition imiterait mal.
- * Le lecteur du produit montre donc le PDF, et l'ouvre en grand à un clic.
- */
-function Apercu({ piece, onVue }: { piece: Piece; onVue: (key: string) => void }) {
-  const pdf = useQuery({
-    queryKey: ['attestation-pdf', piece.employeeId],
-    queryFn: ({ signal }) => lireFichier(`/employees/${piece.employeeId}/attestation`, { signal }),
-    enabled: piece.generable,
-    retry: false,
-  });
-
-  // Vue dès qu'elle est affichée, ou dès qu'on sait qu'elle ne peut pas
-  // l'être : bloquer sur un document impossible à produire enfermerait la RH.
-  const affichee = pdf.isSuccess || pdf.isError || !piece.generable;
-  useEffect(() => {
-    if (affichee) onVue(piece.key);
-  }, [affichee, onVue, piece.key]);
-
-  const entete = (
-    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-line-soft bg-surface-raised px-5 py-3">
-      <div className="min-w-0">
-        <p className="truncate text-[13.5px] leading-tight font-bold text-ink-strong">
-          {documentDemande(piece.doc, piece.bulletin)}
-        </p>
-        <p className="mt-0.5 truncate text-[11.5px] leading-tight text-ink-muted">
-          {piece.employeeName}
-        </p>
-      </div>
-      {pdf.isSuccess ? (
-        <a
-          href={apiUrl(`/employees/${piece.employeeId}/attestation?disposition=inline`)}
-          target="_blank"
-          rel="noreferrer"
-          tabIndex={-1}
-        >
-          <Button size="sm" variant="secondary">
-            <Icon name="picture_as_pdf" size={15} />
-            Ouvrir le PDF
-          </Button>
-        </a>
-      ) : null}
-    </div>
-  );
-
-  if (depuisLeDossier(piece.doc)) {
-    // Une décision de disponibilité ou une domiciliation : son document se
-    // génère depuis la demande, la fiche préremplie (ADR-0189).
-    return (
-      <>
-        {entete}
-        <EmptyState
-          className="flex-1"
-          icon={<Icon name="description" size={22} />}
-          title="Document à générer depuis la demande"
-          action={
-            <Link href={`/documents/${piece.requestId}/generer`}>
-              <Button size="sm" variant="secondary">
-                <Icon name="description" size={15} />
-                Générer le document
-              </Button>
-            </Link>
-          }
-        />
-      </>
-    );
-  }
-
-  if (!piece.generable) {
-    // Deux raisons de ne rien avoir à montrer, et elles n'appellent pas le
-    // même geste : soit l'application ne produit pas ce document, soit elle
-    // le produit mais refuse pour ce dossier-là.
-    const dossierInactif = seGenereDansLaFile(piece.doc);
-    return (
-      <>
-        {entete}
-        <EmptyState
-          className="flex-1"
-          icon={<Icon name={dossierInactif ? 'error' : 'folder_managed'} size={22} />}
-          title={dossierInactif ? 'Dossier non actif' : 'Préparé hors application'}
-          description={
-            dossierInactif
-              ? "L'attestation de travail est réservée aux agents en activité : pour ce dossier, elle doit être établie manuellement."
-              : 'Veuillez vérifier l’exactitude des informations demandées auprès du service de paie avant de valider.'
-          }
-        />
-      </>
-    );
-  }
-
-  if (pdf.isLoading) {
-    return (
-      <>
-        {entete}
-        <div className="flex-1 p-4">
-          <Skeleton className="h-full w-full" />
-        </div>
-      </>
-    );
-  }
-
-  if (pdf.isError || !pdf.data) {
-    // Un refus se dit dans les mots de l'API (un stage, par exemple) et ne se
-    // retente pas ; une panne, si.
-    const probleme = pdf.error instanceof ApiError ? pdf.error.problem : null;
-    const refus = probleme !== null && probleme.status >= 400 && probleme.status < 500;
-    return (
-      <>
-        {entete}
-        <EmptyState
-          className="flex-1"
-          icon={<Icon name="error" size={22} />}
-          title={probleme?.title ?? 'Impossible de charger le dossier'}
-          description={probleme?.detail ?? (refus ? undefined : 'Réessayez dans un instant.')}
-          action={
-            refus ? undefined : (
-              <Button size="sm" variant="secondary" onClick={() => void pdf.refetch()}>
-                Réessayer
-              </Button>
-            )
-          }
-        />
-      </>
-    );
-  }
-
-  return (
-    <>
-      {entete}
-      <div className="h-[62vh] min-h-[22rem]">
-        <PdfViewer data={pdf.data} zoomPlafond={1.25} />
-      </div>
-    </>
-  );
-}
-
-/** Décliner un lot — le motif part tel quel à chaque employé concerné. */
+/** Décliner une demande : le motif du refus part tel quel à l'agent (ADR-0191). */
 function DeclinerModal({
-  requests,
+  demande,
   onClose,
   onDone,
 }: {
-  requests: DocumentRequestView[];
+  demande: DocumentRequestView;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -1159,14 +792,19 @@ function DeclinerModal({
     mutationFn: () =>
       api<BatchAdvanceResult>('/document-requests/batch-advance', {
         method: 'POST',
-        body: { ids: requests.map((r) => r.id), status: 'rejected', message: motif.trim() },
+        body: { ids: [demande.id], status: 'rejected', message: motif.trim() },
       }),
-    onSuccess: async () => {
+    onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: ['document-requests'] });
       await queryClient.invalidateQueries({ queryKey: ['notifications'] });
       // La pastille de la barre de menu compte les demandes ouvertes : sans
       // ça elle continue d'annoncer un travail qui vient d'être fait.
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      const ecartee = res.skipped[0];
+      if (ecartee) {
+        setErreur(ecartee.reason);
+        return;
+      }
       onDone();
     },
     onError: (err) => setErreur(err instanceof ApiError ? err.message : 'Refus impossible.'),
@@ -1176,7 +814,7 @@ function DeclinerModal({
     <Modal
       open
       onClose={onClose}
-      title={`Décliner ${requests.length} demande${requests.length > 1 ? 's' : ''}`}
+      title="Décliner la demande"
       maxWidth="max-w-xl"
       footer={
         <>
@@ -1205,15 +843,8 @@ function DeclinerModal({
         </>
       }
     >
-      <ModalSection title="Demandes concernées">
-        <ul className="flex flex-col gap-1.5">
-          {requests.map((r) => (
-            <li key={r.id} className="text-[12.5px]">
-              <span className="font-bold text-ink-strong">{r.employeeName}</span>
-              <span className="text-ink-muted"> · {docLabels(r)}</span>
-            </li>
-          ))}
-        </ul>
+      <ModalSection title={demande.docTypes.length > 1 ? 'Documents demandés' : 'Document demandé'}>
+        <LaDemande demande={demande} />
       </ModalSection>
       <ModalSection title="Motif du refus">
         <Input
