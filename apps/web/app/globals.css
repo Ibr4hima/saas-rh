@@ -346,20 +346,10 @@ body {
   background-repeat: no-repeat;
 }
 
-/* ── Fond de la vérification publique d'un certificat ─────────────────────
-   Celui du volet de l'offre, d'un cran plus soutenu : une carte blanche y
-   est seule à l'écran, elle doit s'en détacher nettement. */
-.fond-certificat {
-  background-color: #ebf0f6;
-  background-image:
-    radial-gradient(720px 480px at 100% -160px, rgb(0 79 145 / 0.13), rgb(0 79 145 / 0) 70%),
-    radial-gradient(560px 380px at 0% -120px, rgb(0 79 145 / 0.08), rgb(0 79 145 / 0) 70%);
-  background-repeat: no-repeat;
-}
-
 /* ── Écran de connexion ───────────────────────────────────────────────────
-   Les écrans d'avant le compte (EcranMarque) sont à la charte de l'APIX et
-   toujours en clair (ADR-0187) ; leur décor tient dans le composant.
+   Les écrans d'avant le compte et la vérification d'un certificat sont sur
+   la scène de la charte, toujours en clair (SceneDeLaCharte, ADR-0187 et
+   ADR-0188) ; leur décor tient dans le composant.
 
    Leur entrée : une montée de quelques pixels, échelonnée entre la marque,
    la carte et la mention. Assez pour que la page se pose au lieu

@@ -193,3 +193,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0185](0185-certificat-a-la-charte.md)                | Le certificat d'APIX Academy à la charte de l'APIX                                      | acceptée                                    |
 | [0186](0186-courriels-a-la-charte.md)                 | Les courriels à la charte de l'APIX                                                     | acceptée                                    |
 | [0187](0187-connexion-a-la-charte.md)                 | Les écrans de connexion à la charte de l'APIX, toujours en clair                        | acceptée                                    |
+| [0188](0188-verification-a-la-charte.md)              | La vérification d'un certificat à la charte de l'APIX                                   | acceptée                                    |
