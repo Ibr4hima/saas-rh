@@ -323,7 +323,7 @@ function FenetreFerie({
         aDater
           ? `Une fois sa date fixée, ce jour sera chômé et ne sera pas décompté des absences en ${anneeCible}.`
           : cible
-            ? 'La date d’une fête mobile est souvent confirmée la veille. Les notifications déjà envoyées seront retirées.'
+            ? undefined
             : 'Ce jour sera chômé pour tout le personnel et ne sera pas décompté des absences.'
       }
       maxWidth="max-w-xl"

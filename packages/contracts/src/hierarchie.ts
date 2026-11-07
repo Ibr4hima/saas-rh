@@ -57,6 +57,8 @@ export interface AnomalieHierarchie {
   nom: string;
   /** La direction de l'agent, telle que l'organigramme la donne. */
   direction: string | null;
+  /** Son acronyme, quand elle en a un. */
+  directionSigle?: string | null;
   type: TypeAnomalieHierarchie;
   /** Le n+1 désigné, quand il y en a un — c'est souvent lui le problème. */
   responsable: string | null;

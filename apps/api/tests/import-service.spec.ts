@@ -7,6 +7,8 @@
  * retrouvés par leur nom, et l'aperçu qui joue tout puis annule.
  */
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { RapportImportEmployes, SessionUser } from '@teranga/contracts';
@@ -126,7 +128,11 @@ const importer = (
   choix: Record<string, string> = {},
   noms: Record<string, string> = {},
   rattachements: Record<string, string> = {},
-) => imports.importer(admin, fichier(lignes), appliquer, choix, noms, rattachements);
+  reglages: {
+    placements?: Record<string, number[]>;
+    responsables?: Record<string, string>;
+  } = {},
+) => imports.importer(admin, fichier(lignes), appliquer, choix, noms, rattachements, reglages);
 
 const ligne = (r: RapportImportEmployes, n: number) => r.lignes.find((l) => l.ligne === n)!;
 
@@ -353,13 +359,36 @@ describe('la création', () => {
     });
   });
 
-  it('donne 50-A et 50-B à un matricule en double, provisoires', async () => {
+  it('donne 50A et 50B à un matricule en double, provisoires', async () => {
     const r = await importer([AGENT(1, { Matricule: '50' }), AGENT(2, { Matricule: '50' })]);
     expect(r.aCreer).toBe(2);
-    expect(ligne(r, 2).matricule).toBe('50-A');
-    expect(ligne(r, 3)).toMatchObject({ matricule: '50-B', matriculeProvisoire: true });
-    expect((await fiche('50-A'))?.matricule_provisoire).toBe(true);
-    expect((await fiche('50-B'))?.given_name).toBe('Agent2');
+    expect(ligne(r, 2).matricule).toBe('50A');
+    expect(ligne(r, 3)).toMatchObject({ matricule: '50B', matriculeProvisoire: true });
+    expect((await fiche('50A'))?.matricule_provisoire).toBe(true);
+    expect((await fiche('50B'))?.given_name).toBe('Agent2');
+  });
+
+  it('donne le A à la personne entrée la première, même par son ancienneté', async () => {
+    const r = await importer([
+      AGENT(1, { Matricule: '50' }),
+      AGENT(2, { Matricule: '50', "Date d'entrée": '15/06/2010' }),
+      AGENT(3, { Matricule: '50', "Date d'entrée": undefined, 'Ancienneté (années)': 30 }),
+    ]);
+    expect(ligne(r, 4).matricule).toBe('50A');
+    expect(ligne(r, 3).matricule).toBe('50B');
+    expect(ligne(r, 2).matricule).toBe('50C');
+    expect((await fiche('50A'))?.given_name).toBe('Agent3');
+  });
+
+  it('saute la lettre qui donnerait le matricule d’une autre personne', async () => {
+    const r = await importer([
+      AGENT(1, { Matricule: '50A' }),
+      AGENT(2, { Matricule: '50' }),
+      AGENT(3, { Matricule: '50' }),
+    ]);
+    expect(ligne(r, 2)).toMatchObject({ matricule: '50A', matriculeProvisoire: false });
+    expect(ligne(r, 3).matricule).toBe('50B');
+    expect(ligne(r, 4).matricule).toBe('50C');
   });
 
   it('n’arrête pas les autres lignes sur une ligne fautive, et la nomme', async () => {
@@ -682,6 +711,128 @@ describe('les services se rangent sous un département', () => {
   });
 });
 
+/* ─── L'organigramme de l'aperçu (ADR-0179) ─── */
+
+const ANALYSTE = (n: number, plus: Ligne = {}) =>
+  AGENT(n, { Prénom: `ANALYSTE${n}`, Nom: 'NDOYE', Direction: 'DSID', ...plus });
+
+describe('l’organigramme de l’aperçu', () => {
+  it('rend l’organigramme que l’import laisse, avec ses agents', async () => {
+    const r = await importer(
+      [
+        DG,
+        DIRECTEUR_DSID,
+        cheffeDeDepartement(2, 'FATOU', 'SALL', 'DIGITALISATION'),
+        CHEF_MAINTENANCE,
+        ANALYSTE(7),
+      ],
+      false,
+    );
+    const noeud = (nom: string) => r.organigramme.find((n) => n.nom === nom)!;
+    const dsid = noeud("Direction des Systèmes d'information et de la Digitalisation");
+    const dep = noeud('Département Digitalisation');
+    const service = noeud('Service Maintenance');
+    expect(dep).toMatchObject({ parent: dsid.cle, creee: true, type: 'department' });
+    expect(dep.responsable?.nom).toBe('Fatou Sall');
+    expect(service.parent).toBe(dep.cle);
+    expect(r.agents.find((a) => a.ligne === 6)).toMatchObject({
+      nom: 'Analyste7 Ndoye',
+      unite: dsid.cle,
+      modifiable: true,
+    });
+    // Le responsable que l'import désigne reste à la tête de son unité.
+    expect(r.agents.find((a) => a.ligne === 5)?.modifiable).toBe(false);
+    // Les clés restent les mêmes d'un aperçu à l'autre.
+    const revu = await importer(
+      [
+        DG,
+        DIRECTEUR_DSID,
+        cheffeDeDepartement(2, 'FATOU', 'SALL', 'DIGITALISATION'),
+        CHEF_MAINTENANCE,
+        ANALYSTE(7),
+      ],
+      false,
+    );
+    expect(revu.organigramme.map((n) => n.cle).sort()).toEqual(
+      r.organigramme.map((n) => n.cle).sort(),
+    );
+  });
+
+  it('place un agent dans un service de sa direction : son N+1 est le chef du service', async () => {
+    const lignes = [
+      DG,
+      DIRECTEUR_DSID,
+      cheffeDeDepartement(2, 'FATOU', 'SALL', 'DIGITALISATION'),
+      CHEF_MAINTENANCE,
+      ANALYSTE(7),
+    ];
+    const apercu = await importer(lignes, false);
+    const service = apercu.organigramme.find((n) => n.nom === 'Service Maintenance')!;
+    const placements = { [service.cle]: [6] };
+    const revu = await importer(lignes, false, {}, {}, {}, { placements });
+    expect(revu.agents.find((a) => a.ligne === 6)?.unite).toBe(service.cle);
+    expect(ligne(revu, 6).unite).toBe('Service Maintenance');
+
+    const r = await importer(lignes, true, {}, {}, {}, { placements });
+    expect(r.erreurs).toBe(0);
+    const s = await raw(
+      `SELECT id FROM org_units WHERE tenant_id = $1 AND name = 'Service Maintenance'`,
+      [tenantId],
+    );
+    expect(await fiche('107')).toMatchObject({
+      org_unit_id: (s.rows[0] as { id: string }).id,
+      n1: 'Modou Gueye',
+    });
+  });
+
+  it('ne place pas un agent hors de sa direction', async () => {
+    const lignes = [DG, DIRECTEUR_DSID, ANALYSTE(7)];
+    const apercu = await importer(lignes, false);
+    const dch = apercu.organigramme.find((n) => n.sigle === 'DCH')!;
+    const revu = await importer(lignes, false, {}, {}, {}, { placements: { [dch.cle]: [4] } });
+    const dsid = revu.organigramme.find((n) => n.sigle === 'DSID')!;
+    expect(revu.agents.find((a) => a.ligne === 4)?.unite).toBe(dsid.cle);
+  });
+
+  it('demande le responsable d’une unité qui reçoit des agents sans en avoir, puis le désigne', async () => {
+    const lignes = [DG, ANALYSTE(7), ANALYSTE(8)];
+    const apercu = await importer(lignes, false);
+    expect(apercu.unitesSansResponsable).toEqual([
+      {
+        cle: expect.any(String),
+        unite: "Direction des Systèmes d'information et de la Digitalisation",
+        direction: 'DSID',
+        effectif: 2,
+        candidats: [
+          expect.objectContaining({ cle: 'l:3', nom: 'Analyste7 Ndoye' }),
+          expect.objectContaining({ cle: 'l:4', nom: 'Analyste8 Ndoye' }),
+        ],
+        retenu: null,
+      },
+    ]);
+    const cle = apercu.unitesSansResponsable[0]!.cle;
+    const r = await importer(lignes, true, {}, {}, {}, { responsables: { [cle]: 'l:3' } });
+    expect(r.erreurs).toBe(0);
+    expect(r.unitesSansResponsable[0]?.retenu).toBe('l:3');
+    expect(r.designations).toContainEqual({
+      poste: 'Directrice de la DSID',
+      nom: 'Analyste7 Ndoye',
+    });
+    expect(await chefDe(unites.dsid)).toBe('Analyste7 Ndoye');
+    // L'autre agent de la direction relève d'office de la directrice.
+    expect((await fiche('108'))?.n1).toBe('Analyste7 Ndoye');
+    expect((await fiche('107'))?.n1).toBe('Cheikh Mbaye');
+  });
+
+  it('accepte « Non désigné » : l’unité reste sans responsable', async () => {
+    const lignes = [DG, ANALYSTE(7)];
+    const cle = (await importer(lignes, false)).unitesSansResponsable[0]!.cle;
+    const r = await importer(lignes, true, {}, {}, {}, { responsables: { [cle]: 'aucun' } });
+    expect(r.unitesSansResponsable[0]?.retenu).toBe('aucun');
+    expect(await chefDe(unites.dsid)).toBeNull();
+  });
+});
+
 describe('le N+1 par son nom', () => {
   it('demande de qui il s’agit quand deux personnes portent le nom, puis rattache', async () => {
     const awa1 = AGENT(1, { Prénom: 'AWA', Nom: 'NDIAYE', 'Date de naissance': '01/01/1985' });
@@ -919,17 +1070,30 @@ describe('le réimport', () => {
     const r = await importer([AGENT(2, { Matricule: '51' }), AGENT(1, { Matricule: '50' })]);
     expect(ligne(r, 2).changements).toContainEqual({
       champ: 'Matricule',
-      avant: '50-B',
+      avant: '50B',
       apres: '51',
     });
     expect(ligne(r, 3).changements).toContainEqual({
       champ: 'Matricule',
-      avant: '50-A',
+      avant: '50A',
       apres: '50',
     });
     expect(await fiche('51')).toMatchObject({ given_name: 'Agent2', matricule_provisoire: false });
     expect(await fiche('50')).toMatchObject({ given_name: 'Agent1', matricule_provisoire: false });
     expect(await compte('employees')).toBe(2);
+  });
+
+  it('retrouve une fiche provisoire écrite avec un tiret, 50-A', async () => {
+    await importer([AGENT(1, { Matricule: '50' }), AGENT(2, { Matricule: '50' })]);
+    await raw(
+      `UPDATE employees SET employee_number = '50-' || right(employee_number, 1)
+        WHERE tenant_id = $1 AND matricule_provisoire`,
+      [tenantId],
+    );
+    const r = await importer([AGENT(1, { Matricule: '50' }), AGENT(2, { Matricule: '50' })], false);
+    expect(r.aCreer).toBe(0);
+    expect(ligne(r, 2).matricule).toBe('50-A');
+    expect(ligne(r, 3).matricule).toBe('50-B');
   });
 
   it('laisse son propre dossier tel quel, et refuse de le modifier', async () => {
@@ -982,5 +1146,44 @@ describe('le réimport', () => {
       contrat_le: exacte,
       affecte_le: exacte,
     });
+  });
+});
+
+describe('la migration 0131', () => {
+  it('écrit les matricules provisoires sans tiret, la lettre selon l’ancienneté', async () => {
+    const migration = readFileSync(
+      join(__dirname, '../src/db/sql/0131_matricules_provisoires_sans_tiret.sql'),
+      'utf8',
+    )
+      .split('\n')
+      .filter((l) => !l.startsWith('SET '))
+      .join('\n');
+    // Un import d'avant la règle : les lettres dans l'ordre du fichier, avec
+    // un tiret. Agent2, entrée en 2010, avait reçu 50-B.
+    await importer([
+      AGENT(1, { Matricule: '50' }),
+      AGENT(2, { Matricule: '50', "Date d'entrée": '15/06/2010' }),
+      AGENT(3, { Matricule: '60A' }),
+      AGENT(4, { Matricule: '60' }),
+      AGENT(5, { Matricule: '60' }),
+    ]);
+    const renommer = (de: string, vers: string) =>
+      raw(
+        `UPDATE employees SET employee_number = $3 WHERE tenant_id = $1 AND employee_number = $2`,
+        [tenantId, de, vers],
+      );
+    await renommer('50B', '50-A');
+    await renommer('50A', '50-B');
+    await renommer('60B', '60-A');
+    await renommer('60C', '60-B');
+
+    await raw(migration);
+
+    expect(await fiche('50A')).toMatchObject({ given_name: 'Agent2', matricule_provisoire: true });
+    expect(await fiche('50B')).toMatchObject({ given_name: 'Agent1', matricule_provisoire: true });
+    // 60A est le vrai matricule d'Agent3 : la famille 60 garde ses matricules.
+    expect((await fiche('60A'))?.given_name).toBe('Agent3');
+    expect((await fiche('60-A'))?.given_name).toBe('Agent4');
+    expect((await fiche('60-B'))?.given_name).toBe('Agent5');
   });
 });

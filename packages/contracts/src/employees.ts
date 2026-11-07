@@ -1265,7 +1265,7 @@ export interface EmployeeDetail {
   categorie: string | null;
   /** Pour information : seul le N+1 valide (ADR-0158). */
   responsableFonctionnel: { id: string; nom: string; matricule: string } | null;
-  /** 50-A, 50-B : à remplacer par le vrai matricule, sans délai. */
+  /** 50A, 50B : à remplacer par le vrai matricule, sans délai. */
   matriculeProvisoire: boolean;
   /** L'entrée n'est connue qu'au mois : `hiredOn` en est le 1er. */
   entreeAuMois: boolean;

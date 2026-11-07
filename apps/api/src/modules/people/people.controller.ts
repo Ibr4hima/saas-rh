@@ -16,7 +16,9 @@ import {
 import {
   choixDImportSchema,
   nomsDUnitesSchema,
+  placementsDImportSchema,
   rattachementsDImportSchema,
+  responsablesDImportSchema,
   archiveEmployeesSchema,
   corrigerAffectationSchema,
   corrigerContratSchema,
@@ -104,6 +106,8 @@ export class PeopleController {
     @Query('choix') choix: string | undefined,
     @Query('noms') noms: string | undefined,
     @Query('rattachements') rattachements: string | undefined,
+    @Query('placements') placements: string | undefined,
+    @Query('responsables') responsables: string | undefined,
   ) {
     const fichier = (req as unknown as { body?: unknown }).body;
     if (!Buffer.isBuffer(fichier) || fichier.length === 0) {
@@ -116,6 +120,14 @@ export class PeopleController {
       lireLesChoix(choix),
       lireLesNoms(noms),
       lireLesRattachements(rattachements),
+      {
+        placements: lireLeJson(placements, placementsDImportSchema, 'Les affectations choisies'),
+        responsables: lireLeJson(
+          responsables,
+          responsablesDImportSchema,
+          'Les responsables choisis',
+        ),
+      },
     );
   }
 
@@ -370,6 +382,27 @@ function lireLesChoix(brut: string | undefined): Record<string, string> {
   }
   const r = choixDImportSchema.safeParse(valeur);
   if (!r.success) problem(400, 'import.choix_illisibles', 'Les choix envoyés ne se lisent pas');
+  return r.data;
+}
+
+/**
+ * Un choix de l'aperçu, en JSON dans l'adresse (ADR-0179) : `quoi` le nomme
+ * dans le refus, s'il ne se lit pas.
+ */
+function lireLeJson<T>(
+  brut: string | undefined,
+  schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
+  quoi: string,
+): T | undefined {
+  if (!brut) return undefined;
+  let valeur: unknown;
+  try {
+    valeur = JSON.parse(brut);
+  } catch {
+    problem(400, 'import.choix_illisibles', `${quoi} ne se lisent pas`);
+  }
+  const r = schema.safeParse(valeur);
+  if (!r.success) problem(400, 'import.choix_illisibles', `${quoi} ne se lisent pas`);
   return r.data;
 }
 

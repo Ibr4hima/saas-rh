@@ -476,10 +476,6 @@ export default function ApplyPage() {
   // Sa date limite passée, l'offre reste ouverte (ADR-0061) : la date ne
   // s'affiche plus, elle dirait au candidat qu'il arrive trop tard.
   const datePassee = restants !== null && restants < 0;
-  // Un décompte n'informe que s'il est court : « 50 jours » à côté d'une date
-  // ne dit rien de plus que la date, et occupe la place où l'urgence se lira.
-  const compteRebours = restants !== null && restants <= 14;
-  const urgence = restants !== null && restants <= 7;
   const age = anciennete(offre.publishedAt);
   // Le profil recherché, ce que l'offre en dit : une offre antérieure peut ne
   // rien en porter, la rubrique disparaît alors plutôt que d'afficher du vide.
@@ -524,20 +520,7 @@ export default function ApplyPage() {
               {offre.location ? <Etiquette icon="place">{offre.location}</Etiquette> : null}
               {datePassee ? null : (
                 <Etiquette icon="event">
-                  {offre.deadline ? (
-                    <>
-                      Jusqu’au {jourFr(offre.deadline)}
-                      {compteRebours ? (
-                        <span className={urgence ? 'text-accent-text' : 'text-ink-muted'}>
-                          {restants === 0
-                            ? ' · dernier jour'
-                            : ` · plus que ${restants} jour${restants! > 1 ? 's' : ''}`}
-                        </span>
-                      ) : null}
-                    </>
-                  ) : (
-                    'Sans date limite'
-                  )}
+                  {offre.deadline ? `Jusqu’au ${jourFr(offre.deadline)}` : 'Sans date limite'}
                 </Etiquette>
               )}
               <Etiquette icon="schedule">

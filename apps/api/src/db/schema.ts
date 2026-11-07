@@ -209,7 +209,7 @@ export const employees = pgTable('employees', {
   categorie: text('categorie'),
   /** Pour information : seul le N+1 valide (0126). */
   responsableFonctionnelId: uuid('responsable_fonctionnel_id'),
-  /** 50-A, 50-B : un matricule en double à l'import, à corriger sans délai (0126). */
+  /** 50A, 50B : un matricule en double à l'import, à corriger sans délai (0126, 0131). */
   matriculeProvisoire: boolean('matricule_provisoire').notNull().default(false),
   /** L'entrée n'est connue qu'au mois : hiredOn en est le 1er (0126). */
   entreeAuMois: boolean('entree_au_mois').notNull().default(false),

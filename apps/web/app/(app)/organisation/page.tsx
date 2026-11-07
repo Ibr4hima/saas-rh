@@ -455,9 +455,6 @@ function UnitPanel({
         </span>
       }
       title={unit.name}
-      // Son contenu change sur place (modifier, désigner, supprimer) : posée
-      // en haut, la fiche ne remonte pas d'un coup quand il grandit.
-      ancre="haut"
       // Le nom dit déjà le type (« Département Études ») : dessous, le sigle
       // et le rattachement seulement.
       subtitle={

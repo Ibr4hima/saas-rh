@@ -31,16 +31,17 @@ import { classerAnomalies, compterParType, type LigneHierarchie } from './hierar
  */
 const DIRECTION_DES_UNITES = sql`
   remontee AS (
-    SELECT id AS depart, id, parent_id, unit_type, name, 0 AS prof
+    SELECT id AS depart, id, parent_id, unit_type, name, short_name, 0 AS prof
       FROM org_units WHERE deleted_at IS NULL
     UNION ALL
-    SELECT r.depart, o.id, o.parent_id, o.unit_type, o.name, r.prof + 1
+    SELECT r.depart, o.id, o.parent_id, o.unit_type, o.name, o.short_name, r.prof + 1
       FROM remontee r
       JOIN org_units o ON o.id = r.parent_id AND o.deleted_at IS NULL
      WHERE r.prof < 64
   ),
   direction_de AS (
-    SELECT DISTINCT ON (depart) depart AS unite_id, id AS direction_id, name AS direction_nom
+    SELECT DISTINCT ON (depart) depart AS unite_id, id AS direction_id, name AS direction_nom,
+           short_name AS direction_sigle
       FROM remontee WHERE unit_type = 'direction'
      ORDER BY depart, prof
   )`;
@@ -51,6 +52,7 @@ interface LigneBrute extends Record<string, unknown> {
   nom: string;
   direction_id: string | null;
   direction_nom: string | null;
+  direction_sigle: string | null;
   responsable_id: string | null;
   responsable_nom: string | null;
   responsable_statut: string | null;
@@ -142,6 +144,7 @@ async function photo(tx: Tx): Promise<LigneHierarchie[]> {
       p.given_name || ' ' || p.family_name    AS nom,
       d.direction_id,
       d.direction_nom,
+      d.direction_sigle,
       e.manager_employee_id                   AS responsable_id,
       rp.given_name || ' ' || rp.family_name  AS responsable_nom,
       r.status                                AS responsable_statut,
@@ -168,6 +171,7 @@ async function photo(tx: Tx): Promise<LigneHierarchie[]> {
     nom: r.nom,
     directionId: r.direction_id,
     directionNom: r.direction_nom,
+    directionSigle: r.direction_sigle,
     responsableId: r.responsable_id,
     responsableNom: r.responsable_nom,
     responsableActif: r.responsable_statut === null ? null : r.responsable_statut === 'active',

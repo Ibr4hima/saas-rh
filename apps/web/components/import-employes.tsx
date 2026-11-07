@@ -1,14 +1,20 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { Fragment, useRef, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import {
   CHOIX_AUCUN,
+  orgUnitLabel,
+  uniteAvecArticle,
+  type AgentImport,
   type ChoixImport,
   type InviterPlusieursResult,
   type LigneImport,
+  type NoeudImport,
+  type OrgUnitView,
   type RapportImportEmployes,
   type RattachementImport,
+  type ResponsableImport,
   type UniteCreeeImport,
 } from '@teranga/contracts';
 import {
@@ -30,6 +36,7 @@ import { compte } from '../lib/mots';
 import { Icon } from './icons';
 import { Modal, ModalSection } from './modal';
 import { Onglets } from './onglets';
+import { Organigramme } from './organigramme';
 import { Pagination, usePagination } from './pagination';
 
 /* ────────────────────────────────────────────────────────────────
@@ -46,9 +53,44 @@ import { Pagination, usePagination } from './pagination';
    l'unité naît avec le bon nom, et le poste de son responsable avec elle.
    Dans une direction qui compte plusieurs départements, chaque service se
    range sous celui qu'on choisit ici (ADR-0178).
+
+   Avant d'importer, on voit l'organigramme que l'import laisse : un clic
+   sur une unité liste ses agents, et chaque agent que l'import crée se
+   place dans un département ou un service de sa direction. Une unité qui a
+   des agents sans responsable attend qu'on le désigne (ADR-0179).
    ──────────────────────────────────────────────────────────────── */
 
-type Etape = 'depot' | 'apercu' | 'fait';
+type Etape = 'depot' | 'apercu' | 'organigramme' | 'fait';
+
+/** Ce qu'on règle à l'aperçu, renvoyé avec le fichier à chaque envoi. */
+interface Reglages {
+  /** Les homonymes départagés : la clé du choix, le candidat retenu. */
+  departages: Record<string, string>;
+  /** Les noms d'unités corrigés : la clé de l'unité, son nom. */
+  noms: Record<string, string>;
+  /** Les services rangés : la clé du service, celle du département. */
+  rattachements: Record<string, string>;
+  /** Les responsables désignés : la clé de l'unité, celle de la personne. */
+  responsables: Record<string, string>;
+  /** Les agents placés : la ligne du fichier, la clé de l'unité. */
+  placements: Record<number, string>;
+}
+
+const REGLAGES_VIDES: Reglages = {
+  departages: {},
+  noms: {},
+  rattachements: {},
+  responsables: {},
+  placements: {},
+};
+
+/** Ce qu'on peut régler dans l'aperçu ; absent une fois l'import appliqué. */
+interface ActionsDeLApercu {
+  departager: (cle: string, candidat: string) => void;
+  rattacher: (cle: string, departement: string) => void;
+  designer: (cle: string, personne: string) => void;
+  renommer: (unite: UniteCreeeImport, nom: string) => void;
+}
 type Filtre = 'toutes' | LigneImport['etat'];
 
 const TONS: Record<LigneImport['etat'], 'teal' | 'bleu' | 'gris' | 'rouge'> = {
@@ -73,14 +115,12 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [survol, setSurvol] = useState(false);
-  // Les homonymes départagés, les noms d'unités corrigés et les départements
-  // des services, renvoyés avec le fichier à chaque envoi.
-  const [departages, setDepartages] = useState<Record<string, string>>({});
-  const [noms, setNoms] = useState<Record<string, string>>({});
-  const [rattachements, setRattachements] = useState<Record<string, string>>({});
+  const [reglages, setReglages] = useState<Reglages>(REGLAGES_VIDES);
   // Seule la réponse au dernier envoi s'affiche : deux corrections de suite
   // lancent deux aperçus, et le premier peut revenir après le second.
   const dernierEnvoi = useRef(0);
+  // Les agents placés que l'aperçu affiché a déjà pris en compte.
+  const placementsJoues = useRef('{}');
   // Après l'import, l'invitation au portail des fiches créées.
   const [invitations, setInvitations] = useState<Set<string>>(new Set());
   const [invites, setInvites] = useState<InviterPlusieursResult | null>(null);
@@ -88,38 +128,39 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
     (l): l is LigneImport & { employeeId: string } => l.etat === 'a-creer' && Boolean(l.employeeId),
   );
 
-  const envoyer = async (
-    f: File,
-    apercu: boolean,
-    choix: Record<string, string>,
-    nomsCorriges: Record<string, string>,
-    departements: Record<string, string>,
-  ) => {
+  const envoyer = async (f: File, apercu: boolean, r: Reglages) => {
     const envoi = ++dernierEnvoi.current;
     setEnCours(true);
     setErreur(null);
     try {
       const parametres = new URLSearchParams();
       if (apercu) parametres.set('apercu', '1');
-      if (Object.keys(choix).length > 0) parametres.set('choix', JSON.stringify(choix));
-      if (Object.keys(nomsCorriges).length > 0) {
-        parametres.set('noms', JSON.stringify(nomsCorriges));
+      const joindre = (nom: string, valeur: object) => {
+        if (Object.keys(valeur).length > 0) parametres.set(nom, JSON.stringify(valeur));
+      };
+      joindre('choix', r.departages);
+      joindre('noms', r.noms);
+      joindre('rattachements', r.rattachements);
+      joindre('responsables', r.responsables);
+      // Groupés par unité : l'adresse reste courte, même pour trois cents agents.
+      const parUnite: Record<string, number[]> = {};
+      for (const [ligne, unite] of Object.entries(r.placements)) {
+        (parUnite[unite] ??= []).push(Number(ligne));
       }
-      if (Object.keys(departements).length > 0) {
-        parametres.set('rattachements', JSON.stringify(departements));
-      }
+      joindre('placements', parUnite);
       const suite = parametres.toString();
-      const r = await api<RapportImportEmployes>(`/employees/import${suite ? `?${suite}` : ''}`, {
+      const res = await api<RapportImportEmployes>(`/employees/import${suite ? `?${suite}` : ''}`, {
         method: 'POST',
         body: f,
       });
       if (envoi !== dernierEnvoi.current) return;
-      setRapport(r);
-      setEtape(apercu ? 'apercu' : 'fait');
+      placementsJoues.current = JSON.stringify(r.placements);
+      setRapport(res);
+      setEtape((e) => (!apercu ? 'fait' : e === 'organigramme' ? e : 'apercu'));
       if (!apercu) {
         setInvitations(
           new Set(
-            r.lignes
+            res.lignes
               .filter((l) => l.etat === 'a-creer' && l.employeeId && l.emailPro)
               .map((l) => l.employeeId!),
           ),
@@ -156,44 +197,61 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
       );
     }
     setFichier(f);
-    setDepartages({});
-    setNoms({});
-    setRattachements({});
-    void envoyer(f, true, {}, {}, {});
+    setReglages(REGLAGES_VIDES);
+    void envoyer(f, true, REGLAGES_VIDES);
   };
 
-  // Ce qui reste à choisir : les homonymes, puis les départements des services.
-  const restants = (choix: Record<string, string>, departements: Record<string, string>) =>
-    (rapport?.choix ?? []).filter((c) => !(choix[c.cle] ?? c.retenu)).length +
-    (rapport?.rattachements ?? []).filter((r) => !(departements[r.cle] ?? r.retenu)).length;
+  // Ce qui reste à choisir : les homonymes, les départements des services,
+  // les responsables des unités qui n'en ont pas.
+  const restants = (r: Reglages) =>
+    (rapport?.choix ?? []).filter((c) => !(r.departages[c.cle] ?? c.retenu)).length +
+    (rapport?.rattachements ?? []).filter((x) => !(r.rattachements[x.cle] ?? x.retenu)).length +
+    (rapport?.unitesSansResponsable ?? []).filter((u) => !(r.responsables[u.cle] ?? u.retenu))
+      .length;
   // L'aperçu se rejoue une fois tout choisi, pas à chaque choix : sur trois
   // cents agents, il prend quelques secondes.
-  const departager = (cle: string, candidat: string) => {
-    const suite = { ...departages, [cle]: candidat };
-    setDepartages(suite);
-    if (fichier && restants(suite, rattachements) === 0) {
-      void envoyer(fichier, true, suite, noms, rattachements);
-    }
+  const regler = (suite: Reglages, rejouer: 'si-complet' | 'toujours' | 'jamais') => {
+    setReglages(suite);
+    if (!fichier || rejouer === 'jamais') return;
+    if (rejouer === 'toujours' || restants(suite) === 0) void envoyer(fichier, true, suite);
   };
-  const rattacher = (cle: string, departement: string) => {
-    const suite = { ...rattachements, [cle]: departement };
-    setRattachements(suite);
-    if (fichier && restants(departages, suite) === 0) {
-      void envoyer(fichier, true, departages, noms, suite);
-    }
+  const actions: ActionsDeLApercu = {
+    departager: (cle, candidat) =>
+      regler(
+        { ...reglages, departages: { ...reglages.departages, [cle]: candidat } },
+        'si-complet',
+      ),
+    rattacher: (cle, departement) =>
+      regler(
+        { ...reglages, rattachements: { ...reglages.rattachements, [cle]: departement } },
+        'si-complet',
+      ),
+    designer: (cle, personne) =>
+      regler(
+        { ...reglages, responsables: { ...reglages.responsables, [cle]: personne } },
+        'si-complet',
+      ),
+    // Un nom d'unité corrigé : l'aperçu se rejoue, les postes des responsables
+    // suivent le nouveau nom.
+    renommer: (unite, nom) => {
+      const noms = { ...reglages.noms };
+      if (nom === unite.propose) delete noms[unite.cle];
+      else noms[unite.cle] = nom;
+      regler({ ...reglages, noms }, 'toujours');
+    },
   };
-  // Un nom d'unité corrigé : l'aperçu se rejoue, les postes des responsables
-  // suivent le nouveau nom.
-  const renommer = (unite: UniteCreeeImport, nom: string) => {
-    const suite = { ...noms };
-    if (nom === unite.propose) delete suite[unite.cle];
-    else suite[unite.cle] = nom;
-    setNoms(suite);
-    if (fichier) void envoyer(fichier, true, departages, suite, rattachements);
+  // Un agent placé : l'aperçu se rejoue quand on quitte la fiche de l'unité,
+  // une fois tous ses agents placés.
+  const placer = (ligne: number, unite: string) =>
+    regler({ ...reglages, placements: { ...reglages.placements, [ligne]: unite } }, 'jamais');
+  const rejouerLesPlacements = () => {
+    if (fichier && JSON.stringify(reglages.placements) !== placementsJoues.current) {
+      void envoyer(fichier, true, reglages);
+    }
   };
 
   const bloquant = rapport !== null && rapport.colonnesManquantes.length > 0;
-  const aDepartager = restants(departages, rattachements);
+  const aChoisir = restants(reglages);
   const aEcrire = rapport ? rapport.aCreer + rapport.aModifier : 0;
 
   const inviter = async () => {
@@ -218,7 +276,9 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
     <Modal
       open
       onClose={onClose}
-      title="Importer un fichier d’employés"
+      title={
+        etape === 'organigramme' ? 'Organigramme après l’import' : 'Importer un fichier d’employés'
+      }
       subtitle={
         etape === 'depot' ? (
           'Le fichier Excel du personnel tenu par la DCH.'
@@ -230,21 +290,33 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
           </p>
         )
       }
-      maxWidth="max-w-5xl"
+      maxWidth={etape === 'organigramme' ? 'max-w-7xl' : 'max-w-5xl'}
       footer={
         etape === 'apercu' && rapport ? (
           <>
             <Button variant="secondary" onClick={() => setEtape('depot')}>
               Changer de fichier
             </Button>
+            {/* L'organigramme avant l'import : c'est de là qu'on valide. */}
             <Button
               loading={enCours}
-              disabled={aEcrire === 0 || bloquant || aDepartager > 0}
-              onClick={() =>
-                fichier && void envoyer(fichier, false, departages, noms, rattachements)
-              }
+              disabled={aEcrire === 0 || bloquant || aChoisir > 0}
+              onClick={() => setEtape('organigramme')}
             >
-              {aEcrire === 0 ? 'Rien à importer' : `Importer ${compte(aEcrire, 'fiche')}`}
+              {aEcrire === 0 ? 'Rien à importer' : 'Voir l’organigramme'}
+            </Button>
+          </>
+        ) : etape === 'organigramme' && rapport ? (
+          <>
+            <Button variant="secondary" disabled={enCours} onClick={() => setEtape('apercu')}>
+              Revenir à l’aperçu
+            </Button>
+            <Button
+              loading={enCours}
+              disabled={aEcrire === 0 || bloquant || aChoisir > 0}
+              onClick={() => fichier && void envoyer(fichier, false, reglages)}
+            >
+              {`Importer ${compte(aEcrire, 'fiche')}`}
             </Button>
           </>
         ) : proposerLesInvitations ? (
@@ -334,15 +406,21 @@ export function FenetreImportEmployes({ onClose }: { onClose: () => void }) {
           invites={invites}
         />
       ) : null}
-      {etape !== 'depot' && rapport ? (
+      {etape === 'organigramme' && rapport ? (
+        <OrganigrammeFinal
+          rapport={rapport}
+          enCours={enCours}
+          reglages={reglages}
+          designer={actions.designer}
+          placer={placer}
+          onQuitterLaFiche={rejouerLesPlacements}
+        />
+      ) : etape !== 'depot' && rapport ? (
         <Compte
           rapport={rapport}
           enCours={enCours}
-          departages={departages}
-          departager={etape === 'apercu' ? departager : null}
-          rattachements={rattachements}
-          rattacher={etape === 'apercu' ? rattacher : null}
-          renommer={etape === 'apercu' ? renommer : null}
+          reglages={reglages}
+          actions={etape === 'apercu' ? actions : null}
         />
       ) : null}
     </Modal>
@@ -441,19 +519,13 @@ function InvitationsDuLot({
 function Compte({
   rapport,
   enCours,
-  departages,
-  departager,
-  rattachements,
-  rattacher,
-  renommer,
+  reglages,
+  actions,
 }: {
   rapport: RapportImportEmployes;
   enCours: boolean;
-  departages: Record<string, string>;
-  departager: ((cle: string, candidat: string) => void) | null;
-  rattachements: Record<string, string>;
-  rattacher: ((cle: string, departement: string) => void) | null;
-  renommer: ((unite: UniteCreeeImport, nom: string) => void) | null;
+  reglages: Reglages;
+  actions: ActionsDeLApercu | null;
 }) {
   const [filtre, setFiltre] = useState<Filtre>('toutes');
   const bloquant = rapport.colonnesManquantes.length > 0;
@@ -496,25 +568,34 @@ function Compte({
         <Chiffre valeur={rapport.sansN1} libelle="sans N+1" ton="warning" />
       </div>
 
-      {departager && rapport.choix.length > 0 ? (
+      {actions && rapport.choix.length > 0 ? (
         <Departages
           choix={rapport.choix}
           enCours={enCours}
-          departages={departages}
-          departager={departager}
+          departages={reglages.departages}
+          departager={actions.departager}
         />
       ) : null}
 
-      {rattacher && rapport.rattachements.length > 0 ? (
+      {actions && rapport.rattachements.length > 0 ? (
         <Rattachements
           rattachements={rapport.rattachements}
           enCours={enCours}
-          choisis={rattachements}
-          rattacher={rattacher}
+          choisis={reglages.rattachements}
+          rattacher={actions.rattacher}
         />
       ) : null}
 
-      <Organigramme rapport={rapport} renommer={renommer} />
+      {actions && rapport.unitesSansResponsable.length > 0 ? (
+        <SansResponsable
+          unites={rapport.unitesSansResponsable}
+          enCours={enCours}
+          choisis={reglages.responsables}
+          designer={actions.designer}
+        />
+      ) : null}
+
+      <UnitesEtResponsables rapport={rapport} renommer={actions?.renommer ?? null} />
 
       {rapport.colonnesInconnues.length > 0 ? (
         <Remarque>
@@ -745,8 +826,367 @@ function Rattachements({
   );
 }
 
+/** Les unités qui ont des agents sans responsable : on désigne, puis l'aperçu se rejoue. */
+function SansResponsable({
+  unites,
+  enCours,
+  choisis,
+  designer,
+}: {
+  unites: ResponsableImport[];
+  enCours: boolean;
+  choisis: Record<string, string>;
+  designer: (cle: string, personne: string) => void;
+}) {
+  return (
+    <ModalSection title="Unités sans responsable">
+      <ul className="flex flex-col gap-3">
+        {unites.map((u) => (
+          <li key={u.cle} className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-4">
+            <span className="min-w-0 flex-1 text-[12.5px] text-ink">
+              <b>{u.unite}</b>
+              <span className="text-ink-muted">
+                {u.direction !== u.unite ? ` · ${u.direction}` : ''} · {compte(u.effectif, 'agent')}
+              </span>
+              {u.echec ? (
+                <span className="block text-[11.5px] text-danger">Non désigné : {u.echec}</span>
+              ) : null}
+            </span>
+            <ChoixDuResponsable
+              unite={u}
+              enCours={enCours}
+              valeur={choisis[u.cle] ?? u.retenu ?? ''}
+              designer={designer}
+              className="sm:w-[22rem]"
+            />
+          </li>
+        ))}
+      </ul>
+    </ModalSection>
+  );
+}
+
+/** Le responsable d'une unité qui n'en a pas : un agent de sa direction, ou « Non désigné ». */
+function ChoixDuResponsable({
+  unite,
+  enCours,
+  valeur,
+  designer,
+  className,
+}: {
+  unite: ResponsableImport;
+  enCours: boolean;
+  valeur: string;
+  designer: (cle: string, personne: string) => void;
+  className?: string;
+}) {
+  return (
+    <Select
+      aria-label={`Responsable de « ${unite.unite} »`}
+      className={className}
+      disabled={enCours}
+      value={valeur}
+      onChange={(e) => designer(unite.cle, e.target.value)}
+    >
+      <option value="" disabled>
+        Choisir le responsable
+      </option>
+      {unite.candidats.map((c) => (
+        <option key={c.cle} value={c.cle}>
+          {`${c.nom} · ${c.detail}`}
+        </option>
+      ))}
+      <option value={CHOIX_AUCUN}>Non désigné</option>
+    </Select>
+  );
+}
+
+/** L'arbre de l'organigramme final : les enfants de chaque unité, et le périmètre de chacune. */
+function useArbre(noeuds: NoeudImport[]) {
+  return useMemo(() => {
+    const parCle = new Map(noeuds.map((n) => [n.cle, n]));
+    const enfants = new Map<string, NoeudImport[]>();
+    for (const n of noeuds) {
+      if (!n.parent) continue;
+      enfants.set(n.parent, [...(enfants.get(n.parent) ?? []), n]);
+    }
+    for (const l of enfants.values()) {
+      l.sort((a, b) => {
+        const rang = (n: NoeudImport) => (n.type === 'department' ? 0 : 1);
+        return rang(a) - rang(b) || a.nom.localeCompare(b.nom, 'fr');
+      });
+    }
+    /** L'unité et ce qui en descend, sans entrer dans les directions qu'elle coiffe. */
+    const perimetre = (cle: string): Set<string> => {
+      const vus = new Set([cle]);
+      const pile = [cle];
+      while (pile.length > 0) {
+        for (const e of enfants.get(pile.pop()!) ?? []) {
+          if (vus.has(e.cle) || e.type === 'direction') continue;
+          vus.add(e.cle);
+          pile.push(e.cle);
+        }
+      }
+      return vus;
+    };
+    /** La plus proche direction en remontant, l'unité comprise. */
+    const direction = (cle: string): NoeudImport | null => {
+      let n = parCle.get(cle) ?? null;
+      for (let i = 0; n && i < 64; i += 1) {
+        if (n.type === 'direction') return n;
+        n = n.parent ? (parCle.get(n.parent) ?? null) : null;
+      }
+      return null;
+    };
+    /** Les unités d'une direction, dans l'ordre de l'arbre : elle, ses départements et leurs services. */
+    const unitesDe = (dir: NoeudImport): NoeudImport[] => {
+      const liste: NoeudImport[] = [dir];
+      const descendre = (n: NoeudImport) => {
+        for (const e of enfants.get(n.cle) ?? []) {
+          if (e.type === 'direction') continue;
+          liste.push(e);
+          descendre(e);
+        }
+      };
+      descendre(dir);
+      return liste;
+    };
+    return { parCle, perimetre, direction, unitesDe };
+  }, [noeuds]);
+}
+
+/**
+ * L'organigramme tel que l'import le laisse, avant de valider (ADR-0179). Un
+ * clic sur une unité liste ses agents : les agents que l'import crée se placent
+ * dans un département ou un service de leur direction. Quitter la fiche
+ * rejoue l'aperçu avec ces placements.
+ */
+function OrganigrammeFinal({
+  rapport,
+  enCours,
+  reglages,
+  designer,
+  placer,
+  onQuitterLaFiche,
+}: {
+  rapport: RapportImportEmployes;
+  enCours: boolean;
+  reglages: Reglages;
+  designer: (cle: string, personne: string) => void;
+  placer: (ligne: number, unite: string) => void;
+  onQuitterLaFiche: () => void;
+}) {
+  const [ouverte, setOuverte] = useState<string | null>(null);
+  const arbre = useArbre(rapport.organigramme);
+  // Le bloc de l'organigramme se lit comme celui de la page Organigramme.
+  const vues = useMemo<OrgUnitView[]>(() => {
+    const effectif = (cle: string) => {
+      const p = arbre.perimetre(cle);
+      return rapport.agents.filter((a) => p.has(a.unite)).length;
+    };
+    return rapport.organigramme.map((n) => ({
+      id: n.cle,
+      name: n.nom,
+      unitType: n.type,
+      parentId: n.parent,
+      shortName: n.sigle,
+      managerEmployeeId: n.responsable ? n.cle : null,
+      managerName: n.responsable?.nom ?? null,
+      managerShortName: n.responsable?.nomAbrege ?? null,
+      managerGender: n.responsable?.genre ?? null,
+      managerNumber: n.responsable?.matricule ?? null,
+      managerPosition: null,
+      managerDepuis: null,
+      adjoint: null,
+      sommet: n.sommet,
+      directionDuPersonnel: false,
+      headcount: effectif(n.cle),
+      attachedEmployees: effectif(n.cle),
+    }));
+  }, [rapport, arbre]);
+  // Une unité sans responsable peut apparaître après un placement : on la
+  // désigne ici, sans repasser par l'aperçu.
+  const enAttente = rapport.unitesSansResponsable.filter(
+    (u) => !(reglages.responsables[u.cle] ?? u.retenu),
+  );
+  const noeud = ouverte ? arbre.parCle.get(ouverte) : undefined;
+
+  // L'organigramme et la fiche d'une unité tiennent dans la même hauteur :
+  // passer de l'un à l'autre ne déplace pas la fenêtre, centrée (ADR-0180).
+  return (
+    <div className="flex h-[min(68vh,720px)] min-h-0 flex-col gap-4 overflow-y-auto">
+      {noeud ? (
+        <FicheDUnite
+          noeud={noeud}
+          rapport={rapport}
+          arbre={arbre}
+          enCours={enCours}
+          reglages={reglages}
+          designer={designer}
+          placer={placer}
+          onRetour={() => {
+            setOuverte(null);
+            onQuitterLaFiche();
+          }}
+        />
+      ) : (
+        <>
+          {enAttente.length > 0 ? (
+            <SansResponsable
+              unites={enAttente}
+              enCours={enCours}
+              choisis={reglages.responsables}
+              designer={designer}
+            />
+          ) : null}
+          <div className="min-h-[420px] flex-1 overflow-hidden rounded-bloc border border-line-soft bg-surface">
+            <Organigramme
+              unites={vues}
+              selectionId={null}
+              actions={{ onOuvrir: (u) => setOuverte(u.id) }}
+            />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Une unité dans une liste : la direction par son sigle, les autres par leur nom. */
+const nomCourt = (n: NoeudImport | undefined) =>
+  n ? (n.type === 'direction' && n.sigle ? n.sigle : n.nom) : '';
+
+/** La fiche d'une unité de l'organigramme final : son responsable, et ses agents à placer. */
+function FicheDUnite({
+  noeud: n,
+  rapport,
+  arbre,
+  enCours,
+  reglages,
+  designer,
+  placer,
+  onRetour,
+}: {
+  noeud: NoeudImport;
+  rapport: RapportImportEmployes;
+  arbre: ReturnType<typeof useArbre>;
+  enCours: boolean;
+  reglages: Reglages;
+  designer: (cle: string, personne: string) => void;
+  placer: (ligne: number, unite: string) => void;
+  onRetour: () => void;
+}) {
+  const parent = n.parent ? arbre.parCle.get(n.parent) : undefined;
+  const direction = arbre.direction(n.cle);
+  // Où placer un agent : sa direction, ses départements, ses services.
+  const unites = direction ? arbre.unitesDe(direction) : [n];
+  const perimetre = arbre.perimetre(n.cle);
+  const agents: AgentImport[] = rapport.agents.filter((a) => perimetre.has(a.unite));
+  const question = rapport.unitesSansResponsable.find((u) => u.cle === n.cle);
+  const rattachement = parent
+    ? `Rattachée ${uniteAvecArticle(
+        'à',
+        { name: parent.nom, unitType: parent.type, shortName: parent.sigle },
+        orgUnitLabel({ name: parent.nom, shortName: parent.sigle }),
+      )}`
+    : null;
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-start gap-2.5">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="shrink-0"
+          aria-label="Revenir à l’organigramme"
+          onClick={onRetour}
+        >
+          <Icon name="chevron_backward" size={18} />
+        </Button>
+        <div className="min-w-0">
+          <p className="text-[15px] leading-tight font-bold text-ink-strong">{n.nom}</p>
+          {n.sigle || rattachement ? (
+            <p className="mt-1 text-[12px] text-ink-muted">
+              {[n.sigle, rattachement].filter(Boolean).join(' · ')}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <ModalSection title="Responsable">
+        {question ? (
+          <div className="flex flex-col gap-1.5">
+            <ChoixDuResponsable
+              unite={question}
+              enCours={enCours}
+              valeur={reglages.responsables[question.cle] ?? question.retenu ?? ''}
+              designer={designer}
+              className="sm:max-w-[26rem]"
+            />
+            {question.echec ? (
+              <p className="text-[11.5px] text-danger">Non désigné : {question.echec}</p>
+            ) : null}
+          </div>
+        ) : n.responsable ? (
+          <p className="text-[12.5px] text-ink">
+            <b className="text-ink-strong">{n.responsable.nom}</b>
+            <span className="text-ink-muted"> · {n.responsable.matricule}</span>
+          </p>
+        ) : (
+          <p className="text-[12.5px] text-ink-muted">Non désigné</p>
+        )}
+      </ModalSection>
+
+      <ModalSection
+        title="Agents"
+        extra={<span className="text-[12px] text-ink-muted">{compte(agents.length, 'agent')}</span>}
+      >
+        {agents.length === 0 ? (
+          <p className="text-[12.5px] text-ink-muted">Aucun agent dans cette unité.</p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-line-soft">
+            {agents.map((a) => (
+              <li
+                key={a.cle}
+                className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:gap-4"
+              >
+                <span className="min-w-0 flex-1 text-[12.5px] text-ink">
+                  <b className="text-ink-strong">{a.nom}</b>
+                  <span className="text-ink-muted">
+                    {' '}
+                    · {a.matricule}
+                    {a.poste ? ` · ${a.poste}` : ''}
+                  </span>
+                </span>
+                {a.modifiable && a.ligne !== null && unites.length > 1 ? (
+                  <Select
+                    aria-label={`Unité de ${a.nom}`}
+                    className="sm:w-[20rem]"
+                    disabled={enCours}
+                    value={reglages.placements[a.ligne] ?? a.unite}
+                    onChange={(e) => placer(a.ligne!, e.target.value)}
+                  >
+                    {unites.map((u) => (
+                      <option key={u.cle} value={u.cle}>
+                        {nomCourt(u)}
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <span className="text-[12.5px] text-ink-muted sm:w-[20rem] sm:text-right">
+                    {nomCourt(arbre.parCle.get(a.unite))}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </ModalSection>
+    </div>
+  );
+}
+
 /** Les unités que l'import crée, et les responsables qu'il désigne. */
-function Organigramme({
+function UnitesEtResponsables({
   rapport,
   renommer,
 }: {

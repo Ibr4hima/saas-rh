@@ -29,7 +29,6 @@ export function Modal({
   footer,
   children,
   maxWidth = 'max-w-3xl',
-  ancre = 'centre',
 }: {
   open: boolean;
   /**
@@ -67,13 +66,6 @@ export function Modal({
   footer?: React.ReactNode;
   children: React.ReactNode;
   maxWidth?: string;
-  /**
-   * Où la fenêtre se pose sur grand écran. Au centre par défaut. En haut pour
-   * une fiche dont le contenu change sous les yeux (une modification qui
-   * s'ouvre, une confirmation qui s'ajoute) : centrée, elle remonterait d'un
-   * coup ; posée en haut, seul son bas bouge.
-   */
-  ancre?: 'centre' | 'haut';
 }) {
   /**
    * Ne fermer sur le voile que si le clic a COMMENCÉ dessus. Sélectionner du
@@ -137,10 +129,9 @@ export function Modal({
         if (onClose && startedOnBackdrop.current && e.target === e.currentTarget) onClose();
         startedOnBackdrop.current = false;
       }}
-      className={cn(
-        'modal-voile fixed inset-0 z-50 flex justify-center bg-[var(--tg-overlay)] sm:p-6',
-        ancre === 'haut' ? 'items-start sm:pt-[6vh]' : 'items-center',
-      )}
+      // Au centre de l'écran, à égale distance des quatre bords : une fiche
+      // s'ouvre toujours au même endroit (ADR-0180).
+      className="modal-voile fixed inset-0 z-50 flex items-center justify-center bg-[var(--tg-overlay)] sm:p-6"
     >
       <div
         {...dialog}
@@ -149,8 +140,7 @@ export function Modal({
           'modal-panel flex h-full w-full flex-col overflow-hidden border-line-soft bg-surface shadow-lg outline-none',
           // Plein écran sur téléphone : une fenêtre flottante y laisserait
           // deux centimètres de contexte inutile de chaque côté.
-          'sm:h-auto sm:rounded-bloc sm:border',
-          ancre === 'haut' ? 'sm:max-h-[88vh]' : 'sm:max-h-[92vh]',
+          'sm:h-auto sm:max-h-[92vh] sm:rounded-bloc sm:border',
           maxWidth,
         )}
       >

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
@@ -8,18 +9,22 @@ import {
   LIBELLES_LIEN_DE_PARENTE,
   LIBELLES_PERSONNEL,
   LIBELLES_REGION,
+  nomAbrege,
   peut,
   posteDAdjoint,
   posteDeResponsable,
   ribGroupe,
   type BilanDuVidage,
   type CandidatImport,
+  type AgentImport,
   type ChoixImport,
   type CreateEmployeeInput,
   type LigneImport,
+  type NoeudImport,
   type OrgUnitType,
   type RapportImportEmployes,
   type RattachementImport,
+  type ResponsableImport,
   type SessionUser,
   type UpdateEmployeeInput,
   type VueRemuneration,
@@ -38,7 +43,7 @@ import {
   superieurAttendu,
   verrouillerLaChaine,
 } from './chaine';
-import { contratEchu } from './en-activite';
+import { contratEchu, enStage } from './en-activite';
 import {
   CHAMPS_DE_LA_REMUNERATION,
   cleDUnite,
@@ -83,8 +88,9 @@ import { PeopleService } from './people.service';
       et l'aperçu liste chaque changement. Une case vide n'efface rien.
    2. Seuls le matricule, le prénom, le nom et la date d'entrée bloquent une
       ligne. Ailleurs, la valeur fausse est écartée et signalée.
-   3. Un matricule en double dans le fichier donne 50-A, 50-B : des
-      matricules provisoires, que le réimport retrouve par la personne.
+   3. Un matricule en double dans le fichier donne 50A, 50B : des
+      matricules provisoires, que le réimport retrouve par la personne. La
+      lettre suit l'ancienneté : A pour la personne entrée la première.
    4. Le poste place l'agent : « Chef de département Digitalisation » le met
       à la tête du département, créé s'il n'existe pas.
    5. Le N+1 et le responsable fonctionnel se désignent par leur nom. Un nom
@@ -95,7 +101,25 @@ import { PeopleService } from './people.service';
    7. Dans une direction qui compte des départements, un service se range
       sous l'un d'eux : celui que nomme la ligne, le seul que compte la
       direction, ou celui que la DCH choisit à l'aperçu (ADR-0178).
+   8. Avant d'appliquer, la DCH voit l'organigramme que l'import laisse :
+      elle affecte les agents qu'il crée à une unité de leur direction, et
+      désigne le responsable des unités qui n'en ont pas (ADR-0179).
    ──────────────────────────────────────────────────────────────── */
+
+/** Les réglages faits sur l'organigramme de l'aperçu (ADR-0179). */
+interface Reglages {
+  /** La clé d'une unité, les lignes des agents qu'on y affecte. */
+  placements?: Record<string, number[]>;
+  /** La clé d'une unité sans responsable, la personne retenue ou `aucun`. */
+  responsables?: Record<string, string>;
+}
+
+/**
+ * La clé d'une unité dans l'organigramme de l'aperçu : courte, pour tenir
+ * dans l'adresse, et la même d'un aperçu à l'autre, alors que l'id d'une
+ * unité que l'import crée change à chaque fois.
+ */
+const cleCourte = (cle: string) => createHash('sha256').update(cle).digest('hex').slice(0, 12);
 
 /** Au-delà, ce n'est plus un fichier qu'on importe : c'est une migration. */
 const MAX_LIGNES = 5_000;
@@ -122,7 +146,9 @@ export class ImportEmployesService {
    * rapport reste. `choix` : les homonymes départagés, de la clé du choix au
    * candidat retenu. `noms` : les noms d'unités corrigés à l'aperçu, de la
    * clé de l'unité à son nom. `rattachements` : les services rangés à
-   * l'aperçu, de la clé du service à celle de son département.
+   * l'aperçu, de la clé du service à celle de son département. `reglages` :
+   * les agents placés et les responsables désignés sur l'organigramme de
+   * l'aperçu.
    */
   async importer(
     user: SessionUser,
@@ -131,6 +157,7 @@ export class ImportEmployesService {
     choix: Record<string, string> = {},
     noms: Record<string, string> = {},
     rattachements: Record<string, string> = {},
+    reglages: Reglages = {},
   ): Promise<RapportImportEmployes> {
     const feuille = this.lire(fichier);
     // Les intitulés sont sur la première ligne, ou plus bas sous un titre :
@@ -160,6 +187,9 @@ export class ImportEmployesService {
       designations: [],
       choix: [],
       rattachements: [],
+      unitesSansResponsable: [],
+      organigramme: [],
+      agents: [],
       total: 0,
       aCreer: 0,
       aModifier: 0,
@@ -185,6 +215,7 @@ export class ImportEmployesService {
             choix,
             noms,
             rattachements,
+            reglages,
             this.journal,
           );
           // La ligne du tableur où commencent les agents : le rapport la cite.
@@ -451,6 +482,12 @@ const LIBELLES_SITUATION: Record<string, string> = {
   widowed: 'Veuf ou veuve',
 };
 
+/**
+ * Un matricule provisoire : le matricule du fichier, puis sa lettre. 50A ;
+ * 50-A pour les fiches importées avant l'ADR-0181.
+ */
+const PROVISOIRE = /^(.+?)-?([A-Z])$/;
+
 /** La clé d'un matricule : ses lettres et ses chiffres, sans la casse ni les séparateurs. */
 function cleMatricule(t: string): string {
   return squelette(t).replace(/ /g, '');
@@ -506,6 +543,9 @@ class Passe {
   private readonly choixDemandes = new Map<string, ChoixImport>();
   private readonly aRanger = new Map<string, ServiceARanger>();
   private readonly rattachementsDemandes: RattachementImport[] = [];
+  private readonly sansResponsable: ResponsableImport[] = [];
+  private noeuds: NoeudImport[] = [];
+  private agentsFinaux: AgentImport[] = [];
   private readonly deplacements: { service: Unite; vers: Place; lignes: number[] }[] = [];
   private readonly unitesCreees: RapportImportEmployes['unitesCreees'] = [];
   private readonly servicesRanges: RapportImportEmployes['servicesRanges'] = [];
@@ -521,6 +561,7 @@ class Passe {
     private readonly choix: Record<string, string>,
     private readonly noms: Record<string, string>,
     private readonly rattachements: Record<string, string>,
+    private readonly reglages: Reglages,
     private readonly journal: Logger,
   ) {
     this.organigramme = new OrgUnitsService(db);
@@ -591,10 +632,12 @@ class Passe {
     await this.ecrireLesDossiers((p) => p.designation !== null);
     await this.designer();
     await this.ecrireLesDossiers((p) => p.designation === null);
+    await this.designerALaMain();
     await this.rattacher('n1');
     await this.rattacherDOffice();
     await this.rattacher('fonctionnel');
     await this.relire();
+    await this.lireLOrganigramme();
 
     const lignes = this.lignes.sort((a, b) => a.ligne - b.ligne);
     for (const l of lignes) {
@@ -609,6 +652,9 @@ class Passe {
       designations: this.designations,
       choix: [...this.choixDemandes.values()],
       rattachements: this.rattachementsDemandes,
+      unitesSansResponsable: this.sansResponsable,
+      organigramme: this.noeuds,
+      agents: this.agentsFinaux,
       total: lignes.length,
       aCreer: lignes.filter((l) => l.etat === 'a-creer').length,
       aModifier: lignes.filter((l) => l.etat === 'a-modifier').length,
@@ -835,6 +881,12 @@ class Passe {
       const cle = cleMatricule(p.lue.matricule);
       groupes.set(cle, [...(groupes.get(cle) ?? []), p]);
     }
+    // Les matricules déjà pris, sur la plateforme ou dans le fichier : 50A
+    // peut être le vrai matricule d'une autre personne, la lettre le saute.
+    const occupes = new Set([
+      ...this.dossiers.map((d) => cleMatricule(d.matricule)),
+      ...this.plans.map((p) => cleMatricule(p.lue.matricule)),
+    ]);
 
     for (const [cle, groupe] of groupes) {
       if (groupe.length === 1) {
@@ -859,7 +911,7 @@ class Passe {
           pris.add(d.id);
           continue;
         }
-        // Le vrai matricule d'une fiche provisoire : 50-A devient 50.
+        // Le vrai matricule d'une fiche provisoire : 50A devient 50.
         const provisoire = this.dossiers.find(
           (x) => x.provisoire && !pris.has(x.id) && memePersonne(p.lue, x),
         );
@@ -879,10 +931,11 @@ class Passe {
       }
 
       // Un matricule en double dans le fichier : chacun retrouve sa fiche
-      // provisoire, les autres reçoivent la lettre suivante (50-A, 50-B).
+      // provisoire, les autres reçoivent une lettre libre, dans l'ordre de
+      // l'ancienneté : 50A pour la personne entrée la première (ADR-0181).
       const base = groupe[0]!.lue.matricule;
       const famille = this.dossiers.filter((d) => {
-        const m = /^(.*)-([A-Z])$/.exec(d.matricule);
+        const m = PROVISOIRE.exec(d.matricule);
         return (
           cleMatricule(d.matricule) === cle ||
           (d.provisoire && m !== null && cleMatricule(m[1]!) === cle)
@@ -890,7 +943,7 @@ class Passe {
       });
       const lettres = new Set(
         famille
-          .map((d) => /-([A-Z])$/.exec(d.matricule)?.[1])
+          .map((d) => (d.provisoire ? PROVISOIRE.exec(d.matricule)?.[2] : undefined))
           .filter((x): x is string => x !== undefined),
       );
       const numeros = groupe.map((p) => p.lue.ligne).join(', ');
@@ -911,12 +964,18 @@ class Passe {
           sansFiche.push(p);
         }
       }
+      // La personne la plus ancienne d'abord ; à la même date d'entrée,
+      // l'ordre du fichier.
+      sansFiche.sort((a, b) => a.lue.entree.iso.localeCompare(b.lue.entree.iso));
+      const libre = (lettre: string) =>
+        !lettres.has(lettre) && !occupes.has(cleMatricule(`${base}${lettre}`));
       let code = 'A'.charCodeAt(0);
       for (const p of sansFiche) {
-        while (lettres.has(String.fromCharCode(code))) code++;
+        while (!libre(String.fromCharCode(code))) code++;
         const lettre = String.fromCharCode(code);
         lettres.add(lettre);
-        p.matricule = `${base}-${lettre}`;
+        p.matricule = `${base}${lettre}`;
+        occupes.add(cleMatricule(p.matricule));
         p.provisoire = true;
         p.rapport.avertissements.push({
           colonne: p.lue.colonne('matricule'),
@@ -1125,6 +1184,45 @@ class Passe {
     // Les départements que le fichier crée sont tous connus : chaque service
     // trouve le sien.
     this.rangerLesServices();
+    this.placerALaMain();
+  }
+
+  /**
+   * L'import décide de l'unité de l'agent : une fiche qu'il crée, ou une
+   * fiche qui n'a pas encore d'unité. Pas le responsable que l'import
+   * désigne : sa place est l'unité à diriger.
+   */
+  private placeParLImport(p: Plan): boolean {
+    if (p.rapport.etat === 'erreur' || p.designation || !p.lue.poste) return false;
+    const d = p.dossier;
+    if (!d) return true;
+    if (!d.affectation) return d.nbAffectations === 0;
+    return !d.affectation.uniteId;
+  }
+
+  /**
+   * Les agents affectés à l'aperçu à une unité de leur direction (ADR-0179),
+   * parmi les agents dont l'import décide l'unité.
+   */
+  private placerALaMain(): void {
+    const voulus = Object.entries(this.reglages.placements ?? {});
+    if (voulus.length === 0) return;
+    const places = new Map<string, Place>();
+    for (const unite of this.unites) places.set(cleCourte(`u:${unite.id}`), { unite });
+    for (const nouvelle of this.aCreer) places.set(cleCourte(nouvelle.cle), { nouvelle });
+    const parLigne = new Map(this.plans.map((p) => [p.lue.ligne, p]));
+    for (const [cle, lignes] of voulus) {
+      const cible = places.get(cle);
+      const direction = cible ? this.directionDeLaPlace(cible) : null;
+      if (!cible || !direction) continue;
+      for (const ligne of lignes) {
+        const p = parLigne.get(ligne);
+        if (!p || !this.placeParLImport(p)) continue;
+        if (this.directionDeLaPlace(p.place)?.id !== direction.id) continue;
+        p.place = cible;
+        p.rapport.unite = nomDeLaPlace(cible);
+      }
+    }
   }
 
   /**
@@ -2148,6 +2246,244 @@ class Passe {
       if (!id || p.rapport.etat === 'erreur') continue;
       await this.essayer((sp) => rattacherDOffice(sp, [], id));
     }
+  }
+
+  /**
+   * L'organigramme tel que la passe l'a écrit : les unités vivantes, leur
+   * responsable, et les agents actifs avec leur unité (en cours, sinon à
+   * venir).
+   */
+  private async lireLEtat() {
+    const { rows: unites } = await this.tx.execute<{
+      id: string;
+      name: string;
+      short_name: string | null;
+      unit_type: OrgUnitType;
+      parent_id: string | null;
+      sommet: boolean;
+      tete: string | null;
+      tete_prenom: string | null;
+      tete_nom: string | null;
+      tete_genre: 'female' | 'male' | null;
+      tete_matricule: string | null;
+    }>(sql`
+      SELECT o.id, o.name, o.short_name, o.unit_type, o.parent_id, (o.id = ${SOMMET}) AS sommet,
+             e.id AS tete, p.given_name AS tete_prenom, p.family_name AS tete_nom,
+             p.gender AS tete_genre, e.employee_number AS tete_matricule
+        FROM org_units o
+        LEFT JOIN employees e ON e.id = o.manager_employee_id AND e.status = 'active'
+        LEFT JOIN persons p ON p.id = e.person_id
+       WHERE o.deleted_at IS NULL`);
+    const { rows: agents } = await this.tx.execute<{
+      id: string;
+      prenom: string;
+      nom: string;
+      genre: string | null;
+      matricule: string;
+      poste: string | null;
+      unite: string;
+      stage: boolean;
+      echu: boolean;
+    }>(sql`
+      SELECT e.id, p.given_name AS prenom, p.family_name AS nom, p.gender AS genre,
+             e.employee_number AS matricule, a.position_title AS poste, a.org_unit_id AS unite,
+             ${enStage(sql`e.id`)} AS stage, ${contratEchu(sql`e.id`)} AS echu
+        FROM employees e
+        JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
+        JOIN LATERAL (
+          SELECT av.org_unit_id, av.position_title FROM assignments av
+           WHERE av.employee_id = e.id
+             AND (av.validity @> CURRENT_DATE OR lower(av.validity) > CURRENT_DATE)
+           ORDER BY lower(av.validity) LIMIT 1) a ON a.org_unit_id IS NOT NULL
+       WHERE e.status = 'active'
+       ORDER BY p.family_name, p.given_name, e.id`);
+    const parId = new Map(unites.map((u) => [u.id, u]));
+    const enfants = new Map<string, string[]>();
+    for (const u of unites) {
+      if (!u.parent_id) continue;
+      enfants.set(u.parent_id, [...(enfants.get(u.parent_id) ?? []), u.id]);
+    }
+    /** L'unité et ce qui en descend, sans entrer dans les directions qu'elle coiffe. */
+    const perimetreDe = (id: string): Set<string> => {
+      const vus = new Set([id]);
+      const pile = [id];
+      while (pile.length > 0) {
+        for (const e of enfants.get(pile.pop()!) ?? []) {
+          if (vus.has(e) || parId.get(e)?.unit_type === 'direction') continue;
+          vus.add(e);
+          pile.push(e);
+        }
+      }
+      return vus;
+    };
+    /** La plus proche direction en remontant, l'unité comprise. */
+    const directionDe = (id: string) => {
+      let u = parId.get(id);
+      for (let i = 0; u && i < 64; i += 1) {
+        if (u.unit_type === 'direction') return u;
+        u = u.parent_id ? parId.get(u.parent_id) : undefined;
+      }
+      return undefined;
+    };
+    return { unites, agents, parId, perimetreDe, directionDe };
+  }
+
+  /** La clé d'une unité dans l'organigramme de l'aperçu. */
+  private cleDeLUnite(id: string): string {
+    return cleCourte(this.aCreer.find((n) => n.id === id)?.cle ?? `u:${id}`);
+  }
+
+  /** La clé de chaque personne : sa ligne dans le fichier, sinon son dossier. */
+  private clesDesPersonnes(): (employeeId: string) => string {
+    const lignes = new Map(
+      this.plans.filter((p) => p.employeeId).map((p) => [p.employeeId!, p.lue.ligne]),
+    );
+    return (id) => (lignes.has(id) ? `l:${lignes.get(id)}` : `d:${id}`);
+  }
+
+  /**
+   * Les unités où l'import met des agents et qui n'ont pas de responsable :
+   * l'aperçu demande qui les dirige, parmi les agents de leur direction, ou
+   * de les laisser « Non désigné » (ADR-0179). La personne retenue se désigne
+   * ici, avec les règles et les cascades de l'organigramme.
+   */
+  private async designerALaMain(): Promise<void> {
+    const venus = new Set(
+      this.plans.filter((p) => p.employeeId && this.placeParLImport(p)).map((p) => p.employeeId!),
+    );
+    if (venus.size === 0) return;
+    const etat = await this.lireLEtat();
+    const cleDe = this.clesDesPersonnes();
+    const dirigeants = new Set(etat.unites.map((u) => u.tete).filter((t): t is string => !!t));
+    const aDesigner: {
+      question: ResponsableImport;
+      uniteId: string;
+      employeeId: string;
+      nom: string;
+    }[] = [];
+    for (const u of etat.unites) {
+      if (u.tete) continue;
+      const perimetre = etat.perimetreDe(u.id);
+      const dedans = etat.agents.filter((a) => perimetre.has(a.unite));
+      if (!dedans.some((a) => venus.has(a.id))) continue;
+      const direction = etat.directionDe(u.id);
+      const deLaDirection = direction ? etat.perimetreDe(direction.id) : perimetre;
+      const candidats = etat.agents
+        .filter((a) => deLaDirection.has(a.unite) && !a.stage && !a.echu && !dirigeants.has(a.id))
+        // Les agents de l'unité d'abord, puis le reste de la direction.
+        .sort((a, b) => Number(perimetre.has(b.unite)) - Number(perimetre.has(a.unite)));
+      const cle = this.cleDeLUnite(u.id);
+      const options = candidats.map((a) => ({
+        cle: cleDe(a.id),
+        nom: `${a.prenom} ${a.nom}`,
+        detail: [a.matricule, a.poste, etat.parId.get(a.unite)?.name].filter(Boolean).join(' · '),
+        id: a.id,
+      }));
+      const voulu = this.reglages.responsables?.[cle];
+      const choisi = options.find((o) => o.cle === voulu);
+      const question: ResponsableImport = {
+        cle,
+        unite: u.name,
+        direction: direction ? (direction.short_name ?? direction.name) : u.name,
+        effectif: dedans.length,
+        candidats: options.map(({ cle: c, nom, detail }) => ({ cle: c, nom, detail })),
+        retenu: voulu === CHOIX_AUCUN ? CHOIX_AUCUN : (choisi?.cle ?? null),
+      };
+      this.sansResponsable.push(question);
+      if (choisi)
+        aDesigner.push({ question, uniteId: u.id, employeeId: choisi.id, nom: choisi.nom });
+    }
+    if (aDesigner.length === 0) return;
+    if (!peut(this.user, 'organigramme')) {
+      for (const d of aDesigner) {
+        d.question.echec = 'La désignation du responsable revient à qui gère l’organigramme';
+      }
+      return;
+    }
+    // La direction d'abord, puis le département, puis le service : chaque
+    // responsable désigné trouve au-dessus de son unité le N+1 que la règle
+    // impose.
+    const rang = (id: string) => {
+      const t = etat.parId.get(id)?.unit_type;
+      return t === 'direction' ? 0 : t === 'department' ? 1 : 2;
+    };
+    const journal: Parameters<OrgUnitsService['designerDansLaTransaction']>[2] = [];
+    for (const d of aDesigner.sort((a, b) => rang(a.uniteId) - rang(b.uniteId))) {
+      const plan = this.plans.find((p) => p.employeeId === d.employeeId);
+      // Une fiche créée par l'import prend la tête depuis son entrée, comme
+      // pour une désignation que le poste fait.
+      const depuis =
+        plan && !plan.dossier && plan.lue.entree.iso <= this.aujourdhui
+          ? plan.lue.entree.iso
+          : undefined;
+      const r = await this.essayer((sp) =>
+        this.organigramme.designerDansLaTransaction(sp, this.user, journal, d.uniteId, {
+          managerEmployeeId: d.employeeId,
+          depuis,
+        }),
+      );
+      if ('erreur' in r) {
+        d.question.echec = r.erreur;
+        continue;
+      }
+      const unite = etat.parId.get(d.uniteId)!;
+      const genre = plan
+        ? (plan.lue.personne.gender ?? plan.dossier?.personne.gender ?? null)
+        : (etat.agents.find((a) => a.id === d.employeeId)?.genre ?? null);
+      this.designations.push({
+        poste: posteDeResponsable(
+          {
+            name: unite.name,
+            unitType: unite.unit_type,
+            shortName: unite.short_name,
+            sommet: unite.sommet,
+          },
+          genre,
+        ),
+        nom: d.nom,
+      });
+      const connue = this.unites.find((x) => x.id === d.uniteId);
+      if (connue) connue.tete = d.employeeId;
+    }
+  }
+
+  /** L'organigramme que l'import laisse, pour l'aperçu (ADR-0179). */
+  private async lireLOrganigramme(): Promise<void> {
+    const etat = await this.lireLEtat();
+    const parEmploye = new Map(
+      this.plans.filter((p) => p.employeeId).map((p) => [p.employeeId!, p]),
+    );
+    const dirigeants = new Set(etat.unites.map((u) => u.tete).filter((t): t is string => !!t));
+    this.noeuds = etat.unites.map((u) => ({
+      cle: this.cleDeLUnite(u.id),
+      nom: u.name,
+      sigle: u.short_name,
+      type: u.unit_type,
+      parent: u.parent_id ? this.cleDeLUnite(u.parent_id) : null,
+      sommet: Boolean(u.sommet),
+      creee: this.aCreer.some((n) => n.id === u.id),
+      responsable:
+        u.tete && u.tete_prenom && u.tete_nom
+          ? {
+              nom: `${u.tete_prenom} ${u.tete_nom}`,
+              nomAbrege: nomAbrege(u.tete_prenom, u.tete_nom),
+              genre: u.tete_genre,
+              matricule: u.tete_matricule ?? '',
+            }
+          : null,
+    }));
+    this.agentsFinaux = etat.agents.map((a) => {
+      const p = parEmploye.get(a.id);
+      return {
+        cle: p ? `l:${p.lue.ligne}` : `d:${a.id}`,
+        ligne: p?.lue.ligne ?? null,
+        nom: `${a.prenom} ${a.nom}`,
+        matricule: a.matricule,
+        poste: a.poste,
+        unite: this.cleDeLUnite(a.unite),
+        modifiable: Boolean(p && this.placeParLImport(p) && !dirigeants.has(a.id)),
+      };
+    });
   }
 
   /** Ce que la base contient au bout de la passe : le poste, l'unité et le N+1 de chacun. */

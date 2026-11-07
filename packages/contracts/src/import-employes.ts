@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { OrgUnitType } from './employees';
 
 /* ────────────────────────────────────────────────────────────────
    L'import du fichier du personnel tenu par la DCH (ADR-0159) : ce que le
@@ -82,7 +83,7 @@ export interface LigneImport {
   /** Numéro de ligne dans le fichier : la DCH corrige dans son tableur. */
   ligne: number;
   matricule: string | null;
-  /** Un matricule en double dans le fichier reçoit 50-A, 50-B. */
+  /** Un matricule en double dans le fichier reçoit 50A, 50B, A pour la personne la plus ancienne. */
   matriculeProvisoire: boolean;
   nom: string | null;
   poste: string | null;
@@ -163,6 +164,78 @@ export interface ServiceRangeImport {
   departement: string;
 }
 
+/**
+ * Les agents placés à l'aperçu, renvoyés avec le fichier (ADR-0179) : la clé
+ * d'une unité de l'organigramme final, les lignes du fichier dont les agents
+ * y sont affectés.
+ */
+export const placementsDImportSchema = z
+  .record(z.string().max(40), z.array(z.number().int().positive()).max(5000))
+  .refine((p) => Object.keys(p).length <= 500, 'Trop d’unités');
+
+/**
+ * Les responsables désignés à l'aperçu, renvoyés avec le fichier (ADR-0179) :
+ * la clé de l'unité, celle de la personne retenue, ou `aucun`.
+ */
+export const responsablesDImportSchema = z
+  .record(z.string().max(40), z.string().max(60))
+  .refine((r) => Object.keys(r).length <= 500, 'Trop d’unités');
+
+/** Une unité de l'organigramme tel que l'import le laisse (ADR-0179). */
+export interface NoeudImport {
+  /** Sa clé, la même d'un aperçu à l'autre. */
+  cle: string;
+  nom: string;
+  sigle: string | null;
+  type: OrgUnitType;
+  /** La clé de l'unité au-dessus ; `null` au sommet. */
+  parent: string | null;
+  sommet: boolean;
+  /** Créée par cet import. */
+  creee: boolean;
+  responsable: {
+    nom: string;
+    nomAbrege: string;
+    genre: 'female' | 'male' | null;
+    matricule: string;
+  } | null;
+}
+
+/** Un agent de l'organigramme final, et son unité. */
+export interface AgentImport {
+  /** `l:<ligne>` pour un agent du fichier, `d:<id>` pour un dossier qui n'y est pas. */
+  cle: string;
+  /** La ligne du fichier ; `null` : un dossier déjà là, que le fichier ne nomme pas. */
+  ligne: number | null;
+  nom: string;
+  matricule: string;
+  poste: string | null;
+  /** La clé de son unité. */
+  unite: string;
+  /** Son unité se choisit à l'aperçu : c'est l'import qui l'affecte. */
+  modifiable: boolean;
+}
+
+/**
+ * Une unité qui compte des agents de l'import mais pas de responsable :
+ * l'aperçu demande qui la dirige (ADR-0179).
+ */
+export interface ResponsableImport {
+  /** La clé de l'unité, à renvoyer avec la personne retenue. */
+  cle: string;
+  unite: string;
+  /** Sa direction : son sigle, sinon son nom. */
+  direction: string;
+  /** Les agents qui y travaillent, sous-unités comprises. */
+  effectif: number;
+  /** Les agents de sa direction qui peuvent la diriger. */
+  candidats: CandidatImport[];
+  /** La personne retenue, ou `aucun` ; null tant que rien n'est choisi. */
+  retenu: string | null;
+  /** Pourquoi la désignation retenue n'a pas pu se faire. */
+  echec?: string | null;
+}
+
 /** Une désignation que l'import fait : responsable d'unité, DG ou DGA. */
 export interface DesignationImport {
   /** « Directeur de la DFC », « Cheffe du département Études ». */
@@ -203,6 +276,11 @@ export interface RapportImportEmployes {
   choix: ChoixImport[];
   /** Les services à ranger sous un département avant d'appliquer. */
   rattachements: RattachementImport[];
+  /** Les unités qui attendent leur responsable avant d'appliquer. */
+  unitesSansResponsable: ResponsableImport[];
+  /** L'organigramme tel que l'import le laisse, et ses agents. */
+  organigramme: NoeudImport[];
+  agents: AgentImport[];
   total: number;
   aCreer: number;
   aModifier: number;

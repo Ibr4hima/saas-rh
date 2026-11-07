@@ -164,7 +164,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0156](0156-reprise-de-la-grille-au-n2.md)            | Chez le N+2, le N+1 attend l'avis ou reprend la grille avant de l'envoyer à la DCH      | acceptée                                    |
 | [0157](0157-cadre-ou-non-cadre-sur-soi.md)            | Cadre ou non cadre, la seule chose qu'on règle sur son propre dossier                   | acceptée                                    |
 | [0158](0158-la-fiche-recoit-le-fichier-de-la-dch.md)  | La fiche reçoit tout ce que la DCH tient sur chaque agent, la rémunération à part       | acceptée, précisée par 0163                 |
-| [0159](0159-l-import-lit-le-fichier-de-la-dch.md)     | L'import lit le fichier de la DCH : corrections, réimport, postes et N+1 par leur nom   | acceptée, précisée par 0162 à 0164 et 0178  |
+| [0159](0159-l-import-lit-le-fichier-de-la-dch.md)     | L'import lit le fichier de la DCH : corrections, réimport, postes et N+1 par leur nom   | précisée par 0162 à 0164, 0178, 0179, 0181  |
 | [0160](0160-l-import-ecrit-les-unites-sans-faute.md)  | L'import écrit les unités sans faute, lit « 01-mars-04 » et prend « NA » pour vide      | acceptée, précisée par 0161                 |
 | [0161](0161-les-intitules-de-poste-sans-faute.md)     | Les intitulés de poste sortent de l'import sans faute, accordés au sexe de la personne  | acceptée                                    |
 | [0162](0162-import-de-la-prime-de-transport.md)       | L'import reprend la prime de transport du fichier de la DCH sur la fiche                | acceptée, précisée par 0163                 |
@@ -182,5 +182,8 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0174](0174-fiches-depuis-le-dossier.md)              | Fiches préremplies au dossier, prime de transport facultative, stage de 1 à 6 mois      | acceptée                                    |
 | [0175](0175-date-entre-numero-et-emetteur.md)         | La date de l'en-tête, à égale distance du numéro et de l'émetteur                       | acceptée                                    |
 | [0176](0176-sans-dossier-ou-avant-le-depart.md)       | Certificat de travail et attestation de stage, sans dossier ou avant le départ          | acceptée                                    |
-| [0177](0177-fiche-d-une-unite-stable.md)              | La fiche d'une unité s'ouvre entière, et les fenêtres se posent sans flou               | acceptée                                    |
-| [0178](0178-services-sous-un-departement.md)          | Les services se rangent sous un département ; le N+1 d'office est le chef de l'unité    | acceptée                                    |
+| [0177](0177-fiche-d-une-unite-stable.md)              | La fiche d'une unité s'ouvre entière, et les fenêtres se posent sans flou               | acceptée, en partie remplacée (0180)        |
+| [0178](0178-services-sous-un-departement.md)          | Les services se rangent sous un département ; le N+1 d'office est le chef de l'unité    | acceptée, précisée par 0179                 |
+| [0179](0179-organigramme-avant-l-import.md)           | Avant d'importer, l'organigramme final : agents à placer, responsables à désigner       | acceptée                                    |
+| [0180](0180-fiches-au-centre.md)                      | Les fiches s'ouvrent au centre de l'écran                                               | acceptée                                    |
+| [0181](0181-matricule-en-double-et-anciennete.md)     | Un matricule en double : 50A et 50B, la lettre selon l'ancienneté                       | acceptée                                    |

@@ -775,7 +775,7 @@ export class PeopleService {
         id: employee.id,
         soi: isSelf,
         employeeNumber: employee.employeeNumber,
-        // Un matricule provisoire (50-A) se corrige sans délai.
+        // Un matricule provisoire (50A) se corrige sans délai.
         matriculeFige: !employee.matriculeProvisoire && (await this.estFige(tx, employee.id)),
         matriculeProvisoire: employee.matriculeProvisoire,
         entreeAuMois: employee.entreeAuMois,
@@ -1047,7 +1047,7 @@ export class PeopleService {
             if (champs.employeeNumber !== employee.employeeNumber) {
               // Le matricule reste à la personne : il se corrige le temps d'une
               // erreur de saisie, puis il ne change plus. Un matricule
-              // provisoire (50-A), lui, attend le vrai sans délai.
+              // provisoire (50A), lui, attend le vrai sans délai.
               if (!employee.matriculeProvisoire && (await this.estFige(tx, id))) {
                 problem(
                   409,

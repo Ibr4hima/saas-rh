@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import {
-  bloqueLEvaluation,
   type AnomalieHierarchie,
   type ControleHierarchie,
   type TypeAnomalieHierarchie,
@@ -36,7 +35,7 @@ import { BandeauDelegation } from './traitement-dch';
    avez cassé quelque chose », ce qui serait faux.
    ———————————————————————————————————————————————————————————————— */
 
-export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: string }> = {
+export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication?: string }> = {
   boucle: {
     court: 'Boucle',
     explication: 'Sa chaîne de N+1 forme une boucle : elle ne remonte pas jusqu’au DG.',
@@ -47,7 +46,6 @@ export const MOTS: Record<TypeAnomalieHierarchie, { court: string; explication: 
   },
   sans_responsable: {
     court: 'Sans N+1',
-    explication: 'Personne ne peut remplir sa grille d’évaluation.',
   },
   responsable_archive: {
     court: 'N+1 inactif',
@@ -171,7 +169,6 @@ function FenetreAnomalies({
 
 function Ligne({ anomalie }: { anomalie: AnomalieHierarchie }) {
   const mots = MOTS[anomalie.type];
-  const bloquant = bloqueLEvaluation(anomalie.type);
   return (
     <li>
       <Link
@@ -186,23 +183,18 @@ function Ligne({ anomalie }: { anomalie: AnomalieHierarchie }) {
             {anomalie.nom}
           </span>
           <span className="block truncate text-[11.5px] text-ink-muted">
-            {anomalie.direction ?? 'Sans direction'}
-            {anomalie.responsable ? (
-              <>
-                {' · N+1 '}
-                {anomalie.responsable}
-                {anomalie.directionDuResponsable ? ` (${anomalie.directionDuResponsable})` : ''}
-              </>
-            ) : null}
+            {anomalie.directionSigle ?? anomalie.direction ?? 'Sans direction'}
           </span>
         </span>
         <span className="flex shrink-0 flex-col items-end gap-1">
-          {/* L'orange pour ce qui ARRÊTE l'évaluation, le gris pour ce qui se
-              corrige sans bloquer : la RH doit savoir par où commencer. */}
-          <Badge tone={bloquant ? 'orange' : 'gris'}>{mots.court}</Badge>
-          <span className="hidden max-w-xs text-right text-[11px] leading-snug text-ink-muted sm:block">
-            {mots.explication}
-          </span>
+          <Badge tone="gris" className="rounded-[var(--radius-bloc)]">
+            {mots.court}
+          </Badge>
+          {mots.explication ? (
+            <span className="hidden max-w-xs text-right text-[11px] leading-snug text-ink-muted sm:block">
+              {mots.explication}
+            </span>
+          ) : null}
         </span>
         <Icon
           name="chevron_right"

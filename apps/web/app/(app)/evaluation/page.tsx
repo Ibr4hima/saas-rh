@@ -297,7 +297,7 @@ export default function EvaluationPage() {
                 <Th>Agent</Th>
                 <Th className="max-md:hidden">Direction</Th>
                 <Th className="max-lg:hidden">N+1</Th>
-                <Th className="max-sm:hidden">Personnel</Th>
+                <Th className="max-sm:hidden">Catégorie</Th>
                 <Th>Statut</Th>
                 <Th className="max-sm:hidden">Date</Th>
                 <Th>
@@ -318,7 +318,7 @@ export default function EvaluationPage() {
                     <span className="font-mono text-[11px] tracking-tight text-ink-muted">
                       {l.matricule}
                     </span>
-                    {/* Sur un téléphone, la colonne « Personnel » n'a pas la
+                    {/* Sur un téléphone, la colonne « Catégorie » n'a pas la
                         place : le choix passe sous le nom. */}
                     <div className="mt-2 sm:hidden">{choixDuPersonnel(l)}</div>
                   </Td>
@@ -400,7 +400,7 @@ function ChoixDuPersonnel({
   }
   return (
     <Select
-      aria-label={`Personnel de ${l.nom}`}
+      aria-label={`Catégorie de ${l.nom}`}
       value={l.personnel ?? ''}
       disabled={enCours}
       onChange={(e) => onChange(e.target.value as Personnel)}

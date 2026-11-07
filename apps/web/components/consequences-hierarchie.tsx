@@ -80,9 +80,11 @@ export function ListeConsequences({
                 <span className={cn('ml-1.5 text-[11.5px] font-semibold text-accent-text')}>
                   {MOTS[a.type].court}
                 </span>
-                <span className="block text-[11.5px] text-ink-muted">
-                  {MOTS[a.type].explication}
-                </span>
+                {MOTS[a.type].explication ? (
+                  <span className="block text-[11.5px] text-ink-muted">
+                    {MOTS[a.type].explication}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>

@@ -17,6 +17,8 @@ export interface LigneHierarchie {
   nom: string;
   directionId: string | null;
   directionNom: string | null;
+  /** L'acronyme de sa direction. */
+  directionSigle?: string | null;
   responsableId: string | null;
   responsableNom: string | null;
   /** `false` quand le dossier du n+1 est archivé ; `null` s'il n'y en a pas. */
@@ -154,6 +156,7 @@ export function classerAnomalies(
       matricule: l.matricule,
       nom: l.nom,
       direction: l.directionNom,
+      directionSigle: l.directionSigle ?? null,
       type,
       responsable: l.responsableNom,
       directionDuResponsable: l.responsableDirectionNom,
