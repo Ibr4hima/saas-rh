@@ -1,6 +1,13 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useState,
+} from 'react';
 
 /* ————————————————————————————————————————————————————————————————
    La préférence d'AFFICHAGE : le thème.
@@ -33,23 +40,39 @@ export type Theme = 'clair' | 'sombre';
 export const CLE_THEME = 'teranga-theme';
 
 /** Le script inline du <head>. Écrit en une ligne, sans dépendance, et
-    tolérant à l'échec : en navigation privée, `localStorage` peut lever. */
-export const SCRIPT_AMORCAGE = `try{document.documentElement.dataset.theme=/^\\/(postuler|verifier)\\//.test(location.pathname)||localStorage.getItem('${CLE_THEME}')!=='sombre'?'light':'dark'}catch(e){}`;
+    tolérant à l'échec : en navigation privée, `localStorage` peut lever.
+    Les pages toujours en clair (cf. useThemeClair) le sont dès le premier
+    pixel : les pages publiques, et les écrans d'avant le compte. */
+export const SCRIPT_AMORCAGE = `try{document.documentElement.dataset.theme=/^\\/(postuler|verifier|invitation|reinitialisation)\\/|^\\/(login|register|mot-de-passe-oublie)\\/?$/.test(location.pathname)||localStorage.getItem('${CLE_THEME}')!=='sombre'?'light':'dark'}catch(e){}`;
+
+/** Le thème gardé dans ce navigateur, le clair à défaut. */
+function themeGarde(): Theme {
+  try {
+    return localStorage.getItem(CLE_THEME) === 'sombre' ? 'sombre' : 'clair';
+  } catch {
+    return 'clair';
+  }
+}
 
 /**
- * Les pages publiques (une offre, la vérification d'un certificat) sont vues
- * par des personnes extérieures : une seule teinte, la claire, quelle que
- * soit la préférence gardée dans ce navigateur. Le script d'amorçage le fait
- * au premier pixel ; ce crochet le tient quand on y arrive depuis
- * l'application, et rend le thème choisi en repartant.
+ * Une seule teinte, la claire, quelle que soit la préférence gardée dans ce
+ * navigateur : sur les pages publiques (une offre, la vérification d'un
+ * certificat), vues par des personnes extérieures, et sur les écrans d'avant
+ * le compte (ADR-0187). Le script d'amorçage le fait au premier pixel ; ce
+ * crochet le tient quand on y arrive depuis l'application, et rend le thème
+ * choisi en repartant : celui qui est gardé, pas celui que la page a trouvé.
+ * Sur l'écran de connexion, le thème est clair d'emblée ; après la
+ * connexion, on retrouve le sien.
+ *
+ * Avant que l'écran ne s'affiche, et non après : en sortant de l'application
+ * en sombre, la page de connexion paraîtrait une image en sombre.
  */
 export function useThemeClair(): void {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const html = document.documentElement;
-    const avant = html.dataset.theme;
     html.dataset.theme = 'light';
     return () => {
-      if (avant) html.dataset.theme = avant;
+      html.dataset.theme = themeGarde() === 'sombre' ? 'dark' : 'light';
     };
   }, []);
 }
@@ -64,11 +87,12 @@ const Contexte = createContext<{
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // Le rendu serveur ne connaît pas le choix : il part du défaut, et le
-  // premier effet relit l'attribut que le script d'amorçage a déjà posé. Ce
-  // n'est pas une seconde source de vérité — c'est la même, lue une fois.
+  // premier effet relit le choix gardé, celui que le script d'amorçage a lu.
+  // Pas l'attribut de la page : sur un écran toujours en clair, il ne dit
+  // rien du choix qu'on retrouvera après la connexion.
   const [theme, setTheme] = useState<Theme>('clair');
   useEffect(() => {
-    setTheme(document.documentElement.dataset.theme === 'dark' ? 'sombre' : 'clair');
+    setTheme(themeGarde());
   }, []);
 
   const basculer = useCallback(() => {

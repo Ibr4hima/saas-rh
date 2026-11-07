@@ -4,7 +4,7 @@ import Link from 'next/link';
 import * as React from 'react';
 
 const ACTION =
-  'inline-flex h-[46px] w-full items-center justify-center gap-2 rounded-controle border border-transparent bg-primary px-5 text-[14.5px] font-semibold tracking-[0.01em] text-primary-ink shadow-bouton transition-[background-color,box-shadow] duration-150 ease-out hover:bg-primary-hover active:shadow-bouton-enfonce focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+  'inline-flex h-12 w-full court:h-11 items-center justify-center gap-2 rounded-controle border border-transparent bg-primary px-5 text-[14.5px] font-semibold tracking-[0.01em] text-primary-ink shadow-bouton transition-[background-color,box-shadow] duration-150 ease-out hover:bg-primary-hover active:shadow-bouton-enfonce focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 
 /**
  * L'action unique de ces écrans, comme dans e-Voting : pleine largeur, un

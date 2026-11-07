@@ -72,8 +72,8 @@ export function BrandMark({
           variant === 'barre' && 'logo-coquille h-9 w-auto max-w-28 shrink-0 bg-transparent',
           // Écran de connexion : le logo à sa pleine mesure, c'est la
           // signature de la maison, pas la vignette d'une barre de navigation.
-          // Ses encres sur l'aplat clair, le blanc pur sur le dôme de nuit.
-          variant === 'connexion' && 'login-logo h-11 w-auto max-w-[190px] bg-transparent',
+          // Toujours dans ses encres : l'écran reste en clair (ADR-0187).
+          variant === 'connexion' && 'h-14 w-auto max-w-[220px] bg-transparent court:h-12',
           variant === 'compact' && 'h-8 w-auto max-w-28 shrink-0 rounded-md px-0.5',
           // Page publique : le logo est la première chose que voit le
           // candidat, il a droit à sa pleine mesure.
@@ -96,8 +96,7 @@ export function BrandMark({
         // Sur le fond, pas d'aplat : le bleu de la charte suffit.
         variant === 'menu' && 'h-12 shrink-0 px-0.5 text-[17px] tracking-[0.16em] text-primary',
         variant === 'barre' && 'h-9 shrink-0 px-0.5 text-[15px] tracking-[0.16em] text-primary',
-        variant === 'connexion' &&
-          'h-11 px-1 text-xl tracking-[0.16em] text-[color:var(--login-encre)]',
+        variant === 'connexion' && 'h-14 px-1 text-2xl tracking-[0.16em] text-primary court:h-12',
         variant === 'compact' && 'size-8 rounded-md bg-primary text-xs text-primary-ink',
         variant === 'candidature' &&
           'size-14 rounded-[18px] bg-primary text-[22px] text-primary-ink',

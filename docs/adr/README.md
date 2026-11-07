@@ -121,7 +121,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0113](0113-demander-un-document-en-liste.md)         | Demander un document : la liste de « Générer des documents », à choix multiple          | acceptée                                    |
 | [0114](0114-contrats-etablis-par-la-dch.md)           | Les contrats, la DCH les établit : ils ne se demandent pas, leur génération se délègue  | acceptée                                    |
 | [0115](0115-coquille-posee-sur-le-fond.md)            | La coquille posée sur le fond : ni bandeau bleu, ni colonne blanche                     | acceptée, précisée 7 fois, de 0116 à 0142   |
-| [0116](0116-fond-de-l-ecran-de-connexion.md)          | Le fond de l'application, celui de l'écran de connexion                                 | acceptée, précisée (0143, 0144)             |
+| [0116](0116-fond-de-l-ecran-de-connexion.md)          | Le fond de l'application, celui de l'écran de connexion                                 | précisée (0143, 0144), révisée (0187)       |
 | [0117](0117-date-en-haut-a-droite.md)                 | La date du jour en haut à droite de chaque écran                                        | acceptée                                    |
 | [0118](0118-entree-courante-en-bleu-clair.md)         | L'entrée courante du menu, en bleu très clair, sans filet                               | acceptée, précisée (0143, 0146)             |
 | [0119](0119-onglets-a-la-hauteur-des-boutons.md)      | Les onglets et les choix segmentés, à la hauteur des boutons de l'en-tête               | acceptée                                    |
@@ -192,3 +192,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0184](0184-niveaux-de-langue-facultatifs.md)         | Les niveaux de langue d'une offre : sans « Notions », et facultatifs                    | acceptée                                    |
 | [0185](0185-certificat-a-la-charte.md)                | Le certificat d'APIX Academy à la charte de l'APIX                                      | acceptée                                    |
 | [0186](0186-courriels-a-la-charte.md)                 | Les courriels à la charte de l'APIX                                                     | acceptée                                    |
+| [0187](0187-connexion-a-la-charte.md)                 | Les écrans de connexion à la charte de l'APIX, toujours en clair                        | acceptée                                    |
