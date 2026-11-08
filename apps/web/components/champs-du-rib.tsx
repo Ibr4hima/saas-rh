@@ -12,7 +12,8 @@ import { champDeChiffres } from '../lib/chiffres';
    relevé (« SN012 01001 036123456789 54 »). « Valider » masque le premier
    et ouvre le second, qui se tape : coller y est refusé, pour qu'une erreur
    de la première saisie ne s'y recopie pas. « Modifier » rouvre le premier
-   et vide le second.
+   et vide le second. Incomplet, un champ passe en rouge, sans message ;
+   deux saisies qui diffèrent le disent.
 */
 
 /** Un RIB : « SN », déjà écrit, puis vingt-deux chiffres. */
@@ -108,12 +109,7 @@ export function ChampsDuRib({
 
   return (
     <>
-      <Field
-        label="RIB"
-        htmlFor={`${id}-rib`}
-        required={requis}
-        error={incomplet ? 'Vingt-quatre caractères attendus' : undefined}
-      >
+      <Field label="RIB" htmlFor={`${id}-rib`} required={requis}>
         <div className="flex gap-2">
           {valide ? (
             <Input
@@ -159,13 +155,7 @@ export function ChampsDuRib({
         label="Confirmation du RIB"
         htmlFor={`${id}-confirmation`}
         required={requis}
-        error={
-          differe
-            ? 'Les deux RIB ne correspondent pas'
-            : secondIncomplet
-              ? 'Vingt-quatre caractères attendus'
-              : undefined
-        }
+        error={differe ? 'Les deux RIB ne correspondent pas' : undefined}
       >
         <Input
           {...chiffres(confirmation, (c) => onSaisir({ confirmation: c }))}
