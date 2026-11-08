@@ -23,6 +23,7 @@ import {
   useResponsablesPossibles,
 } from '../lib/responsables';
 import {
+  ChampDeLaPieceDIdentite,
   ChampsDeLAdresse,
   ChampsDeLaNaissance,
   ChampsDeLEmploi,
@@ -52,7 +53,6 @@ interface FormValues {
   birthPlace: string;
   maritalStatus: string;
   nationalId: string;
-  idDocumentType: string;
   idDocumentIssuedOn: string;
   idDocumentExpiresOn: string;
   personalEmail: string;
@@ -75,7 +75,6 @@ const PERSON_KEYS = [
   'birthPlace',
   'maritalStatus',
   'nationalId',
-  'idDocumentType',
   'idDocumentIssuedOn',
   'idDocumentExpiresOn',
   'personalEmail',
@@ -102,7 +101,6 @@ function toDefaults(e: EmployeeDetail): FormValues {
     birthPlace: e.person.birthPlace ?? '',
     maritalStatus: e.person.maritalStatus ?? '',
     nationalId: e.person.nationalId ?? '',
-    idDocumentType: e.person.idDocumentType ?? '',
     idDocumentIssuedOn: e.person.idDocumentIssuedOn ?? '',
     idDocumentExpiresOn: e.person.idDocumentExpiresOn ?? '',
     personalEmail: e.person.personalEmail ?? '',
@@ -218,7 +216,6 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
   const form = useForm<FormValues>({ defaultValues: toDefaults(employee) });
   const errors = form.formState.errors;
   const watchedGender = form.watch('gender');
-  const watchedIdType = form.watch('idDocumentType');
   const marital = maritalLabels(watchedGender || undefined);
   // Le reste de ce que la DCH tient sur l'agent (ADR-0158), tenu à part : il
   // part en comparant à ce qu'il était, comme les champs du formulaire.
@@ -253,8 +250,26 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
     );
     const ensemble = (a: Record<string, unknown> | undefined, b: Record<string, unknown>) =>
       a || Object.keys(b).length > 0 ? { ...a, ...b } : undefined;
+    // La pièce d'un dossier est la CNI (ADR-0201) : un numéro saisi l'est,
+    // des dates posées sur une fiche sans pièce aussi ; vidée de tout, la
+    // fiche n'en a plus.
+    const datesDeLaPiece = Boolean(v.idDocumentIssuedOn || v.idDocumentExpiresOn);
+    const typeDeLaPiece = dirty.nationalId
+      ? v.nationalId.trim()
+        ? { idDocumentType: 'cni' }
+        : datesDeLaPiece
+          ? {}
+          : { idDocumentType: null }
+      : !employee.person.idDocumentType &&
+          (dirty.idDocumentIssuedOn || dirty.idDocumentExpiresOn) &&
+          datesDeLaPiece
+        ? { idDocumentType: 'cni' }
+        : {};
     const body: UpdateEmployeeInput = {
-      person: ensemble(pick(PERSON_KEYS), plus.person) as UpdateEmployeeInput['person'],
+      person: ensemble(pick(PERSON_KEYS), {
+        ...plus.person,
+        ...typeDeLaPiece,
+      }) as UpdateEmployeeInput['person'],
       employee: ensemble(pick(EMPLOYEE_KEYS), plus.employee) as UpdateEmployeeInput['employee'],
       remuneration: voitSensible
         ? remunerationModifiee(remunerationDepart, remuneration)
@@ -352,38 +367,20 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
             </Select>
           </Field>
           <ChampsDeLaNaissance valeur={complements} onChange={setComplements} />
-          <Field label="Pièce d'identité" htmlFor="idDocumentType">
-            <Select id="idDocumentType" {...form.register('idDocumentType')}>
-              <option value="">—</option>
-              <option value="cni">Carte Nationale d&apos;Identité</option>
-              <option value="passport">Passeport</option>
-            </Select>
+          <ChampDeLaPieceDIdentite />
+          <Field label="Numéro de la pièce" htmlFor="nationalId">
+            <Input
+              id="nationalId"
+              placeholder={voitSensible ? undefined : 'Masqué'}
+              {...form.register('nationalId', { disabled: !voitSensible })}
+            />
           </Field>
-          {watchedIdType ? (
-            <>
-              <Field label="Numéro de la pièce" htmlFor="nationalId">
-                <Input
-                  id="nationalId"
-                  placeholder={voitSensible ? undefined : 'Masqué'}
-                  {...form.register('nationalId', { disabled: !voitSensible })}
-                />
-              </Field>
-              <Field label="Date de délivrance" htmlFor="idDocumentIssuedOn">
-                <Input
-                  id="idDocumentIssuedOn"
-                  type="date"
-                  {...form.register('idDocumentIssuedOn')}
-                />
-              </Field>
-              <Field label="Date d'expiration" htmlFor="idDocumentExpiresOn">
-                <Input
-                  id="idDocumentExpiresOn"
-                  type="date"
-                  {...form.register('idDocumentExpiresOn')}
-                />
-              </Field>
-            </>
-          ) : null}
+          <Field label="Date de délivrance" htmlFor="idDocumentIssuedOn">
+            <Input id="idDocumentIssuedOn" type="date" {...form.register('idDocumentIssuedOn')} />
+          </Field>
+          <Field label="Date d'expiration" htmlFor="idDocumentExpiresOn">
+            <Input id="idDocumentExpiresOn" type="date" {...form.register('idDocumentExpiresOn')} />
+          </Field>
           <Field label="Téléphone" htmlFor="phone">
             <ChampTelephone
               id="phone"
@@ -391,9 +388,13 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
               onChange={(v) => form.setValue('phone', v, { shouldDirty: true })}
             />
           </Field>
-          <Field label="Email personnel" htmlFor="personalEmail">
-            <Input id="personalEmail" type="email" {...form.register('personalEmail')} />
-          </Field>
+          {/* Toute la ligne : la pièce d'identité et ses trois champs laissent
+              l'adresse électronique seule de sa rangée (ADR-0201). */}
+          <div className="sm:col-span-2">
+            <Field label="Email personnel" htmlFor="personalEmail">
+              <Input id="personalEmail" type="email" {...form.register('personalEmail')} />
+            </Field>
+          </div>
           <div className="sm:col-span-2">
             <Field label="Adresse" htmlFor="addressLine">
               <Input id="addressLine" {...form.register('addressLine')} />

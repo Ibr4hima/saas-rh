@@ -1165,11 +1165,8 @@ describe('les pièces justificatives', () => {
 
   it('CNI, passeport, CV : un seul au dossier — le nouveau, vérifié, prend la place de l’ancien', async () => {
     const { id: ancien } = await titre('passeport', 'Passeport 2019', await dans(400));
-    await pieces.review(mariama.session, ancien, {
-      version: 1,
-      decision: 'approved',
-      titre: await infos(),
-    });
+    // Un passeport se vérifie comme un document : la fiche n'en prend rien (ADR-0201).
+    await pieces.review(mariama.session, ancien, { version: 1, decision: 'approved' });
     const { id: nouveau } = await titre('passeport', 'Passeport 2026', await dans(3000));
     // Un seul en vérification à la fois : on change celui-là.
     expect(await codeOf(async () => titre('passeport', 'Encore un', await dans(3000)))).toBe(
@@ -1237,26 +1234,27 @@ describe('les pièces justificatives', () => {
     };
     const vueDCH = async (id: string) =>
       (await pieces.file(mariama.session)).find((p) => p.id === id)!;
-    const passeport = async (renouvellement = false) =>
+    const deposerUnTitre = async (category: 'cni' | 'passeport', renouvellement = false) =>
       pieces.upload(moussa.session, moussa.employeeId, {
-        category: 'passeport',
-        label: 'Passeport',
-        filename: 'passeport.pdf',
+        category,
+        label: category === 'cni' ? 'CNI' : 'Passeport',
+        filename: `${category}.pdf`,
         contentType: 'application/pdf',
         contentBase64: PDF,
         expiresOn: await dans(2000),
         renouvellement,
       });
+    const cni = (renouvellement = false) => deposerUnTitre('cni', renouvellement);
     afterEach(() => ficheDeMoussa(null));
 
     it('la même pièce : le document doit porter le numéro et les dates de la fiche', async () => {
-      await ficheDeMoussa('passport', 'A0123456', '2019-12-05', '2029-12-05');
-      const { id } = await passeport();
+      await ficheDeMoussa('cni', '1751198501234', '2019-12-05', '2029-12-05');
+      const { id } = await cni();
       expect((await vueDCH(id)).controle).toEqual({
         mode: 'conformite',
         fiche: {
-          type: 'passeport',
-          numero: 'A0123456',
+          type: 'cni',
+          numero: '1751198501234',
           delivreLe: '2019-12-05',
           expireLe: '2029-12-05',
         },
@@ -1264,12 +1262,35 @@ describe('les pièces justificatives', () => {
       // L'agent ne voit pas ce contrôle : il est pour qui vérifie.
       expect((await pieces.list(moussa.session, moussa.employeeId))[0]?.controle).toBeNull();
       await pieces.review(mariama.session, id, { version: 1, decision: 'approved' });
-      expect(await fiche()).toBe('passport:A0123456:2019-12-05:2029-12-05');
+      expect(await fiche()).toBe('cni:1751198501234:2019-12-05:2029-12-05');
+    });
+
+    it('un passeport déposé se vérifie comme un document : la fiche garde sa CNI (ADR-0201)', async () => {
+      await ficheDeMoussa('cni', '1751198501234', '2019-12-05', '2029-12-05');
+      const { id } = await deposerUnTitre('passeport');
+      expect((await vueDCH(id)).controle).toBeNull();
+      expect(
+        await codeOf(async () =>
+          pieces.review(mariama.session, id, {
+            version: 1,
+            decision: 'approved',
+            titre: { numero: 'A0123456', delivreLe: '2020-01-01', expireLe: await dans(3000) },
+          }),
+        ),
+      ).toBe('documents.pas_le_titre');
+      await pieces.review(mariama.session, id, { version: 1, decision: 'approved' });
+      expect(await fiche()).toBe('cni:1751198501234:2019-12-05:2029-12-05');
+      // Sur une fiche sans pièce non plus : le passeport n'en devient pas la pièce.
+      await ficheDeMoussa(null);
+      const { id: autre } = await deposerUnTitre('passeport', true);
+      expect((await vueDCH(autre)).controle).toBeNull();
+      await pieces.review(mariama.session, autre, { version: 1, decision: 'approved' });
+      expect(await fiche()).toBe('null:null:null:null');
     });
 
     it('une pièce expirée entre son dépôt et sa vérification ne se valide pas', async () => {
-      await ficheDeMoussa('passport', 'A0123456', '2019-12-05', '2029-12-05');
-      const { id } = await passeport();
+      await ficheDeMoussa('cni', '1751198501234', '2019-12-05', '2029-12-05');
+      const { id } = await cni();
       await raw(`UPDATE employee_documents SET expires_on = CURRENT_DATE WHERE id = $1`, [id]);
       expect(
         await codeOf(() =>
@@ -1279,10 +1300,10 @@ describe('les pièces justificatives', () => {
     });
 
     it('un renouvellement : qui valide saisit la nouvelle pièce — la fiche suit, l’ancien document part', async () => {
-      await ficheDeMoussa('passport', 'A0123456', '2019-12-05', '2029-12-05');
-      const { id: ancien } = await passeport();
+      await ficheDeMoussa('cni', '1751198501234', '2019-12-05', '2029-12-05');
+      const { id: ancien } = await cni();
       await pieces.review(mariama.session, ancien, { version: 1, decision: 'approved' });
-      const { id } = await passeport(true);
+      const { id } = await cni(true);
       const vue = await vueDCH(id);
       expect(vue).toMatchObject({ renouvellement: true, controle: { mode: 'saisie' } });
       expect(
@@ -1295,7 +1316,7 @@ describe('les pièces justificatives', () => {
           pieces.review(mariama.session, id, {
             version: 1,
             decision: 'approved',
-            titre: { numero: 'B999', delivreLe: '2015-01-01', expireLe: await dans(-1) },
+            titre: { numero: '1751198509876', delivreLe: '2015-01-01', expireLe: await dans(-1) },
           }),
         ),
       ).toBe('documents.expire');
@@ -1303,10 +1324,10 @@ describe('les pièces justificatives', () => {
       await pieces.review(mariama.session, id, {
         version: 1,
         decision: 'approved',
-        titre: { numero: 'B7654321', delivreLe: '2026-09-01', expireLe },
+        titre: { numero: '1751198509876', delivreLe: '2026-09-01', expireLe },
       });
-      expect(await fiche()).toBe(`passport:B7654321:2026-09-01:${expireLe}`);
-      expect(await dossier()).toEqual(['Passeport:approved']);
+      expect(await fiche()).toBe(`cni:1751198509876:2026-09-01:${expireLe}`);
+      expect(await dossier()).toEqual(['CNI:approved']);
     });
 
     it('une fiche sans pièce : la première se saisit, et la fiche en prend le type', async () => {
@@ -1396,11 +1417,7 @@ describe('les pièces justificatives', () => {
     expect(await rappels(mariama)).toEqual([]);
 
     // Un nouveau passeport déposé : l'ancien, même expiré, ne rappelle plus rien.
-    await pieces.review(mariama.session, id, {
-      version: 1,
-      decision: 'approved',
-      titre: await infos(),
-    });
+    await pieces.review(mariama.session, id, { version: 1, decision: 'approved' });
     await raw(`DELETE FROM notifications WHERE type = 'document_expiry'`);
     await raw(`UPDATE employee_documents SET expires_on = CURRENT_DATE - 3 WHERE id = $1`, [id]);
     await titre('passeport', 'Nouveau passeport', await dans(3000));
@@ -1497,9 +1514,9 @@ describe('l’expiration d’un titre : la date qui fait foi', () => {
 
   it('la date corrigée par la DCH à la validation, pas celle tapée par l’agent', async () => {
     const { id } = await pieces.upload(moussa.session, moussa.employeeId, {
-      category: 'passeport',
-      label: 'Passeport',
-      filename: 'passeport.pdf',
+      category: 'cni',
+      label: 'CNI',
+      filename: 'cni.pdf',
       contentType: 'application/pdf',
       contentBase64: PDF,
       expiresOn: await dans(2000),
@@ -1509,13 +1526,13 @@ describe('l’expiration d’un titre : la date qui fait foi', () => {
     await pieces.review(mariama.session, id, {
       version: 1,
       decision: 'approved',
-      titre: { numero: 'A1234567', delivreLe: '2017-01-01', expireLe: await dans(10) },
+      titre: { numero: '1751198501234', delivreLe: '2017-01-01', expireLe: await dans(10) },
     });
     expect((await pieces.list(moussa.session, moussa.employeeId))[0]?.expiresOn).toBe(
       await dans(10),
     );
     await relever();
-    expect(await rappels()).toEqual([`Votre passeport expire le ${frDate(await dans(10))}`]);
+    expect(await rappels()).toEqual([`Votre CNI expire le ${frDate(await dans(10))}`]);
   });
 
   it('un titre repris d’un import, sans document, rappelle aussi', async () => {

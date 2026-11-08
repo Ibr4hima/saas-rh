@@ -13,6 +13,7 @@ import { libelleResponsable, n1DOffice, useResponsablesPossibles } from '../lib/
 import { formatDate } from '../lib/hooks';
 import { ChoixUnite, directionDe } from './choix-unite';
 import {
+  ChampDeLaPieceDIdentite,
   ChampsDeLAdresse,
   ChampsDeLaNaissance,
   ChampsDeLEmploi,
@@ -56,7 +57,6 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
   const [maritalStatus, setMaritalStatus] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [birthCountry, setBirthCountry] = useState('');
-  const [idType, setIdType] = useState('');
   const [idNumber, setIdNumber] = useState('');
   const [idIssuedOn, setIdIssuedOn] = useState('');
   const [idExpiresOn, setIdExpiresOn] = useState('');
@@ -128,7 +128,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
     contractStart &&
     (!needsDuration || months > 0) &&
     (!directionChoisie || positionTitle.trim()) &&
-    (!idType || idNumber.trim()) &&
+    idNumber.trim() &&
     !idDatesInvalid &&
     !(epousesPossibles && epousesIncompletes(complements)) &&
     !erreurDuRib(remuneration.rib);
@@ -151,10 +151,11 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             birthDate: birthDate || undefined,
             birthPlace: birthCountry ? countryByCode(birthCountry)?.name : undefined,
             maritalStatus: maritalStatus || undefined,
-            nationalId: idType ? idNumber.trim() : undefined,
-            idDocumentType: idType || undefined,
-            idDocumentIssuedOn: idType && idIssuedOn ? idIssuedOn : undefined,
-            idDocumentExpiresOn: idType && idExpiresOn ? idExpiresOn : undefined,
+            // La pièce d'un dossier est la CNI (ADR-0201).
+            nationalId: idNumber.trim(),
+            idDocumentType: 'cni',
+            idDocumentIssuedOn: idIssuedOn || undefined,
+            idDocumentExpiresOn: idExpiresOn || undefined,
             personalEmail: personalEmail || undefined,
             phone: composePhone(phoneCountry, phoneLocal),
             addressLine: addressLine || undefined,
@@ -287,50 +288,36 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
           </Field>
           <ChampsDeLaNaissance valeur={complements} onChange={setComplements} />
 
-          <Field label="Pièce d'identité" htmlFor="idType">
-            <Select id="idType" value={idType} onChange={(e) => setIdType(e.target.value)}>
-              <option value="">—</option>
-              <option value="cni">Carte Nationale d&apos;Identité</option>
-              <option value="passport">Passeport</option>
-            </Select>
+          <ChampDeLaPieceDIdentite />
+          <Field label="Numéro de la pièce" htmlFor="idNumber" required>
+            <Input id="idNumber" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} />
           </Field>
-          {idType ? (
-            <>
-              <Field label="Numéro de la pièce" htmlFor="idNumber" required>
-                <Input
-                  id="idNumber"
-                  value={idNumber}
-                  onChange={(e) => setIdNumber(e.target.value)}
-                />
-              </Field>
-              <Field label="Date de délivrance" htmlFor="idIssuedOn">
-                <Input
-                  id="idIssuedOn"
-                  type="date"
-                  max={todayIso()}
-                  value={idIssuedOn}
-                  onChange={(e) => setIdIssuedOn(e.target.value)}
-                />
-              </Field>
-              <Field
-                label="Date d'expiration"
-                htmlFor="idExpiresOn"
-                error={
-                  idDatesInvalid
-                    ? "La date d'expiration doit être à venir et postérieure à la date de délivrance"
-                    : undefined
-                }
-              >
-                <Input
-                  id="idExpiresOn"
-                  type="date"
-                  min={tomorrowIso()}
-                  value={idExpiresOn}
-                  onChange={(e) => setIdExpiresOn(e.target.value)}
-                />
-              </Field>
-            </>
-          ) : null}
+          <Field label="Date de délivrance" htmlFor="idIssuedOn">
+            <Input
+              id="idIssuedOn"
+              type="date"
+              max={todayIso()}
+              value={idIssuedOn}
+              onChange={(e) => setIdIssuedOn(e.target.value)}
+            />
+          </Field>
+          <Field
+            label="Date d'expiration"
+            htmlFor="idExpiresOn"
+            error={
+              idDatesInvalid
+                ? "La date d'expiration doit être à venir et postérieure à la date de délivrance"
+                : undefined
+            }
+          >
+            <Input
+              id="idExpiresOn"
+              type="date"
+              min={tomorrowIso()}
+              value={idExpiresOn}
+              onChange={(e) => setIdExpiresOn(e.target.value)}
+            />
+          </Field>
 
           <Field label="Téléphone" htmlFor="phoneLocal">
             <PhoneInput
@@ -341,14 +328,18 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               onLocalChange={setPhoneLocal}
             />
           </Field>
-          <Field label="Email personnel" htmlFor="personalEmail">
-            <Input
-              id="personalEmail"
-              type="email"
-              value={personalEmail}
-              onChange={(e) => setPersonalEmail(e.target.value)}
-            />
-          </Field>
+          {/* Toute la ligne : la pièce d'identité et ses trois champs laissent
+              l'adresse électronique seule de sa rangée (ADR-0201). */}
+          <div className="sm:col-span-2">
+            <Field label="Email personnel" htmlFor="personalEmail">
+              <Input
+                id="personalEmail"
+                type="email"
+                value={personalEmail}
+                onChange={(e) => setPersonalEmail(e.target.value)}
+              />
+            </Field>
+          </div>
           {/* Seule de sa rangée depuis le retrait de « Ville » — et de toute
               façon le champ le plus long de la section. */}
           <div className="sm:col-span-2">

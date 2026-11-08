@@ -263,13 +263,13 @@ describe('la fiche complète', () => {
       employee: { employeeNumber: 'X1', hiredOn: '2024-01-01' },
     });
     expect(cni.error?.issues[0]?.message).toBe('Le numéro de CNI compte 13 chiffres');
-    // Un passeport garde son propre format.
+    // La pièce d'un dossier est la CNI : un passeport ne s'enregistre plus (ADR-0201).
     expect(
       createEmployeeSchema.safeParse({
         person: { givenName: 'A', familyName: 'B', idDocumentType: 'passport', nationalId: 'A12' },
         employee: { employeeNumber: 'X1', hiredOn: '2024-01-01' },
       }).success,
-    ).toBe(true);
+    ).toBe(false);
     const telephone = (phone: string) =>
       createEmployeeSchema.safeParse({
         person: { givenName: 'A', familyName: 'B', phone },

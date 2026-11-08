@@ -531,8 +531,16 @@ export function erreurDesEpouses(p: {
 
 // ---------- Employé : création / mise à jour ----------
 
+/**
+ * Le type de la pièce d'identité d'un dossier, tel qu'il se lit. La pièce
+ * d'un dossier est la carte nationale d'identité, seule (ADR-0201) : un
+ * passeport enregistré avant se lit encore, mais ne s'enregistre plus.
+ */
 export const idDocumentTypeSchema = z.enum(['cni', 'passport']);
 export type IdDocumentType = z.infer<typeof idDocumentTypeSchema>;
+
+/** Ce qu'une fiche enregistre comme pièce d'identité : la CNI. */
+const pieceDIdentiteSchema = z.literal('cni', 'La pièce d’identité d’un dossier est la CNI');
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -556,7 +564,7 @@ function checkIdDocument(
     ctx.addIssue({
       code: 'custom',
       path: ['idDocumentType'],
-      message: 'Précisez le type de pièce (CNI ou passeport)',
+      message: 'Précisez le type de pièce : la CNI',
     });
   }
   if (requireTypeWithNumber && p.idDocumentType && !p.nationalId) {
@@ -614,7 +622,7 @@ export const personFieldsBaseSchema = z.object({
     .optional(),
   /** Numéro de la pièce d'identité — chiffré au stockage. */
   nationalId: optionalTrimmed(40),
-  idDocumentType: idDocumentTypeSchema.optional(),
+  idDocumentType: pieceDIdentiteSchema.optional(),
   idDocumentIssuedOn: isoDate.optional(),
   idDocumentExpiresOn: isoDate.optional(),
   personalEmail: z.email().optional(),
@@ -878,7 +886,7 @@ export const updatePersonFieldsSchema = z
       .transform((v) => v.toUpperCase())
       .nullable(),
     nationalId: clearableString(40),
-    idDocumentType: idDocumentTypeSchema.nullable(),
+    idDocumentType: pieceDIdentiteSchema.nullable(),
     idDocumentIssuedOn: isoDate.nullable(),
     idDocumentExpiresOn: isoDate.nullable(),
     personalEmail: z.email().nullable(),

@@ -282,6 +282,26 @@ function ChampMontant({
   );
 }
 
+/**
+ * La pièce d'identité d'un dossier : la carte nationale d'identité, seule
+ * (ADR-0201). Le champ l'écrit, grisé : elle ne se choisit pas, et son
+ * numéro et ses dates se saisissent juste après.
+ */
+export function ChampDeLaPieceDIdentite() {
+  return (
+    <Field label="Pièce d'identité" htmlFor="idDocumentType">
+      <Input
+        id="idDocumentType"
+        value="Carte Nationale d'Identité"
+        readOnly
+        aria-readonly
+        tabIndex={-1}
+        className="cursor-not-allowed bg-bg text-ink-muted focus-visible:border-line focus-visible:outline-none"
+      />
+    </Field>
+  );
+}
+
 /** Le lieu de naissance, la ville : il prend place à côté du pays de naissance. */
 export function ChampsDeLaNaissance({
   valeur,

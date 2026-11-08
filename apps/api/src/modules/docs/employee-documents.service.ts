@@ -79,15 +79,17 @@ interface TitreDeLaFiche {
  * type, ou fiche sans type — se vérifie contre elle : on compare le
  * document à ce qu'elle porte (`conformite`) ; s'il s'agit d'une nouvelle
  * pièce, ou que la fiche n'en dit rien, on en saisit les informations, qui
- * la mettent à jour (`saisie`). L'autre titre — une CNI quand la fiche porte
- * un passeport — peut en devenir la pièce, si qui vérifie le choisit
- * (`autre`). Les autres documents : null.
+ * la mettent à jour (`saisie`). Une CNI quand la fiche porte encore un
+ * passeport peut en devenir la pièce, si qui vérifie le choisit (`autre`).
+ * La pièce d'une fiche est la CNI (ADR-0201) : un passeport déposé se
+ * vérifie comme les autres documents, sans toucher à la fiche. Les autres
+ * documents : null.
  */
 function modeDeControle(
   doc: { category: string; renouvellement: boolean },
   fiche: TitreDeLaFiche,
 ): ControleDuTitre['mode'] | null {
-  if (!aUneExpiration(doc.category as DocumentCategory)) return null;
+  if (!aUneExpiration(doc.category as DocumentCategory) || doc.category !== 'cni') return null;
   if (fiche.type !== null && fiche.type !== doc.category) return 'autre';
   return doc.renouvellement || fiche.type === null || !fiche.numero ? 'saisie' : 'conformite';
 }
@@ -450,7 +452,8 @@ export class EmployeeDocumentsService {
     await tx
       .update(t.persons)
       .set({
-        idDocumentType: doc.category === 'cni' ? 'cni' : 'passport',
+        // Seule une CNI arrive ici : elle devient la pièce de la fiche.
+        idDocumentType: 'cni',
         nationalIdEncrypted: this.crypto.encrypt(titre.numero),
         idDocumentIssuedOn: titre.delivreLe,
         idDocumentExpiresOn: titre.expireLe,
