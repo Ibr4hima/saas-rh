@@ -163,12 +163,12 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0155](0155-grille-du-personnel-non-cadre.md)         | La grille du personnel non cadre : huit critères notés sur 10, un relevé sur 170        | acceptée                                    |
 | [0156](0156-reprise-de-la-grille-au-n2.md)            | Chez le N+2, le N+1 attend l'avis ou reprend la grille avant de l'envoyer à la DCH      | acceptée                                    |
 | [0157](0157-cadre-ou-non-cadre-sur-soi.md)            | Cadre ou non cadre, la seule chose qu'on règle sur son propre dossier                   | acceptée                                    |
-| [0158](0158-la-fiche-recoit-le-fichier-de-la-dch.md)  | La fiche reçoit tout ce que la DCH tient sur chaque agent, la rémunération à part       | acceptée, précisée par 0163 et 0201         |
+| [0158](0158-la-fiche-recoit-le-fichier-de-la-dch.md)  | La fiche reçoit tout ce que la DCH tient sur chaque agent, la rémunération à part       | acceptée, précisée par 0163, 0201 et 0202   |
 | [0159](0159-l-import-lit-le-fichier-de-la-dch.md)     | L'import lit le fichier de la DCH : corrections, réimport, postes et N+1 par leur nom   | précisée par 0162 à 0164, 0178, 0179, 0181  |
 | [0160](0160-l-import-ecrit-les-unites-sans-faute.md)  | L'import écrit les unités sans faute, lit « 01-mars-04 » et prend « NA » pour vide      | acceptée, précisée par 0161                 |
 | [0161](0161-les-intitules-de-poste-sans-faute.md)     | Les intitulés de poste sortent de l'import sans faute, accordés au sexe de la personne  | acceptée                                    |
 | [0162](0162-import-de-la-prime-de-transport.md)       | L'import reprend la prime de transport du fichier de la DCH sur la fiche                | acceptée, précisée par 0163                 |
-| [0163](0163-l-import-reprend-la-remuneration.md)      | L'import reprend la rémunération, la banque, l'IPRES et la filiation du fichier         | acceptée                                    |
+| [0163](0163-l-import-reprend-la-remuneration.md)      | L'import reprend la rémunération, la banque, l'IPRES et la filiation du fichier         | acceptée, précisée par 0202                 |
 | [0164](0164-type-de-contrat-deduit.md)                | Un type de contrat vide se déduit de la date de fin : un CDD avec, un CDI sans          | acceptée                                    |
 | [0165](0165-vider-l-import.md)                        | L'administrateur peut vider l'import pour recommencer : ce que l'import a créé, seul    | acceptée                                    |
 | [0166](0166-mission-et-ponctuelle-retirees.md)        | « Mission » et « Absence ponctuelle » ne sont plus des types d'absence posés d'office   | acceptée                                    |
@@ -206,4 +206,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0198](0198-declaration-de-mouvement-de-la-dch.md)    | La déclaration de mouvement du travailleur, la DCH la produit : elle ne se demande pas  | acceptée                                    |
 | [0199](0199-declaration-depuis-le-dossier.md)         | La déclaration de mouvement se préremplit du dossier de la personne                     | acceptée                                    |
 | [0200](0200-lois-hors-de-mon-espace.md)               | « Lois & Règlementations » se retire de Mon espace, pour l'instant                      | acceptée                                    |
-| [0201](0201-cni-seule-piece-du-dossier.md)            | La pièce d'identité d'un dossier est la CNI, et seulement elle                          | acceptée                                    |
+| [0201](0201-cni-seule-piece-du-dossier.md)            | La pièce d'identité d'un dossier est la CNI, et seulement elle                          | acceptée, précisée par 0202                 |
+| [0202](0202-cni-rib-et-domiciliation-sur-la-fiche.md) | La fiche d'un agent : CNI et RIB en chiffres groupés, domiciliation par oui ou par non  | acceptée                                    |

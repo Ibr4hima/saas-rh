@@ -149,7 +149,9 @@ export function CarteRemuneration({ e }: { e: EmployeeDetail }) {
           <Donnee label="RIB">
             {r.rib ? <span className="font-mono">{ribGroupe(r.rib)}</span> : null}
           </Donnee>
-          <Donnee label="Domiciliation">{r.domiciliation}</Donnee>
+          <Donnee label="Domiciliation">
+            {r.domiciliation === null ? null : r.domiciliation ? 'Oui' : 'Non'}
+          </Donnee>
           <Donnee label="Numéro IPRES">{r.numeroIpres}</Donnee>
         </Groupe>
       </CardContent>

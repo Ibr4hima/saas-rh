@@ -837,7 +837,7 @@ describe('une ligne du fichier', () => {
       'Autres avantages': 'Logement de fonction',
       Banque: 'CBAO',
       "Relevé d'Identité Bancaire": 'SN012 01201 036182616901 96',
-      Domiciliation: 'Agence Plateau',
+      Domiciliation: 'Oui',
       'Numero IPRES': 1234567,
     });
     expect(l.remuneration).toEqual({
@@ -854,7 +854,7 @@ describe('une ligne du fichier', () => {
       banque: 'cbao',
       rib: 'SN0120120103618261690196',
       autresAvantages: 'Logement de fonction',
-      domiciliation: 'Agence Plateau',
+      domiciliation: true,
       numeroIpres: '1234567',
     });
     // Rien à corriger, rien d'écarté : la même ligne que sans la rémunération.
@@ -868,6 +868,7 @@ describe('une ligne du fichier', () => {
       Banque: 'Ecobank Sénégal',
       "Relevé d'Identité Bancaire": '0120120103618261690196',
       'Nombre de part Sociale': 6,
+      Domiciliation: 'Agence Plateau',
       'Numero IPRES': 'x'.repeat(31),
     });
     expect(l.remuneration).toEqual({ banque: 'ecobank', rib: 'SN0120120103618261690196' });
@@ -883,8 +884,21 @@ describe('une ligne du fichier', () => {
     );
     expect(l.avertissements.map((a) => a.colonne)).toEqual([
       'Nombre de part Sociale',
+      'Domiciliation',
       'Numero IPRES',
     ]);
+    expect(l.avertissements).toContainEqual({
+      colonne: 'Domiciliation',
+      texte: '« Agence Plateau » n’est ni Oui ni Non : non importé',
+    });
+  });
+
+  it('lit la domiciliation par oui ou par non, « O » et « N » compris', () => {
+    expect(lue({ ...MOUSSA, Domiciliation: 'NON' }).remuneration.domiciliation).toBe(false);
+    const l = lue({ ...MOUSSA, Domiciliation: 'o' });
+    expect(l.remuneration.domiciliation).toBe(true);
+    expect(l.corrections).toContainEqual({ colonne: 'Domiciliation', lu: 'o', retenu: 'Oui' });
+    expect(lue({ ...MOUSSA, Domiciliation: 'N/A' }).remuneration.domiciliation).toBeUndefined();
   });
 
   it('lit la filiation sur la fiche : le prénom du père, le prénom et le nom de la mère', () => {

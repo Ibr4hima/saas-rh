@@ -24,20 +24,22 @@ import {
 } from '../lib/responsables';
 import {
   ChampDeLaPieceDIdentite,
+  ChampDuNumeroDeLaCni,
   ChampsDeLAdresse,
   ChampsDeLaNaissance,
   ChampsDeLEmploi,
   ChampTelephone,
+  cniIncomplete,
   complementsDe,
   complementsModifies,
   epousesIncompletes,
-  erreurDuRib,
   remunerationDe,
   remunerationModifiee,
   SectionContactDUrgence,
   SectionFamille,
   SectionRemuneration,
 } from './complements-fiche';
+import { ribEnCours } from './champs-du-rib';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { composeWorkEmail, localWorkEmail, WorkEmailInput } from './work-email-input';
 
@@ -100,7 +102,10 @@ function toDefaults(e: EmployeeDetail): FormValues {
     birthDate: e.person.birthDate ?? '',
     birthPlace: e.person.birthPlace ?? '',
     maritalStatus: e.person.maritalStatus ?? '',
-    nationalId: e.person.nationalId ?? '',
+    // Les chiffres de la CNI ; un passeport d'avant l'ADR-0201 ne s'y
+    // recopie pas : un numéro saisi le remplace par une CNI.
+    nationalId:
+      e.person.idDocumentType === 'passport' ? '' : (e.person.nationalId ?? '').replace(/\D/g, ''),
     idDocumentIssuedOn: e.person.idDocumentIssuedOn ?? '',
     idDocumentExpiresOn: e.person.idDocumentExpiresOn ?? '',
     personalEmail: e.person.personalEmail ?? '',
@@ -224,8 +229,11 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
   const [remunerationDepart] = useState(() => remunerationDe(employee.remuneration));
   const [remuneration, setRemuneration] = useState(remunerationDepart);
   const epousesPossibles = watchedGender === 'male' && form.watch('maritalStatus') === 'married';
+  const numeroDeLaCni = form.watch('nationalId');
   const bloque =
-    (epousesPossibles && epousesIncompletes(complements)) || Boolean(erreurDuRib(remuneration.rib));
+    (epousesPossibles && epousesIncompletes(complements)) ||
+    cniIncomplete(numeroDeLaCni) ||
+    ribEnCours(remuneration);
 
   const onSubmit = form.handleSubmit(async (v) => {
     setServerError(null);
@@ -334,14 +342,14 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
           </Field>
           <Field label="Sexe" htmlFor="gender">
             <Select id="gender" {...form.register('gender')}>
-              <option value="">—</option>
+              <option value="">Choisir</option>
               <option value="male">Masculin</option>
               <option value="female">Féminin</option>
             </Select>
           </Field>
           <Field label="Situation matrimoniale" htmlFor="maritalStatus">
             <Select id="maritalStatus" {...form.register('maritalStatus')}>
-              <option value="">—</option>
+              <option value="">Choisir une situation</option>
               <option value="single">{marital.single}</option>
               <option value="married">{marital.married}</option>
               <option value="divorced">{marital.divorced}</option>
@@ -358,7 +366,7 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
           </Field>
           <Field label="Pays de naissance" htmlFor="birthPlace">
             <Select id="birthPlace" {...form.register('birthPlace')}>
-              <option value="">—</option>
+              <option value="">Choisir un pays</option>
               {COUNTRIES.map((c) => (
                 <option key={c.code} value={c.name}>
                   {c.name}
@@ -368,13 +376,12 @@ function EditForm({ employee, onClose }: { employee: EmployeeDetail; onClose: ()
           </Field>
           <ChampsDeLaNaissance valeur={complements} onChange={setComplements} />
           <ChampDeLaPieceDIdentite />
-          <Field label="Numéro de la pièce" htmlFor="nationalId">
-            <Input
-              id="nationalId"
-              placeholder={voitSensible ? undefined : 'Masqué'}
-              {...form.register('nationalId', { disabled: !voitSensible })}
-            />
-          </Field>
+          <ChampDuNumeroDeLaCni
+            id="nationalId"
+            numero={numeroDeLaCni}
+            masque={!voitSensible}
+            onSaisir={(c) => form.setValue('nationalId', c, { shouldDirty: true })}
+          />
           <Field label="Date de délivrance" htmlFor="idDocumentIssuedOn">
             <Input id="idDocumentIssuedOn" type="date" {...form.register('idDocumentIssuedOn')} />
           </Field>

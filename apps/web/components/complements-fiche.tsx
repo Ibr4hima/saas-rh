@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import {
   BANQUES,
+  cniGroupee,
   erreurDuTelephone,
   LIBELLES_LIEN_DE_PARENTE,
   LIBELLES_REGION,
@@ -19,8 +20,10 @@ import {
 } from '@teranga/contracts';
 import { cn, Field, Input, Select } from '@teranga/ui';
 import { api } from '../lib/api';
+import { champDeChiffres } from '../lib/chiffres';
 import { composePhone, splitPhone } from '../lib/countries';
 import { champDuMontant } from '../lib/montant';
+import { ChampsDuRib, ribEnregistre, ribSaisi, type SaisieDuRib } from './champs-du-rib';
 import { Icon } from './icons';
 import { DEFILEMENT, MENU } from './liste-des-documents';
 import { ModalGrid, ModalSection } from './modal';
@@ -168,16 +171,18 @@ export const MONTANTS = [
   ['indemniteSujetion', 'Indemnité de sujétion'],
 ] as const;
 type Montant = (typeof MONTANTS)[number][0];
-const TEXTES = ['autresAvantages', 'banque', 'rib', 'domiciliation', 'numeroIpres'] as const;
+const TEXTES = ['autresAvantages', 'banque', 'numeroIpres'] as const;
 
-export type RemunerationSaisie = Record<Montant, number | null> & {
-  autresAvantages: string;
-  nombreDeParts: string;
-  banque: string;
-  rib: string;
-  domiciliation: string;
-  numeroIpres: string;
-};
+/** Le RIB s'y saisit deux fois, comme sur la domiciliation bancaire (ADR-0202). */
+export type RemunerationSaisie = Record<Montant, number | null> &
+  SaisieDuRib & {
+    autresAvantages: string;
+    nombreDeParts: string;
+    banque: string;
+    /** Le salaire domicilié à la banque ; vide tant que rien n'est dit. */
+    domiciliation: '' | 'oui' | 'non';
+    numeroIpres: string;
+  };
 
 export function remunerationDe(v: VueRemuneration | null): RemunerationSaisie {
   const montants = Object.fromEntries(MONTANTS.map(([k]) => [k, v?.[k] ?? null])) as Record<
@@ -189,8 +194,8 @@ export function remunerationDe(v: VueRemuneration | null): RemunerationSaisie {
     autresAvantages: v?.autresAvantages ?? '',
     nombreDeParts: v?.nombreDeParts == null ? '' : String(v.nombreDeParts),
     banque: v?.banque ?? '',
-    rib: v?.rib ?? '',
-    domiciliation: v?.domiciliation ?? '',
+    ...ribEnregistre(v?.rib),
+    domiciliation: v?.domiciliation == null ? '' : v.domiciliation ? 'oui' : 'non',
     numeroIpres: v?.numeroIpres ?? '',
   };
 }
@@ -205,16 +210,17 @@ export function remunerationModifiee(
   const r: Record<string, unknown> = {};
   for (const [k] of MONTANTS) if (avant[k] !== apres[k]) r[k] = apres[k];
   for (const k of TEXTES) if (avant[k].trim() !== apres[k].trim()) r[k] = apres[k].trim() || null;
+  // Le RIB part saisi deux fois à l'identique, ou effacé quand ses chiffres
+  // sont vidés ; une saisie en cours n'efface rien.
+  const rib = ribSaisi(apres);
+  if (rib !== ribSaisi(avant) && (rib !== null || apres.rib === '')) r.rib = rib;
+  if (avant.domiciliation !== apres.domiciliation) {
+    r.domiciliation = apres.domiciliation === '' ? null : apres.domiciliation === 'oui';
+  }
   if (avant.nombreDeParts !== apres.nombreDeParts) {
     r.nombreDeParts = apres.nombreDeParts === '' ? null : Number(apres.nombreDeParts);
   }
   return Object.keys(r).length > 0 ? (r as RemunerationInput) : undefined;
-}
-
-/** Un RIB : SN puis 22 chiffres, les espaces ne comptent pas. null : il convient. */
-export function erreurDuRib(rib: string): string | null {
-  const c = rib.replace(/\s/g, '').toUpperCase();
-  return c === '' || /^SN\d{22}$/.test(c) ? null : 'Le RIB compte 24 caractères, SN compris';
 }
 
 /* ───────────────── Les champs ───────────────── */
@@ -297,6 +303,56 @@ export function ChampDeLaPieceDIdentite() {
         aria-readonly
         tabIndex={-1}
         className="cursor-not-allowed bg-bg text-ink-muted focus-visible:border-line focus-visible:outline-none"
+      />
+    </Field>
+  );
+}
+
+/** Le numéro d'une CNI compte treize chiffres (ADR-0201). */
+export const CHIFFRES_DE_LA_CNI = 13;
+
+/** Un numéro de CNI commencé, pas encore complet : il retient l'enregistrement. */
+export const cniIncomplete = (numero: string) =>
+  numero.length > 0 && numero.length < CHIFFRES_DE_LA_CNI;
+
+/**
+ * Le numéro de la CNI : des chiffres seuls, groupés à la frappe comme sur la
+ * carte (« 1 234 0000 12345 »), comme dans les fiches des documents. Quitté
+ * incomplet, il passe en rouge.
+ */
+export function ChampDuNumeroDeLaCni({
+  id,
+  numero,
+  requis = false,
+  masque = false,
+  onSaisir,
+}: {
+  id: string;
+  /** Les chiffres saisis, sans espaces. */
+  numero: string;
+  requis?: boolean;
+  /** Sans l'accès aux données sensibles, le numéro ne se voit ni ne se saisit. */
+  masque?: boolean;
+  onSaisir: (chiffres: string) => void;
+}) {
+  const [quitte, setQuitte] = useState(false);
+  const incomplet = quitte && cniIncomplete(numero);
+  return (
+    <Field label="Numéro de la pièce" htmlFor={id} required={requis}>
+      <Input
+        {...champDeChiffres({
+          chiffres: numero,
+          max: CHIFFRES_DE_LA_CNI,
+          grouper: cniGroupee,
+          onSaisir,
+        })}
+        id={id}
+        disabled={masque}
+        placeholder={masque ? 'Masqué' : undefined}
+        autoComplete="off"
+        aria-invalid={incomplet || undefined}
+        onBlur={() => setQuitte(true)}
+        className={cn('tabular-nums', incomplet && 'border-danger')}
       />
     </Field>
   );
@@ -535,7 +591,7 @@ export function SectionRemuneration({
   valeur: RemunerationSaisie;
   onChange: (r: RemunerationSaisie) => void;
 }) {
-  const texte = (champ: 'autresAvantages' | 'domiciliation' | 'numeroIpres', libelle: string) => (
+  const texte = (champ: 'autresAvantages' | 'numeroIpres', libelle: string) => (
     <Field label={libelle} htmlFor={champ}>
       <Input
         id={champ}
@@ -557,7 +613,6 @@ export function SectionRemuneration({
               onSaisir={(m) => onChange({ ...valeur, [cle]: m })}
             />
           ))}
-          {texte('autresAvantages', 'Autres avantages')}
           <Field label="Nombre de parts" htmlFor="nombreDeParts">
             <Select
               id="nombreDeParts"
@@ -572,6 +627,9 @@ export function SectionRemuneration({
               ))}
             </Select>
           </Field>
+          {/* Un texte libre, sur toute la ligne : le nombre de parts fait la
+              paire avec le dernier montant. */}
+          <div className="sm:col-span-2">{texte('autresAvantages', 'Autres avantages')}</div>
         </ModalGrid>
       </ModalSection>
       <ModalSection title="Banque et IPRES">
@@ -590,16 +648,32 @@ export function SectionRemuneration({
               ))}
             </Select>
           </Field>
-          <Field label="RIB" htmlFor="rib" error={erreurDuRib(valeur.rib) ?? undefined}>
-            <Input
-              id="rib"
-              className="font-mono uppercase"
-              value={valeur.rib}
-              onChange={(e) => onChange({ ...valeur, rib: e.target.value })}
-            />
+          <Field label="Domiciliation" htmlFor="domiciliation">
+            <Select
+              id="domiciliation"
+              value={valeur.domiciliation}
+              onChange={(e) =>
+                onChange({
+                  ...valeur,
+                  domiciliation: e.target.value as RemunerationSaisie['domiciliation'],
+                })
+              }
+            >
+              <option value="">Choisir</option>
+              <option value="oui">Oui</option>
+              <option value="non">Non</option>
+            </Select>
           </Field>
-          {texte('domiciliation', 'Domiciliation')}
-          {texte('numeroIpres', 'Numéro IPRES')}
+          <ChampsDuRib
+            id="remuneration"
+            rib={valeur.rib}
+            valide={valeur.ribValide}
+            confirmation={valeur.confirmation}
+            requis={false}
+            classeDuBouton="h-10"
+            onSaisir={(c) => onChange({ ...valeur, ...c })}
+          />
+          <div className="sm:col-span-2">{texte('numeroIpres', 'Numéro IPRES')}</div>
         </ModalGrid>
       </ModalSection>
     </>

@@ -37,6 +37,7 @@ import {
   lireFiliation,
   lireLien,
   lireMontant,
+  lireOuiNon,
   lireParts,
   lirePays,
   lireRegion,
@@ -47,6 +48,7 @@ import {
   lireTelephone,
   nomDePersonne,
   nomDeVille,
+  ouiNon,
   sansObjet,
   squelette,
   texte,
@@ -523,7 +525,7 @@ export type RemunerationLue = Partial<Record<Montant | 'nombreDeParts', number>>
   autresAvantages?: string;
   banque?: CodeDeBanque;
   rib?: string;
-  domiciliation?: string;
+  domiciliation?: boolean;
   numeroIpres?: string;
 };
 
@@ -847,7 +849,7 @@ export function lireLigne(
   remuneration.banque = prendre('banque', lireBanque(lire('banque')), (b) => banqueDe(b).nom);
   remuneration.rib = prendre('rib', lireRib(lire('rib')), ribGroupe);
   remuneration.autresAvantages = texte(lire('autresAvantages'));
-  remuneration.domiciliation = texte(lire('domiciliation'));
+  remuneration.domiciliation = prendre('domiciliation', lireOuiNon(lire('domiciliation')), ouiNon);
   remuneration.numeroIpres = texte(lire('numeroIpres'));
 
   const posteBrut = texte(lire('poste'));

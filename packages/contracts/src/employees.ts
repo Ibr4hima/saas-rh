@@ -718,13 +718,8 @@ export const remunerationSchema = z
           .nullable(),
       )
       .nullable(),
-    /** L'agence où le compte est domicilié. */
-    domiciliation: z
-      .string()
-      .trim()
-      .max(120)
-      .transform((v) => (v === '' ? null : v))
-      .nullable(),
+    /** Le salaire est-il domicilié à la banque : oui ou non (ADR-0202). */
+    domiciliation: z.boolean().nullable(),
     numeroIpres: z
       .string()
       .trim()
@@ -750,7 +745,8 @@ export interface VueRemuneration {
   nombreDeParts: number | null;
   banque: CodeDeBanque | null;
   rib: string | null;
-  domiciliation: string | null;
+  /** Le salaire domicilié à la banque ; null tant que rien n'est dit. */
+  domiciliation: boolean | null;
   numeroIpres: string | null;
 }
 

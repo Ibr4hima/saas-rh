@@ -356,7 +356,7 @@ export const jourEcrit = (iso: string) => iso.split('-').reverse().join('/');
 
 /**
  * Le numéro de la CNI, groupé à la frappe comme sur la carte : « 1 234 0000
- * 12345 ». Quitté incomplet, il le dit.
+ * 12345 ». Quitté incomplet, il passe en rouge.
  */
 export function ChampDeLaCNI({
   id,
@@ -374,13 +374,7 @@ export function ChampDeLaCNI({
   const champ = champDeChiffres({ chiffres: cni, max: 13, grouper: cniGroupee, onSaisir });
   const incomplet = quitte && cni.length > 0 && cni.length < 13;
   return (
-    <Field
-      label="N° de la CNI"
-      htmlFor={id}
-      required
-      className={className}
-      error={incomplet ? 'Treize chiffres attendus' : undefined}
-    >
+    <Field label="N° de la CNI" htmlFor={id} required className={className}>
       <Input
         {...champ}
         id={id}

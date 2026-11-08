@@ -239,7 +239,8 @@ export const remunerations = pgTable('remunerations', {
   nombreDeParts: numeric('nombre_de_parts', { precision: 2, scale: 1 }),
   banque: text('banque'),
   ribChiffre: text('rib_chiffre'),
-  domiciliation: text('domiciliation'),
+  /** Le salaire domicilié à la banque (0135) ; l'ancienne colonne texte n'est plus lue. */
+  domiciliation: boolean('salaire_domicilie'),
   numeroIpres: text('numero_ipres'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

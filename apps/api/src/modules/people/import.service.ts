@@ -64,6 +64,7 @@ import {
   montantLisible,
   nomComparable,
   nomsProches,
+  ouiNon,
   rapprocher,
   squelette,
 } from './import-valeurs';
@@ -727,7 +728,7 @@ class Passe {
              rm.salaire_de_base, rm.sursalaire, rm.prime_anciennete, rm.brut_social,
              rm.prime_transport, rm.salaire_brut, rm.carburant, rm.forfait_telephone,
              rm.indemnite_sujetion, rm.autres_avantages, rm.nombre_de_parts::float8 AS nombre_de_parts,
-             rm.banque, rm.rib_chiffre, rm.domiciliation, rm.numero_ipres
+             rm.banque, rm.rib_chiffre, rm.salaire_domicilie, rm.numero_ipres
         FROM employees e
         JOIN persons p ON p.id = e.person_id
         LEFT JOIN LATERAL (
@@ -831,7 +832,7 @@ class Passe {
           nombreDeParts: n('nombre_de_parts'),
           banque: s('banque') as VueRemuneration['banque'],
           rib,
-          domiciliation: s('domiciliation'),
+          domiciliation: (r.salaire_domicilie as boolean | null | undefined) ?? null,
           numeroIpres: s('numero_ipres'),
         },
       };
@@ -1691,9 +1692,16 @@ class Passe {
         remuneration.rib = r.rib;
         noter('RIB', fiche.rib ? ribGroupe(fiche.rib) : null, ribGroupe(r.rib));
       }
+      if (r.domiciliation !== undefined && r.domiciliation !== fiche.domiciliation) {
+        remuneration.domiciliation = r.domiciliation;
+        noter(
+          'Domiciliation',
+          fiche.domiciliation === null ? null : ouiNon(fiche.domiciliation),
+          ouiNon(r.domiciliation),
+        );
+      }
       for (const [cle, champ] of [
         ['autresAvantages', 'Autres avantages'],
-        ['domiciliation', 'Domiciliation'],
         ['numeroIpres', 'Numéro IPRES'],
       ] as const) {
         const nouveau = r[cle];

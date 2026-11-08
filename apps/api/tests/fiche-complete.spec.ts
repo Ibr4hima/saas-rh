@@ -4,6 +4,8 @@
  * rémunération, réservée à l'accès aux données sensibles.
  */
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -153,6 +155,7 @@ describe('la fiche complète', () => {
           nombreDeParts: 2.5,
           banque: 'cbao',
           rib: 'sn012 01001 036123456789 54',
+          domiciliation: true,
           numeroIpres: 'IP-77',
         },
       }),
@@ -164,6 +167,7 @@ describe('la fiche complète', () => {
       nombreDeParts: 2.5,
       banque: 'cbao',
       rib: 'SN0120100103612345678954',
+      domiciliation: true,
       numeroIpres: 'IP-77',
     });
     // Chiffré en base, comme la pièce d'identité.
@@ -185,13 +189,54 @@ describe('la fiche complète', () => {
     await people.update(
       sensible,
       id,
-      updateEmployeeSchema.parse({ remuneration: { salaireDeBase: null, carburant: 60_000 } }),
+      updateEmployeeSchema.parse({
+        remuneration: { salaireDeBase: null, carburant: 60_000, domiciliation: false },
+      }),
     );
     expect((await people.detail(sensible, id)).remuneration).toMatchObject({
       salaireDeBase: null,
       carburant: 60_000,
       banque: 'cbao',
+      domiciliation: false,
     });
+  });
+
+  it('dit la domiciliation par oui ou par non ; un oui ou un non déjà saisi se reporte (0135)', async () => {
+    expect(
+      updateEmployeeSchema.safeParse({ remuneration: { domiciliation: 'Agence Plateau' } }).success,
+    ).toBe(false);
+    // Des fiches d'avant, quand la domiciliation se saisissait en texte libre.
+    const ids: string[] = [];
+    for (const texte of [' OUI ', 'non', 'Agence Plateau']) {
+      const { id } = await people.create(sensible, dossier({ remuneration: { banque: 'cbao' } }));
+      await raw(
+        `UPDATE remunerations SET domiciliation = $2, salaire_domicilie = NULL
+          WHERE employee_id = $1`,
+        [id, texte],
+      );
+      ids.push(id);
+    }
+    await raw(
+      readFileSync(join(__dirname, '../src/db/sql/0135_domiciliation_oui_ou_non.sql'), 'utf8'),
+    );
+    const domiciliations = [];
+    for (const id of ids) {
+      domiciliations.push((await people.detail(sensible, id)).remuneration?.domiciliation);
+    }
+    // Le texte libre attend d'être dit sur la fiche.
+    expect(domiciliations).toEqual([true, false, null]);
+    await people.update(
+      sensible,
+      ids[2]!,
+      updateEmployeeSchema.parse({ remuneration: { domiciliation: true } }),
+    );
+    expect((await people.detail(sensible, ids[2]!)).remuneration?.domiciliation).toBe(true);
+    await people.update(
+      sensible,
+      ids[2]!,
+      updateEmployeeSchema.parse({ remuneration: { domiciliation: null } }),
+    );
+    expect((await people.detail(sensible, ids[2]!)).remuneration?.domiciliation).toBeNull();
   });
 
   it('déclare des épouses pour un homme marié seulement, quatre au plus', async () => {

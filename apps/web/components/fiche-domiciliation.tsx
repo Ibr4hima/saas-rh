@@ -1,18 +1,17 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId } from 'react';
 import {
   aujourdhuiIso,
   BANQUES,
   datesDeLaDomiciliation,
   ficheDomiciliationSchema,
-  ribGroupe,
   type ChampRepris,
   type CodeDeBanque,
   type DossierPourLaFiche,
 } from '@teranga/contracts';
-import { Button, cn, Field, Input, Select } from '@teranga/ui';
-import { champDeChiffres } from '../lib/chiffres';
+import { cn, Field, Input, Select } from '@teranga/ui';
+import { ChampsDuRib } from './champs-du-rib';
 import {
   CADRE,
   champsDeTexte,
@@ -72,9 +71,6 @@ export const DOMICILIATION_VIDE: SaisieDeLaDomiciliation = {
   confirmation: '',
   salaire: null,
 };
-
-/** Un RIB : « SN », déjà écrit, puis vingt-deux chiffres. */
-const CHIFFRES_DU_RIB = 22;
 
 /**
  * La fiche d'un agent choisi, d'après son dossier (ADR-0174) : la personne,
@@ -279,6 +275,7 @@ export function FicheDeLaDomiciliation({
           rib={valeur.rib}
           valide={valeur.ribValide}
           confirmation={valeur.confirmation}
+          classeDuChamp={CADRE}
           onSaisir={poser}
         />
         <ChampDuMontant
@@ -288,140 +285,6 @@ export function FicheDeLaDomiciliation({
           onSaisir={(salaire) => poser({ salaire })}
         />
       </Groupe>
-    </>
-  );
-}
-
-/**
- * Le RIB, saisi deux fois comme un mot de passe : « SN » est déjà écrit, les
- * chiffres se groupent à la frappe comme sur le relevé (« SN012 01001
- * 036123456789 54 »). « Valider » masque le premier et ouvre le second, qui
- * se tape : coller y est refusé, pour qu'une erreur de la première saisie ne
- * s'y recopie pas. « Modifier » rouvre le premier et vide le second.
- */
-function ChampsDuRib({
-  id,
-  rib,
-  valide,
-  confirmation,
-  onSaisir,
-}: {
-  id: string;
-  rib: string;
-  valide: boolean;
-  confirmation: string;
-  onSaisir: (champ: Partial<SaisieDeLaDomiciliation>) => void;
-}) {
-  const premier = useRef<HTMLInputElement>(null);
-  const second = useRef<HTMLInputElement>(null);
-  // Le champ à rejoindre une fois la page repeinte : le second s'ouvre à la
-  // validation, le premier à la modification.
-  const aRejoindre = useRef<'premier' | 'second' | null>(null);
-  useEffect(() => {
-    if (aRejoindre.current) (aRejoindre.current === 'second' ? second : premier).current?.focus();
-    aRejoindre.current = null;
-  });
-  const [signale, setSignale] = useState(false);
-  const [secondQuitte, setSecondQuitte] = useState(false);
-
-  const incomplet = signale && !valide && rib.length < CHIFFRES_DU_RIB;
-  const differe = valide && confirmation.length === CHIFFRES_DU_RIB && confirmation !== rib;
-  const secondIncomplet =
-    secondQuitte && confirmation.length > 0 && confirmation.length < CHIFFRES_DU_RIB;
-
-  const valider = () => {
-    if (rib.length < CHIFFRES_DU_RIB) {
-      setSignale(true);
-      return;
-    }
-    aRejoindre.current = 'second';
-    onSaisir({ ribValide: true });
-  };
-  const modifier = () => {
-    aRejoindre.current = 'premier';
-    setSecondQuitte(false);
-    onSaisir({ ribValide: false, confirmation: '' });
-  };
-  const chiffres = (saisis: string, poser: (c: string) => void) =>
-    champDeChiffres({
-      chiffres: saisis,
-      max: CHIFFRES_DU_RIB,
-      grouper: (c) => ribGroupe(`SN${c}`),
-      onSaisir: poser,
-    });
-
-  return (
-    <>
-      <Field
-        label="RIB"
-        htmlFor={`${id}-rib`}
-        required
-        error={incomplet ? 'Vingt-quatre caractères attendus' : undefined}
-      >
-        <div className="flex gap-2">
-          {valide ? (
-            <Input
-              ref={premier}
-              id={`${id}-rib`}
-              readOnly
-              value={ribGroupe(`SN${'•'.repeat(rib.length)}`)}
-              className={cn(CADRE, 'min-w-0 flex-1 tabular-nums')}
-            />
-          ) : (
-            <Input
-              {...chiffres(rib, (c) => onSaisir({ rib: c }))}
-              ref={premier}
-              id={`${id}-rib`}
-              autoComplete="off"
-              aria-invalid={incomplet || undefined}
-              aria-describedby={incomplet ? `${id}-rib-message` : undefined}
-              onBlur={() => {
-                if (rib.length > 0) setSignale(true);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  valider();
-                }
-              }}
-              className={cn(CADRE, 'min-w-0 flex-1 tabular-nums', incomplet && 'border-danger')}
-            />
-          )}
-          <Button
-            variant="secondary"
-            onClick={valide ? modifier : valider}
-            className="h-9 shrink-0"
-          >
-            {valide ? 'Modifier' : 'Valider'}
-          </Button>
-        </div>
-      </Field>
-      <Field
-        label="Confirmation du RIB"
-        htmlFor={`${id}-confirmation`}
-        required
-        error={
-          differe
-            ? 'Les deux RIB ne correspondent pas'
-            : secondIncomplet
-              ? 'Vingt-quatre caractères attendus'
-              : undefined
-        }
-      >
-        <Input
-          {...chiffres(confirmation, (c) => onSaisir({ confirmation: c }))}
-          ref={second}
-          id={`${id}-confirmation`}
-          disabled={!valide}
-          autoComplete="off"
-          aria-invalid={differe || secondIncomplet || undefined}
-          // Le second RIB se tape : rien ne s'y colle ni ne s'y dépose.
-          onPaste={(e) => e.preventDefault()}
-          onDrop={(e) => e.preventDefault()}
-          onBlur={() => setSecondQuitte(true)}
-          className={cn(CADRE, 'tabular-nums', (differe || secondIncomplet) && 'border-danger')}
-        />
-      </Field>
     </>
   );
 }

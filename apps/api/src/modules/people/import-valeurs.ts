@@ -582,6 +582,26 @@ export function lireRib(v: CelluleXlsx | undefined): Lecture<string> {
   return { erreur: `« ${brut} » n’est pas un RIB (SN, puis 22 chiffres)` };
 }
 
+const OUI_NON: Option<boolean>[] = [
+  { valeur: true, cles: ['Oui'], alias: ['O', 'Yes'] },
+  { valeur: false, cles: ['Non'], alias: ['N', 'No'] },
+];
+
+/**
+ * Oui ou non : la domiciliation du salaire (ADR-0202). « O » et « N » se
+ * comprennent, une case Vrai ou Faux d'Excel aussi.
+ */
+export function lireOuiNon(v: CelluleXlsx | undefined): Lecture<boolean> {
+  if (typeof v === 'boolean') return ok(v, true);
+  const brut = texte(v);
+  if (!brut) return null;
+  const r = rapprocher(brut, OUI_NON, { fautes: false, debut: false });
+  return r ? ok(r.valeur, r.corrige) : { erreur: `« ${brut} » n’est ni Oui ni Non` };
+}
+
+/** Oui ou Non, comme l'aperçu l'écrit. */
+export const ouiNon = (b: boolean): string => (b ? 'Oui' : 'Non');
+
 /** La filiation : le prénom du père, le prénom et le nom de la mère. */
 export interface Filiation {
   prenomDuPere: string;

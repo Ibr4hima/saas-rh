@@ -949,7 +949,7 @@ describe('la rémunération, la banque, l’IPRES et la filiation', () => {
       'Nombre de part Sociale': '1,5',
       Banque: 'CBAO',
       "Relevé d'Identité Bancaire": 'SN012 01201 036182616901 96',
-      Domiciliation: 'Agence Plateau',
+      Domiciliation: 'Oui',
       'Numero IPRES': '1234567',
       ...plus,
     }) as Ligne;
@@ -959,7 +959,7 @@ describe('la rémunération, la banque, l’IPRES et la filiation', () => {
     (
       await raw(
         `SELECT r.salaire_de_base, r.sursalaire, r.nombre_de_parts::text AS parts, r.banque,
-                r.rib_chiffre, r.domiciliation, r.numero_ipres,
+                r.rib_chiffre, r.salaire_domicilie, r.numero_ipres,
                 p.prenom_du_pere, p.prenom_de_la_mere, p.nom_de_la_mere
            FROM employees e JOIN persons p ON p.id = e.person_id
            LEFT JOIN remunerations r ON r.employee_id = e.id
@@ -976,7 +976,7 @@ describe('la rémunération, la banque, l’IPRES et la filiation', () => {
       sursalaire: 50000,
       parts: '1.5',
       banque: 'cbao',
-      domiciliation: 'Agence Plateau',
+      salaire_domicilie: true,
       numero_ipres: '1234567',
       prenom_du_pere: 'Moussa',
       prenom_de_la_mere: 'Awa',
@@ -990,6 +990,7 @@ describe('la rémunération, la banque, l’IPRES et la filiation', () => {
         'Salaire de base ': 500000,
         Banque: 'Ecobank',
         "Relevé d'Identité Bancaire": 'SN0120120103618261690197',
+        Domiciliation: 'Non',
         'Fils/Fille': 'Fille de Moussa et de Awa Ndiaye',
       }),
     );
@@ -1002,8 +1003,13 @@ describe('la rémunération, la banque, l’IPRES et la filiation', () => {
         avant: 'SN012 01201 036182616901 96',
         apres: 'SN012 01201 036182616901 97',
       },
+      { champ: 'Domiciliation', avant: 'Oui', apres: 'Non' },
     ]);
-    expect(await enBase()).toMatchObject({ salaire_de_base: 500000, banque: 'ecobank' });
+    expect(await enBase()).toMatchObject({
+      salaire_de_base: 500000,
+      banque: 'ecobank',
+      salaire_domicilie: false,
+    });
   });
 
   it('attendent l’accès aux données sensibles : l’aperçu nomme leurs colonnes', async () => {

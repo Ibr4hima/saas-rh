@@ -14,13 +14,14 @@ import { formatDate } from '../lib/hooks';
 import { ChoixUnite, directionDe } from './choix-unite';
 import {
   ChampDeLaPieceDIdentite,
+  ChampDuNumeroDeLaCni,
   ChampsDeLAdresse,
   ChampsDeLaNaissance,
   ChampsDeLEmploi,
+  CHIFFRES_DE_LA_CNI,
   COMPLEMENTS_VIDES,
   complementsACreer,
   epousesIncompletes,
-  erreurDuRib,
   REMUNERATION_VIDE,
   remunerationModifiee,
   SectionContactDUrgence,
@@ -29,6 +30,7 @@ import {
   type Complements,
   type RemunerationSaisie,
 } from './complements-fiche';
+import { ribEnCours } from './champs-du-rib';
 import { Modal, ModalGrid, ModalSection } from './modal';
 import { PhoneInput } from './phone-input';
 import { composeWorkEmail, WorkEmailInput } from './work-email-input';
@@ -128,10 +130,10 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
     contractStart &&
     (!needsDuration || months > 0) &&
     (!directionChoisie || positionTitle.trim()) &&
-    idNumber.trim() &&
+    idNumber.length === CHIFFRES_DE_LA_CNI &&
     !idDatesInvalid &&
     !(epousesPossibles && epousesIncompletes(complements)) &&
-    !erreurDuRib(remuneration.rib);
+    !ribEnCours(remuneration);
 
   const submit = async () => {
     setSaving(true);
@@ -152,7 +154,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             birthPlace: birthCountry ? countryByCode(birthCountry)?.name : undefined,
             maritalStatus: maritalStatus || undefined,
             // La pièce d'un dossier est la CNI (ADR-0201).
-            nationalId: idNumber.trim(),
+            nationalId: idNumber,
             idDocumentType: 'cni',
             idDocumentIssuedOn: idIssuedOn || undefined,
             idDocumentExpiresOn: idExpiresOn || undefined,
@@ -245,7 +247,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
           </Field>
           <Field label="Sexe" htmlFor="gender">
             <Select id="gender" value={gender} onChange={(e) => setGender(e.target.value)}>
-              <option value="">—</option>
+              <option value="">Choisir</option>
               <option value="male">Masculin</option>
               <option value="female">Féminin</option>
             </Select>
@@ -256,7 +258,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               value={maritalStatus}
               onChange={(e) => setMaritalStatus(e.target.value)}
             >
-              <option value="">—</option>
+              <option value="">Choisir une situation</option>
               <option value="single">{marital.single}</option>
               <option value="married">{marital.married}</option>
               <option value="divorced">{marital.divorced}</option>
@@ -278,7 +280,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
               value={birthCountry}
               onChange={(e) => setBirthCountry(e.target.value)}
             >
-              <option value="">—</option>
+              <option value="">Choisir un pays</option>
               {COUNTRIES.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.name}
@@ -289,9 +291,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
           <ChampsDeLaNaissance valeur={complements} onChange={setComplements} />
 
           <ChampDeLaPieceDIdentite />
-          <Field label="Numéro de la pièce" htmlFor="idNumber" required>
-            <Input id="idNumber" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} />
-          </Field>
+          <ChampDuNumeroDeLaCni id="idNumber" numero={idNumber} requis onSaisir={setIdNumber} />
           <Field label="Date de délivrance" htmlFor="idIssuedOn">
             <Input
               id="idIssuedOn"
@@ -458,7 +458,7 @@ export function EmployeeCreateModal({ open, onClose }: { open: boolean; onClose:
             }}
             idPrefix="creation"
             libelle="Direction affectée"
-            vide="—"
+            vide="Choisir une direction"
           />
           <Field
             label="N+1"
