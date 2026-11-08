@@ -575,10 +575,18 @@ function accueilDeLaGestion(user: SessionUser, items: NavItem[]): string {
 }
 
 /**
+ * « Lois & Règlementations » dans Mon espace : retirée pour l'instant
+ * (ADR-0200). Les pages restent, et l'administrateur y dépose toujours les
+ * textes depuis Gestion RH ; la remettre, c'est passer ce drapeau à vrai.
+ */
+const TEXTES_DANS_MON_ESPACE = false;
+
+/**
  * Espace personnel : navigation réduite, rangée par les mêmes familles.
  *
  * Ce qu'on est (mes infos personnelles), ce qu'on demande (congés,
- * documents), le cadre (l'organigramme, les fériés, les textes). Les
+ * documents), le cadre (l'organigramme, les fériés, les textes quand ils y
+ * sont). Les
  * validations d'un manager tiennent à part : c'est le seul endroit où il
  * décide pour un autre.
  *
@@ -685,17 +693,21 @@ function personalNav(aUneEquipe: boolean, estDG: boolean): NavItem[] {
       icon: 'family_history',
       groupe: 'cadre',
     },
-    {
-      href: '/reglementations',
-      label: 'Lois & Règlementations',
-      short: 'Lois',
-      icon: 'gavel',
-      groupe: 'cadre',
-      children: [
-        { href: '/reglementations/code-du-travail', label: 'Code du travail' },
-        { href: '/reglementations/reglement-interieur', label: 'Règlement intérieur' },
-      ],
-    },
+    ...(TEXTES_DANS_MON_ESPACE
+      ? [
+          {
+            href: '/reglementations',
+            label: 'Lois & Règlementations',
+            short: 'Lois',
+            icon: 'gavel' as const,
+            groupe: 'cadre' as const,
+            children: [
+              { href: '/reglementations/code-du-travail', label: 'Code du travail' },
+              { href: '/reglementations/reglement-interieur', label: 'Règlement intérieur' },
+            ],
+          },
+        ]
+      : []),
   ];
 }
 
@@ -1223,7 +1235,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
     // cadre de tous ; l'Academy est faite pour les agents.
     if (commence('/organisation')) return true;
     if (path.endsWith('/deposer')) return peut(u, 'textes');
-    if (commence('/reglementations')) return true;
+    // Hors de Mon espace pour l'instant (ADR-0200) : seul l'administrateur
+    // les ouvre, pour les déposer.
+    if (commence('/reglementations')) return TEXTES_DANS_MON_ESPACE || peut(u, 'textes');
     if (commence('/academy/gerer')) return peut(u, 'academy');
     // Ce qu'on garde de ses formations est à l'agent : l'administrateur, qui
     // ne l'est pas, n'ouvre du côté apprenant que l'aperçu de l'atelier.

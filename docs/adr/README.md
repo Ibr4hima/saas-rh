@@ -205,3 +205,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0197](0197-agent-choisi-fiche-figee.md)              | Sur « Générer des documents », l'agent choisi fige ce que son dossier donne             | acceptée, précisée par 0199                 |
 | [0198](0198-declaration-de-mouvement-de-la-dch.md)    | La déclaration de mouvement du travailleur, la DCH la produit : elle ne se demande pas  | acceptée                                    |
 | [0199](0199-declaration-depuis-le-dossier.md)         | La déclaration de mouvement se préremplit du dossier de la personne                     | acceptée                                    |
+| [0200](0200-lois-hors-de-mon-espace.md)               | « Lois & Règlementations » se retire de Mon espace, pour l'instant                      | acceptée                                    |
