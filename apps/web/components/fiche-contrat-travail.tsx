@@ -1,0 +1,375 @@
+'use client';
+
+import { useId } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import type { OrgUnitView } from '@teranga/contracts';
+import {
+  aujourdhuiIso,
+  CATEGORIE_MAX,
+  cniDelivreeAuPlusTot,
+  DUREE_DE_CDD_MAX,
+  enChiffres,
+  ficheDuContratSchema,
+  finDuContrat,
+  neAuPlusTard,
+  orgUnitLabel,
+  salaireBrut,
+} from '@teranga/contracts';
+import { Checkbox, cn, Field, Input, Select } from '@teranga/ui';
+import { api } from '../lib/api';
+import { COUNTRIES } from '../lib/countries';
+import {
+  CADRE,
+  champsDeTexte,
+  ChampDeLaCivilite,
+  ChampDeLaCNI,
+  ChampDeLaDuree,
+  ChampDuMontant,
+  Groupe,
+  reglesEnfreintes,
+  SaisieDuMontant,
+  SUR_DEUX_COLONNES,
+} from './saisie-de-fiche';
+
+/*
+   Ce que la DCH renseigne pour un contrat de travail (ADR-0098) : la personne
+   n'est pas encore dans l'application. Son état civil, son emploi, sa
+   rémunération ; tout est obligatoire, sauf la prime de transport, que tous
+   n'ont pas : elle se coche, et son montant se saisit alors (ADR-0174). La
+   nationalité se choisit dans la liste des pays, le contrat en écrit le
+   gentilé ; l'affectation, dans l'organigramme. Le salaire brut est la somme
+   de ses parts. Les champs vont par lignes (ADR-0168) : la personne, sa
+   naissance, sa CNI et sa délivrance, puis son adresse.
+*/
+
+export type ContratDeTravail = 'contrat_cdd' | 'contrat_cdi';
+
+/** La fiche telle qu'elle se tape : du texte, des choix, des montants. */
+export type SaisieDuContrat = {
+  civilite: '' | 'madame' | 'monsieur';
+  prenom: string;
+  nom: string;
+  naissanceLe: string;
+  naissanceA: string;
+  cni: string;
+  cniDelivreeLe: string;
+  cniDelivreeA: string;
+  /** Le code du pays. */
+  nationalite: string;
+  adresse: string;
+  poste: string;
+  /** L'unité de l'organigramme. */
+  affectation: string;
+  debut: string;
+  duree: string;
+  categorie: string;
+  salaireDeBase: number | null;
+  sursalaire: number | null;
+  /** La prime de transport, cochée ou non ; décochée, son montant attend sans compter. */
+  avecPrimeDeTransport: boolean;
+  primeDeTransport: number | null;
+  treiziemeMois: '' | 'oui' | 'non';
+};
+
+/**
+ * La prime de transport la plus courante, en francs CFA par mois : cochée,
+ * la prime s'ouvre avec, et la DCH la corrige au besoin (ADR-0168, ADR-0174).
+ */
+const PRIME_DE_TRANSPORT_USUELLE = 26_000;
+
+export const CONTRAT_VIDE: SaisieDuContrat = {
+  civilite: '',
+  prenom: '',
+  nom: '',
+  naissanceLe: '',
+  naissanceA: '',
+  cni: '',
+  cniDelivreeLe: '',
+  cniDelivreeA: '',
+  nationalite: '',
+  adresse: '',
+  poste: '',
+  affectation: '',
+  debut: '',
+  duree: '',
+  categorie: '',
+  salaireDeBase: null,
+  sursalaire: null,
+  avecPrimeDeTransport: false,
+  primeDeTransport: PRIME_DE_TRANSPORT_USUELLE,
+  treiziemeMois: '',
+};
+
+/**
+ * La fiche telle que l'API la valide (`ficheCddSchema`, `ficheCdiSchema`) :
+ * les blancs ôtés, la catégorie en capitales ; une liste pas encore choisie,
+ * un montant pas encore saisi, absents. La durée n'est que d'un contrat à
+ * durée déterminée. La prime de transport n'y est que cochée ; cochée sans
+ * montant, elle vaut null, et la fiche n'est pas complète.
+ */
+export function versLaFicheDuContrat(s: SaisieDuContrat, doc: ContratDeTravail) {
+  return {
+    civilite: s.civilite || undefined,
+    prenom: s.prenom.trim(),
+    nom: s.nom.trim(),
+    naissanceLe: s.naissanceLe,
+    naissanceA: s.naissanceA.trim(),
+    cni: s.cni,
+    cniDelivreeLe: s.cniDelivreeLe,
+    cniDelivreeA: s.cniDelivreeA.trim(),
+    nationalite: s.nationalite || undefined,
+    adresse: s.adresse.trim(),
+    poste: s.poste.trim(),
+    affectation: s.affectation || undefined,
+    debut: s.debut,
+    ...(doc === 'contrat_cdd' ? { duree: s.duree ? Number(s.duree) : undefined } : {}),
+    categorie: s.categorie.trim().toLocaleUpperCase('fr-FR'),
+    salaireDeBase: s.salaireDeBase ?? undefined,
+    sursalaire: s.sursalaire ?? undefined,
+    primeDeTransport: s.avecPrimeDeTransport ? s.primeDeTransport : undefined,
+    treiziemeMois: s.treiziemeMois ? s.treiziemeMois === 'oui' : undefined,
+  };
+}
+
+/** Les unités, par ordre alphabétique de leur libellé. */
+const parLibelle = (unites: OrgUnitView[]) =>
+  [...unites].sort((a, b) => orgUnitLabel(a).localeCompare(orgUnitLabel(b), 'fr'));
+
+export function FicheDuContratDeTravail({
+  doc,
+  valeur,
+  onChange,
+}: {
+  doc: ContratDeTravail;
+  valeur: SaisieDuContrat;
+  onChange: (valeur: SaisieDuContrat) => void;
+}) {
+  const id = useId();
+  const poser = (champ: Partial<SaisieDuContrat>) => onChange({ ...valeur, ...champ });
+  const { texte, nomPropre, lieu, intitule } = champsDeTexte(id, valeur, poser);
+  const unites = useQuery({
+    queryKey: ['org-units'],
+    queryFn: () => api<OrgUnitView[]>('/org-units'),
+  });
+  const cdd = doc === 'contrat_cdd';
+  const fin =
+    cdd && valeur.debut && valeur.duree ? finDuContrat(valeur.debut, Number(valeur.duree)) : null;
+  const { salaireDeBase, sursalaire, avecPrimeDeTransport, primeDeTransport } = valeur;
+  const prime = avecPrimeDeTransport ? primeDeTransport : 0;
+  const brut =
+    salaireDeBase !== null && sursalaire !== null && prime !== null
+      ? salaireBrut({ salaireDeBase, sursalaire, primeDeTransport: prime })
+      : null;
+  // Les règles des dates, dites sous les champs (ADR-0133).
+  const fiche = versLaFicheDuContrat(valeur, doc);
+  const erreurs = reglesEnfreintes(fiche, ficheDuContratSchema(doc).safeParse(fiche).error?.issues);
+
+  return (
+    <>
+      <Groupe titre="Renseigner l’état civil">
+        <ChampDeLaCivilite
+          id={`${id}-civilite`}
+          civilite={valeur.civilite}
+          onSaisir={(civilite) => poser({ civilite })}
+        />
+        <Field label="Prénom" htmlFor={`${id}-prenom`} required>
+          <Input {...nomPropre('prenom')} />
+        </Field>
+        <Field label="Nom" htmlFor={`${id}-nom`} required>
+          <Input {...nomPropre('nom')} />
+        </Field>
+        <Field
+          label="Date de naissance"
+          htmlFor={`${id}-naissanceLe`}
+          required
+          error={erreurs.naissanceLe}
+        >
+          <Input
+            type="date"
+            {...texte('naissanceLe')}
+            max={neAuPlusTard()}
+            aria-invalid={erreurs.naissanceLe ? true : undefined}
+            className={cn(CADRE, 'tabular-nums')}
+          />
+        </Field>
+        <Field label="Lieu de naissance" htmlFor={`${id}-naissanceA`} required>
+          <Input {...lieu('naissanceA', 120)} />
+        </Field>
+        <Field label="Nationalité" htmlFor={`${id}-nationalite`} required>
+          <Select
+            id={`${id}-nationalite`}
+            aria-label="Nationalité"
+            value={valeur.nationalite}
+            onChange={(e) => poser({ nationalite: e.target.value })}
+            className={CADRE}
+          >
+            <option value="" hidden>
+              Choisir un pays
+            </option>
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <ChampDeLaCNI id={`${id}-cni`} cni={valeur.cni} onSaisir={(cni) => poser({ cni })} />
+        {/* La CNI est à jour : délivrée il y a moins de dix ans (ADR-0133). */}
+        <Field
+          label="Date de délivrance de la CNI"
+          htmlFor={`${id}-cniDelivreeLe`}
+          required
+          error={erreurs.cniDelivreeLe}
+        >
+          <Input
+            type="date"
+            {...texte('cniDelivreeLe')}
+            min={cniDelivreeAuPlusTot()}
+            max={aujourdhuiIso()}
+            aria-invalid={erreurs.cniDelivreeLe ? true : undefined}
+            className={cn(CADRE, 'tabular-nums')}
+          />
+        </Field>
+        <Field label="Lieu de délivrance de la CNI" htmlFor={`${id}-cniDelivreeA`} required>
+          <Input {...lieu('cniDelivreeA', 120)} />
+        </Field>
+        <Field label="Adresse" htmlFor={`${id}-adresse`} required className={SUR_DEUX_COLONNES}>
+          <Input {...lieu('adresse', 200)} />
+        </Field>
+      </Groupe>
+
+      <Groupe titre="Renseigner l’emploi">
+        <Field label="Poste" htmlFor={`${id}-poste`} required>
+          <Input {...intitule('poste', 120)} />
+        </Field>
+        <Field
+          label="Affectation"
+          htmlFor={`${id}-affectation`}
+          required
+          className={SUR_DEUX_COLONNES}
+        >
+          <Select
+            id={`${id}-affectation`}
+            aria-label="Affectation"
+            value={valeur.affectation}
+            onChange={(e) => poser({ affectation: e.target.value })}
+            className={CADRE}
+          >
+            <option value="" hidden>
+              Choisir une direction, un département ou un service
+            </option>
+            {parLibelle(unites.data ?? []).map((u) => (
+              <option key={u.id} value={u.id}>
+                {orgUnitLabel(u)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Catégorie" htmlFor={`${id}-categorie`} required>
+          <Input {...texte('categorie', CATEGORIE_MAX)} className={cn(CADRE, 'uppercase')} />
+        </Field>
+        <Field label="Date de début" htmlFor={`${id}-debut`} required>
+          <Input type="date" {...texte('debut')} className={cn(CADRE, 'tabular-nums')} />
+        </Field>
+        {cdd ? (
+          <ChampDeLaDuree
+            id={`${id}-duree`}
+            libelle="Durée du contrat"
+            mois={valeur.duree}
+            max={DUREE_DE_CDD_MAX}
+            fin={fin ? { libelle: 'Fin du contrat', date: fin } : null}
+            onSaisir={(duree) => poser({ duree })}
+          />
+        ) : null}
+      </Groupe>
+
+      {/* Quatre champs courts sur une ligne ; la prime de transport, cochée, prend son montant. */}
+      <Groupe titre="Renseigner la rémunération" colonnes={4}>
+        <ChampDuMontant
+          id={`${id}-salaireDeBase`}
+          libelle="Salaire de base"
+          montant={salaireDeBase}
+          onSaisir={(montant) => poser({ salaireDeBase: montant })}
+        />
+        <ChampDuMontant
+          id={`${id}-sursalaire`}
+          libelle="Sursalaire"
+          montant={sursalaire}
+          zeroPermis
+          onSaisir={(montant) => poser({ sursalaire: montant })}
+        />
+        <ChampDeLaPrime
+          id={`${id}-primeDeTransport`}
+          accordee={avecPrimeDeTransport}
+          montant={primeDeTransport}
+          indication={brut === null ? undefined : `Salaire brut : ${enChiffres(brut)} F CFA`}
+          onCocher={(coche) =>
+            poser({
+              avecPrimeDeTransport: coche,
+              // Effacé puis recoché, le montant revient au montant usuel.
+              ...(coche && primeDeTransport === null
+                ? { primeDeTransport: PRIME_DE_TRANSPORT_USUELLE }
+                : {}),
+            })
+          }
+          onSaisir={(montant) => poser({ primeDeTransport: montant })}
+        />
+        <Field label="Treizième mois" htmlFor={`${id}-treiziemeMois`} required>
+          <Select
+            id={`${id}-treiziemeMois`}
+            aria-label="Treizième mois"
+            value={valeur.treiziemeMois}
+            onChange={(e) =>
+              poser({ treiziemeMois: e.target.value as SaisieDuContrat['treiziemeMois'] })
+            }
+            className={CADRE}
+          >
+            <option value="" hidden>
+              Choisir
+            </option>
+            <option value="oui">Oui</option>
+            <option value="non">Non</option>
+          </Select>
+        </Field>
+      </Groupe>
+    </>
+  );
+}
+
+/**
+ * La prime de transport, que tous n'ont pas (ADR-0174) : une case la donne,
+ * et son montant se saisit alors à côté d'elle. L'intitulé coche la case.
+ */
+function ChampDeLaPrime({
+  id,
+  accordee,
+  montant,
+  indication,
+  onCocher,
+  onSaisir,
+}: {
+  id: string;
+  accordee: boolean;
+  montant: number | null;
+  indication?: string;
+  onCocher: (coche: boolean) => void;
+  onSaisir: (montant: number | null) => void;
+}) {
+  return (
+    <Field label="Prime de transport" htmlFor={id} required={accordee} hint={indication}>
+      <div className="flex h-9 items-center gap-3">
+        <Checkbox id={id} checked={accordee} onChange={(e) => onCocher(e.target.checked)} />
+        {accordee ? (
+          <div className="min-w-0 flex-1">
+            <SaisieDuMontant
+              id={`${id}-montant`}
+              aria-label="Montant de la prime de transport"
+              montant={montant}
+              onSaisir={onSaisir}
+            />
+          </div>
+        ) : null}
+      </div>
+    </Field>
+  );
+}
