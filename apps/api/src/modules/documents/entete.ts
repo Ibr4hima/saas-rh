@@ -4,12 +4,13 @@ import type PDFDocument from 'pdfkit';
 
 /**
  * Ce qui est propre à l'APIX sur ses documents : le papier à en-tête de sa
- * charte graphique de 2026 (ADR-0173). En tête, à gauche, le drapeau du
- * Sénégal au-dessus du bloc de la République ; à droite, le logo. En pied de
- * page, la courbe bleue de la charte, puis les mentions de la société sur
- * trois colonnes, avec leurs pictogrammes. Tout se compose en code, comme
- * avant (ADR-0086) : rien à déposer que le logo, un trait net à toute
- * taille, et un seul endroit à corriger quand une mention change.
+ * charte graphique de 2026 (ADR-0173), en noir (ADR-0203). En tête, à
+ * gauche, le drapeau du Sénégal au-dessus du bloc de la République ; à
+ * droite, le logo. En pied de page, en bas à droite, les mentions de la
+ * société derrière un filet, comme sur l'ancien papier de l'APIX, sans son
+ * logo. Tout se compose en code, comme avant (ADR-0086) : rien à déposer que
+ * le logo, un trait net à toute taille, et un seul endroit à corriger quand
+ * une mention change.
  *
  * La typographie va avec : Raleway pour le texte, Anton pour les titres, Exo
  * pour les mentions du pied, les polices de la charte.
@@ -19,13 +20,13 @@ type Doc = typeof PDFDocument.prototype;
 
 const RACINE = join(__dirname, '..', '..', '..');
 
-const ENCRE = '#111111';
-/** Le bleu de la charte de l'APIX : la courbe du pied, ses pictogrammes, les titres des actes. */
-export const BLEU = '#004f91';
-/** L'orange de la charte : le filet sous le titre d'un acte. */
-export const ORANGE = '#ca631f';
-/** L'anthracite de la charte, celui des mentions du pied de page. */
-const ANTHRACITE = '#383838';
+/**
+ * L'encre des documents, la seule couleur de leur papier avec celles du
+ * drapeau : le texte, les titres, leurs filets, le pied de page. Le bleu et
+ * l'orange de la charte quittent les documents, plus administratifs en noir
+ * (ADR-0203).
+ */
+export const ENCRE = '#111111';
 
 /**
  * L'APIX, telle que ses documents la présentent.
@@ -73,23 +74,19 @@ export const SESSIONS_DU_CONSEIL = {
 } as const;
 
 /**
- * Les mentions du pied de page, colonne par colonne, telles que le papier à
- * en-tête de la charte les imprime : la société, puis son adresse et son
- * téléphone, puis son fax, son courriel et son site.
+ * Les mentions du pied de page, ligne par ligne, comme sur l'ancien papier à
+ * en-tête de l'APIX, remises au propre (ADR-0203) : la société, son registre,
+ * son adresse, ses numéros, son courriel et son site. Les mentions d'une
+ * même ligne se séparent d'un point.
  */
-export const MENTIONS = {
-  societe: [
-    'Société Anonyme à Participation Publique Majoritaire',
-    'au Capital de 4.950.000.000 FCFA',
-    'RCCM : SN DKR 2008 B 72',
-    `NINEA : ${ENTETE.ninea}`,
-  ],
-  adresse: ['52-54, rue Mohamed V', 'BP 430 - CP 18524 Dakar SENEGAL'],
-  telephone: '(+221) 33 849 05 55',
-  fax: '(+221) 33 823 94 89',
-  courriel: 'infos@apix.sn',
-  site: 'www.investinsenegal.sn',
-} as const;
+export const MENTIONS: readonly (readonly string[])[] = [
+  ['Société Anonyme à Participation Publique Majoritaire'],
+  ['au Capital de 4.950.000.000 FCFA'],
+  ['RCCM : SN DKR 2008 B 72', `NINEA : ${ENTETE.ninea}`],
+  ['52-54, rue Mohamed V', 'BP 430 - CP 18524 Dakar SENEGAL'],
+  ['Tél. (+221) 33 849 05 55', 'Fax (+221) 33 823 94 89'],
+  ['infos@apix.sn', 'www.investinsenegal.sn'],
+];
 
 /**
  * Le logo, cherché là où il peut être.
@@ -114,7 +111,7 @@ export type Coupe = 'normal' | 'bold' | 'italic' | 'bold-italic';
  * Les familles des documents : Raleway, celle des documents de la DCH depuis
  * la charte de 2026, avec ses graisses intermédiaires pour le bloc de la
  * République, Anton pour les titres et Exo pour le pied de page (ADR-0173) ;
- * les pictogrammes du pied ; Arial (ADR-0090) et Times New Roman (ADR-0098),
+ * Arial (ADR-0090) et Times New Roman (ADR-0098),
  * celles de la déclaration de mouvement et des grilles d'évaluation ; Gill
  * Sans MT, celle des grilles (ADR-0149) ; et une écriture manuscrite, celle
  * des paraphes des signataires d'une grille (ADR-0151). Le certificat
@@ -127,7 +124,6 @@ export type Famille =
   | 'raleway-semibold'
   | 'anton'
   | 'exo'
-  | 'symboles'
   | 'arial'
   | 'times'
   | 'gill-sans'
@@ -168,7 +164,6 @@ const FICHIERS: Record<Famille, Partial<Record<Coupe, readonly string[]>>> = {
   'raleway-semibold': { normal: ['fonts/raleway-semibold.ttf'] },
   anton: { normal: ['fonts/anton-regular.ttf'] },
   exo: { normal: ['fonts/exo-regular.ttf'] },
-  symboles: { normal: ['fonts/material-symbols.ttf'] },
   arial: {
     normal: ['arial.ttf', ...surLeSysteme('arial.ttf', 'Arial.ttf'), 'fonts/arimo-regular.ttf'],
     bold: ['arialbd.ttf', ...surLeSysteme('arialbd.ttf', 'Arial Bold.ttf'), 'fonts/arimo-bold.ttf'],
@@ -317,6 +312,8 @@ export function dessinerDrapeau(doc: Doc, x: number, y: number, hauteur: number)
  * ne suivent pas les marges du texte, qui changent d'un modèle à l'autre.
  */
 const PAPIER = {
+  /** La largeur de la feuille A4. */
+  largeur: 595.28,
   /** Le milieu du bloc de la République, celui du drapeau. */
   milieuDuBloc: 122,
   hautDuDrapeau: 29.4,
@@ -392,127 +389,79 @@ export function dessinerEnTete(doc: Doc, { logo }: { logo: string | null }): num
   return PAPIER.basDeLEnTete;
 }
 
-/**
- * La courbe bleue du pied de page, d'un bord à l'autre de la feuille : un
- * croissant qui monte vers la droite, tracé d'après la maquette de la charte.
- */
-const COURBE =
-  'M0 769.7C99.12 787.94 200.97 780.65 300.25 767.28C374.96 757.09 448.99 742.17 522.22 724.29' +
-  'C546.66 718.4 571.01 712.15 595.28 705.59C571.08 712.4 546.79 718.89 522.41 725.03' +
-  'C358.82 764.26 166.92 801.08 0 769.7Z';
-
-/**
- * Le haut de la courbe sous le texte d'une page : le texte s'arrête au-dessus,
- * à droite, où elle monte le plus haut sous la marge.
- */
-export const HAUT_DE_LA_COURBE = 718;
-
-/** Le bord supérieur de la courbe, ses trois arcs : départ, deux points de contrôle, arrivée. */
-const BORD_DE_LA_COURBE: readonly (readonly [number, number])[][] = [
-  [
-    [0, 769.7],
-    [99.12, 787.94],
-    [200.97, 780.65],
-    [300.25, 767.28],
-  ],
-  [
-    [300.25, 767.28],
-    [374.96, 757.09],
-    [448.99, 742.17],
-    [522.22, 724.29],
-  ],
-  [
-    [522.22, 724.29],
-    [546.66, 718.4],
-    [571.01, 712.15],
-    [595.28, 705.59],
-  ],
-];
-
-/**
- * Le plus haut de la courbe entre `de` et `a`, en points depuis le haut de
- * la page : ce qu'un bloc posé au-dessus, de cette largeur, ne doit pas
- * dépasser. Elle monte vers la droite ; à gauche, elle descend un peu avant.
- */
-export function hautDeLaCourbe(de: number, a: number): number {
-  let haut = Infinity;
-  for (const [p0, p1, p2, p3] of BORD_DE_LA_COURBE) {
-    for (let i = 0; i <= 48; i++) {
-      const t = i / 48;
-      const u = 1 - t;
-      const point = (k: 0 | 1) =>
-        u * u * u * p0![k] + 3 * u * u * t * p1![k] + 3 * u * t * t * p2![k] + t * t * t * p3![k];
-      const x = point(0);
-      if (x >= de && x <= a) haut = Math.min(haut, point(1));
-    }
-  }
-  return haut;
-}
-
-/** Les pictogrammes du pied, par leur point de code dans les Material Symbols. */
-const PICTOGRAMMES = {
-  lieu: 0xe0c8,
-  telephone: 0xe0b0,
-  fax: 0xead8,
-  courriel: 0xe158,
-  site: 0xe894,
+/** Le pied de page, en bas à droite : les mentions, leur corps et leur interligne. */
+const PIED = {
+  taille: 6.8,
+  pas: 9,
+  /** La ligne de base de la dernière mention, à l'air du bas de la feuille. */
+  derniereBase: 818,
+  /** Le blanc entre le filet et les mentions, et l'épaisseur du filet, très fin. */
+  blanc: 7.5,
+  filet: 0.25,
+  /** Le blanc de part et d'autre du point qui sépare deux mentions, et son rayon. */
+  autourDuPoint: 4.2,
+  rayonDuPoint: 0.55,
 } as const;
 
+/** La ligne de base de la première mention. */
+const PREMIERE_BASE = PIED.derniereBase - (MENTIONS.length - 1) * PIED.pas;
+
 /**
- * Le pied de page du papier de la charte : la courbe bleue, puis les
- * mentions en Exo, sur trois colonnes, chacune à la place de la maquette :
- * la société ; son adresse, sous un repère, et son téléphone ; son fax, son
- * courriel et son site. Les pictogrammes, bleus, se centrent sur leur ligne.
- * Le numéro de la page, quand il y en a plusieurs (« 2/3 »), finit la ligne
- * du site sur la droite.
+ * Le haut du pied de page : un bloc posé en bas à gauche d'une page, comme
+ * les ampliations d'une décision, s'arrête au-dessus.
+ */
+export const HAUT_DU_PIED = PREMIERE_BASE - 10;
+
+/**
+ * Le pied de page : en bas à droite, les mentions de la société, alignées à
+ * gauche derrière un filet très fin, le bloc calé sur le bord droit du logo,
+ * comme l'ancien papier de l'APIX le faisait, sans son logo (ADR-0203). Les
+ * mentions d'une ligne se séparent d'un point. Le numéro de la page, quand il
+ * y en a plusieurs (« 2/3 »), se pose en bas à gauche, sur la ligne de la
+ * dernière mention. Tout est à l'encre du texte.
  */
 export function dessinerPiedDePage(doc: Doc, numero: string | null = null): void {
-  doc.path(COURBE).fill(BLEU);
-  const TAILLE = 6.24;
+  const exo = police(doc, 'normal', 'exo');
+  doc.font(exo).fontSize(PIED.taille);
+  // Le point qui sépare deux mentions se dessine : le point médian de la
+  // police, à ce corps, se voit à peine.
+  const point = 2 * PIED.autourDuPoint;
+  const largeurDe = (ligne: readonly string[]) =>
+    ligne.reduce(
+      (largeur, mention, i) => largeur + doc.widthOfString(mention) + (i > 0 ? point : 0),
+      0,
+    );
+  const gauche = PAPIER.droiteDuLogo - Math.max(...MENTIONS.map(largeurDe));
   const ecrire = (texte: string, x: number, base: number) =>
     doc
-      .font(police(doc, 'normal', 'exo'))
-      .fontSize(TAILLE)
-      .fillColor(ANTHRACITE)
+      .font(exo)
+      .fontSize(PIED.taille)
+      .fillColor(ENCRE)
       .text(texte, x, base, { lineBreak: false, baseline: 'alphabetic' });
-  MENTIONS.societe.forEach((ligne, i) => ecrire(ligne, 52.7, 800.09 + i * 8.32));
-  ecrire(MENTIONS.adresse[0], 244.4, 799.9);
-  ecrire(MENTIONS.adresse[1], 244.4, 808.22);
-  ecrire(MENTIONS.telephone, 244.4, 825.26);
-  ecrire(MENTIONS.fax, 388.8, 800.15);
-  ecrire(MENTIONS.courriel, 388.8, 812.26);
-  ecrire(MENTIONS.site, 388.8, 824.95);
-  if (numero) {
-    doc.font(police(doc, 'normal', 'exo')).fontSize(TAILLE);
-    ecrire(numero, PAPIER.droiteDuLogo - doc.widthOfString(numero), 824.95);
-  }
 
-  // Un pictogramme centré sur (x, y), de `cote` points : sans sa police, rien.
-  const pictogramme = (code: number, x: number, y: number, cote = 7) => {
-    const nom = police(doc, 'normal', 'symboles');
-    if (!nom.startsWith('symboles')) return;
-    doc.font(nom).fontSize(cote);
-    const glyphe = (
-      doc as unknown as {
-        _font: { font: { glyphForCodePoint(c: number): { bbox: Boite } }; ascender: number };
+  MENTIONS.forEach((ligne, i) => {
+    const base = PREMIERE_BASE + i * PIED.pas;
+    let x = gauche;
+    ligne.forEach((mention, j) => {
+      if (j > 0) {
+        // À mi-hauteur des capitales, comme un point médian.
+        doc
+          .circle(x + PIED.autourDuPoint, base - PIED.taille * 0.34, PIED.rayonDuPoint)
+          .fill(ENCRE);
+        x += point;
       }
-    )._font;
-    const boite = glyphe.font.glyphForCodePoint(code).bbox;
-    const k = cote / 960;
-    // La boîte du glyphe, en unités de la police, ramenée au point voulu.
-    const gauche = x - ((boite.minX + boite.maxX) / 2) * k;
-    const base = y + ((boite.minY + boite.maxY) / 2) * k;
-    doc.fillColor(BLEU).text(String.fromCodePoint(code), gauche, base, {
-      lineBreak: false,
-      baseline: 'alphabetic',
+      ecrire(mention, x, base);
+      x += doc.widthOfString(mention);
     });
-  };
-  pictogramme(PICTOGRAMMES.lieu, 238.5, 801, 8);
-  pictogramme(PICTOGRAMMES.telephone, 238.5, 823.1);
-  pictogramme(PICTOGRAMMES.fax, 382.3, 797.6);
-  pictogramme(PICTOGRAMMES.courriel, 382.3, 809.6);
-  pictogramme(PICTOGRAMMES.site, 382.3, 822.6);
-}
+  });
+  // Le filet, du haut des capitales de la première mention au bas de la dernière.
+  const filet = gauche - PIED.blanc;
+  doc
+    .moveTo(filet, PREMIERE_BASE - PIED.taille * 0.95)
+    .lineTo(filet, PIED.derniereBase + PIED.taille * 0.3)
+    .lineWidth(PIED.filet)
+    .strokeColor(ENCRE)
+    .stroke();
 
-/** La boîte d'un glyphe, en unités de la police. */
-type Boite = { minX: number; minY: number; maxX: number; maxY: number };
+  if (numero) ecrire(numero, PAPIER.largeur - PAPIER.droiteDuLogo, PIED.derniereBase);
+}

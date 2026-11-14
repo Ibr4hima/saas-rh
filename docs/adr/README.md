@@ -178,7 +178,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0170](0170-page-montree-d-un-bloc.md)                | La page qui arrive se montre d'un bloc, sans squelette fugitif, à largeur constante     | acceptée                                    |
 | [0171](0171-maladie-visible-du-n1.md)                 | La maladie se lit comme les autres motifs d'absence : le N+1 la voit                    | acceptée                                    |
 | [0172](0172-disponibilite-deux-ans.md)                | La disponibilité dure deux ans au plus, renouvelable, pour le type comme les documents  | acceptée                                    |
-| [0173](0173-papier-de-la-charte.md)                   | Les documents de la DCH sur le papier de la charte de l'APIX ; le fond clair #F5F7F9    | précisée par 0175, révisée (0185, 0186)     |
+| [0173](0173-papier-de-la-charte.md)                   | Les documents de la DCH sur le papier de la charte de l'APIX ; le fond clair #F5F7F9    | précisée (0175), révisée (0185, 0186, 0203) |
 | [0174](0174-fiches-depuis-le-dossier.md)              | Fiches préremplies au dossier, prime de transport facultative, stage de 1 à 6 mois      | acceptée, précisée par 0189, 0197           |
 | [0175](0175-date-entre-numero-et-emetteur.md)         | La date de l'en-tête, à égale distance du numéro et de l'émetteur                       | acceptée                                    |
 | [0176](0176-sans-dossier-ou-avant-le-depart.md)       | Certificat de travail et attestation de stage, sans dossier ou avant le départ          | acceptée                                    |
@@ -208,3 +208,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0200](0200-lois-hors-de-mon-espace.md)               | « Lois & Règlementations » se retire de Mon espace, pour l'instant                      | acceptée                                    |
 | [0201](0201-cni-seule-piece-du-dossier.md)            | La pièce d'identité d'un dossier est la CNI, et seulement elle                          | acceptée, précisée par 0202                 |
 | [0202](0202-cni-rib-et-domiciliation-sur-la-fiche.md) | La fiche d'un agent : CNI et RIB en chiffres groupés, domiciliation par oui ou par non  | acceptée                                    |
+| [0203](0203-documents-en-noir-ancien-pied.md)         | Les documents de la DCH en noir, l'ancien pied de page de l'APIX remis au propre        | acceptée                                    |

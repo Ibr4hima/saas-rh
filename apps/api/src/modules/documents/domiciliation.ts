@@ -190,7 +190,7 @@ export function pdfDeLaDomiciliation(
         retraitDroit: 4,
       }),
     );
-    // Qui dirige la banque, en bas à gauche, au-dessus de la courbe du pied ;
+    // Qui dirige la banque, en bas à gauche, au-dessus du pied de page ;
     // au-dessus, la place de la signature.
     feuille.piedAGauche([[{ texte: t.destinataire, gras: true }]], {
       taille: corps,

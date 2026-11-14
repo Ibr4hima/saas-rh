@@ -4,9 +4,9 @@ Servies au moteur PDF, jamais au web. Ce qui se dépose ici n'est pas versionné
 cela appartient à l'organisation, pas au logiciel.
 
 Ce qui est propre à l'APIX sur ses documents ne se dépose pas : le papier de
-sa charte graphique, le drapeau et le bloc de la République en tête, la
-courbe bleue et les mentions du pied de page, est composé en code
-(`src/modules/documents/entete.ts`, ADR-0086, ADR-0173).
+sa charte graphique, le drapeau et le bloc de la République en tête, les
+mentions du pied de page, est composé en code
+(`src/modules/documents/entete.ts`, ADR-0086, ADR-0173, ADR-0203).
 
 ## `logo-apix.png`
 
@@ -54,8 +54,7 @@ avec l'autre.
 Raleway, Anton et Exo (la charte de l'APIX, que suit aussi le certificat
 d'APIX Academy), Arimo, Tinos, Cabin, Allura et Google Sans (celle des
 vidéos de démonstration d'APIX Academy) en TTF, chacune avec sa licence
-OFL, et les pictogrammes du pied de page (Material Symbols, licence
-Apache 2.0), **générés** par `pnpm --filter @teranga/api fonts:fetch` et
+OFL, **générés** par `pnpm --filter @teranga/api fonts:fetch` et
 versionnés : un dépôt fraîchement cloné sort des documents à la bonne
 typographie sans manipulation. pdfkit ne lit ni woff2 ni SVG, d'où cette
 copie distincte de celle du site.

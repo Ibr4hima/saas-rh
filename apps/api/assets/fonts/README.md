@@ -18,6 +18,3 @@ signataires des grilles d'évaluation.
 
 Raleway, Anton et Exo (OFL) sont les polices de la charte de l'APIX,
 celles des documents de la DCH : le texte, les titres, le pied de page.
-
-Les pictogrammes du pied de page sont les Material Symbols de l'application,
-réduits à cinq icônes (`material-symbols.ttf`, licence Apache 2.0).

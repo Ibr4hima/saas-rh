@@ -2,16 +2,14 @@ import PDFDocument from 'pdfkit';
 import type { SaisiesDuDocument } from '@teranga/contracts';
 import type { Tx } from '../../db/tenant-db';
 import {
-  BLEU,
   cheminLogo,
   chiffresAlignes,
   dessinerEnTete,
   dessinerPiedDePage,
+  ENCRE,
   ENTETE,
   enregistrerPolices,
-  HAUT_DE_LA_COURBE,
-  hautDeLaCourbe,
-  ORANGE,
+  HAUT_DU_PIED,
   police,
   type Coupe,
   type Famille,
@@ -60,17 +58,18 @@ export interface Passage {
   encadre?: boolean;
 }
 
-const ENCRE = '#111111';
-const GRIS = '#5a5f75';
 /** La marge de gauche et de droite des documents ; un modèle peut avoir la sienne. */
 const MARGE_PAR_DEFAUT = 56;
 /** Le haut du texte des pages qui suivent la première, sans en-tête. */
 const HAUT = 48;
 /**
- * Ce que le pied de page garde pour lui en bas de chaque page : le texte
- * s'arrête au-dessus de la courbe, avec un peu d'air.
+ * Le bas du texte d'une page qui a son pied : là où il s'arrêtait au-dessus
+ * de la courbe de la charte. Le pied, plus bas, y laisse de l'air, et les
+ * actes gardent leur mise en page et leur nombre de pages (ADR-0203).
  */
-const RESERVE_DU_PIED = 841.89 - HAUT_DE_LA_COURBE + 6;
+const BAS_DU_TEXTE = 712;
+/** Ce que le pied de page garde pour lui en bas de chaque page. */
+const RESERVE_DU_PIED = 841.89 - BAS_DU_TEXTE;
 /** La marge du bas d'une feuille sans pied de page. */
 const BAS_SANS_PIED = 36;
 /** L'espace insécable : la justification ne coupe ni n'étire ce qu'elle joint. */
@@ -201,7 +200,7 @@ export function nouvelleFeuille({
         .lineTo(xBlanc + BLANC, base + 0.6)
         .lineWidth(0.7)
         .dash(0.8, { space: 2.2 })
-        .strokeColor(GRIS)
+        .strokeColor(ENCRE)
         .stroke()
         .undash();
       ecrire(reference, xBlanc + BLANC + 3, base);
@@ -223,10 +222,10 @@ export function nouvelleFeuille({
 
     /**
      * Le titre d'un acte, comme ceux de la charte : en Anton, en capitales
-     * bleues, centré, et souligné d'un court filet orange. Il tient sur une
-     * ligne quand il le peut ; sinon sur deux lignes de longueurs voisines,
-     * coupées entre deux mots là où elles s'équilibrent le mieux, quelles que
-     * soient les coupures du modèle (« \n »).
+     * noires, centré, et souligné d'un court filet noir (ADR-0203). Il tient
+     * sur une ligne quand il le peut ; sinon sur deux lignes de longueurs
+     * voisines, coupées entre deux mots là où elles s'équilibrent le mieux,
+     * quelles que soient les coupures du modèle (« \n »).
      */
     titre(texte: string, { avant = 34, taille = 20 }: { avant?: number; taille?: number } = {}) {
       poserLaDate();
@@ -259,7 +258,7 @@ export function nouvelleFeuille({
         doc
           .font(anton)
           .fontSize(taille)
-          .fillColor(BLEU)
+          .fillColor(ENCRE)
           .text(ligne, MARGE, premiere + i * h, {
             width: L,
             align: 'center',
@@ -273,7 +272,7 @@ export function nouvelleFeuille({
         .moveTo(MARGE + L / 2 - 18, filet)
         .lineTo(MARGE + L / 2 + 18, filet)
         .lineWidth(1.6)
-        .strokeColor(ORANGE)
+        .strokeColor(ENCRE)
         .stroke();
       doc.y = filet + 2;
     },
@@ -696,11 +695,11 @@ export function nouvelleFeuille({
     },
 
     /**
-     * Un bloc en bas de page, à gauche, au-dessus de la courbe du pied : les
+     * Un bloc en bas de page, à gauche, au-dessus du pied de page : les
      * ampliations d'une décision, le destinataire d'une lettre. Sa dernière
-     * ligne finit à `finA` au-dessus de la courbe ; une ligne vide se donne
-     * sans passage. Les lignes commencent à `retrait` de la marge, l'étiquette
-     * de la première (« À ») sur la marge. Si le texte de la page descend
+     * ligne finit à `finA` au-dessus du pied ; une ligne vide se donne sans
+     * passage. Les lignes commencent à `retrait` de la marge, l'étiquette de
+     * la première (« À ») sur la marge. Si le texte de la page descend
      * jusque-là, le bloc passe à la page suivante.
      */
     piedAGauche(
@@ -721,20 +720,7 @@ export function nouvelleFeuille({
         etiquette?: readonly Passage[];
       } = {},
     ) {
-      const largeurDe = (passages: readonly Passage[]) =>
-        passages.reduce(
-          (s, p) =>
-            s +
-            doc
-              .font(police(doc, coupeDe(Boolean(p.gras), Boolean(p.italique)), f))
-              .fontSize(taille)
-              .widthOfString(p.texte),
-          0,
-        );
-      // La courbe monte vers la droite : le bloc se pose au-dessus de son
-      // point le plus haut, sous toute la largeur de sa plus longue ligne.
-      const droite = MARGE + retrait + Math.max(0, ...lignes.map(largeurDe));
-      const sommet = hautDeLaCourbe(MARGE, droite) - finA - lignes.length * pas;
+      const sommet = HAUT_DU_PIED - finA - lignes.length * pas;
       if (doc.y > sommet - pas) doc.addPage();
       const ecrire = (passages: readonly Passage[], depuis: number, y: number) => {
         let x = depuis;

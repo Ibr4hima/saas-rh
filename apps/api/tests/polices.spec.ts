@@ -1,12 +1,11 @@
 /**
  * Les polices des documents. Ceux de la DCH suivent la charte de l'APIX de
- * 2026 (ADR-0173) : Raleway pour le texte, Anton pour les titres, Exo et les
- * pictogrammes de Material Symbols pour le pied de page, toutes libres et
- * versionnées. Arial (ADR-0090) et Times New Roman (ADR-0098) restent celles
- * de la déclaration de mouvement et des grilles d'évaluation : leur licence
- * interdisant de les versionner, Arimo et Tinos tiennent leur place, aux
- * mêmes chasses. Le certificat d'APIX Academy suit lui aussi la charte
- * (ADR-0185).
+ * 2026 (ADR-0173) : Raleway pour le texte, Anton pour les titres, Exo pour le
+ * pied de page, toutes libres et versionnées. Arial (ADR-0090) et Times New
+ * Roman (ADR-0098) restent celles de la déclaration de mouvement et des
+ * grilles d'évaluation : leur licence interdisant de les versionner, Arimo et
+ * Tinos tiennent leur place, aux mêmes chasses. Le certificat d'APIX Academy
+ * suit lui aussi la charte (ADR-0185).
  */
 import PDFDocument from 'pdfkit';
 import { describe, expect, it } from 'vitest';
@@ -30,7 +29,7 @@ describe('Raleway', () => {
     expect(police(doc, 'normal', 'raleway-semibold')).toBe('raleway-semibold-normal');
   });
 
-  it('écrit l’attestation de travail ; Anton, son titre ; Exo et les pictogrammes, son pied de page', async () => {
+  it('écrit l’attestation de travail ; Anton, son titre ; Exo, son pied de page', async () => {
     const pdf = await pdfDeLAttestation(
       textesDeLAttestation(
         {
@@ -46,11 +45,10 @@ describe('Raleway', () => {
       { logo: null },
     );
     const polices = [...policesDe(pdf)];
-    expect(polices.filter((p) => !/^(Raleway|Anton|Exo|MaterialSymbols)/.test(p))).toEqual([]);
+    expect(polices.filter((p) => !/^(Raleway|Anton|Exo)/.test(p))).toEqual([]);
     for (const attendue of ['Raleway-Regular', 'Raleway-Bold', 'Anton-Regular', 'Exo-Regular']) {
       expect(polices).toContain(attendue);
     }
-    expect(polices.some((p) => p.startsWith('MaterialSymbols'))).toBe(true);
   });
 });
 

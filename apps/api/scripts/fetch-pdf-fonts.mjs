@@ -129,20 +129,6 @@ const FAMILLES = [
     licence: { source: 'ofl/exo/OFL.txt', nom: 'exo-OFL.txt' },
     coupes: [{ nom: 'exo-regular.ttf', style: 'normal', poids: '400' }],
   },
-  {
-    // Les pictogrammes du pied de page (adresse, téléphone, fax, courriel,
-    // site) : les Material Symbols de l'application, pleins, réduits par
-    // Google à ces cinq icônes. Leurs glyphes sont hors du latin : la police
-    // ne se réduit pas. Licence Apache 2.0, pas OFL.
-    css: 'Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,1,0&icon_names=call,fax,language,location_on,mail',
-    licence: {
-      url: 'https://raw.githubusercontent.com/google/material-design-icons/master/LICENSE',
-      nom: 'material-symbols-LICENSE.txt',
-      attendu: 'Apache License',
-    },
-    reduire: false,
-    coupes: [{ nom: 'material-symbols.ttf', style: 'normal', poids: '400' }],
-  },
 ];
 
 /**
@@ -286,8 +272,6 @@ writeFileSync(
     'Allura, une écriture manuscrite (OFL), trace les paraphes des\n' +
     "signataires des grilles d'évaluation.\n\n" +
     "Raleway, Anton et Exo (OFL) sont les polices de la charte de l'APIX,\n" +
-    'celles des documents de la DCH : le texte, les titres, le pied de page.\n\n' +
-    "Les pictogrammes du pied de page sont les Material Symbols de l'application,\n" +
-    'réduits à cinq icônes (`material-symbols.ttf`, licence Apache 2.0).\n',
+    'celles des documents de la DCH : le texte, les titres, le pied de page.\n',
 );
 console.log(`✓ ${coupes} coupes, ${(total / 1024).toFixed(0)} Ko, dans ${OUT}`);
