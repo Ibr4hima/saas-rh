@@ -32,19 +32,18 @@ import {
 } from '../documents/entete';
 
 /* ────────────────────────────────────────────────────────────────
-   La fiche d'entretien annuel d'évaluation, en PDF (ADR-0205, ADR-0206).
+   La fiche d'entretien annuel d'évaluation, en PDF (ADR-0205 à ADR-0207).
 
    Chaque page porte l'en-tête du modèle de la DCH : « DCH », le titre de la
    fiche, puis le bloc de la République, la référence de la fiche et le
-   numéro de la page. En pied, les mentions de la société (ADR-0203) et les
-   deux barres bleue et orange du modèle.
+   numéro de la page. En pied, les mentions de la société (ADR-0203).
 
    Le texte est noir. Le bleu et l'orange de l'APIX viennent par touches,
-   là où l'œil doit s'arrêter : le numéro et le titre de chaque section, ce
-   que l'agent et le N+1 ont coché, les barres du pied. Tout se lit sur une
-   seule colonne, avec de l'air : des tableaux à filets horizontaux, des
-   sections bien séparées. La grille des compétences passe à l'italienne,
-   comme dans le modèle.
+   là où l'œil doit s'arrêter : le numéro et le titre de chaque section en
+   bleu, le numéro d'une sous-section en orange, ce que l'agent et le N+1 ont
+   coché en blanc sur bleu. Tout se lit sur une seule colonne, avec de
+   l'air : des tableaux à filets horizontaux, des sections bien séparées. La
+   grille des compétences passe à l'italienne, comme dans le modèle.
 
    Une section ne commence pas en bas de page ; une ligne de tableau ne se
    coupe pas ; un tableau qui passe à la page suivante y reprend ses titres
@@ -96,8 +95,10 @@ export interface DonneesDeLaFiche {
 
 /** Le bleu et l'orange de la charte de l'APIX, par touches. */
 const BLEU = '#004F91';
-const ORANGE = '#CA631F';
-/** L'orange des petits textes : #CA631F n'atteint pas 4,5:1 sur le blanc. */
+/**
+ * L'orange des numéros de sous-section et des étiquettes, plus soutenu que
+ * celui de la charte (#CA631F), qui n'atteint pas 4,5:1 sur le blanc.
+ */
 const ORANGE_TEXTE = '#B14600';
 const BLANC = '#FFFFFF';
 
@@ -366,7 +367,7 @@ class Composition {
   }
 
   /**
-   * Le titre d'une section : son numéro en blanc sur un carré orange, son
+   * Le titre d'une section : son numéro en blanc sur un carré bleu, son
    * intitulé en capitales bleues, un filet bleu dessous. Il ne reste jamais
    * seul en bas d'une page : `suite` est la hauteur de ce qui doit le suivre.
    */
@@ -387,7 +388,7 @@ class Composition {
     this.place(avant + hBloc + 10 + AIR.apresSection + suite);
     if (!this.enHautDePage) this.y += avant;
     const y = this.y;
-    this.doc.roundedRect(this.gauche, y, COTE, COTE, 3.5).fill(ORANGE);
+    this.doc.roundedRect(this.gauche, y, COTE, COTE, 3.5).fill(BLEU);
     this.style({ coupe: 'bold', taille: 10.5 });
     const n = String(numero);
     const largeurDuNumero = this.doc.widthOfString(n);
@@ -830,7 +831,7 @@ function cartouche(f: Composition, d: DonneesDeLaFiche, page: number, total: num
 
   // Le titre de la fiche, au milieu de sa bande.
   const titre = TITRE_DE_LA_FICHE.toLocaleUpperCase('fr');
-  const sTitre: Style = { coupe: 'bold', taille: 10.6, espacement: 0.7, couleur: BLEU };
+  const sTitre: Style = { coupe: 'bold', taille: 10.6, espacement: 0.7 };
   f.style(sTitre);
   const largeurDuTitre = doc.widthOfString(titre, { characterSpacing: 0.7 });
   enLigne(titre, x0 + (L - largeurDuTitre) / 2, centre(yTitre, CARTOUCHE.titre, 10.6), sTitre);
@@ -898,14 +899,10 @@ function cartouche(f: Composition, d: DonneesDeLaFiche, page: number, total: num
   }
 }
 
-/** Le pied de chaque page : les mentions de la société, et les deux barres du modèle. */
+/** Le pied de chaque page : les mentions de la société. */
 function pied(doc: Doc): void {
   const { width: largeur, height: hauteur } = doc.page;
   dessinerPiedDePage(doc, null, { largeur, hauteur });
-  doc.save();
-  doc.roundedRect(-8, hauteur - 27, 128, 9, 4.5).fill(BLEU);
-  doc.roundedRect(-8, hauteur - 15, 160, 8, 4).fill(ORANGE);
-  doc.restore();
 }
 
 // ──────────────────────────────────────────────── 1. Identification
@@ -1359,6 +1356,9 @@ function partieReservee(f: Composition, d: DonneesDeLaFiche, r: PartieReservee):
 /**
  * La signature d'une partie, sous son texte : qui, sa fonction, la date de la
  * validation en ligne. Sans validation, la place de signer à la main.
+ *
+ * Le rôle se met en retrait ; quand tout ne tient pas sur une ligne, la
+ * validation passe entière à la ligne, sous le nom, plutôt que de se couper.
  */
 function signature(
   f: Composition,
@@ -1366,20 +1366,42 @@ function signature(
   p: PersonneDeLaFiche | null,
   le: string | null,
 ): void {
-  const morceaux: [string, Style][] = [
-    [`${role}   `, { coupe: 'bold', taille: 8.8, couleur: ORANGE_TEXTE }],
-  ];
+  const sRole: Style = { coupe: 'bold', taille: 8.8, couleur: ORANGE_TEXTE };
+  const sMention: Style = { coupe: 'italic', taille: 8.8 };
+  f.style(sRole);
+  const retrait = Math.max(f.doc.widthOfString('N+1'), f.doc.widthOfString('N+2')) + 7;
+  const x = f.gauche + retrait;
+  const largeur = f.largeur - retrait;
+
+  const qui: [string, Style][] = [];
   if (p) {
-    morceaux.push([nomImprime(p), { famille: 'raleway-semibold', taille: 8.8 }]);
-    if (p.fonction) morceaux.push([`, ${typographie(p.fonction)}`, { taille: 8.8 }]);
+    qui.push([nomImprime(p), { famille: 'raleway-semibold', taille: 8.8 }]);
+    if (p.fonction) qui.push([`, ${typographie(p.fonction)}`, { taille: 8.8 }]);
   }
-  morceaux.push([
-    le ? `   ·   Validation en ligne le ${dateInsecable(le)}` : '   ·   Date et signature :',
-    { coupe: 'italic', taille: 8.8 },
-  ]);
-  const h = f.hauteurEnLigne(f.largeur, morceaux);
+  const mention = le
+    ? `Validation en ligne le\u00a0${dateInsecable(le)}`
+    : 'Date et signature\u00a0:';
+  const enUneLigne: [string, Style][] = [
+    ...qui,
+    [qui.length ? `   ·   ${mention}` : mention, sMention],
+  ];
+  const largeurDe = (morceaux: readonly [string, Style][]) =>
+    morceaux.reduce((somme, [t, s]) => somme + f.doc.widthOfString(t, f.style(s)), 0);
+  const surUneLigne = largeurDe(enUneLigne) <= largeur - 1;
+
+  // La hauteur, pour ne pas couper la signature d'une page à l'autre.
+  const h = surUneLigne
+    ? f.hauteurDe(mention, largeur, sMention)
+    : (qui.length ? f.hauteurEnLigne(largeur, qui) : 0) + f.hauteurDe(mention, largeur, sMention);
   f.place(9 + h);
   f.y += 9;
-  f.ecrireEnLigne(f.gauche, f.y, f.largeur, morceaux);
-  f.y += h;
+  f.ecrire(role, f.gauche, f.y, retrait, sRole);
+  if (surUneLigne) {
+    f.ecrireEnLigne(x, f.y, largeur, enUneLigne);
+  } else {
+    if (qui.length) f.ecrireEnLigne(x, f.y, largeur, qui);
+    // pdfkit pose `doc.y` sous la dernière ligne écrite.
+    f.ecrire(mention, x, qui.length ? f.doc.y : f.y, largeur, sMention);
+  }
+  f.y = f.doc.y;
 }

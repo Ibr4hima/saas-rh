@@ -19,7 +19,7 @@ import { ficheExemple } from './fiche-exemple';
 import { couleursDe, policesDe } from './lecture-pdf';
 
 /** Le noir du texte, le blanc des cases cochées, le bleu et l'orange de l'APIX. */
-const COULEURS = ['#111111', '#ffffff', '#004f91', '#ca631f', '#b14600'];
+const COULEURS = ['#111111', '#ffffff', '#004f91', '#b14600'];
 
 /** Le PDF, et tout ce que la fiche y a écrit, appel après appel de pdfkit. */
 async function imprimer(d: DonneesDeLaFiche) {
@@ -122,7 +122,7 @@ describe('la fiche en PDF', () => {
     const couleurs = couleursDe(pdf);
     for (const c of couleurs) expect(COULEURS).toContain(c);
     expect(couleurs).toContain('#004f91');
-    expect(couleurs).toContain('#ca631f');
+    expect(couleurs).toContain('#b14600');
     const polices = policesDe(pdf);
     expect(polices).toContain('Raleway-Regular');
     expect(polices).toContain('Raleway-Bold');

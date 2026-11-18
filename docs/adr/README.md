@@ -211,4 +211,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0203](0203-documents-en-noir-ancien-pied.md)         | Les documents de la DCH en noir, l'ancien pied de page de l'APIX remis au propre        | acceptée                                    |
 | [0204](0204-connexion-par-code.md)                    | La connexion par code : nom de famille, adresse professionnelle, code reçu par email    | acceptée                                    |
 | [0205](0205-fiche-d-entretien-annuel.md)              | La fiche d'entretien annuel d'évaluation S1/EN05 : son texte corrigé et son PDF         | acceptée, mise en page révisée : 0206       |
-| [0206](0206-fiche-a-l-en-tete-du-modele.md)           | La fiche d'entretien à l'en-tête du modèle, avec le bleu et l'orange de l'APIX          | acceptée                                    |
+| [0206](0206-fiche-a-l-en-tete-du-modele.md)           | La fiche d'entretien à l'en-tête du modèle, avec le bleu et l'orange de l'APIX          | acceptée, couleurs retouchées : 0207        |
+| [0207](0207-fiche-titre-noir-sections-en-bleu.md)     | La fiche d'entretien : titre en noir, numéros de section en bleu, sans barres en pied   | acceptée                                    |
