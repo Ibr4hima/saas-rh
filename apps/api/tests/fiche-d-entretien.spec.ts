@@ -2,9 +2,10 @@
  * La fiche d'entretien annuel d'évaluation, en PDF (ADR-0205).
  *
  * Ce qui compte : la version de l'agent ne porte jamais la partie réservée
- * à la hiérarchie ; le texte est celui de la grille corrigée ; le
- * management ne vaut que pour le personnel cadre ; tout est à l'encre
- * noire ; les textes au plus long tiennent, sur autant de pages qu'il faut.
+ * à la hiérarchie ; chaque page porte l'en-tête du modèle de la DCH ; le
+ * texte est celui de la grille corrigée ; le management ne vaut que pour le
+ * personnel cadre ; le noir, avec le bleu et l'orange de l'APIX par touches ;
+ * les textes au plus long tiennent, sur autant de pages qu'il faut.
  */
 import PDFDocument from 'pdfkit';
 import { describe, expect, it, vi } from 'vitest';
@@ -17,7 +18,8 @@ import {
 import { ficheExemple } from './fiche-exemple';
 import { couleursDe, policesDe } from './lecture-pdf';
 
-const DRAPEAU = ['#00853f', '#fdef42', '#e31b23'];
+/** Le noir du texte, le blanc des cases cochées, le bleu et l'orange de l'APIX. */
+const COULEURS = ['#111111', '#ffffff', '#004f91', '#ca631f', '#b14600'];
 
 /** Le PDF, et tout ce que la fiche y a écrit, appel après appel de pdfkit. */
 async function imprimer(d: DonneesDeLaFiche) {
@@ -25,13 +27,16 @@ async function imprimer(d: DonneesDeLaFiche) {
   try {
     const pdf = await ficheDEntretienPdf(d);
     const textes = espion.mock.calls.map((appel) => String(appel[0]));
-    return { pdf, textes, tout: textes.join('\n') };
+    // `suite` : les morceaux écrits l'un après l'autre, comme « Page », « 2 », « sur », « 10 ».
+    return { pdf, textes, tout: textes.join('\n'), suite: textes.join('') };
   } finally {
     espion.mockRestore();
   }
 }
 
 const pagesDe = (pdf: Buffer) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length;
+const italiennesDe = (pdf: Buffer) =>
+  (pdf.toString('latin1').match(/\/MediaBox \[0 0 841\.89 595\.28\]/g) ?? []).length;
 
 describe('la fiche en PDF', () => {
   it('la version de l’agent s’arrête à la validation ; la complète porte la partie réservée', async () => {
@@ -56,7 +61,8 @@ describe('la fiche en PDF', () => {
       'ÉVALUATION DES COMPÉTENCES ET DES PERFORMANCES',
       'Compréhension du poste',
       'Connaît parfaitement le poste de travail.',
-      'Réf. S1/EN05',
+      'S1/EN05',
+      '15/12/2018',
       'Les objectifs de l’année 2027',
     ]) {
       expect(tout).toContain(juste);
@@ -111,20 +117,31 @@ describe('la fiche en PDF', () => {
     expect(textes).toContain('Néant');
   });
 
-  it('à l’encre noire seulement, avec les polices de la DCH', async () => {
+  it('le noir, avec le bleu et l’orange de l’APIX par touches ; les polices de la DCH', async () => {
     const { pdf } = await imprimer(ficheExemple());
-    const permises = new Set(['#111111', '#ffffff', ...DRAPEAU]);
-    for (const c of couleursDe(pdf)) expect(permises).toContain(c);
+    const couleurs = couleursDe(pdf);
+    for (const c of couleurs) expect(COULEURS).toContain(c);
+    expect(couleurs).toContain('#004f91');
+    expect(couleurs).toContain('#ca631f');
     const polices = policesDe(pdf);
     expect(polices).toContain('Raleway-Regular');
     expect(polices).toContain('Raleway-Bold');
-    expect(polices).toContain('Anton-Regular');
+    expect(polices).toContain('Exo-Regular');
   });
 
-  it('chaque page porte son numéro sur le total', async () => {
-    const { pdf, textes } = await imprimer(ficheExemple());
+  it('chaque page porte l’en-tête du modèle et son numéro sur le total', async () => {
+    const { pdf, textes, suite } = await imprimer(ficheExemple());
     const n = pagesDe(pdf);
-    for (let i = 1; i <= n; i++) expect(textes).toContain(`Page ${i} sur ${n}`);
+    expect(textes.filter((t) => t === 'DCH')).toHaveLength(n);
+    expect(textes.filter((t) => t === 'FICHE D’ENTRETIEN ANNUEL D’ÉVALUATION')).toHaveLength(n);
+    expect(textes.filter((t) => t === 'Moussa SARR  ·  Matricule EMP-002')).toHaveLength(n);
+    for (let i = 1; i <= n; i++) expect(suite).toContain(`Page ${i} sur ${n}`);
+  });
+
+  it('la grille des compétences à l’italienne, comme dans le modèle', async () => {
+    const { pdf } = await imprimer(ficheExemple());
+    expect(italiennesDe(pdf)).toBeGreaterThanOrEqual(1);
+    expect(italiennesDe(pdf)).toBeLessThan(pagesDe(pdf));
   });
 
   it('les textes au plus long tiennent, sur autant de pages qu’il faut', async () => {
@@ -181,10 +198,10 @@ describe('la fiche en PDF', () => {
       reservee: { comprehension: 'B', tenue: 'B', observations: texte },
       n2: { ...base.n2!, commentaires: texte },
     });
-    const { pdf, textes } = await imprimer(d);
+    const { pdf, textes, suite } = await imprimer(d);
     const n = pagesDe(pdf);
     expect(n).toBeGreaterThan(15);
-    expect(textes).toContain(`Page ${n} sur ${n}`);
+    expect(suite).toContain(`Page ${n} sur ${n}`);
     expect(textes).toContain('OBJECTIF 12');
   });
 });

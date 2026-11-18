@@ -389,6 +389,9 @@ export function dessinerEnTete(doc: Doc, { logo }: { logo: string | null }): num
   return PAPIER.basDeLEnTete;
 }
 
+/** La hauteur d'une feuille A4 en portrait. */
+const HAUTEUR_A4 = 841.89;
+
 /** Le pied de page, en bas à droite : les mentions, leur corps et leur interligne. */
 const PIED = {
   taille: 6.8,
@@ -420,7 +423,14 @@ export const HAUT_DU_PIED = PREMIERE_BASE - 10;
  * y en a plusieurs (« 2/3 »), se pose en bas à gauche, sur la ligne de la
  * dernière mention. Tout est à l'encre du texte.
  */
-export function dessinerPiedDePage(doc: Doc, numero: string | null = null): void {
+export function dessinerPiedDePage(
+  doc: Doc,
+  numero: string | null = null,
+  /** Une page à l'italienne : le pied se cale sur ses bords à elle. */
+  page: { largeur: number; hauteur: number } = { largeur: PAPIER.largeur, hauteur: HAUTEUR_A4 },
+): void {
+  const droite = page.largeur - (PAPIER.largeur - PAPIER.droiteDuLogo);
+  const decalage = page.hauteur - HAUTEUR_A4;
   const exo = police(doc, 'normal', 'exo');
   doc.font(exo).fontSize(PIED.taille);
   // Le point qui sépare deux mentions se dessine : le point médian de la
@@ -431,7 +441,7 @@ export function dessinerPiedDePage(doc: Doc, numero: string | null = null): void
       (largeur, mention, i) => largeur + doc.widthOfString(mention) + (i > 0 ? point : 0),
       0,
     );
-  const gauche = PAPIER.droiteDuLogo - Math.max(...MENTIONS.map(largeurDe));
+  const gauche = droite - Math.max(...MENTIONS.map(largeurDe));
   const ecrire = (texte: string, x: number, base: number) =>
     doc
       .font(exo)
@@ -440,7 +450,7 @@ export function dessinerPiedDePage(doc: Doc, numero: string | null = null): void
       .text(texte, x, base, { lineBreak: false, baseline: 'alphabetic' });
 
   MENTIONS.forEach((ligne, i) => {
-    const base = PREMIERE_BASE + i * PIED.pas;
+    const base = PREMIERE_BASE + decalage + i * PIED.pas;
     let x = gauche;
     ligne.forEach((mention, j) => {
       if (j > 0) {
@@ -457,11 +467,11 @@ export function dessinerPiedDePage(doc: Doc, numero: string | null = null): void
   // Le filet, du haut des capitales de la première mention au bas de la dernière.
   const filet = gauche - PIED.blanc;
   doc
-    .moveTo(filet, PREMIERE_BASE - PIED.taille * 0.95)
-    .lineTo(filet, PIED.derniereBase + PIED.taille * 0.3)
+    .moveTo(filet, PREMIERE_BASE + decalage - PIED.taille * 0.95)
+    .lineTo(filet, PIED.derniereBase + decalage + PIED.taille * 0.3)
     .lineWidth(PIED.filet)
     .strokeColor(ENCRE)
     .stroke();
 
-  if (numero) ecrire(numero, PAPIER.largeur - PAPIER.droiteDuLogo, PIED.derniereBase);
+  if (numero) ecrire(numero, PAPIER.largeur - PAPIER.droiteDuLogo, PIED.derniereBase + decalage);
 }
