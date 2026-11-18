@@ -7,7 +7,7 @@ import { DOMAINE_COURRIEL_PRO, type AttenteDuCode } from '@teranga/contracts';
 import { BoutonMarque } from '../../components/bouton-marque';
 import { ChampMarque, EcranMarque, SaisieMarque } from '../../components/ecran-marque';
 import { api, ApiError } from '../../lib/api';
-import { memoire, useEcranDeConnexion } from './connexion';
+import { memoire, useEcranDeConnexion, versLEcran } from './connexion';
 
 /* ────────────────────────────────────────────────────────────────
    Connexion par code (ADR-0204), comme celle du vote électronique.
@@ -56,7 +56,7 @@ export default function ConnexionPage() {
         body: { nom, email },
       });
       Object.assign(memoire, { nom, email, attente });
-      router.push(ecran('/login/code'));
+      router.push(versLEcran('/login/code'));
     } catch (err) {
       setErreur(err instanceof ApiError ? err.message : 'Envoi impossible, réessayez.');
       setEnvoi(false);

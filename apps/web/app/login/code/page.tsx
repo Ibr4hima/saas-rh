@@ -16,7 +16,7 @@ import { BoutonMarque } from '../../../components/bouton-marque';
 import { ChampMarque, EcranMarque, SaisieMarque } from '../../../components/ecran-marque';
 import { api, ApiError } from '../../../lib/api';
 import { ouvrirSession } from '../../../lib/session';
-import { memoire, pageDeRetour, useEcranDeConnexion } from '../connexion';
+import { memoire, pageDeRetour, useEcranDeConnexion, versLEcran } from '../connexion';
 
 /* ────────────────────────────────────────────────────────────────
    Le code reçu par email (ADR-0204). La connexion en cours vit côté
@@ -58,7 +58,7 @@ export default function CodePage() {
   /** La connexion a pris fin : retour au premier écran, avec ce qu'il faut dire. */
   const recommencer = (message: string | null) => {
     memoire.erreur = message;
-    router.replace(ecran('/login'));
+    router.replace(versLEcran('/login'));
   };
 
   // La connexion en cours, telle que le serveur la garde : la page rechargée

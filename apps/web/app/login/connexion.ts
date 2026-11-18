@@ -28,12 +28,21 @@ function suiteDeLaPage(): string | null {
 /** Où aller une fois la session ouverte. */
 export const pageDeRetour = (): string => suiteDeLaPage() ?? '/';
 
+const avecLaSuite = (chemin: string, suite: string | null) =>
+  suite ? `${chemin}?suite=${encodeURIComponent(suite)}` : chemin;
+
 /**
  * Le chemin d'un autre écran de la connexion, qui garde la page de retour.
- * Lue après le premier rendu : le serveur ne connaît pas l'adresse.
+ * Pour un geste : l'adresse de la page se lit au moment où il se fait.
+ */
+export const versLEcran = (chemin: string): string => avecLaSuite(chemin, suiteDeLaPage());
+
+/**
+ * Le même chemin, pour un lien de la page. Lu après le premier rendu : le
+ * serveur ne connaît pas l'adresse.
  */
 export function useEcranDeConnexion(): (chemin: string) => string {
   const [suite, setSuite] = useState<string | null>(null);
   useEffect(() => setSuite(suiteDeLaPage()), []);
-  return (chemin) => (suite ? `${chemin}?suite=${encodeURIComponent(suite)}` : chemin);
+  return (chemin) => avecLaSuite(chemin, suite);
 }
