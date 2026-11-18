@@ -32,6 +32,9 @@ import type { Transport } from './transports';
    qui dit aussi si elle a encore lieu d'être. L'accusé de réception et le
    refus d'une candidature gardent ce qu'ils disent, mais pas l'adresse :
    elle se lit, chiffrée, dans la candidature au moment de partir (0094).
+
+   Le code de connexion (ADR-0204) garde, chiffré, le code qu'il porte. Il
+   passe devant tous les autres : la personne attend devant l'écran du code.
    ──────────────────────────────────────────────────────────────── */
 
 /** Au-delà, on renonce : un peu plus de quatre heures d'essais. */
@@ -81,7 +84,7 @@ const contexteDuCorps = (tenantId: string, id: string) => `${tenantId}:outbound_
  * Un courriel qui n'a plus lieu d'être ne part pas. L'invitation qu'il porte
  * a été remplacée par une autre, close (dossier archivé) ou déjà acceptée ;
  * le lien « mot de passe oublié » a servi, expiré ou cédé la place à un
- * autre ; la notification a été lue, rangée, remplacée par une plus récente
+ * autre ; le code de connexion a expiré, ou un autre code a servi ; la notification a été lue, rangée, remplacée par une plus récente
  * ou effacée, ou l'accès de son destinataire a été coupé ; la candidature
  * a été supprimée (ou rouverte, pour un refus). Vérifié au moment
  * d'envoyer, quel que soit le chemin qui y a mené.
@@ -100,6 +103,10 @@ async function annulerCeQuiNaPlusLieu(tx: Tx): Promise<void> {
                SELECT 1 FROM password_resets r
                 WHERE r.id = o.subject_id
                   AND r.used_at IS NULL AND r.expires_at > now())
+             WHEN 'code_connexion' THEN NOT EXISTS (
+               SELECT 1 FROM codes_de_connexion c
+                WHERE c.id = o.subject_id
+                  AND c.used_at IS NULL AND c.expires_at > now())
              WHEN 'notification' THEN NOT EXISTS (
                SELECT 1 FROM notifications n
                  JOIN user_tenant_memberships m
@@ -247,7 +254,9 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
       try {
         do {
           this.encore = false;
-          await this.unPassage();
+          // Un lot plein : d'autres courriels attendent, on ne les laisse
+          // pas trente secondes de plus (une vague de codes de connexion).
+          if (await this.unPassage()) this.encore = true;
         } while (this.encore);
       } catch (e) {
         this.logger.error(`Passage interrompu : ${(e as Error).message}`);
@@ -258,9 +267,11 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
     return this.passage;
   }
 
-  private async unPassage(): Promise<void> {
+  /** Un passage sur chaque organisation. Vrai : un lot était plein, d'autres attendent. */
+  private async unPassage(): Promise<boolean> {
     const transport = this.transport;
-    if (!transport) return;
+    if (!transport) return false;
+    let plein = false;
     const { rows: organisations } = await this.db.global.execute<{ tenant_id: string }>(
       sql`SELECT outbound_email_tenants() AS tenant_id`,
     );
@@ -275,7 +286,7 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
                    next_attempt_at = now() + ${sql.raw(RESERVATION)}
              WHERE id IN (SELECT id FROM outbound_emails
                            WHERE status = 'pending' AND next_attempt_at <= now()
-                           ORDER BY created_at
+                           ORDER BY kind = 'code_connexion' DESC, created_at
                            LIMIT ${PAR_PASSAGE}
                            FOR UPDATE SKIP LOCKED)
          RETURNING id, kind, subject_id, recipient, subject, body_encrypted, attempts, created_at)
@@ -288,9 +299,10 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
             LEFT JOIN tenants o ON o.id = n.tenant_id
             LEFT JOIN applications a
                    ON p.kind IN ('candidature_recue', 'candidature_refusee') AND a.id = p.subject_id
-           ORDER BY p.created_at`);
+           ORDER BY p.kind = 'code_connexion' DESC, p.created_at`);
       });
       if (lot.length === 0) continue;
+      if (lot.length >= PAR_PASSAGE) plein = true;
       if (!this.logo || this.logo.jusqua < Date.now()) {
         this.logo = { valeur: this.sonde(this.portail), jusqua: Date.now() + 10 * 60_000 };
       }
@@ -300,6 +312,7 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
         await this.db.withTenant({ tenantId }, (tx) => this.consigner(tx, courriel, issue));
       }
     }
+    return plein;
   }
 
   /** Ce que dit le courriel : ce qu'il garde, chiffré, ou la notification qu'il double. */

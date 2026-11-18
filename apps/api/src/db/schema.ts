@@ -67,6 +67,29 @@ export const passwordResets = pgTable('password_resets', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** La connexion par code en cours : globale, comme les sessions (migration 0136). */
+export const connexionsEnAttente = pgTable('connexions_en_attente', {
+  id: uuid('id').primaryKey(),
+  jetonHash: text('jeton_hash').notNull(),
+  compteur: text('compteur').notNull(),
+  emailMasque: text('email_masque').notNull(),
+  userId: uuid('user_id'),
+  tenantId: uuid('tenant_id'),
+  essais: integer('essais').notNull().default(0),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Les codes de connexion envoyés, en empreinte seulement (migration 0136). */
+export const codesDeConnexion = pgTable('codes_de_connexion', {
+  id: uuid('id').primaryKey(),
+  compteur: text('compteur').notNull(),
+  codeHash: text('code_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const tenants = pgTable('tenants', {
   id: uuid('id').primaryKey(),
   name: text('name').notNull(),

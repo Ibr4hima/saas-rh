@@ -23,12 +23,15 @@ export function EcranMarque({
   titre,
   sousTitre,
   pied,
+  note,
   children,
 }: {
   titre: React.ReactNode;
   sousTitre?: React.ReactNode;
   /** Bande de bas de carte : le lien vers l'écran voisin, s'il y en a un. */
   pied?: React.ReactNode;
+  /** Sous la carte, à la place de la mention d'accès : ce que l'écran doit dire en plus. */
+  note?: { icone: IconName; texte: React.ReactNode };
   children: React.ReactNode;
 }) {
   return (
@@ -70,8 +73,12 @@ export function EcranMarque({
         className="login-monte mt-6 flex max-w-[27rem] items-start gap-1.5 text-[11.5px] leading-relaxed text-ink-muted court:mt-4"
         style={{ '--retard': '0.2s' } as React.CSSProperties}
       >
-        <Icon name="lock" size={13} className="mt-px shrink-0" />
-        Accès réservé aux agents de l&apos;APIX disposant d&apos;un compte professionnel
+        <Icon name={note?.icone ?? 'lock'} size={13} className="mt-px shrink-0" />
+        {note ? (
+          <span>{note.texte}</span>
+        ) : (
+          <>Accès réservé aux agents de l&apos;APIX disposant d&apos;un compte professionnel</>
+        )}
       </p>
     </SceneDeLaCharte>
   );
@@ -96,7 +103,8 @@ export function ChampMarque({
 }: {
   id: string;
   label: string;
-  icone: IconName;
+  /** Absente : le champ se lit seul, sans icône de tête (le code). */
+  icone?: IconName;
   erreur?: string;
   indication?: React.ReactNode;
   /** L'indication avertit-elle, ou se contente-t-elle d'informer ? */
@@ -112,12 +120,14 @@ export function ChampMarque({
         {label}
       </label>
       <div className="group relative">
-        <Icon
-          name={icone}
-          size={16}
-          aria-hidden
-          className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-ink-muted transition-colors duration-150 group-focus-within:text-primary"
-        />
+        {icone ? (
+          <Icon
+            name={icone}
+            size={16}
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-ink-muted transition-colors duration-150 group-focus-within:text-primary"
+          />
+        ) : null}
         {children}
       </div>
       {erreur ? (
@@ -140,7 +150,10 @@ export function ChampMarque({
 export function SaisieMarque({
   className,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { id: string }) {
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  id: string;
+  ref?: React.Ref<HTMLInputElement>;
+}) {
   return (
     <Input
       className={cn(

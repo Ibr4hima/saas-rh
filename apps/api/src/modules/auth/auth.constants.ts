@@ -8,6 +8,12 @@ import { loadEnv } from '../../config/env';
  */
 export const SESSION_COOKIE = loadEnv().COOKIE_SECURE ? '__Host-tg_session' : 'tg_session';
 
+/**
+ * La connexion par code en cours, le temps de saisir le code (ADR-0204) :
+ * mêmes attributs que la session, une heure au plus.
+ */
+export const ATTENTE_COOKIE = loadEnv().COOKIE_SECURE ? '__Host-tg_attente' : 'tg_attente';
+
 /** L'en-tête des relevés automatiques de la page : ils ne prolongent pas la session. */
 export const EN_ARRIERE_PLAN = 'x-arriere-plan';
 

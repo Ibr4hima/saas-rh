@@ -1,0 +1,39 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import type { AttenteDuCode } from '@teranga/contracts';
+
+/**
+ * Ce que la connexion garde d'un écran à l'autre, le temps de l'onglet : le
+ * nom et l'adresse saisis (« Modifier mes informations » les retrouve), la
+ * réponse à la demande du code, et l'erreur à montrer au retour sur le
+ * premier écran. Rien n'est écrit dans le navigateur.
+ */
+export const memoire: {
+  nom: string;
+  email: string;
+  attente: AttenteDuCode | null;
+  erreur: string | null;
+} = { nom: '', email: '', attente: null, erreur: null };
+
+/**
+ * La page d'où l'on venait (le lien d'un courriel), si c'en est une du
+ * portail : un chemin, jamais une adresse d'un autre site.
+ */
+function suiteDeLaPage(): string | null {
+  const suite = new URLSearchParams(window.location.search).get('suite');
+  return suite && /^\/(?![/\\])/.test(suite) ? suite : null;
+}
+
+/** Où aller une fois la session ouverte. */
+export const pageDeRetour = (): string => suiteDeLaPage() ?? '/';
+
+/**
+ * Le chemin d'un autre écran de la connexion, qui garde la page de retour.
+ * Lue après le premier rendu : le serveur ne connaît pas l'adresse.
+ */
+export function useEcranDeConnexion(): (chemin: string) => string {
+  const [suite, setSuite] = useState<string | null>(null);
+  useEffect(() => setSuite(suiteDeLaPage()), []);
+  return (chemin) => (suite ? `${chemin}?suite=${encodeURIComponent(suite)}` : chemin);
+}

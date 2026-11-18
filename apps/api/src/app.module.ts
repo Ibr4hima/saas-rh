@@ -23,6 +23,8 @@ import { Veille } from './modules/veille/veille';
 import { transportDepuisEnv } from './modules/courriels/transports';
 import { NotificationsReglagesService } from './modules/notifications/reglages.service';
 import { AuthController } from './modules/auth/auth.controller';
+import { ConnexionParCodeController } from './modules/auth/connexion-par-code.controller';
+import { ConnexionParCodeService } from './modules/auth/connexion-par-code.service';
 import { DocumentRequestsController } from './modules/docs/document-requests.controller';
 import { ProfileChangesController } from './modules/profile/profile-changes.controller';
 import { ProfileChangesService } from './modules/profile/profile-changes.service';
@@ -66,6 +68,7 @@ import { AbsencesService } from './modules/time/absences.service';
     HealthController,
     AccesController,
     AuthController,
+    ConnexionParCodeController,
     PeopleController,
     AbsencesController,
     DashboardController,
@@ -98,6 +101,7 @@ import { AbsencesService } from './modules/time/absences.service';
     NotificationsReglagesService,
     AuthService,
     ReinitialisationService,
+    ConnexionParCodeService,
     HabilitationsService,
     SessionGuard,
     AccesGuard,

@@ -14,7 +14,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0006](0006-api-rest-conventions.md)                  | API REST /v1 — conventions MVP, plomberie publique différée                             | acceptée                                    |
 | [0007](0007-moteur-paie-pur-packs-pays.md)            | Moteur de paie = fonction pure + packs pays immuables                                   | acceptée                                    |
 | [0008](0008-audit-append-only.md)                     | Audit log append-only, immutabilité des données de paie                                 | acceptée                                    |
-| [0009](0009-auth-maison.md)                           | Auth maison : Argon2id, sessions opaques, MFA TOTP pour rôles sensibles                 | acceptée                                    |
+| [0009](0009-auth-maison.md)                           | Auth maison : Argon2id, sessions opaques, MFA TOTP pour rôles sensibles                 | acceptée, complétée par 0204                |
 | [0010](0010-conventions-schema.md)                    | Conventions de schéma : UUIDv7 applicatif, timestamptz UTC, snake_case                  | acceptée                                    |
 | [0011](0011-signature-electronique-deux-etages.md)    | Signature électronique à deux étages (avancée maison V1, qualifiée V2)                  | acceptée                                    |
 | [0012](0012-arbitrages-direction-capital-humain.md)   | Arbitrages de la Direction du Capital Humain (APIX)                                     | acceptée, précisée par 0040, 0042, 0085     |
@@ -209,3 +209,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0201](0201-cni-seule-piece-du-dossier.md)            | La pièce d'identité d'un dossier est la CNI, et seulement elle                          | acceptée, précisée par 0202                 |
 | [0202](0202-cni-rib-et-domiciliation-sur-la-fiche.md) | La fiche d'un agent : CNI et RIB en chiffres groupés, domiciliation par oui ou par non  | acceptée                                    |
 | [0203](0203-documents-en-noir-ancien-pied.md)         | Les documents de la DCH en noir, l'ancien pied de page de l'APIX remis au propre        | acceptée                                    |
+| [0204](0204-connexion-par-code.md)                    | La connexion par code : nom de famille, adresse professionnelle, code reçu par email    | acceptée                                    |

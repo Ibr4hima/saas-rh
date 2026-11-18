@@ -48,6 +48,7 @@ export type Gabarit =
     }
   | { nom: 'notification'; prenom: string; organisation: string; titre: string; lien: string }
   | { nom: 'reinitialisation'; prenom: string; organisation: string; lien: string }
+  | { nom: 'code_connexion'; prenom: string; organisation: string; code: string }
   | ({ nom: 'accuse_candidature' } & AuCandidat)
   | ({ nom: 'refus_candidature' } & AuCandidat);
 
@@ -114,6 +115,7 @@ function polices(portail: string): string {
 const SURTITRES: Record<Gabarit['nom'], string> = {
   invitation: 'Portail RH',
   reinitialisation: 'Portail RH',
+  code_connexion: 'Portail RH',
   notification: 'Notification',
   accuse_candidature: 'Recrutement',
   refus_candidature: 'Recrutement',
@@ -150,6 +152,9 @@ const auPoste = (poste: string) => `au poste ${deElide(poste).replace("'", '’'
 export function objetDe(g: Gabarit): string {
   if (g.nom === 'invitation') return 'Votre accès au portail RH';
   if (g.nom === 'reinitialisation') return 'Votre mot de passe';
+  // Le code n'est ni dans l'objet ni dans l'aperçu : la notification d'un
+  // téléphone verrouillé ne le montre pas.
+  if (g.nom === 'code_connexion') return 'Votre code de vérification';
   if (g.nom === 'refus_candidature') return `Votre candidature ${auPoste(g.poste)}`;
   if (g.nom === 'accuse_candidature') {
     return `Nous avons bien reçu votre candidature ${auPoste(g.poste)}`;
@@ -190,6 +195,15 @@ const SIGNATURE_DCH = ['Cordialement,', 'La Direction du Capital Humain'];
 const APRES_REINITIALISATION = [
   'Ce lien est personnel et valable une heure.',
   'Si vous n’avez rien demandé, ignorez ce courriel : votre mot de passe restera inchangé.',
+];
+
+/**
+ * Sous le code de connexion. Sa durée n'y est pas : il vaut tant que dure la
+ * connexion qui l'a demandé, une heure au plus, moins pour un code redemandé.
+ */
+const APRES_LE_CODE = [
+  'Ne le communiquez à personne.',
+  'Si vous n’avez rien demandé, ignorez ce message.',
 ];
 
 /** L'invitation selon qui la reçoit : un nouveau compte, un retour, un compte en service. */
@@ -285,6 +299,28 @@ function corps(g: Gabarit, rendu: Rendu): ContenuCourriel {
       }),
     };
   }
+  if (g.nom === 'code_connexion') {
+    // Ni bouton ni lien : le code se recopie dans la page restée ouverte.
+    return {
+      subject,
+      text: [
+        `Bonjour ${g.prenom},`,
+        '',
+        `Votre code de vérification : ${g.code}`,
+        '',
+        ...APRES_LE_CODE,
+      ].join('\n'),
+      html: page(rendu, {
+        organisation: g.organisation,
+        apercu: 'Ouvrez ce message pour lire votre code.',
+        surtitre: SURTITRES.code_connexion,
+        salutation: `Bonjour ${g.prenom},`,
+        titre: 'Votre code de vérification',
+        code: g.code,
+        apres: APRES_LE_CODE,
+      }),
+    };
+  }
   if (g.nom === 'reinitialisation') {
     return {
       subject,
@@ -352,6 +388,8 @@ interface Page {
   bouton?: { libelle: string; lien: string };
   /** Un courrier en toutes lettres, sous le filet orange. */
   lettre?: { paragraphes: string[]; signature: string[] };
+  /** Un code à recopier, en grand, qu'un clic sélectionne en entier. */
+  code?: string;
   apres: string[];
   /** Le lien vers ses réglages, dans le pied : une notification se règle. */
   reglages?: boolean;
@@ -426,6 +464,14 @@ function page(rendu: Rendu, o: Page): string {
 <!--<![endif]-->
 </td></tr></table>`;
 
+  // Un courriel n'exécute aucun script : pas de bouton « Copier ». Un clic
+  // sélectionne le code entier, là où la messagerie le permet.
+  const code = o.code
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate">${espace(26)}<tr><td align="center" bgcolor="${FOND}" style="background-color:${FOND};border:1px solid ${FILET};border-radius:8px;padding:22px 12px">
+<span style="${enRaleway(34, BLEU, '42px', "font-weight:700;letter-spacing:10px;margin-right:-10px;font-variant-numeric:lining-nums tabular-nums;font-feature-settings:'lnum' 1,'tnum' 1;-webkit-user-select:all;user-select:all")}">${echapper(o.code)}</span>
+</td></tr></table>`
+    : '';
+
   const apres = o.apres.length
     ? `<p style="margin:22px 0 0;${enRaleway(13, ARDOISE, '21px')}">${o.apres.map(enClair).join('<br>')}</p>`
     : '';
@@ -494,6 +540,7 @@ ${sousTitre}
 ${trait('40', 3, ORANGE, 20)}
 ${o.texte ? paragraphe(o.texte, 22) : ''}
 ${lettre}
+${code}
 ${bouton}
 ${apres}
 ${secours}

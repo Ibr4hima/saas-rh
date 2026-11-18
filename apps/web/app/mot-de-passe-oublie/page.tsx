@@ -65,7 +65,7 @@ export default function MotDePasseOubliePage() {
           <span className="flex size-14 items-center justify-center rounded-full bg-primary-soft text-primary">
             <Icon name="mail" size={30} />
           </span>
-          <LienMarque href="/login">Aller à la connexion</LienMarque>
+          <LienMarque href="/login/mot-de-passe">Aller à la connexion</LienMarque>
         </div>
       </EcranMarque>
     );
@@ -83,7 +83,10 @@ export default function MotDePasseOubliePage() {
       pied={
         <>
           Vous vous en souvenez ?{' '}
-          <Link href="/login" className="font-bold text-primary underline-offset-4 hover:underline">
+          <Link
+            href="/login/mot-de-passe"
+            className="font-bold text-primary underline-offset-4 hover:underline"
+          >
             Se connecter
           </Link>
         </>

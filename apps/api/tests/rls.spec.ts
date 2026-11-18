@@ -18,8 +18,11 @@ let appPool: Pool;
  * Les tables tenantées SANS RLS, chacune pour une raison écrite.
  * `sessions` : la session se résout avant que l'organisation soit connue
  * (c'est le jeton qui la désigne), cf. 0001_init.sql.
+ * `connexions_en_attente` : la connexion par code aussi, le temps de saisir
+ * le code ; c'est le jeton du navigateur qui la désigne, cf.
+ * 0136_connexion_par_code.sql.
  */
-const SANS_RLS = ['sessions'];
+const SANS_RLS = ['sessions', 'connexions_en_attente'];
 
 interface TenantFixture {
   tenantId: string;

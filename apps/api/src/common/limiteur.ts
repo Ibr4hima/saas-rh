@@ -49,6 +49,23 @@ export const VERIFICATIONS_DE_CERTIFICAT: Regle = {
 /** Les liens demandés pour une même adresse email : trois par heure. */
 export const OUBLIS_PAR_COMPTE: Regle = { bucket: 'oubli_compte', fenetreSecondes: 3600, max: 3 };
 
+/*
+ * La connexion par code, d'une même adresse réseau : tout un bureau se
+ * connecte derrière la même, d'où des plafonds larges, ceux du vote
+ * électronique. Le reste se compte par couple nom et adresse et par
+ * connexion (cf. connexion-par-code.service.ts).
+ */
+/** Les demandes de code : mille par quart d'heure. */
+export const DEMANDES_DE_CODE: Regle = {
+  bucket: 'code_demande_ip',
+  fenetreSecondes: 900,
+  max: 1000,
+};
+/** Les codes saisis : six cents par quart d'heure. */
+export const ESSAIS_DE_CODE: Regle = { bucket: 'code_essai_ip', fenetreSecondes: 900, max: 600 };
+/** Les codes redemandés : trois cents par quart d'heure. */
+export const RENVOIS_DE_CODE: Regle = { bucket: 'code_renvoi_ip', fenetreSecondes: 900, max: 300 };
+
 /**
  * L'adresse du client, telle qu'Express la lit derrière les proxys de
  * confiance (TRUST_PROXY). Une IPv6 compte pour son /64 : un abonné en a

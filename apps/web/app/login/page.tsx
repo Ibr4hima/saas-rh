@@ -1,46 +1,67 @@
 'use client';
 
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { loginInputSchema, type LoginInput, type SessionUser } from '@teranga/contracts';
-import { BoutonOeil, ChampMarque, EcranMarque, SaisieMarque } from '../../components/ecran-marque';
+import { useEffect, useState } from 'react';
+import { DOMAINE_COURRIEL_PRO, type AttenteDuCode } from '@teranga/contracts';
 import { BoutonMarque } from '../../components/bouton-marque';
+import { ChampMarque, EcranMarque, SaisieMarque } from '../../components/ecran-marque';
 import { api, ApiError } from '../../lib/api';
-import { ouvrirSession } from '../../lib/session';
+import { memoire, useEcranDeConnexion } from './connexion';
+
+/* ────────────────────────────────────────────────────────────────
+   Connexion par code (ADR-0204), comme celle du vote électronique.
+
+   Le nom de famille et l'adresse professionnelle ; si elles correspondent à
+   un compte, un code part à cette adresse, et l'écran suivant le demande.
+   L'écran suivant dit la même chose que le couple soit juste ou non : le
+   serveur ne le dit pas non plus.
+   ──────────────────────────────────────────────────────────────── */
+
+const DOMAINE = `@${DOMAINE_COURRIEL_PRO}`;
 
 /**
- * La page d'où l'on venait (le lien d'un courriel), si c'en est une du
- * portail : un chemin, jamais une adresse d'un autre site.
+ * Seule la partie avant « @ » se saisit, le domaine étant posé dans le
+ * champ : une adresse complète de l'APIX, collée ou proposée par le
+ * navigateur, y perd son domaine. Celle d'un autre domaine reste telle
+ * quelle, et le serveur la refuse.
  */
-function pageDeRetour(): string {
-  const suite = new URLSearchParams(window.location.search).get('suite');
-  return suite && /^\/(?![/\\])/.test(suite) ? suite : '/';
+function partieLocale(saisie: string): string {
+  const arobase = saisie.indexOf('@');
+  if (arobase === -1) return saisie;
+  return saisie.slice(arobase).toLowerCase() === DOMAINE ? saisie.slice(0, arobase) : saisie;
 }
 
-export default function LoginPage() {
+export default function ConnexionPage() {
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const [serverError, setServerError] = useState<string | null>(null);
-  const [showPwd, setShowPwd] = useState(false);
-  const [majuscules, setMajuscules] = useState(false);
-  const form = useForm<LoginInput>({ resolver: zodResolver(loginInputSchema) });
-  const { errors, isSubmitting } = form.formState;
+  const ecran = useEcranDeConnexion();
+  const [nom, setNom] = useState(memoire.nom);
+  const [email, setEmail] = useState(memoire.email);
+  const [erreur, setErreur] = useState<string | null>(memoire.erreur);
+  const [envoi, setEnvoi] = useState(false);
 
-  const onSubmit = form.handleSubmit(async (values) => {
-    setServerError(null);
+  // L'erreur rapportée de l'écran du code ne se montre qu'une fois.
+  useEffect(() => {
+    memoire.erreur = null;
+  }, []);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErreur(null);
+    if (!nom.trim() || !email.trim()) return setErreur('Merci de renseigner les deux champs.');
+    setEnvoi(true);
     try {
-      await api<{ user: SessionUser }>('/auth/login', { method: 'POST', body: values });
-      // Rien de ce qu'un autre compte a lu dans cet onglet ne lui survit.
-      ouvrirSession(queryClient);
-      router.replace(pageDeRetour());
+      const attente = await api<AttenteDuCode>('/auth/code/demande', {
+        method: 'POST',
+        body: { nom, email },
+      });
+      Object.assign(memoire, { nom, email, attente });
+      router.push(ecran('/login/code'));
     } catch (err) {
-      setServerError(err instanceof ApiError ? err.message : 'Connexion impossible, réessayez.');
+      setErreur(err instanceof ApiError ? err.message : 'Envoi impossible, réessayez.');
+      setEnvoi(false);
     }
-  });
+  };
 
   return (
     <EcranMarque
@@ -48,87 +69,76 @@ export default function LoginPage() {
       sousTitre={
         <>
           Accédez à votre espace avec votre compte{' '}
-          <span className="font-semibold text-ink">@apix.sn</span>
+          <span className="font-semibold text-ink">{DOMAINE}</span>
         </>
       }
-      // « Créer une organisation » n'avait rien à faire là : l'APIX a la
-      // sienne, et un agent qui arrive sur cet écran n'en fonde pas une
-      // seconde — il a oublié son mot de passe. La place revient au seul
-      // besoin réel de qui ne parvient pas à entrer.
-      pied={
-        <>
-          Mot de passe oublié ?{' '}
-          <Link
-            href="/mot-de-passe-oublie"
-            className="font-bold text-primary underline-offset-4 hover:underline"
-          >
-            Réinitialisez-le
-          </Link>
-          .
-        </>
-      }
+      pied="Contactez la DCH en cas de soucis."
     >
-      {/* En POST : envoyé avant que la page ne soit prête, le formulaire part
-          sans l'aide du script, et un GET écrirait l'e-mail et le mot de
-          passe dans l'URL, donc dans l'historique et les journaux. Une fois
-          la page prête, l'envoi passe par l'API. */}
+      {/* En POST : envoyé avant que la page ne soit prête, le formulaire
+          n'écrit ni le nom ni l'adresse dans l'URL. */}
       <form method="post" onSubmit={onSubmit} className="mt-6 flex flex-col gap-4" noValidate>
-        <ChampMarque id="email" label="Adresse email" icone="mail" erreur={errors.email?.message}>
+        <ChampMarque id="nom" label="Nom de famille" icone="person">
+          <SaisieMarque
+            id="nom"
+            type="text"
+            autoComplete="family-name"
+            autoCapitalize="characters"
+            spellCheck={false}
+            maxLength={80}
+            autoFocus={!nom}
+            placeholder="Votre nom de famille"
+            value={nom}
+            onChange={(e) => {
+              setErreur(null);
+              setNom(e.target.value);
+            }}
+          />
+        </ChampMarque>
+
+        <ChampMarque id="email" label="Email professionnel" icone="mail">
           <SaisieMarque
             id="email"
-            type="email"
+            type="text"
+            inputMode="email"
             autoComplete="email"
-            autoFocus
-            placeholder="Entrez votre adresse email"
-            aria-invalid={errors.email ? true : undefined}
-            aria-describedby={errors.email ? 'email-erreur' : undefined}
-            {...form.register('email')}
+            autoCapitalize="none"
+            spellCheck={false}
+            maxLength={254}
+            aria-describedby="email-domaine"
+            className="pr-24"
+            value={email}
+            onChange={(e) => {
+              setErreur(null);
+              setEmail(partieLocale(e.target.value.trim()));
+            }}
           />
+          <span
+            id="email-domaine"
+            className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-[14.5px] text-ink-muted"
+          >
+            {DOMAINE}
+          </span>
         </ChampMarque>
 
-        <ChampMarque
-          id="password"
-          label="Mot de passe"
-          icone="lock"
-          erreur={errors.password?.message}
-          ton="alerte"
-          indication={majuscules ? 'Verrouillage majuscules activé sur votre clavier.' : undefined}
-        >
-          <SaisieMarque
-            id="password"
-            type={showPwd ? 'text' : 'password'}
-            autoComplete="current-password"
-            placeholder="••••••••"
-            className="pr-11"
-            aria-invalid={errors.password ? true : undefined}
-            aria-describedby={
-              [
-                errors.password ? 'password-erreur' : null,
-                majuscules ? 'password-indication' : null,
-              ]
-                .filter(Boolean)
-                .join(' ') || undefined
-            }
-            {...form.register('password')}
-            // Le verrouillage majuscules est LA cause silencieuse d'échec sur
-            // un champ masqué : le mot de passe est juste, la casse ne l'est pas.
-            onKeyUp={(e) => setMajuscules(e.getModifierState?.('CapsLock') ?? false)}
-          />
-          <BoutonOeil visible={showPwd} onToggle={() => setShowPwd((v) => !v)} />
-        </ChampMarque>
-
-        {serverError ? (
+        {erreur ? (
           <p
             role="alert"
             className="rounded-lg border border-danger/20 bg-danger-soft px-3.5 py-2.5 text-center text-[12.5px] font-medium text-danger"
           >
-            {serverError}
+            {erreur}
           </p>
         ) : null}
 
-        <BoutonMarque enCours={isSubmitting} libelleEnCours="Connexion…">
-          Se connecter
+        <BoutonMarque enCours={envoi} libelleEnCours="Envoi du code…">
+          Recevoir mon code
         </BoutonMarque>
+
+        <Link
+          href={ecran('/login/mot-de-passe')}
+          className="mx-auto -mt-1 text-[13px] font-semibold text-ink-muted underline-offset-4 hover:text-primary hover:underline"
+        >
+          Se connecter avec un mot de passe
+        </Link>
       </form>
     </EcranMarque>
   );

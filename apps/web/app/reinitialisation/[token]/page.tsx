@@ -71,7 +71,7 @@ export default function ReinitialisationPage() {
           <span className="flex size-14 items-center justify-center rounded-full bg-success-soft text-success">
             <Icon name="check_circle" size={30} />
           </span>
-          <LienMarque href="/login">Aller à la connexion</LienMarque>
+          <LienMarque href="/login/mot-de-passe">Aller à la connexion</LienMarque>
         </div>
       </EcranMarque>
     );
