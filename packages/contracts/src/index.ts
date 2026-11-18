@@ -29,5 +29,6 @@ export * from './profile-changes';
 export * from './reference-texts';
 export * from './academy';
 export * from './evaluations';
+export * from './entretien-annuel';
 export * from './texte-riche';
 export * from './notifications-reglages';
