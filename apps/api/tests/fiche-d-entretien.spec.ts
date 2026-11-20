@@ -1,17 +1,19 @@
 /**
- * La fiche d'entretien annuel d'évaluation, en PDF (ADR-0205).
+ * La fiche d'entretien annuel d'évaluation, en PDF (ADR-0205, ADR-0208).
  *
  * Ce qui compte : la version de l'agent ne porte jamais la partie réservée
  * à la hiérarchie ; chaque page porte l'en-tête du modèle de la DCH ; le
  * texte est celui de la grille corrigée ; le management ne vaut que pour le
  * personnel cadre ; le noir, avec le bleu et l'orange de l'APIX par touches ;
- * les textes au plus long tiennent, sur autant de pages qu'il faut.
+ * les textes au plus long tiennent, sur autant de pages qu'il faut. La fiche
+ * vierge porte toutes les sections, et rien n'y est rempli.
  */
 import PDFDocument from 'pdfkit';
 import { describe, expect, it, vi } from 'vitest';
 import { LONGUEURS_DE_LA_FICHE, MAXIMUMS_DE_LA_FICHE } from '@teranga/contracts';
 import {
   ficheDEntretienPdf,
+  ficheViergePdf,
   typographie,
   type DonneesDeLaFiche,
 } from '../src/modules/entretiens/fiche-pdf';
@@ -22,10 +24,10 @@ import { couleursDe, policesDe } from './lecture-pdf';
 const COULEURS = ['#111111', '#ffffff', '#004f91', '#b14600'];
 
 /** Le PDF, et tout ce que la fiche y a écrit, appel après appel de pdfkit. */
-async function imprimer(d: DonneesDeLaFiche) {
+async function capter(fabriquer: () => Promise<Buffer>) {
   const espion = vi.spyOn(PDFDocument.prototype, 'text');
   try {
-    const pdf = await ficheDEntretienPdf(d);
+    const pdf = await fabriquer();
     const textes = espion.mock.calls.map((appel) => String(appel[0]));
     // `suite` : les morceaux écrits l'un après l'autre, comme « Page », « 2 », « sur », « 10 ».
     return { pdf, textes, tout: textes.join('\n'), suite: textes.join('') };
@@ -33,6 +35,9 @@ async function imprimer(d: DonneesDeLaFiche) {
     espion.mockRestore();
   }
 }
+
+const imprimer = (d: DonneesDeLaFiche) => capter(() => ficheDEntretienPdf(d));
+const imprimerLaVierge = () => capter(() => ficheViergePdf(2026));
 
 const pagesDe = (pdf: Buffer) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length;
 const italiennesDe = (pdf: Buffer) =>
@@ -203,6 +208,60 @@ describe('la fiche en PDF', () => {
     expect(n).toBeGreaterThan(15);
     expect(suite).toContain(`Page ${n} sur ${n}`);
     expect(textes).toContain('OBJECTIF 12');
+  });
+});
+
+describe('la fiche vierge', () => {
+  it('porte toutes les sections, celles de l’agent, du N+1 et du N+2', async () => {
+    const { tout } = await imprimerLaVierge();
+    for (const titre of [
+      'IDENTIFICATION DE L’AGENT ET DE L’ÉVALUATEUR',
+      'BILAN DE L’ANNÉE 2026',
+      'ÉVALUATION DES COMPÉTENCES ET DES PERFORMANCES',
+      'SYNTHÈSE DE L’ÉVALUATION ET AXES D’AMÉLIORATION',
+      'OBJECTIFS ET PERSPECTIVES POUR 2027',
+      'PRÉOCCUPATIONS ET SOUHAITS DE L’AGENT',
+      'VALIDATION ET SUIVI',
+      'PARTIE STRICTEMENT RÉSERVÉE À LA HIÉRARCHIE',
+      'Observations du N+1',
+      'Commentaires du N+2',
+      'Commentaires des autres niveaux hiérarchiques',
+    ]) {
+      expect(tout).toContain(titre);
+    }
+  });
+
+  it('rien n’y est rempli : ni nom, ni niveau, ni « Néant »', async () => {
+    const { textes, tout } = await imprimerLaVierge();
+    for (const rempli of ['Néant', 'Non renseigné', 'Sans objet', 'À fixer']) {
+      expect(textes).not.toContain(rempli);
+    }
+    expect(tout).not.toContain('Validation en ligne');
+    // Le bandeau de chaque page ne nomme personne.
+    expect(tout).not.toContain('Matricule ');
+  });
+
+  it('trois objectifs à remplir ; le management, pour le personnel cadre', async () => {
+    const { textes } = await imprimerLaVierge();
+    expect(textes).toContain('OBJECTIF 3');
+    expect(textes).not.toContain('OBJECTIF 4');
+    expect(textes).toContain('Management');
+    expect(textes).toContain('Personnel cadre seulement');
+  });
+
+  it('chaque page porte l’en-tête du modèle ; la grille des compétences à l’italienne', async () => {
+    const { pdf, textes, suite } = await imprimerLaVierge();
+    const n = pagesDe(pdf);
+    expect(textes.filter((t) => t === 'DCH')).toHaveLength(n);
+    expect(textes.filter((t) => t === 'FICHE D’ENTRETIEN ANNUEL D’ÉVALUATION')).toHaveLength(n);
+    for (let i = 1; i <= n; i++) expect(suite).toContain(`Page ${i} sur ${n}`);
+    expect(italiennesDe(pdf)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('les couleurs et les polices de la fiche remplie', async () => {
+    const { pdf } = await imprimerLaVierge();
+    for (const c of couleursDe(pdf)) expect(COULEURS).toContain(c);
+    expect(policesDe(pdf)).toContain('Raleway-Bold');
   });
 });
 

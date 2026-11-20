@@ -1,11 +1,14 @@
 import PDFDocument from 'pdfkit';
 import {
+  autoEvaluationVide,
   competencesDe,
   dateEnLettres,
+  evaluationDuN1Vide,
   LIBELLES_DU_PERSONNEL,
   NIVEAUX,
   NIVEAUX_D_ATTEINTE,
   NIVEAUX_DE_COMPETENCE,
+  partieReserveeVide,
   PERSONNELS_DE_LA_FICHE,
   QUESTIONS_DES_SOUHAITS,
   QUESTIONS_DU_BILAN,
@@ -32,7 +35,7 @@ import {
 } from '../documents/entete';
 
 /* ────────────────────────────────────────────────────────────────
-   La fiche d'entretien annuel d'évaluation, en PDF (ADR-0205 à ADR-0207).
+   La fiche d'entretien annuel d'évaluation, en PDF (ADR-0205 à ADR-0208).
 
    Chaque page porte l'en-tête du modèle de la DCH : « DCH », le titre de la
    fiche, puis le bloc de la République, la référence de la fiche et le
@@ -51,6 +54,8 @@ import {
 
    Deux versions : celle de l'agent, sections 1 à 7 ; la version complète,
    avec la partie réservée à la hiérarchie, toujours sur une page à part.
+   Et la fiche vierge, toutes ses sections à remplir à la main : des cases
+   vides, des lignes pour chaque réponse.
    ──────────────────────────────────────────────────────────────── */
 
 type Doc = typeof PDFDocument.prototype;
@@ -131,8 +136,29 @@ const AIR = {
   apresSousSection: 11,
 } as const;
 const NEANT = 'Néant';
-/** La largeur de la colonne des intitulés, dans les listes de clés et de valeurs. */
+/**
+ * La largeur de la colonne des intitulés, dans les listes de clés et de
+ * valeurs. Sur la fiche vierge, plus étroite : la place d'écrire s'élargit.
+ */
 const CLES = 170;
+const CLES_DE_LA_FICHE_VIERGE = 130;
+/** Le pas des lignes à écrire à la main : 22 points, près de 8 mm. */
+const PAS_D_ECRITURE = 22;
+/** La fiche vierge : ses blocs d'objectifs, ses lignes de tableaux, ses lignes de réponse. */
+const VIERGE = {
+  objectifs: 3,
+  plan: 3,
+  objectifsAVenir: 3,
+  formations: 3,
+  /** Les deux questions du récapitulatif de l'année : la place d'y revenir en détail. */
+  recapitulatif: 8,
+  /** Une réponse aux questions de l'agent. */
+  reponse: 4,
+  /** Un commentaire, des points forts, des axes de développement. */
+  commentaire: 4,
+  /** Les résultats et les commentaires d'un objectif. */
+  objectif: 2,
+} as const;
 
 // ──────────────────────────────────────────────── le texte
 
@@ -217,7 +243,11 @@ class Composition {
   /** Le haut du texte qui suit le titre d'une section : la sous-section n'y ajoute pas son air. */
   private sousLeTitre = -1;
 
-  constructor(readonly doc: Doc) {}
+  /** `vierge` : la fiche à remplir à la main, ses cases vides, ses lignes à écrire. */
+  constructor(
+    readonly doc: Doc,
+    readonly vierge = false,
+  ) {}
 
   get gauche(): number {
     return MARGE;
@@ -534,9 +564,10 @@ class Composition {
   }
 
   private colonnesDesCles(): Colonne[] {
+    const cles = this.vierge ? CLES_DE_LA_FICHE_VIERGE : CLES;
     return [
-      { titre: '', largeur: CLES },
-      { titre: '', largeur: this.largeur - CLES },
+      { titre: '', largeur: cles },
+      { titre: '', largeur: this.largeur - cles },
     ];
   }
 
@@ -721,6 +752,88 @@ class Composition {
       },
     };
   }
+
+  // ─────────────── la fiche vierge
+
+  /**
+   * Des lignes à écrire à la main, sous `haut`, d'un trait fin. La dernière
+   * n'est pas dessinée ici : c'est le filet qui ferme la ligne du tableau.
+   */
+  lignesAEcrire(x: number, haut: number, largeur: number, lignes: number): void {
+    for (let k = 1; k < lignes; k++) {
+      this.filet(haut + k * PAS_D_ECRITURE, FILETS.fin, x, largeur);
+    }
+  }
+
+  /** Une cellule à remplir à la main : sa ligne de tableau mesure `lignes` pas d'écriture. */
+  aEcrire(lignes = 1, colonnes?: number): Cellule {
+    return {
+      colonnes,
+      hauteur: () => lignes * PAS_D_ECRITURE - 2 * MARGE_Y + INTERLIGNE,
+      dessiner: (x, y, l) => this.lignesAEcrire(x, y - MARGE_Y, l, lignes),
+    };
+  }
+
+  /** Un texte saisi ; sur la fiche vierge, ses lignes à écrire. */
+  saisie(texte: string, lignes: number): Cellule {
+    return this.vierge ? this.aEcrire(lignes) : this.texte(texte);
+  }
+
+  /** Une cellule laissée vide : la place d'un nom, d'une date, d'une signature. */
+  blanc(lignes: number): Cellule {
+    return {
+      hauteur: () => lignes * PAS_D_ECRITURE - 2 * MARGE_Y + INTERLIGNE,
+      dessiner: () => undefined,
+    };
+  }
+
+  /** Un champ : son nom en petites capitales, et la place de l'écrire dessous. */
+  champ(nom: string, place = 26): Cellule {
+    const s: Style = { coupe: 'bold', taille: CAPITALES, espacement: 0.6 };
+    const t = nom.toLocaleUpperCase('fr');
+    return {
+      hauteur: (l) => this.hauteurDe(t, l, s) + place,
+      dessiner: (x, y, l) => this.ecrire(t, x, y, l, s),
+    };
+  }
+
+  /**
+   * Les quatre niveaux, chacun sa case vide : sur une ligne s'ils y tiennent,
+   * sinon deux par ligne.
+   */
+  niveauxACocher(libelle: (n: Niveau) => string): Cellule {
+    const sLettre: Style = { coupe: 'bold', taille: 9 };
+    const s: Style = { taille: 9 };
+    /** La case et son air. */
+    const CASE = 15;
+    /** L'air entre deux niveaux, sur une ligne. */
+    const ECART = 14;
+    const PAS = 16;
+    const morceaux = (n: Niveau): [string, Style][] => [
+      [`${n}  `, sLettre],
+      [libelle(n), s],
+    ];
+    const largeurs = NIVEAUX.map(
+      (n) =>
+        CASE + morceaux(n).reduce((w, [t, st]) => w + this.doc.widthOfString(t, this.style(st)), 0),
+    );
+    const surUneLigne = (l: number) =>
+      largeurs.reduce((t, w) => t + w, 0) + ECART * (NIVEAUX.length - 1) <= l;
+    return {
+      hauteur: (l) => (surUneLigne(l) ? 0 : PAS) + this.hauteurDe('A', l, s),
+      dessiner: (x, y, l) => {
+        const uneLigne = surUneLigne(l);
+        let suivant = x;
+        NIVEAUX.forEach((n, i) => {
+          const xi = uneLigne ? suivant : x + (i % 2) * (l / 2);
+          const yi = uneLigne ? y : y + Math.floor(i / 2) * PAS;
+          this.caseACocher(xi, yi + 1.2, false, 9);
+          this.ecrireEnLigne(xi + CASE, yi, x + l - xi - CASE, morceaux(n));
+          suivant += largeurs[i]! + ECART;
+        });
+      },
+    };
+  }
 }
 
 /** Des largeurs de colonnes, en parts de la largeur du texte de la page. */
@@ -736,6 +849,44 @@ function colonnes(f: Composition, ...parts: readonly [titre: string, part: numbe
  * c'est la version de l'agent.
  */
 export async function ficheDEntretienPdf(d: DonneesDeLaFiche): Promise<Buffer> {
+  return composer(d, false);
+}
+
+/**
+ * La fiche vierge d'une année : toutes ses sections, celles de l'agent, du
+ * N+1 et du N+2, à remplir à la main (ADR-0208).
+ */
+export async function ficheViergePdf(annee: number): Promise<Buffer> {
+  return composer(
+    {
+      annee,
+      // Toutes les compétences, le management compris ; aucune case n'est cochée.
+      personnel: 'cadre',
+      agent: {
+        prenom: '',
+        nom: '',
+        fonction: null,
+        matricule: null,
+        direction: null,
+        departement: null,
+        service: null,
+        anciennete: null,
+        posteDepuis: null,
+      },
+      n1: null,
+      dateDeLEntretien: null,
+      objectifs: [],
+      auto: autoEvaluationVide(),
+      evaluation: evaluationDuN1Vide(),
+      reservee: partieReserveeVide(),
+      validations: { n1: null, agent: null },
+      n2: null,
+    },
+    true,
+  );
+}
+
+async function composer(d: DonneesDeLaFiche, vierge: boolean): Promise<Buffer> {
   const doc = new PDFDocument({
     size: 'A4',
     margin: 0,
@@ -743,7 +894,9 @@ export async function ficheDEntretienPdf(d: DonneesDeLaFiche): Promise<Buffer> {
     lang: 'fr-FR',
     displayTitle: true,
     info: {
-      Title: `${TITRE_DE_LA_FICHE} ${d.annee} · ${nomImprime(d.agent)}`,
+      Title: vierge
+        ? `${TITRE_DE_LA_FICHE} ${d.annee}`
+        : `${TITRE_DE_LA_FICHE} ${d.annee} · ${nomImprime(d.agent)}`,
       Author: 'Direction du Capital Humain',
       Subject: `${TITRE_DE_LA_FICHE} ${d.annee}`,
       Creator: ENTETE.raisonSociale,
@@ -758,7 +911,7 @@ export async function ficheDEntretienPdf(d: DonneesDeLaFiche): Promise<Buffer> {
     doc.on('error', reject);
   });
 
-  const f = new Composition(doc);
+  const f = new Composition(doc, vierge);
   identification(f, d);
   bilan(f, d);
   competences(f, d);
@@ -822,12 +975,14 @@ function cartouche(f: Composition, d: DonneesDeLaFiche, page: number, total: num
     taille: 7.6,
     espacement: 1,
   });
-  const agent = [nomImprime(d.agent), d.agent.matricule ? `Matricule ${d.agent.matricule}` : null]
-    .filter(Boolean)
-    .join('  ·  ');
-  const sAgent: Style = { taille: 7.4 };
-  f.style(sAgent);
-  enLigne(agent, x0 + L - 8 - doc.widthOfString(agent), centre(y0, CARTOUCHE.dch, 7.4), sAgent);
+  if (!f.vierge) {
+    const agent = [nomImprime(d.agent), d.agent.matricule ? `Matricule ${d.agent.matricule}` : null]
+      .filter(Boolean)
+      .join('  ·  ');
+    const sAgent: Style = { taille: 7.4 };
+    f.style(sAgent);
+    enLigne(agent, x0 + L - 8 - doc.widthOfString(agent), centre(y0, CARTOUCHE.dch, 7.4), sAgent);
+  }
 
   // Le titre de la fiche, au milieu de sa bande.
   const titre = TITRE_DE_LA_FICHE.toLocaleUpperCase('fr');
@@ -911,51 +1066,60 @@ function identification(f: Composition, d: DonneesDeLaFiche): void {
   f.section(1, 'Identification de l’agent et de l’évaluateur', 160);
   const a = d.agent;
 
-  const categorie: Cellule = {
+  /** Des cases côte à côte ; la cochée en gras. */
+  const choix = (options: readonly (readonly [libelle: string, coche: boolean])[]): Cellule => ({
     hauteur: () => f.hauteurDe('Cadre', 100) - INTERLIGNE,
     dessiner: (x, y) => {
       let xc = x;
-      for (const p of PERSONNELS_DE_LA_FICHE) {
-        const coche = d.personnel === p;
+      for (const [libelle, coche] of options) {
         f.caseACocher(xc, y + 1.4, coche, 9);
-        f.ecrire(LIBELLES_DU_PERSONNEL[p], xc + 15, y, 100, { coupe: coche ? 'bold' : 'normal' });
+        f.ecrire(libelle, xc + 15, y, 100, { coupe: coche ? 'bold' : 'normal' });
         xc += 110;
       }
     },
-  };
+  });
+  const categorie = choix(
+    PERSONNELS_DE_LA_FICHE.map((p) => [LIBELLES_DU_PERSONNEL[p], !f.vierge && d.personnel === p]),
+  );
+  const dateDeLEntretien = f.vierge
+    ? f.aEcrire()
+    : d.dateDeLEntretien
+      ? f.texte(dateEnLettres(d.dateDeLEntretien), { coupe: 'bold' })
+      : f.texte('À fixer', { coupe: 'italic' });
   f.cles([
     ['Catégorie', categorie],
     ['Période évaluée', f.texte(`Année ${d.annee}`, { coupe: 'bold' })],
-    [
-      'Date de l’entretien',
-      d.dateDeLEntretien
-        ? f.texte(dateEnLettres(d.dateDeLEntretien), { coupe: 'bold' })
-        : f.texte('À fixer', { coupe: 'italic' }),
-    ],
+    ['Date de l’entretien', dateDeLEntretien],
   ]);
 
-  const valeur = (v: string | null) => f.texte(v ? typographie(v) : '–');
-  const priseDePoste =
-    a.posteDepuis && a.posteDepuis.slice(0, 4) === String(d.annee)
-      ? `Oui, depuis le ${dateEnLettres(a.posteDepuis)}`
-      : 'Non';
+  const valeur = (v: string | null) => (f.vierge ? f.aEcrire() : f.texte(v ? typographie(v) : '–'));
+  const priseDePoste = f.vierge
+    ? choix([
+        ['Non', false],
+        ['Oui, depuis le', false],
+      ])
+    : valeur(
+        a.posteDepuis && a.posteDepuis.slice(0, 4) === String(d.annee)
+          ? `Oui, depuis le ${dateEnLettres(a.posteDepuis)}`
+          : 'Non',
+      );
+  const deLAgent: (readonly [string, string | null])[] = [
+    ['Prénom et nom', nomImprime(a)],
+    ['Matricule', a.matricule],
+    ['Fonction', a.fonction],
+    ['Direction', a.direction],
+    ['Département', a.departement],
+    ['Service', a.service],
+    ['Ancienneté au poste', a.anciennete],
+  ];
   f.etiquette('L’agent', ORANGE_TEXTE, 120, 22);
-  f.cles(
-    (
-      [
-        ['Prénom et nom', nomImprime(a)],
-        ['Matricule', a.matricule],
-        ['Fonction', a.fonction],
-        ['Direction', a.direction],
-        ['Département', a.departement],
-        ['Service', a.service],
-        ['Ancienneté au poste', a.anciennete],
-        [`Prise de poste en ${d.annee}`, priseDePoste],
-      ] as const
-    )
-      .filter(([, v]) => v !== null)
+  f.cles([
+    // Sur la fiche vierge, toutes les lignes ; sinon, celles que le dossier renseigne.
+    ...deLAgent
+      .filter(([, v]) => f.vierge || v !== null)
       .map(([cle, v]) => [cle, valeur(v)] as const),
-  );
+    [`Prise de poste en ${d.annee}`, priseDePoste],
+  ]);
 
   f.etiquette('L’évaluateur (N+1)', ORANGE_TEXTE, 60, 22);
   f.cles([
@@ -967,9 +1131,10 @@ function identification(f: Composition, d: DonneesDeLaFiche): void {
 // ──────────────────────────────────────────────── 2. Bilan de l'année
 
 function bilan(f: Composition, d: DonneesDeLaFiche): void {
-  const recapitulatif: [string, string][] = QUESTIONS_DU_BILAN.map((q) => [
+  const recapitulatif: Question[] = QUESTIONS_DU_BILAN.map((q) => [
     q.question,
     d.auto[q.cle],
+    VIERGE.recapitulatif,
   ]);
   const qui = 'Rempli par l’agent';
   const hRecapitulatif = debutDesQuestions(f, recapitulatif);
@@ -982,7 +1147,9 @@ function bilan(f: Composition, d: DonneesDeLaFiche): void {
   questionsReponses(f, recapitulatif);
 
   // Les titres 2.2 et 2.2.1 partent avec le premier objectif.
-  const objectifs = d.objectifs.map((o, i) => objectif(f, d, o, i));
+  const objectifs = f.vierge
+    ? Array.from({ length: VIERGE.objectifs }, (_, i) => objectif(f, d, null, i))
+    : d.objectifs.map((o, i) => objectif(f, d, o, i));
   const premier = objectifs[0]?.hauteur ?? 30;
   const chapeau = `L’atteinte des objectifs fixés pour ${d.annee}.`;
   const hChapeau = f.hauteurDe(chapeau, f.largeur, { coupe: 'italic', taille: 9 }) + 14;
@@ -998,39 +1165,64 @@ function bilan(f: Composition, d: DonneesDeLaFiche): void {
   for (const o of objectifs) o.poser();
   echelle(f);
 
-  f.sousSection('2.2.2', 'Autres réalisations en dehors des objectifs', 50, 'Rempli par l’agent');
-  paragrapheLibre(f, d.auto.autresRealisations);
+  // Sur la fiche vierge, les autres réalisations prennent les lignes qui
+  // restent sur la page, avant la grille des compétences à l'italienne.
+  const titre = 'Autres réalisations en dehors des objectifs';
+  const qui222 = 'Rempli par l’agent';
+  const lignes = f.vierge
+    ? lignesQuiRestent(f, f.hauteurDuSousTitre('2.2.2', titre, qui222))
+    : VIERGE.commentaire;
+  f.sousSection('2.2.2', titre, hauteurDuParagraphe(f, d.auto.autresRealisations, lignes), qui222);
+  paragrapheLibre(f, d.auto.autresRealisations, lignes);
+}
+
+/**
+ * Les lignes à écrire qui tiennent encore sur la page sous un titre de
+ * sous-section : de trois à six. S'il en tient moins de trois, le titre
+ * passe à la page suivante avec ses lignes habituelles.
+ */
+function lignesQuiRestent(f: Composition, titre: number): number {
+  const reste = f.bas - f.y - AIR.avantSousSection - titre - 2;
+  const lignes = Math.floor(reste / PAS_D_ECRITURE);
+  return lignes >= 3 ? Math.min(lignes, 6) : VIERGE.commentaire;
 }
 
 /**
  * Un objectif : son intitulé et ses indicateurs, l'auto-évaluation de
  * l'agent, puis l'appréciation du N+1. Sa hauteur, et de quoi le poser,
- * d'un seul tenant sur sa page quand il y tient.
+ * d'un seul tenant sur sa page quand il y tient. Sur la fiche vierge
+ * (`o` à null), l'intitulé et les indicateurs s'écrivent aussi à la main.
  */
 function objectif(
   f: Composition,
   d: DonneesDeLaFiche,
-  o: ObjectifEvalue,
+  o: ObjectifEvalue | null,
   i: number,
 ): { hauteur: number; poser: () => void } {
-  const agent = d.auto.objectifs[o.id];
-  const n1 = d.evaluation.objectifs[o.id];
+  const agent = o ? d.auto.objectifs[o.id] : undefined;
+  const n1 = o ? d.evaluation.objectifs[o.id] : undefined;
   const libelle = (n: Niveau) => NIVEAUX_D_ATTEINTE[n].libelle;
-  const intitule = typographie(o.intitule);
-  const indicateurs = o.indicateurs ? typographie(o.indicateurs) : '';
+  const niveau = (choisi: Niveau | null) =>
+    f.vierge ? f.niveauxACocher(libelle) : f.niveau(choisi, libelle);
+  const intitule = o ? typographie(o.intitule) : '';
+  const indicateurs = o?.indicateurs ? typographie(o.indicateurs) : '';
   const sIntitule: Style = { coupe: 'bold', taille: 10.6 };
   const morceaux: [string, Style][] = [
     ['Indicateurs : ', { famille: 'raleway-semibold', taille: 9 }],
     [indicateurs, { taille: 9 }],
   ];
+  const aEcrire: [string, Cellule][] = [
+    ['Intitulé', f.aEcrire(2)],
+    ['Indicateurs', f.aEcrire(2)],
+  ];
   const deLAgent: [string, Cellule][] = [
-    ['Niveau', f.niveau(agent?.niveau ?? null, libelle)],
-    ['Résultats obtenus', f.texte(agent?.resultats ?? '')],
-    ['Commentaire', f.texte(agent?.commentaire ?? '')],
+    ['Niveau', niveau(agent?.niveau ?? null)],
+    ['Résultats obtenus', f.saisie(agent?.resultats ?? '', VIERGE.objectif)],
+    ['Commentaire', f.saisie(agent?.commentaire ?? '', VIERGE.objectif)],
   ];
   const duN1: [string, Cellule][] = [
-    ['Niveau', f.niveau(n1?.niveau ?? null, libelle)],
-    ['Commentaire', f.texte(n1?.commentaire ?? '')],
+    ['Niveau', niveau(n1?.niveau ?? null)],
+    ['Commentaire', f.saisie(n1?.commentaire ?? '', VIERGE.objectif)],
   ];
   const etiquettes = {
     objectif: `Objectif ${i + 1}`,
@@ -1038,7 +1230,9 @@ function objectif(
     n1: 'Appréciation du N+1',
   };
   const avant = i > 0 ? 34 : 0;
-  const hIntitule = f.hauteurDe(intitule, f.largeur, sIntitule);
+  const hIntitule = f.vierge
+    ? f.hauteurDesCles(aEcrire) + 2
+    : f.hauteurDe(intitule, f.largeur, sIntitule);
   const hIndicateurs = indicateurs ? f.hauteurEnLigne(f.largeur, morceaux) + 2 : 0;
   const hauteur =
     f.hauteurDeLEtiquette(etiquettes.objectif) +
@@ -1053,8 +1247,12 @@ function objectif(
       // L'objectif entier sur la page, s'il tient sur une page.
       f.place(avant + Math.min(hauteur, f.bas - HAUT_DU_TEXTE - avant));
       f.etiquette(etiquettes.objectif, ORANGE_TEXTE, hIntitule + hIndicateurs + 90, avant);
-      f.ecrire(intitule, f.gauche, f.y, f.largeur, sIntitule);
-      f.y += hIntitule;
+      if (f.vierge) {
+        f.cles(aEcrire);
+      } else {
+        f.ecrire(intitule, f.gauche, f.y, f.largeur, sIntitule);
+        f.y += hIntitule;
+      }
       if (indicateurs) {
         f.ecrireEnLigne(f.gauche, f.y + 1, f.largeur, morceaux);
         f.y += hIndicateurs;
@@ -1086,34 +1284,55 @@ function echelle(f: Composition): void {
 /** Une colonne sur toute la largeur. */
 const pleineLargeur = (f: Composition): Colonne[] => [{ titre: '', largeur: f.largeur }];
 
+/** Une question, sa réponse, et le nombre de lignes de sa réponse sur la fiche vierge. */
+type Question = readonly [question: string, reponse: string, lignes?: number];
+
 /** Des questions et leurs réponses, l'une sous l'autre, séparées d'un trait fin. */
-function questionsReponses(f: Composition, qr: readonly [string, string][]): void {
+function questionsReponses(f: Composition, qr: readonly Question[]): void {
   f.tableau(pleineLargeur(f), lignesDeQuestions(f, qr), { titres: false });
 }
 
 /** Ce que les questions posent sur leur première page, pour que leur titre parte avec. */
-function debutDesQuestions(f: Composition, qr: readonly [string, string][]): number {
+function debutDesQuestions(f: Composition, qr: readonly Question[]): number {
   return f.debutDuTableau(pleineLargeur(f), lignesDeQuestions(f, qr), { titres: false });
 }
 
-function lignesDeQuestions(f: Composition, qr: readonly [string, string][]): Cellule[][] {
+function lignesDeQuestions(f: Composition, qr: readonly Question[]): Cellule[][] {
   const sQuestion: Style = { coupe: 'bold', taille: 9.5 };
-  return qr.map(([question, reponse]) => [
-    {
-      hauteur: (l: number) =>
-        f.hauteurDe(typographie(question), l, sQuestion) + 4 + f.hauteurDuTexte(reponse, l),
-      dessiner: (x: number, y: number, l: number) => {
-        f.ecrire(typographie(question), x, y, l, sQuestion);
-        const h = f.hauteurDe(typographie(question), l, sQuestion);
-        f.ecrireLeTexte(reponse, x, y + h + 4, l);
+  return qr.map(([question, reponse, lignes = VIERGE.reponse]) => {
+    const q = typographie(question);
+    const hQuestion = (l: number) => f.hauteurDe(q, l, sQuestion);
+    // Sur la fiche vierge, les lignes partent du bas de la question, au pas
+    // d'écriture ; la dernière est le filet sous la réponse.
+    const hauteur = (l: number) =>
+      f.vierge
+        ? hQuestion(l) + lignes * PAS_D_ECRITURE - MARGE_Y
+        : hQuestion(l) + 4 + f.hauteurDuTexte(reponse, l);
+    return [
+      {
+        hauteur,
+        dessiner: (x: number, y: number, l: number) => {
+          f.ecrire(q, x, y, l, sQuestion);
+          if (f.vierge) f.lignesAEcrire(x, y + hQuestion(l) - INTERLIGNE, l, lignes);
+          else f.ecrireLeTexte(reponse, x, y + hQuestion(l) + 4, l);
+        },
       },
-    },
-  ]);
+    ];
+  });
 }
 
-/** Un texte libre sous un titre, entre deux filets. */
-function paragrapheLibre(f: Composition, texte: string): void {
-  f.tableau([{ titre: '', largeur: f.largeur }], [[f.texte(texte)]], { titres: false });
+/** Un texte libre sous un titre, entre deux filets ; sur la fiche vierge, ses lignes. */
+function paragrapheLibre(f: Composition, texte: string, lignes: number = VIERGE.commentaire): void {
+  f.tableau(pleineLargeur(f), [[f.saisie(texte, lignes)]], { titres: false });
+}
+
+/** La hauteur d'un texte libre : le titre au-dessus part avec lui. */
+function hauteurDuParagraphe(
+  f: Composition,
+  texte: string,
+  lignes: number = VIERGE.commentaire,
+): number {
+  return f.debutDuTableau(pleineLargeur(f), [[f.saisie(texte, lignes)]], { titres: false });
 }
 
 // ──────────────────────────────────────────────── 3. Compétences
@@ -1132,11 +1351,15 @@ function competences(f: Composition, d: DonneesDeLaFiche): void {
     ),
     liste.map((c, i) => {
       const choisi = d.evaluation.competences[c.cle] ?? null;
+      const intitule = typographie(c.intitule);
       const debut = [
         f.intitule(String(i + 1), { taille: 9 }, 8.6),
-        f.intitule(typographie(c.intitule), { taille: 9 }, 8.6),
+        // Sur la fiche vierge, le management dit à qui il s'applique.
+        c.cadres && f.vierge
+          ? avecPrecision(f, intitule, 'Personnel cadre seulement')
+          : f.intitule(intitule, { taille: 9 }, 8.6),
       ];
-      if (c.cadres && !choisi) {
+      if (c.cadres && !choisi && !f.vierge) {
         return [
           ...debut,
           { ...f.texte('Sans objet', { coupe: 'italic', taille: 9 }), colonnes: 4 },
@@ -1145,6 +1368,19 @@ function competences(f: Composition, d: DonneesDeLaFiche): void {
       return [...debut, ...NIVEAUX.map((n) => f.niveauDeLaGrille(n, c.niveaux[n], choisi))];
     }),
   );
+}
+
+/** Un intitulé en gras, et dessous sa précision en italique. */
+function avecPrecision(f: Composition, intitule: string, precision: string): Cellule {
+  const s: Style = { coupe: 'bold', taille: 9 };
+  const sPrecision: Style = { coupe: 'italic', taille: PETIT };
+  return {
+    hauteur: (l) => f.hauteurDe(intitule, l, s) + f.hauteurDe(precision, l, sPrecision),
+    dessiner: (x, y, l) => {
+      f.ecrire(intitule, x, y, l, s);
+      f.ecrire(precision, x, y + f.hauteurDe(intitule, l, s), l, sPrecision);
+    },
+  };
 }
 
 // ──────────────────────────────────────────────── 4. Synthèse
@@ -1183,8 +1419,8 @@ function synthese(f: Composition, d: DonneesDeLaFiche): void {
   const e = d.evaluation;
   f.nouvellePage('portrait');
   const bilanGlobal: [string, Cellule][] = [
-    ['Points forts', f.texte(e.pointsForts)],
-    ['Axes de développement', f.texte(e.axesDeDeveloppement)],
+    ['Points forts', f.saisie(e.pointsForts, VIERGE.commentaire)],
+    ['Axes de développement', f.saisie(e.axesDeDeveloppement, VIERGE.commentaire)],
   ];
   const hBilan = f.hauteurDesCles(bilanGlobal) + 2;
   f.section(
@@ -1196,7 +1432,11 @@ function synthese(f: Composition, d: DonneesDeLaFiche): void {
   f.sousSection('4.1', 'Bilan global', hBilan);
   f.cles(bilanGlobal);
 
-  const plan = e.plan.filter((a) => a.action.trim() || a.suivi.trim());
+  const plan = f.vierge
+    ? Array.from({ length: VIERGE.plan }, () => [f.aEcrire(2), f.aEcrire(2), f.aEcrire(2)])
+    : e.plan
+        .filter((a) => a.action.trim() || a.suivi.trim())
+        .map((a) => [f.texte(a.action), f.texte(a.delai), f.texte(a.suivi)]);
   tableauTitre(
     f,
     ['4.2', 'Plan d’action pour développer les compétences'],
@@ -1207,7 +1447,7 @@ function synthese(f: Composition, d: DonneesDeLaFiche): void {
       ['Délai', 1.05],
       ['Suivi ou justification', 2.1],
     ),
-    plan.map((a) => [f.texte(a.action), f.texte(a.delai), f.texte(a.suivi)]),
+    plan,
   );
 }
 
@@ -1223,14 +1463,22 @@ function perspectives(f: Composition, d: DonneesDeLaFiche): void {
     ['Indicateur de réussite (quantifiable ou qualifiable)', 2.05],
     ['Échéance', 1.25],
   );
-  const objectifs = e.objectifsAVenir
-    .filter((o) => o.objectif.trim())
-    .map((o, i) => [
-      f.intitule(String(i + 1), { taille: 8.8 }),
-      f.texte(o.objectif),
-      f.texte(o.indicateur),
-      f.texte(o.echeance ? dateInsecable(o.echeance) : ''),
-    ]);
+  const numero = (i: number) => f.intitule(String(i + 1), { taille: 8.8 });
+  const objectifs = f.vierge
+    ? Array.from({ length: VIERGE.objectifsAVenir }, (_, i) => [
+        numero(i),
+        f.aEcrire(2),
+        f.aEcrire(2),
+        f.aEcrire(2),
+      ])
+    : e.objectifsAVenir
+        .filter((o) => o.objectif.trim())
+        .map((o, i) => [
+          numero(i),
+          f.texte(o.objectif),
+          f.texte(o.indicateur),
+          f.texte(o.echeance ? dateInsecable(o.echeance) : ''),
+        ]);
   const titre51 = `Les objectifs de l’année ${suivante}`;
   f.section(
     5,
@@ -1240,7 +1488,11 @@ function perspectives(f: Composition, d: DonneesDeLaFiche): void {
   );
   tableauTitre(f, ['5.1', titre51], null, colonnesDesObjectifs, objectifs);
 
-  const formations = e.formations.filter((x) => x.intitule.trim());
+  const formations = f.vierge
+    ? Array.from({ length: VIERGE.formations }, (_, i) => [numero(i), f.aEcrire(2), f.aEcrire(2)])
+    : e.formations
+        .filter((x) => x.intitule.trim())
+        .map((x, i) => [numero(i), f.texte(x.intitule), f.texte(x.justification)]);
   tableauTitre(
     f,
     ['5.2', 'Besoins et projets de formation'],
@@ -1251,26 +1503,19 @@ function perspectives(f: Composition, d: DonneesDeLaFiche): void {
       ['Formation souhaitée', 2.35],
       ['Justification (lien avec le poste et les objectifs)', 3.2],
     ),
-    formations.map((x, i) => [
-      f.intitule(String(i + 1), { taille: 8.8 }),
-      f.texte(x.intitule),
-      f.texte(x.justification),
-    ]),
+    formations,
   );
 }
 
 // ──────────────────────────────────────────────── 6. Souhaits de l'agent
 
 function souhaits(f: Composition, d: DonneesDeLaFiche): void {
-  const questions: [string, string][] = [
-    ...QUESTIONS_DES_SOUHAITS.map(
-      (q) =>
-        [`${q.question}${'precision' in q ? ` (${q.precision})` : ''}`, d.auto[q.cle]] as [
-          string,
-          string,
-        ],
-    ),
-    ['Autres commentaires', d.auto.autresCommentaires],
+  const questions: Question[] = [
+    ...QUESTIONS_DES_SOUHAITS.map((q): Question => [
+      `${q.question}${'precision' in q ? ` (${q.precision})` : ''}`,
+      d.auto[q.cle],
+    ]),
+    ['Autres commentaires', d.auto.autresCommentaires, VIERGE.reponse - 1],
   ];
   f.section(
     6,
@@ -1288,14 +1533,18 @@ function validation(f: Composition, d: DonneesDeLaFiche): void {
     role: string,
     p: { prenom: string; nom: string } | null,
     le: string | null,
-  ): Cellule[] => [
-    f.intitule(role),
-    f.texte(p ? nomImprime(p) : ''),
-    f.texte(le ? dateInsecable(le) : ''),
-    le
-      ? f.texte('Validation en ligne', { coupe: 'italic', taille: 9 })
-      : { hauteur: () => 26, dessiner: () => undefined },
-  ];
+  ): Cellule[] =>
+    f.vierge
+      ? // Sur la fiche vierge, la place d'écrire et de signer.
+        [f.intitule(role), f.blanc(2), f.blanc(2), f.blanc(2)]
+      : [
+          f.intitule(role),
+          f.texte(p ? nomImprime(p) : ''),
+          f.texte(le ? dateInsecable(le) : ''),
+          le
+            ? f.texte('Validation en ligne', { coupe: 'italic', taille: 9 })
+            : { hauteur: () => 26, dessiner: () => undefined },
+        ];
   const cols = colonnes(
     f,
     ['Rôle', 1.65],
@@ -1329,28 +1578,54 @@ function partieReservee(f: Composition, d: DonneesDeLaFiche, r: PartieReservee):
     { marge: 5.5 },
   );
 
-  f.sousSection('8.2', 'Observations du N+1', 60);
-  paragrapheLibre(f, r.observations);
-  signature(f, 'N+1', d.n1, d.validations.n1);
-
-  f.sousSection('8.3', 'Commentaires du N+2', 60);
-  paragrapheLibre(f, d.n2?.commentaires ?? '');
-  signature(f, 'N+2', d.n2, d.n2?.le ?? null);
+  if (f.vierge) {
+    const n1 = commentaireSigne(f, VIERGE.commentaire + 2);
+    f.sousSection('8.2', 'Observations du N+1', n1.hauteur);
+    n1.poser();
+    const n2 = commentaireSigne(f, VIERGE.commentaire + 1);
+    f.sousSection('8.3', 'Commentaires du N+2', n2.hauteur);
+    n2.poser();
+  } else {
+    // Le texte part avec son titre, la signature le suit.
+    const n2 = d.n2?.commentaires ?? '';
+    f.sousSection('8.2', 'Observations du N+1', hauteurDuParagraphe(f, r.observations) + 30);
+    paragrapheLibre(f, r.observations);
+    signature(f, 'N+1', d.n1, d.validations.n1);
+    f.sousSection('8.3', 'Commentaires du N+2', hauteurDuParagraphe(f, n2) + 30);
+    paragrapheLibre(f, n2);
+    signature(f, 'N+2', d.n2, d.n2?.le ?? null);
+  }
 
   // À la main, sur l'original : des lignes à écrire, entre deux filets ; la
   // diffusion les suit sur la même page.
-  const lignes = 4;
-  const pas = 21;
+  const autres = [[f.aEcrire(4)]];
   const diffusion =
     'Diffusion : original au dossier du personnel (DCH)  ·  copie 1 au N+1  ·  copie 2 au N+2, selon le circuit de validation.';
   const hDiffusion = 14 + f.hauteurDe(diffusion, f.largeur, { taille: PETIT });
-  f.sousSection('8.4', 'Commentaires des autres niveaux hiérarchiques', lignes * pas + hDiffusion);
-  f.filet(f.y, FILETS.fort);
-  for (let i = 1; i < lignes; i++) f.filet(f.y + i * pas, FILETS.fin);
-  f.y += lignes * pas;
-  f.filet(f.y, FILETS.fort);
+  f.sousSection(
+    '8.4',
+    'Commentaires des autres niveaux hiérarchiques',
+    f.debutDuTableau(pleineLargeur(f), autres, { titres: false }) + hDiffusion,
+  );
+  f.tableau(pleineLargeur(f), autres, { titres: false });
 
   f.mention(diffusion, 14);
+}
+
+/**
+ * Sur la fiche vierge : les lignes d'un commentaire, puis le nom, la
+ * fonction, la date et la signature de qui l'écrit, dans un même tableau.
+ */
+function commentaireSigne(f: Composition, lignes: number): { hauteur: number; poser: () => void } {
+  const cols = colonnes(f, ['', 1.5], ['', 1.6], ['', 1], ['', 1.3]);
+  const rangs: Cellule[][] = [
+    [f.aEcrire(lignes, 4)],
+    [f.champ('Prénom et nom'), f.champ('Fonction'), f.champ('Date'), f.champ('Signature')],
+  ];
+  return {
+    hauteur: f.debutDuTableau(cols, rangs, { titres: false }),
+    poser: () => f.tableau(cols, rangs, { titres: false }),
+  };
 }
 
 /**
