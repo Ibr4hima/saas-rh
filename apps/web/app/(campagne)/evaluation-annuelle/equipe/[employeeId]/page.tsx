@@ -19,6 +19,7 @@ import { FicheDuN1 } from '../../../../../components/campagne/evaluation-du-n1';
 import {
   CarteDEtape,
   IdentiteDeLaCampagne,
+  MotDeRenvoi,
   periodeDeLAuto,
   periodeDeLEvaluation,
   RetourALAccueil,
@@ -37,8 +38,9 @@ import { CLE_CAMPAGNE } from '../../../../../lib/campagne';
    transmise, la fiche S1/EN05 entière, que le N+1 remplit (ADR-0216).
    Chaque modification s'enregistre seule ; la barre collée au bas de
    l'écran dit ce qui manque et porte « Transmettre à l'agent ».
-   Transmise, l'évaluation se lit et ne change plus. Cette page ne s'ouvre
-   qu'à l'évaluateur de l'agent.
+   Transmise, l'évaluation se lit ; l'agent la valide, ou la renvoie avec un
+   mot, qui s'affiche alors au-dessus de la fiche, de nouveau à remplir
+   (ADR-0217). Cette page ne s'ouvre qu'à l'évaluateur de l'agent.
    ──────────────────────────────────────────────────────────────── */
 
 export default function AgentDeLEquipePage() {
@@ -83,7 +85,7 @@ export default function AgentDeLEquipePage() {
 
 function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
   const auto = v.agent.auto ? statutDeLAgent(v.agent.auto) : null;
-  const evaluation = statutDeMonEvaluation(v.etatDeLEvaluation, v.evaluationTransmiseLe);
+  const evaluation = statutDeMonEvaluation(v);
   const carteDeLAuto = auto ? (
     <CarteDEtape
       icone="rate_review"
@@ -107,6 +109,12 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
               periode={periodeDeLEvaluation(v.periode)}
             />
           </div>
+          {v.renvoi ? (
+            <MotDeRenvoi
+              titre={`Renvoyée par ${v.agent.prenom} ${v.agent.nom}`}
+              renvoi={v.renvoi}
+            />
+          ) : null}
           {v.modifiable ? (
             <Saisie vue={v} auto={v.autoEvaluation} />
           ) : (
@@ -115,7 +123,8 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
               objectifs={v.objectifs}
               personnel={personnelDeLaFiche(v.agent.personnel)}
               auto={v.autoEvaluation}
-              ecriture={{ evaluation: v.evaluation, reservee: v.reservee }}
+              evaluation={v.evaluation}
+              reservee={v.reservee}
             />
           )}
         </>
@@ -169,7 +178,8 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
         objectifs={v.objectifs}
         personnel={personnel}
         auto={auto}
-        ecriture={valeur}
+        evaluation={valeur.evaluation}
+        reservee={valeur.reservee}
         onChange={changer}
       />
       <BarreDeTransmission
@@ -195,7 +205,8 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
           <span className="font-semibold text-ink-strong">
             {v.agent.prenom} {v.agent.nom}
           </span>
-          , sans la partie réservée à la hiérarchie, et ne pourra plus être modifiée.
+          , sans la partie réservée à la hiérarchie. Elle ne pourra plus être modifiée, sauf si
+          l’agent vous la renvoie.
         </Confirmation>
       ) : null}
     </>

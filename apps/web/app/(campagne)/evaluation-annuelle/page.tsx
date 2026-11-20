@@ -6,15 +6,23 @@ import { Badge, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import {
   AutoFaite,
   BoutonMAutoEvaluer,
+  BoutonValiderMonEvaluation,
   CarteDEtape,
+  EvaluationValidee,
   IdentiteDeLaCampagne,
+  ouEnEstMonEvaluation,
   periodeDeLAuto,
   statutDeLAgent,
   statutDeLEvaluation,
 } from '../../../components/campagne/fiche';
 import { Icon } from '../../../components/icons';
 import { ApiError } from '../../../lib/api';
-import { ACCUEIL_DE_LA_CAMPAGNE, useAccueilDeLaCampagne } from '../../../lib/campagne';
+import {
+  ACCUEIL_DE_LA_CAMPAGNE,
+  AUTO_EVALUATION,
+  MON_EVALUATION,
+  useAccueilDeLaCampagne,
+} from '../../../lib/campagne';
 
 /* ────────────────────────────────────────────────────────────────
    L'accueil de la campagne d'évaluation annuelle (ADR-0211).
@@ -23,8 +31,11 @@ import { ACCUEIL_DE_LA_CAMPAGNE, useAccueilDeLaCampagne } from '../../../lib/cam
    la personne, comme celle de son dossier : son nom, son matricule, son
    poste, et en repères sa direction, son département, son service, son N+1
    et son statut ; à droite du nom, le bouton « M’auto-évaluer » tant que
-   l'auto-évaluation est ouverte (ADR-0214). Puis son auto-évaluation : sa
-   période, et la coche bleue une fois transmise.
+   l'auto-évaluation est ouverte (ADR-0214), puis « Valider mon évaluation »
+   quand le N+1 l'a transmise (ADR-0217). Puis ses deux étapes : son
+   auto-évaluation, sa période, et la coche bleue une fois transmise ; une
+   fois transmise, à côté, l'évaluation du N+1, avec la coche bleue une fois
+   validée. Chacune s'ouvre dès qu'il y a quelque chose à y lire.
    Enfin, si la personne évalue des agents, son équipe : une carte par
    agent, en deux groupes. Une auto-évaluation faite rend la carte
    cliquable : le N+1 ouvre alors l'évaluation de l'agent, et la carte dit
@@ -63,21 +74,45 @@ export default function AccueilDeLaCampagnePage() {
     );
   }
   const auto = v.moi.auto;
-  // Le bouton, tant que l'auto-évaluation est ouverte et pas encore transmise.
-  const aFaire = auto !== null && auto.etat !== 'transmise' && v.phase === 'auto_evaluation';
-  // L'en-tête et la carte de l'auto-évaluation portent leur marge du bas :
-  // le même écart sépare les blocs, que cette carte soit là ou non.
+  const recue = v.monEvaluation;
+  const transmise = auto?.etat === 'transmise';
+  // Le bouton, tant que l'auto-évaluation est ouverte et pas encore transmise ;
+  // puis, l'évaluation du N+1 arrivée, celui qui l'ouvre pour la valider.
+  const aFaire = auto !== null && !transmise && v.phase === 'auto_evaluation';
+  const action = aFaire ? (
+    <BoutonMAutoEvaluer />
+  ) : recue?.etat === 'a_valider' ? (
+    <BoutonValiderMonEvaluation />
+  ) : null;
+  const carteDeLAuto = auto ? (
+    <CarteDEtape
+      icone="rate_review"
+      titre="Mon auto-évaluation"
+      marque={transmise ? <AutoFaite le={auto.transmiseLe} /> : null}
+      periode={periodeDeLAuto(v.periode)}
+      href={transmise ? AUTO_EVALUATION : undefined}
+    />
+  ) : null;
+  // L'en-tête et les cartes des étapes portent leur marge du bas : le même
+  // écart sépare les blocs, que ces cartes soient là ou non.
   return (
     <div className="flex flex-col gap-4">
-      <IdentiteDeLaCampagne agent={v.moi} action={aFaire ? <BoutonMAutoEvaluer /> : null} />
-      {auto ? (
-        <CarteDEtape
-          icone="rate_review"
-          titre="Mon auto-évaluation"
-          marque={auto.etat === 'transmise' ? <AutoFaite le={auto.transmiseLe} /> : null}
-          periode={periodeDeLAuto(v.periode)}
-        />
-      ) : null}
+      <IdentiteDeLaCampagne agent={v.moi} action={action} />
+      {transmise && recue ? (
+        // Les deux étapes côte à côte : l'auto-évaluation, puis celle du N+1.
+        <div className="grid grid-cols-1 gap-x-4 lg:grid-cols-2">
+          {carteDeLAuto}
+          <CarteDEtape
+            icone="checklist"
+            titre="Évaluation du N+1"
+            marque={recue.etat === 'validee' ? <EvaluationValidee le={recue.valideeLe} /> : null}
+            periode={ouEnEstMonEvaluation(recue, v.periode)}
+            href={recue.etat === 'en_attente' ? undefined : MON_EVALUATION}
+          />
+        </div>
+      ) : (
+        carteDeLAuto
+      )}
       {v.equipe.length > 0 ? <Equipe equipe={v.equipe} /> : null}
     </div>
   );

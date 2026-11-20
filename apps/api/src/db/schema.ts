@@ -1018,6 +1018,10 @@ export const fichesEntretien = pgTable('fiches_entretien', {
   reservee: jsonb('reservee'),
   evaluationParEmployeeId: uuid('evaluation_par_employee_id'),
   evaluationTransmiseLe: timestamp('evaluation_transmise_le', { withTimezone: true }),
+  /** La validation par l'agent, ou son dernier renvoi au N+1, avec son mot (0140, ADR-0217). */
+  valideeLe: timestamp('validee_le', { withTimezone: true }),
+  renvoyeeLe: timestamp('renvoyee_le', { withTimezone: true }),
+  renvoiMot: text('renvoi_mot'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

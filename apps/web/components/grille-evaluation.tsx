@@ -1674,6 +1674,7 @@ export function Confirmation({
   libelle,
   enCours,
   erreur,
+  desactive = false,
   onConfirmer,
   onClose,
   children,
@@ -1682,6 +1683,8 @@ export function Confirmation({
   libelle: string;
   enCours: boolean;
   erreur: string | null;
+  /** Le geste attend encore quelque chose : un mot à écrire. */
+  desactive?: boolean;
   onConfirmer: () => void;
   onClose: () => void;
   children: ReactNode;
@@ -1697,7 +1700,7 @@ export function Confirmation({
           <Button variant="secondary" onClick={onClose}>
             Annuler
           </Button>
-          <Button loading={enCours} onClick={onConfirmer}>
+          <Button loading={enCours} disabled={desactive} onClick={onConfirmer}>
             {libelle}
           </Button>
         </>

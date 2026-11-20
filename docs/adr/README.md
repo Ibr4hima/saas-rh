@@ -219,6 +219,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0211](0211-mode-campagne-et-accueil.md)              | Le mode campagne et l'accueil de l'évaluation annuelle, sans menu                       | acceptée, révisée : 0212, 0214, 0216        |
 | [0212](0212-barre-de-la-campagne.md)                  | La barre de la campagne, son titre en grand ; la connexion des agents par code          | acceptée                                    |
 | [0213](0213-fond-clair-fafafa.md)                     | Le fond clair de l'application revient à #FAFAFA                                        | acceptée                                    |
-| [0214](0214-bouton-m-auto-evaluer.md)                 | Le bouton M'auto-évaluer et la coche bleue de l'auto-évaluation faite                   | acceptée                                    |
+| [0214](0214-bouton-m-auto-evaluer.md)                 | Le bouton M'auto-évaluer et la coche bleue de l'auto-évaluation faite                   | acceptée, complétée par 0217                |
 | [0215](0215-formulaire-d-auto-evaluation.md)          | Le formulaire d'auto-évaluation de la campagne, sur la fiche S1/EN05                    | acceptée, complétée par 0216                |
-| [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | acceptée                                    |
+| [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | acceptée, complétée par 0217                |
+| [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | acceptée                                    |

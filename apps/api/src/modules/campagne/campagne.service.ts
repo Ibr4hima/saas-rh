@@ -20,14 +20,18 @@ import {
   type AutoEvaluation,
   type EcritureDeLEvaluation,
   type EtatDeLEvaluation,
+  type EtatDeMonEvaluation,
   type EvaluationDeLAgent,
   type EvaluationDuN1,
+  type EvaluationRecue,
   type MonAutoEvaluation,
+  type MonEvaluation,
   type ObjectifEvalue,
   type PartieReservee,
   type PeriodeDeLaCampagne,
   type PersonnelDeLaFiche,
   type PhaseDeLaCampagne,
+  type RenvoiDeLEvaluation,
   type SessionUser,
 } from '@teranga/contracts';
 import { v7 as uuidv7 } from 'uuid';
@@ -55,6 +59,11 @@ import { directionDeLUnite } from '../people/chaine';
    personne d'autre, pendant la période de l'année, en brouillon puis
    transmise à l'agent (ADR-0216). La partie réservée à la hiérarchie se
    garde à part : l'agent ne la lit jamais.
+
+   L'agent lit l'évaluation transmise, puis la valide : elle ne change
+   plus. En désaccord, l'agent la renvoie au N+1 avec un mot, tant que le
+   N+1 peut encore la reprendre ; le N+1 la corrige et la transmet de
+   nouveau (ADR-0217).
    ──────────────────────────────────────────────────────────────── */
 
 /** L'évaluateur de la campagne, sur un agent `e` et sa fiche de l'année `f`. */
@@ -76,13 +85,15 @@ export class CampagneService {
       const annee = await anneeDeLaCampagne(tx);
       const { periode, phase } = await periodeDe(tx, annee);
       const moi = await employeDuCompte(tx, user.userId);
-      if (!moi) return { annee, periode, phase, moi: null, equipe: [] };
+      if (!moi) return { annee, periode, phase, moi: null, equipe: [], monEvaluation: null };
+      const fiche = await ficheDe(tx, moi, annee);
       return {
         annee,
         periode,
         phase,
-        moi: await ficheDe(tx, moi, annee),
+        moi: fiche,
         equipe: await equipeDe(tx, moi, annee),
+        monEvaluation: fiche.auto ? evaluationRecue(await ficheDeLAnnee(tx, moi, annee)) : null,
       };
     });
   }
@@ -122,6 +133,29 @@ export class CampagneService {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await ecrireEvaluation(tx, user, employeeId, ecriture, true);
       return agentDans(tx, user, employeeId);
+    });
+  }
+
+  /** Son évaluation par le N+1, pour la lire, puis la valider ou la renvoyer (ADR-0217). */
+  async monEvaluation(user: SessionUser): Promise<MonEvaluation> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      monEvaluationDans(tx, user),
+    );
+  }
+
+  /** L'agent valide son évaluation : elle ne change plus. */
+  async validerMonEvaluation(user: SessionUser): Promise<MonEvaluation> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await validerMonEvaluationDans(tx, user);
+      return monEvaluationDans(tx, user);
+    });
+  }
+
+  /** En désaccord, l'agent renvoie son évaluation au N+1, avec un mot. */
+  async renvoyerMonEvaluation(user: SessionUser, mot: string): Promise<MonEvaluation> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await renvoyerMonEvaluationDans(tx, user, mot);
+      return monEvaluationDans(tx, user);
     });
   }
 
@@ -171,11 +205,7 @@ async function agentDans(
   const agent = await ficheDe(tx, employeeId, annee);
   const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
   const autoTransmise = agent.auto?.etat === 'transmise';
-  const etatDeLEvaluation: EtatDeLEvaluation = annuelle.evaluationTransmiseLe
-    ? 'transmise'
-    : annuelle.evaluation
-      ? 'en_cours'
-      : 'a_faire';
+  const etatDeLEvaluation = etatSurLaFiche(annuelle);
   return {
     annee,
     periode,
@@ -188,7 +218,13 @@ async function agentDans(
     reservee: annuelle.reservee ?? partieReserveeVide(),
     etatDeLEvaluation,
     evaluationTransmiseLe: annuelle.evaluationTransmiseLe,
-    modifiable: autoTransmise && evaluationOuverte(phase) && etatDeLEvaluation !== 'transmise',
+    valideeLe: annuelle.valideeLe,
+    renvoi: etatDeLEvaluation === 'renvoyee' ? annuelle.renvoi : null,
+    modifiable:
+      autoTransmise &&
+      evaluationOuverte(phase) &&
+      etatDeLEvaluation !== 'transmise' &&
+      etatDeLEvaluation !== 'validee',
   };
 }
 
@@ -222,6 +258,9 @@ async function ecrireEvaluation(
     problem(409, 'campagne.evaluation_fermee', 'L’évaluation n’est pas ouverte');
   }
   const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
+  if (annuelle.valideeLe) {
+    problem(409, 'campagne.evaluation_validee', 'Évaluation déjà validée par l’agent');
+  }
   if (annuelle.evaluationTransmiseLe) {
     problem(409, 'campagne.evaluation_transmise', 'Évaluation déjà transmise');
   }
@@ -369,6 +408,10 @@ interface FicheDeLAnnee {
   reservee: PartieReservee | null;
   /** AAAA-MM-JJ. */
   evaluationTransmiseLe: string | null;
+  /** AAAA-MM-JJ : la validation par l'agent. */
+  valideeLe: string | null;
+  /** Le dernier renvoi de l'agent au N+1, s'il y en a eu un. */
+  renvoi: RenvoiDeLEvaluation | null;
 }
 
 /**
@@ -383,9 +426,14 @@ async function ficheDeLAnnee(tx: Tx, employeeId: string, annee: number): Promise
     evaluation: unknown;
     reservee: unknown;
     evaluation_transmise_le: string | null;
+    validee_le: string | null;
+    renvoyee_le: string | null;
+    renvoi_mot: string | null;
   }>(sql`
     SELECT objectifs, auto, evaluation, reservee,
-           evaluation_transmise_le::date::text AS evaluation_transmise_le
+           evaluation_transmise_le::date::text AS evaluation_transmise_le,
+           validee_le::date::text AS validee_le, renvoyee_le::date::text AS renvoyee_le,
+           renvoi_mot
       FROM fiches_entretien
      WHERE employee_id = ${employeeId} AND annee = ${annee}`);
   const r = rows[0];
@@ -399,7 +447,140 @@ async function ficheDeLAnnee(tx: Tx, employeeId: string, annee: number): Promise
     evaluation: evaluation?.success ? { ...evaluationDuN1Vide(), ...evaluation.data } : null,
     reservee: reservee?.success ? { ...partieReserveeVide(), ...reservee.data } : null,
     evaluationTransmiseLe: r?.evaluation_transmise_le ?? null,
+    valideeLe: r?.validee_le ?? null,
+    renvoi: r?.renvoyee_le ? { mot: r.renvoi_mot ?? '', le: r.renvoyee_le } : null,
   };
+}
+
+/**
+ * L'état de l'évaluation, sur ce que garde la fiche de l'année : validée,
+ * transmise, renvoyée par l'agent, commencée, ou encore à faire. Une
+ * évaluation transmise de nouveau après un renvoi est transmise.
+ */
+function etatDeLEvaluation(f: {
+  commencee: boolean;
+  transmise: boolean;
+  validee: boolean;
+  renvoyee: boolean;
+}): EtatDeLEvaluation {
+  if (f.validee) return 'validee';
+  if (f.transmise) return 'transmise';
+  if (f.renvoyee) return 'renvoyee';
+  return f.commencee ? 'en_cours' : 'a_faire';
+}
+
+const etatSurLaFiche = (f: FicheDeLAnnee) =>
+  etatDeLEvaluation({
+    commencee: f.evaluation !== null,
+    transmise: f.evaluationTransmiseLe !== null,
+    validee: f.valideeLe !== null,
+    renvoyee: f.renvoi !== null,
+  });
+
+/** Ce que l'agent sait de son évaluation : rien du brouillon du N+1. */
+const POUR_L_AGENT: Record<EtatDeLEvaluation, EtatDeMonEvaluation> = {
+  a_faire: 'en_attente',
+  en_cours: 'en_attente',
+  renvoyee: 'renvoyee',
+  transmise: 'a_valider',
+  validee: 'validee',
+};
+
+/** Son évaluation par le N+1, vue par l'agent. */
+function evaluationRecue(f: FicheDeLAnnee): EvaluationRecue {
+  const etat = POUR_L_AGENT[etatSurLaFiche(f)];
+  return {
+    etat,
+    transmiseLe: f.evaluationTransmiseLe,
+    valideeLe: f.valideeLe,
+    renvoyeeLe: etat === 'renvoyee' ? (f.renvoi?.le ?? null) : null,
+  };
+}
+
+/**
+ * Son évaluation, telle que l'agent la lit : la version transmise par le
+ * N+1, jamais son brouillon, jamais la partie réservée à la hiérarchie.
+ */
+async function monEvaluationDans(tx: Tx, user: SessionUser): Promise<MonEvaluation> {
+  const annee = await anneeDeLaCampagne(tx);
+  const { id, fiche } = await monDossierEvalue(tx, user, annee);
+  const { periode, phase } = await periodeDe(tx, annee);
+  const annuelle = await ficheDeLAnnee(tx, id, annee);
+  const recue = evaluationRecue(annuelle);
+  return {
+    annee,
+    periode,
+    phase,
+    personnel: personnelDeLaFiche(fiche.personnel),
+    objectifs: annuelle.objectifs,
+    auto: annuelle.auto ?? autoEvaluationVide(),
+    evaluation:
+      recue.etat === 'a_valider' || recue.etat === 'validee'
+        ? (annuelle.evaluation ?? evaluationDuN1Vide())
+        : null,
+    evaluateur: fiche.evaluateur,
+    ...recue,
+    renvoi: recue.etat === 'renvoyee' ? annuelle.renvoi : null,
+    validable: recue.etat === 'a_valider',
+    renvoyable: recue.etat === 'a_valider' && evaluationOuverte(phase),
+  };
+}
+
+/** Son évaluation, transmise et pas encore validée ; sinon, 409. */
+async function aValider(
+  tx: Tx,
+  user: SessionUser,
+): Promise<{ id: string; annee: number; phase: PhaseDeLaCampagne }> {
+  const annee = await anneeDeLaCampagne(tx);
+  const { id } = await monDossierEvalue(tx, user, annee);
+  const annuelle = await ficheDeLAnnee(tx, id, annee);
+  if (annuelle.valideeLe) {
+    problem(409, 'campagne.evaluation_validee', 'Évaluation déjà validée');
+  }
+  if (!annuelle.evaluationTransmiseLe) {
+    problem(
+      409,
+      'campagne.evaluation_non_transmise',
+      'L’évaluation de votre N+1 n’est pas encore transmise',
+    );
+  }
+  const { phase } = await periodeDe(tx, annee);
+  return { id, annee, phase };
+}
+
+/**
+ * L'agent valide son évaluation, à tout moment une fois transmise : la
+ * fiche n'est valable qu'une fois validée. Elle ne change plus ensuite, même
+ * par deux gestes qui se croisent.
+ */
+async function validerMonEvaluationDans(tx: Tx, user: SessionUser): Promise<void> {
+  const { id, annee } = await aValider(tx, user);
+  await tx.execute(sql`
+    UPDATE fiches_entretien SET validee_le = now(), updated_at = now()
+     WHERE employee_id = ${id} AND annee = ${annee}
+       AND evaluation_transmise_le IS NOT NULL AND validee_le IS NULL`);
+}
+
+/**
+ * L'agent renvoie son évaluation au N+1, avec son mot : elle redevient un
+ * brouillon du N+1. Seulement pendant la période de l'année, où le N+1 peut
+ * encore la reprendre.
+ */
+async function renvoyerMonEvaluationDans(tx: Tx, user: SessionUser, mot: string): Promise<void> {
+  const { id, annee, phase } = await aValider(tx, user);
+  if (!evaluationOuverte(phase)) {
+    problem(
+      409,
+      'campagne.evaluation_fermee',
+      'La période de l’évaluation est terminée : votre N+1 ne peut plus la reprendre',
+    );
+  }
+  await tx.execute(sql`
+    UPDATE fiches_entretien
+       SET evaluation_transmise_le = NULL, renvoyee_le = now(), renvoi_mot = ${mot},
+           updated_at = now()
+     WHERE employee_id = ${id} AND annee = ${annee}
+       AND evaluation_transmise_le IS NOT NULL AND validee_le IS NULL`);
 }
 
 /** L'année de la campagne : celle du mode campagne, sinon l'année en cours. */
@@ -516,12 +697,16 @@ async function equipeDe(tx: Tx, id: string, annee: number): Promise<AgentDeLEqui
     transmise_le: string | null;
     evaluation_commencee: boolean;
     evaluation_transmise: boolean;
+    evaluation_validee: boolean;
+    evaluation_renvoyee: boolean;
   }>(sql`
     SELECT e.id, p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
            a.position_title AS poste,
            f.auto IS NOT NULL AS commencee, f.auto_transmise_le::date::text AS transmise_le,
            f.evaluation IS NOT NULL AS evaluation_commencee,
-           f.evaluation_transmise_le IS NOT NULL AS evaluation_transmise
+           f.evaluation_transmise_le IS NOT NULL AS evaluation_transmise,
+           f.validee_le IS NOT NULL AS evaluation_validee,
+           f.renvoyee_le IS NOT NULL AS evaluation_renvoyee
       FROM employees e
       JOIN persons p ON p.id = e.person_id
       LEFT JOIN assignments a ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
@@ -535,10 +720,11 @@ async function equipeDe(tx: Tx, id: string, annee: number): Promise<AgentDeLEqui
     matricule: r.matricule,
     poste: r.poste,
     auto: autoDe(r.commencee, r.transmise_le),
-    evaluation: r.evaluation_transmise
-      ? 'transmise'
-      : r.evaluation_commencee
-        ? 'en_cours'
-        : 'a_faire',
+    evaluation: etatDeLEvaluation({
+      commencee: r.evaluation_commencee,
+      transmise: r.evaluation_transmise,
+      validee: r.evaluation_validee,
+      renvoyee: r.evaluation_renvoyee,
+    }),
   }));
 }

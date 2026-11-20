@@ -63,25 +63,28 @@ const appreciationVide = (): AppreciationDuN1 => ({ niveau: null, commentaire: '
  * La fiche du N+1. Obligatoires, et marqués d'un astérisque : l'appréciation
  * de chaque objectif, chaque compétence (sauf le management, s'il y a lieu),
  * les points forts, les axes de développement, puis la compréhension et la
- * tenue du poste. Sans `onChange`, la fiche se lit.
+ * tenue du poste. Sans `onChange`, la fiche se lit ; sans `reservee`, c'est
+ * celle de l'agent, qui s'arrête avant la partie réservée (ADR-0217).
  */
 export function FicheDuN1({
   annee,
   objectifs,
   personnel,
   auto,
-  ecriture,
+  evaluation: ecrite,
+  reservee,
   onChange,
 }: {
   annee: number;
   objectifs: readonly ObjectifEvalue[];
   personnel: PersonnelDeLaFiche;
   auto: AutoEvaluation;
-  ecriture: EcritureDeLEvaluation;
+  evaluation: EvaluationDuN1;
+  reservee: PartieReservee | null;
   onChange?: Changement<EcritureDeLEvaluation>;
 }) {
   // En lecture, les lignes laissées vides d'un tableau ne se montrent pas.
-  const evaluation = onChange ? ecriture.evaluation : sansLignesVides(ecriture.evaluation);
+  const evaluation = onChange ? ecrite : sansLignesVides(ecrite);
   const changer: MiseAJour | undefined = onChange
     ? (maj) => onChange((x) => ({ ...x, evaluation: maj(x.evaluation) }))
     : undefined;
@@ -104,7 +107,7 @@ export function FicheDuN1({
       <Synthese evaluation={evaluation} onChange={changer} />
       <Perspectives annee={annee} evaluation={evaluation} onChange={changer} />
       <SouhaitsEnLecture auto={auto} qui={PAR_L_AGENT} />
-      <Reservee reservee={ecriture.reservee} onChange={reserver} />
+      {reservee ? <Reservee reservee={reservee} onChange={reserver} /> : null}
     </>
   );
 }

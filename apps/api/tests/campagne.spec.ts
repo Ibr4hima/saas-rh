@@ -563,6 +563,129 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
   });
 });
 
+describe('la validation par l’agent (ADR-0217)', () => {
+  it('se lit une fois transmise, sans le brouillon du N+1 ni la partie réservée', async () => {
+    // Cheikh Mbaye a commencé l'évaluation d'Ousmane Fall, sans la transmettre.
+    const attente = await campagne.monEvaluation(session('ousmane'));
+    expect([attente.etat, attente.evaluation, attente.validable]).toEqual([
+      'en_attente',
+      null,
+      false,
+    ]);
+    await expect(campagne.validerMonEvaluation(session('ousmane'))).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_non_transmise' },
+    });
+
+    const v = await campagne.monEvaluation(session('ibou'));
+    expect([v.etat, v.transmiseLe, v.validable, v.renvoyable]).toEqual([
+      'a_valider',
+      AUJOURD_HUI,
+      true,
+      true,
+    ]);
+    expect(v.personnel).toBe('non_cadre');
+    expect(v.evaluation?.pointsForts).toBe('Rigueur et disponibilité.');
+    expect(v.evaluateur).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
+    expect(JSON.stringify(v)).not.toContain('comprehension');
+    expect((await campagne.accueil(session('ibou'))).monEvaluation).toEqual({
+      etat: 'a_valider',
+      transmiseLe: AUJOURD_HUI,
+      valideeLe: null,
+      renvoyeeLe: null,
+    });
+  });
+
+  it('en désaccord, repart au N+1 avec un mot ; le N+1 la reprend et la transmet', async () => {
+    const mot = 'Le niveau de l’objectif 2 ne tient pas compte du retard des données.';
+    const r = await campagne.renvoyerMonEvaluation(session('ibou'), mot);
+    expect([r.etat, r.evaluation, r.validable, r.renvoyeeLe]).toEqual([
+      'renvoyee',
+      null,
+      false,
+      AUJOURD_HUI,
+    ]);
+    expect(r.renvoi).toEqual({ mot, le: AUJOURD_HUI });
+
+    const n1 = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect([n1.etatDeLEvaluation, n1.modifiable, n1.evaluationTransmiseLe]).toEqual([
+      'renvoyee',
+      true,
+      null,
+    ]);
+    expect(n1.renvoi?.mot).toBe(mot);
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('renvoyee');
+    await expect(campagne.validerMonEvaluation(session('ibou'))).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_non_transmise' },
+    });
+
+    const t = await campagne.transmettreEvaluation(session('awa'), agents.ibou, {
+      evaluation: {
+        ...n1.evaluation,
+        objectifs: Object.fromEntries(
+          n1.objectifs.map((o) => [o.id, { niveau: 'B' as const, commentaire: 'Revu.' }]),
+        ),
+      },
+      reservee: n1.reservee,
+    });
+    expect([t.etatDeLEvaluation, t.renvoi]).toEqual(['transmise', null]);
+    expect((await campagne.monEvaluation(session('ibou'))).etat).toBe('a_valider');
+  });
+
+  it('validée, elle ne change plus : ni renvoi, ni écriture du N+1', async () => {
+    const v = await campagne.validerMonEvaluation(session('ibou'));
+    expect([v.etat, v.valideeLe, v.validable, v.renvoyable]).toEqual([
+      'validee',
+      AUJOURD_HUI,
+      false,
+      false,
+    ]);
+    expect(v.evaluation?.pointsForts).toBe('Rigueur et disponibilité.');
+    for (const geste of [
+      () => campagne.validerMonEvaluation(session('ibou')),
+      () => campagne.renvoyerMonEvaluation(session('ibou'), 'Trop tard.'),
+    ]) {
+      await expect(geste()).rejects.toMatchObject({
+        problem: { status: 409, code: 'campagne.evaluation_validee' },
+      });
+    }
+    await expect(
+      campagne.enregistrerEvaluation(session('awa'), agents.ibou, {
+        evaluation: evaluationDuN1Vide(),
+        reservee: partieReserveeVide(),
+      }),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.evaluation_validee' } });
+    const n1 = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect([n1.etatDeLEvaluation, n1.valideeLe, n1.modifiable]).toEqual([
+      'validee',
+      AUJOURD_HUI,
+      false,
+    ]);
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('validee');
+  });
+
+  it('après la période, le renvoi se ferme ; la validation, non', async () => {
+    await periode(-20, -15, -1);
+    expect((await campagne.monEvaluation(session('moussa'))).renvoyable).toBe(false);
+    await expect(
+      campagne.renvoyerMonEvaluation(session('moussa'), 'À revoir.'),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.evaluation_fermee' } });
+    expect((await campagne.validerMonEvaluation(session('moussa'))).etat).toBe('validee');
+    await periode(-2, 3, 10);
+  });
+
+  it('n’existe pas sans évaluation : au sommet, en stage, sans dossier', async () => {
+    for (const qui of ['dg', 'lamine', 'admin'] as const) {
+      await expect(campagne.monEvaluation(session(qui))).rejects.toMatchObject({
+        problem: { status: 404, code: 'campagne.sans_auto_evaluation' },
+      });
+    }
+    expect((await campagne.accueil(session('dg'))).monEvaluation).toBeNull();
+    expect((await campagne.accueil(session('fatou'))).monEvaluation?.etat).toBe('en_attente');
+  });
+});
+
 describe('les phases de la campagne', () => {
   it('à venir, auto-évaluation, évaluation, terminée, et sans période', async () => {
     const phase = async () => (await campagne.accueil(session('moussa'))).phase;

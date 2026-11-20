@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   autoEvaluationSchema,
   evaluationDuN1Schema,
+  LONGUEURS_DE_LA_FICHE,
   partieReserveeSchema,
   type AutoEvaluation,
   type EvaluationDuN1,
@@ -33,8 +34,40 @@ export type PhaseDeLaCampagne =
 /** L'auto-évaluation d'un agent. */
 export type EtatDeLAuto = 'a_faire' | 'en_cours' | 'transmise';
 
-/** L'évaluation d'un agent par son N+1 (ADR-0216). */
-export type EtatDeLEvaluation = 'a_faire' | 'en_cours' | 'transmise';
+/** L'évaluation d'un agent par son N+1 (ADR-0216, ADR-0217). */
+export type EtatDeLEvaluation =
+  | 'a_faire'
+  | 'en_cours'
+  /** Renvoyée par l'agent, avec un mot : le N+1 la reprend. */
+  | 'renvoyee'
+  /** Transmise à l'agent, qui la lit, puis la valide ou la renvoie. */
+  | 'transmise'
+  /** Validée par l'agent : elle ne change plus. */
+  | 'validee';
+
+/**
+ * Son évaluation par le N+1, vue par l'agent (ADR-0217) : tant que le N+1
+ * ne l'a pas transmise, l'agent n'en sait rien de plus.
+ */
+export type EtatDeMonEvaluation = 'en_attente' | 'a_valider' | 'renvoyee' | 'validee';
+
+/** Le mot de l'agent qui renvoie son évaluation au N+1. */
+export interface RenvoiDeLEvaluation {
+  mot: string;
+  /** AAAA-MM-JJ. */
+  le: string;
+}
+
+/** Son évaluation par le N+1, sur son accueil. */
+export interface EvaluationRecue {
+  etat: EtatDeMonEvaluation;
+  /** AAAA-MM-JJ : le jour où le N+1 l'a transmise. */
+  transmiseLe: string | null;
+  /** AAAA-MM-JJ : le jour où l'agent l'a validée. */
+  valideeLe: string | null;
+  /** AAAA-MM-JJ : le jour du renvoi au N+1, tant qu'elle n'est pas revenue. */
+  renvoyeeLe: string | null;
+}
 
 export interface AutoDeLAgent {
   etat: EtatDeLAuto;
@@ -97,6 +130,8 @@ export interface AccueilDeLaCampagne {
   moi: AgentDeLaCampagne | null;
   /** Les agents qu'évalue la personne connectée ; vide s'il n'y en a pas. */
   equipe: AgentDeLEquipe[];
+  /** Son évaluation par le N+1 ; `null` : cette personne n'est pas évaluée (ADR-0217). */
+  monEvaluation: EvaluationRecue | null;
 }
 
 /** Un agent de l'équipe, tel que son évaluateur l'ouvre depuis sa carte. */
@@ -116,9 +151,14 @@ export interface EvaluationDeLAgent {
   etatDeLEvaluation: EtatDeLEvaluation;
   /** AAAA-MM-JJ : le jour où le N+1 l'a transmise à l'agent. */
   evaluationTransmiseLe: string | null;
+  /** AAAA-MM-JJ : le jour où l'agent l'a validée (ADR-0217). */
+  valideeLe: string | null;
+  /** Le mot de l'agent qui l'a renvoyée, tant que le N+1 ne l'a pas transmise à nouveau. */
+  renvoi: RenvoiDeLEvaluation | null;
   /**
    * Ouverte à l'écriture du N+1 : l'auto-évaluation transmise, pendant la
-   * période de l'année, tant que l'évaluation n'est pas transmise.
+   * période de l'année, tant que l'évaluation n'est pas transmise, ou une
+   * fois renvoyée par l'agent.
    */
   modifiable: boolean;
 }
@@ -151,3 +191,31 @@ export interface MonAutoEvaluation {
 /** L'écriture de son auto-évaluation : le brouillon, ou la version transmise. */
 export const ecritureDeLAutoSchema = z.object({ auto: autoEvaluationSchema });
 export type EcritureDeLAuto = z.infer<typeof ecritureDeLAutoSchema>;
+
+/** Son évaluation par le N+1, telle que l'agent la lit (ADR-0217) : jamais la partie réservée. */
+export interface MonEvaluation extends EvaluationRecue {
+  annee: number;
+  periode: PeriodeDeLaCampagne | null;
+  phase: PhaseDeLaCampagne;
+  /** Le personnel de sa fiche : le management n'y figure que pour le personnel cadre. */
+  personnel: PersonnelDeLaFiche;
+  objectifs: ObjectifEvalue[];
+  /** Son auto-évaluation. */
+  auto: AutoEvaluation;
+  /** L'évaluation transmise par le N+1 ; `null` tant qu'elle ne l'est pas. */
+  evaluation: EvaluationDuN1 | null;
+  /** Le N+1 qui l'évalue. */
+  evaluateur: PersonneDeLaCampagne | null;
+  /** Le mot de son renvoi, tant que l'évaluation n'est pas revenue. */
+  renvoi: RenvoiDeLEvaluation | null;
+  /** À valider : transmise, pas encore validée. */
+  validable: boolean;
+  /** À renvoyer, s'il y a lieu : tant que le N+1 peut encore la reprendre. */
+  renvoyable: boolean;
+}
+
+/** Le renvoi de son évaluation au N+1 : son mot, obligatoire. */
+export const renvoiSchema = z.object({
+  mot: z.string().trim().min(1).max(LONGUEURS_DE_LA_FICHE.texte),
+});
+export type Renvoi = z.infer<typeof renvoiSchema>;

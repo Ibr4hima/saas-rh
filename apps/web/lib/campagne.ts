@@ -10,6 +10,9 @@ export const ACCUEIL_DE_LA_CAMPAGNE = '/evaluation-annuelle';
 /** Son auto-évaluation (ADR-0214). */
 export const AUTO_EVALUATION = `${ACCUEIL_DE_LA_CAMPAGNE}/auto-evaluation`;
 
+/** Son évaluation par le N+1, à lire et à valider (ADR-0217). */
+export const MON_EVALUATION = `${ACCUEIL_DE_LA_CAMPAGNE}/mon-evaluation`;
+
 export const CLE_CAMPAGNE = ['campagne'] as const;
 
 /**

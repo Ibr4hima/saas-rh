@@ -14,8 +14,10 @@ import {
 import {
   ecritureDeLAutoSchema,
   ecritureDeLEvaluationSchema,
+  renvoiSchema,
   type EcritureDeLAuto,
   type EcritureDeLEvaluation,
+  type Renvoi,
 } from '@teranga/contracts';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { AccesGuard, FermeAuxInactifs } from '../auth/acces.guard';
@@ -23,10 +25,10 @@ import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { CampagneService } from './campagne.service';
 
 /**
- * La campagne d'évaluation annuelle (ADR-0211, ADR-0215, ADR-0216) : ouverte
- * à tout agent. On n'y lit que sa propre fiche et celles des agents qu'on
- * évalue ; on n'y écrit que sa propre auto-évaluation, et l'évaluation des
- * agents qu'on évalue.
+ * La campagne d'évaluation annuelle (ADR-0211, ADR-0215 à ADR-0217) :
+ * ouverte à tout agent. On n'y lit que sa propre fiche et celles des agents
+ * qu'on évalue ; on n'y écrit que sa propre auto-évaluation, l'évaluation des
+ * agents qu'on évalue, et la validation de sa propre évaluation.
  */
 @Controller('campagne')
 @UseGuards(SessionGuard, AccesGuard)
@@ -65,6 +67,29 @@ export class CampagneController {
     @Body(new ZodValidationPipe(ecritureDeLEvaluationSchema)) body: EcritureDeLEvaluation,
   ) {
     return this.campagne.transmettreEvaluation(req.sessionUser, employeeId, body);
+  }
+
+  /** Son évaluation par le N+1, une fois transmise, sans la partie réservée. */
+  @Get('mon-evaluation')
+  monEvaluation(@Req() req: AuthenticatedRequest) {
+    return this.campagne.monEvaluation(req.sessionUser);
+  }
+
+  /** Sa validation : l'évaluation ne change plus. */
+  @Post('mon-evaluation/validation')
+  @HttpCode(200)
+  valider(@Req() req: AuthenticatedRequest) {
+    return this.campagne.validerMonEvaluation(req.sessionUser);
+  }
+
+  /** Son renvoi au N+1, avec un mot. */
+  @Post('mon-evaluation/renvoi')
+  @HttpCode(200)
+  renvoyer(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(renvoiSchema)) body: Renvoi,
+  ) {
+    return this.campagne.renvoyerMonEvaluation(req.sessionUser, body.mot);
   }
 
   /** Son auto-évaluation, pour son formulaire. */
