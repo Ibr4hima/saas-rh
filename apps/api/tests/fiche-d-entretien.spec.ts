@@ -87,7 +87,8 @@ describe('la fiche en PDF', () => {
     const { tout } = await imprimer(ficheExemple());
     expect(tout).toContain('Moussa SARR');
     expect(tout).toContain('Matricule EMP-002');
-    expect(tout).toContain('22 décembre 2026');
+    // Le jour reste avec son mois : l'espace est insécable.
+    expect(tout).toContain('22 décembre 2026');
     expect(tout).toContain('Non');
 
     const arrive = await imprimer(
@@ -288,5 +289,11 @@ describe('la fiche vierge', () => {
 describe('la typographie', () => {
   it('l’apostrophe courbe et les espaces insécables de la ponctuation française', () => {
     expect(typographie("L'avis : oui ? « Bien » ; non !")).toBe('L’avis : oui ? « Bien » ; non !');
+  });
+
+  it('un nombre reste avec ce qui le suit : « 1 % », « 48 heures »', () => {
+    expect(typographie('Moins de 1 % en 48 heures, sur 312 dossiers en 2026.')).toBe(
+      'Moins de 1\u00a0% en 48\u00a0heures, sur 312\u00a0dossiers en 2026.',
+    );
   });
 });

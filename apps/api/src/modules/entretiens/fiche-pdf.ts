@@ -165,12 +165,14 @@ const VIERGE = {
 
 /**
  * La typographie française d'un texte saisi : l'apostrophe courbe, l'espace
- * insécable avant « : ; ? ! » et dans les guillemets. Une ligne ne commence
- * jamais par un signe de ponctuation.
+ * insécable avant « : ; ? ! » et dans les guillemets, et entre un nombre et ce
+ * qui le suit (« 1 % », « 48 heures »). Une ligne ne commence jamais par un
+ * signe de ponctuation, ni un nombre ne finit une ligne sans son unité.
  */
 export function typographie(texte: string): string {
   return texte
     .replace(/'/g, '’')
+    .replace(/(\d) +(?=[\p{L}%])/gu, '$1 ')
     .replace(/ +([:;?!»])/g, ' $1')
     .replace(/« +/g, '« ');
 }
