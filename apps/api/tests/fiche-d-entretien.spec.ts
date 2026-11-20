@@ -149,6 +149,25 @@ describe('la fiche en PDF', () => {
     expect(italiennesDe(pdf)).toBeLessThan(pagesDe(pdf));
   });
 
+  it('qui a validé en ligne paraphe : ses initiales, à la main (ADR-0209)', async () => {
+    const complete = await imprimer(ficheExemple());
+    // L'agent en section 7 ; le N+1 en section 7 et sous ses observations ;
+    // le N+2 sous ses commentaires.
+    expect(complete.textes.filter((t) => t === 'M.S.')).toHaveLength(1);
+    expect(complete.textes.filter((t) => t === 'A.D.')).toHaveLength(2);
+    expect(complete.textes.filter((t) => t === 'A.N.')).toHaveLength(1);
+    expect(policesDe(complete.pdf)).toContain('Allura-Regular');
+
+    const base = ficheExemple();
+    const sansValidation = await imprimer(
+      ficheExemple({ validations: { n1: null, agent: null }, n2: { ...base.n2!, le: null } }),
+    );
+    for (const paraphe of ['M.S.', 'A.D.', 'A.N.']) {
+      expect(sansValidation.textes).not.toContain(paraphe);
+    }
+    expect(policesDe(sansValidation.pdf)).not.toContain('Allura-Regular');
+  });
+
   it('les textes au plus long tiennent, sur autant de pages qu’il faut', async () => {
     const long = (n: number) =>
       'Une phrase assez longue pour remplir la ligne. '.repeat(60).slice(0, n);
@@ -258,10 +277,11 @@ describe('la fiche vierge', () => {
     expect(italiennesDe(pdf)).toBeGreaterThanOrEqual(1);
   });
 
-  it('les couleurs et les polices de la fiche remplie', async () => {
+  it('les couleurs et les polices de la fiche remplie, sans paraphe', async () => {
     const { pdf } = await imprimerLaVierge();
     for (const c of couleursDe(pdf)) expect(COULEURS).toContain(c);
     expect(policesDe(pdf)).toContain('Raleway-Bold');
+    expect(policesDe(pdf)).not.toContain('Allura-Regular');
   });
 });
 

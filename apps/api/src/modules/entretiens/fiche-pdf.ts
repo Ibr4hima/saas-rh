@@ -33,9 +33,10 @@ import {
   type Coupe,
   type Famille,
 } from '../documents/entete';
+import { initiales } from '../evaluations/feuille-de-grille';
 
 /* ────────────────────────────────────────────────────────────────
-   La fiche d'entretien annuel d'évaluation, en PDF (ADR-0205 à ADR-0208).
+   La fiche d'entretien annuel d'évaluation, en PDF (ADR-0205 à ADR-0209).
 
    Chaque page porte l'en-tête du modèle de la DCH : « DCH », le titre de la
    fiche, puis le bloc de la République, la référence de la fiche et le
@@ -701,6 +702,25 @@ class Composition {
     }
   }
 
+  /**
+   * Le paraphe de qui a validé en ligne : ses initiales à la main, en noir,
+   * un peu penchées, comme sur la grille (ADR-0151, ADR-0209). Allura n'a
+   * qu'une graisse : son contour, tracé à la même encre, l'épaissit.
+   */
+  paraphe(nom: string, x: number, base: number, taille = 22): void {
+    const texte = initiales(nom);
+    if (!texte) return;
+    this.doc.save();
+    this.doc.rotate(-4, { origin: [x, base] });
+    this.style({ famille: 'signature', taille });
+    this.doc
+      .lineWidth(taille * 0.045)
+      .lineJoin('round')
+      .strokeColor(ENCRE)
+      .text(texte, x, base, { lineBreak: false, baseline: 'alphabetic', fill: true, stroke: true });
+    this.doc.restore();
+  }
+
   /** La lettre d'un niveau, en blanc sur un carré bleu aux coins adoucis. */
   lettre(niveau: Niveau, x: number, y: number, cote = 13): void {
     this.doc.roundedRect(x, y, cote, cote, cote * 0.18).fill(BLEU);
@@ -1178,11 +1198,12 @@ function bilan(f: Composition, d: DonneesDeLaFiche): void {
 
 /**
  * Les lignes à écrire qui tiennent encore sur la page sous un titre de
- * sous-section : de trois à six. S'il en tient moins de trois, le titre
- * passe à la page suivante avec ses lignes habituelles.
+ * sous-section, avec ce qui doit les suivre (`apres`) : de trois à six. S'il
+ * en tient moins de trois, le titre passe à la page suivante avec ses lignes
+ * habituelles.
  */
-function lignesQuiRestent(f: Composition, titre: number): number {
-  const reste = f.bas - f.y - AIR.avantSousSection - titre - 2;
+function lignesQuiRestent(f: Composition, titre: number, apres = 0): number {
+  const reste = f.bas - f.y - AIR.avantSousSection - titre - 2 - apres;
   const lignes = Math.floor(reste / PAS_D_ECRITURE);
   return lignes >= 3 ? Math.min(lignes, 6) : VIERGE.commentaire;
 }
@@ -1529,6 +1550,16 @@ function souhaits(f: Composition, d: DonneesDeLaFiche): void {
 // ──────────────────────────────────────────────── 7. Validation
 
 function validation(f: Composition, d: DonneesDeLaFiche): void {
+  /** Validée en ligne : le paraphe, et dessous, en petit, la mention. */
+  const signee = (p: { prenom: string; nom: string } | null): Cellule => ({
+    hauteur: () => 31,
+    dessiner: (x, y, l) => {
+      if (p) f.paraphe(nomImprime(p), x + 2, y + 16);
+      f.doc.save().fillOpacity(0.72);
+      f.ecrire('Validation en ligne', x, y + 21, l, { coupe: 'italic', taille: 7.4 });
+      f.doc.restore();
+    },
+  });
   const ligne = (
     role: string,
     p: { prenom: string; nom: string } | null,
@@ -1541,9 +1572,7 @@ function validation(f: Composition, d: DonneesDeLaFiche): void {
           f.intitule(role),
           f.texte(p ? nomImprime(p) : ''),
           f.texte(le ? dateInsecable(le) : ''),
-          le
-            ? f.texte('Validation en ligne', { coupe: 'italic', taille: 9 })
-            : { hauteur: () => 26, dessiner: () => undefined },
+          le ? signee(p) : { hauteur: () => 26, dessiner: () => undefined },
         ];
   const cols = colonnes(
     f,
@@ -1596,15 +1625,17 @@ function partieReservee(f: Composition, d: DonneesDeLaFiche, r: PartieReservee):
     signature(f, 'N+2', d.n2, d.n2?.le ?? null);
   }
 
-  // À la main, sur l'original : des lignes à écrire, entre deux filets ; la
-  // diffusion les suit sur la même page.
-  const autres = [[f.aEcrire(4)]];
+  // À la main, sur l'original : des lignes à écrire, entre deux filets, qui
+  // prennent la place restant sur la dernière page ; la diffusion les suit.
   const diffusion =
     'Diffusion : original au dossier du personnel (DCH)  ·  copie 1 au N+1  ·  copie 2 au N+2, selon le circuit de validation.';
   const hDiffusion = 14 + f.hauteurDe(diffusion, f.largeur, { taille: PETIT });
+  const titre84 = 'Commentaires des autres niveaux hiérarchiques';
+  const lignes = lignesQuiRestent(f, f.hauteurDuSousTitre('8.4', titre84), hDiffusion);
+  const autres = [[f.aEcrire(lignes)]];
   f.sousSection(
     '8.4',
-    'Commentaires des autres niveaux hiérarchiques',
+    titre84,
     f.debutDuTableau(pleineLargeur(f), autres, { titres: false }) + hDiffusion,
   );
   f.tableau(pleineLargeur(f), autres, { titres: false });
@@ -1630,7 +1661,8 @@ function commentaireSigne(f: Composition, lignes: number): { hauteur: number; po
 
 /**
  * La signature d'une partie, sous son texte : qui, sa fonction, la date de la
- * validation en ligne. Sans validation, la place de signer à la main.
+ * validation en ligne, et le paraphe à droite. Sans validation, la place de
+ * signer à la main.
  *
  * Le rôle se met en retrait ; quand tout ne tient pas sur une ligne, la
  * validation passe entière à la ligne, sous le nom, plutôt que de se couper.
@@ -1645,8 +1677,11 @@ function signature(
   const sMention: Style = { coupe: 'italic', taille: 8.8 };
   f.style(sRole);
   const retrait = Math.max(f.doc.widthOfString('N+1'), f.doc.widthOfString('N+2')) + 7;
+  /** La place du paraphe, au bout de la ligne. */
+  const PARAPHE = 76;
+  const paraphe = le && p ? nomImprime(p) : null;
   const x = f.gauche + retrait;
-  const largeur = f.largeur - retrait;
+  const largeur = f.largeur - retrait - (paraphe ? PARAPHE : 0);
 
   const qui: [string, Style][] = [];
   if (p) {
@@ -1664,12 +1699,16 @@ function signature(
     morceaux.reduce((somme, [t, s]) => somme + f.doc.widthOfString(t, f.style(s)), 0);
   const surUneLigne = largeurDe(enUneLigne) <= largeur - 1;
 
-  // La hauteur, pour ne pas couper la signature d'une page à l'autre.
+  // La hauteur, pour ne pas couper la signature d'une page à l'autre ; le
+  // paraphe se centre sur le texte, et déborde un peu dessous.
   const h = surUneLigne
     ? f.hauteurDe(mention, largeur, sMention)
     : (qui.length ? f.hauteurEnLigne(largeur, qui) : 0) + f.hauteurDe(mention, largeur, sMention);
-  f.place(9 + h);
+  const baseDuParaphe = h / 2 + 7;
+  const hBloc = paraphe ? Math.max(h, baseDuParaphe + 6) : h;
+  f.place(9 + hBloc);
   f.y += 9;
+  const haut = f.y;
   f.ecrire(role, f.gauche, f.y, retrait, sRole);
   if (surUneLigne) {
     f.ecrireEnLigne(x, f.y, largeur, enUneLigne);
@@ -1678,5 +1717,6 @@ function signature(
     // pdfkit pose `doc.y` sous la dernière ligne écrite.
     f.ecrire(mention, x, qui.length ? f.doc.y : f.y, largeur, sMention);
   }
-  f.y = f.doc.y;
+  if (paraphe) f.paraphe(paraphe, f.droite - PARAPHE + 16, haut + baseDuParaphe);
+  f.y = Math.max(f.doc.y, haut + hBloc);
 }
