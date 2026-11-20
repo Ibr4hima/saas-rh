@@ -354,6 +354,27 @@ export const partieReserveeSchema = z.object({
 });
 export type PartieReservee = z.infer<typeof partieReserveeSchema>;
 
+/**
+ * Ce qui manque à une auto-évaluation pour partir au N+1 (ADR-0215), dans
+ * l'ordre de la fiche : les deux questions du récapitulatif, puis, pour
+ * chaque objectif, son niveau et ses résultats obtenus. Le reste se remplit
+ * s'il y a lieu. L'écran et l'API appliquent la même règle.
+ */
+export function ceQuiManqueALAutoEvaluation(
+  auto: AutoEvaluation,
+  objectifs: readonly ObjectifEvalue[],
+): string[] {
+  const manque: string[] = [];
+  if (!auto.vecu.trim()) manque.push('le vécu de l’année');
+  if (!auto.difficultes.trim()) manque.push('les difficultés rencontrées');
+  objectifs.forEach((o, i) => {
+    const a = auto.objectifs[o.id];
+    if (!a?.niveau) manque.push(`le niveau de l’objectif ${i + 1}`);
+    if (!a?.resultats.trim()) manque.push(`les résultats de l’objectif ${i + 1}`);
+  });
+  return manque;
+}
+
 export const autoEvaluationVide = (): AutoEvaluation => ({
   vecu: '',
   difficultes: '',

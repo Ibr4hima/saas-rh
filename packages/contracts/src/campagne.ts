@@ -1,4 +1,10 @@
-import type { PersonnelDeLaFiche } from './entretien-annuel';
+import { z } from 'zod';
+import {
+  autoEvaluationSchema,
+  type AutoEvaluation,
+  type ObjectifEvalue,
+  type PersonnelDeLaFiche,
+} from './entretien-annuel';
 
 /* ────────────────────────────────────────────────────────────────
    La campagne d'évaluation annuelle (ADR-0211) : ce que l'accueil montre
@@ -90,4 +96,30 @@ export interface EvaluationDeLAgent {
   periode: PeriodeDeLaCampagne | null;
   phase: PhaseDeLaCampagne;
   agent: AgentDeLaCampagne;
+  /** Les objectifs fixés à l'agent pour l'année, dans l'ordre de la fiche. */
+  objectifs: ObjectifEvalue[];
+  /** Son auto-évaluation, une fois transmise ; `null` avant (ADR-0215). */
+  autoEvaluation: AutoEvaluation | null;
 }
+
+/** Son auto-évaluation, telle que son formulaire la lit (ADR-0215). */
+export interface MonAutoEvaluation {
+  annee: number;
+  periode: PeriodeDeLaCampagne | null;
+  phase: PhaseDeLaCampagne;
+  /** Les objectifs fixés pour l'année, dans l'ordre de la fiche. */
+  objectifs: ObjectifEvalue[];
+  /** Ce qui est écrit ; vide tant que rien ne l'est. */
+  auto: AutoEvaluation;
+  etat: EtatDeLAuto;
+  /** AAAA-MM-JJ : le jour de la transmission au N+1. */
+  transmiseLe: string | null;
+  /** Le N+1 qui la reçoit. */
+  evaluateur: PersonneDeLaCampagne | null;
+  /** Ouverte à l'écriture : pendant l'auto-évaluation, tant qu'elle n'est pas transmise. */
+  modifiable: boolean;
+}
+
+/** L'écriture de son auto-évaluation : le brouillon, ou la version transmise. */
+export const ecritureDeLAutoSchema = z.object({ auto: autoEvaluationSchema });
+export type EcritureDeLAuto = z.infer<typeof ecritureDeLAutoSchema>;

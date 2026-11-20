@@ -1009,6 +1009,8 @@ export const fichesEntretien = pgTable('fiches_entretien', {
   employeeId: uuid('employee_id').notNull(),
   annee: smallint('annee').notNull(),
   evaluateurEmployeeId: uuid('evaluateur_employee_id'),
+  /** Les objectifs fixés pour l'année, dans l'ordre de la fiche (0138, ADR-0215). */
+  objectifs: jsonb('objectifs').notNull().default([]),
   auto: jsonb('auto'),
   autoTransmiseLe: timestamp('auto_transmise_le', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

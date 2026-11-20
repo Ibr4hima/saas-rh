@@ -433,7 +433,7 @@ const ChoixDeNote = memo(function ChoixDeNote({
 });
 
 /** Un niveau donné, en lecture : la lettre dans sa pastille, puis ce qu'elle veut dire. */
-function NiveauDonne({ niveau, libelle }: { niveau: Niveau | null; libelle?: string }) {
+export function NiveauDonne({ niveau, libelle }: { niveau: Niveau | null; libelle?: string }) {
   if (!niveau) return <NonRenseigne />;
   return (
     <span className="flex items-start gap-2.5">

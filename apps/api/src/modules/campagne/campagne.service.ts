@@ -1,16 +1,24 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
-import type {
-  AccueilDeLaCampagne,
-  AgentDeLaCampagne,
-  AgentDeLEquipe,
-  AutoDeLAgent,
-  EvaluationDeLAgent,
-  PeriodeDeLaCampagne,
-  PersonnelDeLaFiche,
-  PhaseDeLaCampagne,
-  SessionUser,
+import {
+  autoEvaluationSchema,
+  autoEvaluationVide,
+  ceQuiManqueALAutoEvaluation,
+  objectifEvalueSchema,
+  type AccueilDeLaCampagne,
+  type AgentDeLaCampagne,
+  type AgentDeLEquipe,
+  type AutoDeLAgent,
+  type AutoEvaluation,
+  type EvaluationDeLAgent,
+  type MonAutoEvaluation,
+  type ObjectifEvalue,
+  type PeriodeDeLaCampagne,
+  type PersonnelDeLaFiche,
+  type PhaseDeLaCampagne,
+  type SessionUser,
 } from '@teranga/contracts';
+import { v7 as uuidv7 } from 'uuid';
 import { problem } from '../../common/problem';
 import { loadEnv } from '../../config/env';
 import { TenantDb, type Tx } from '../../db/tenant-db';
@@ -19,13 +27,17 @@ import { unitesDe } from '../evaluations/unites';
 import { directionDeLUnite } from '../people/chaine';
 
 /* ────────────────────────────────────────────────────────────────
-   L'accueil de la campagne d'évaluation annuelle (ADR-0211).
+   La campagne d'évaluation annuelle (ADR-0211, ADR-0215).
 
-   La personne connectée y lit sa fiche, comme celle de son dossier, l'état
-   de son auto-évaluation, et les agents qu'évalue cette personne, avec
-   l'état de chaque auto-évaluation. L'évaluateur d'un agent : le choix de
-   l'administration pour la campagne, sinon le N+1 dans l'organigramme. Ce
-   choix ne touche pas à l'organigramme.
+   À l'accueil, la personne connectée lit sa fiche, comme celle de son
+   dossier, l'état de son auto-évaluation, et les agents qu'évalue cette
+   personne, avec l'état de chaque auto-évaluation. L'évaluateur d'un agent :
+   le choix de l'administration pour la campagne, sinon le N+1 dans
+   l'organigramme. Ce choix ne touche pas à l'organigramme.
+
+   L'auto-évaluation s'écrit sur sa propre fiche seulement, pendant sa
+   période, et se garde en brouillon jusqu'à sa transmission au N+1 : elle
+   ne change plus ensuite. Le N+1 la lit une fois transmise, jamais avant.
    ──────────────────────────────────────────────────────────────── */
 
 /** L'évaluateur de la campagne, sur un agent `e` et sa fiche de l'année `f`. */
@@ -71,9 +83,157 @@ export class CampagneService {
         problem(404, 'campagne.agent_hors_equipe', 'Agent introuvable dans votre équipe');
       }
       const { periode, phase } = await periodeDe(tx, annee);
-      return { annee, periode, phase, agent: await ficheDe(tx, employeeId, annee) };
+      const agent = await ficheDe(tx, employeeId, annee);
+      const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
+      return {
+        annee,
+        periode,
+        phase,
+        agent,
+        objectifs: annuelle.objectifs,
+        // Le brouillon reste à l'agent : le N+1 ne lit que la version transmise.
+        autoEvaluation: agent.auto?.etat === 'transmise' ? annuelle.auto : null,
+      };
     });
   }
+
+  /** Son auto-évaluation, pour son formulaire. */
+  async monAuto(user: SessionUser): Promise<MonAutoEvaluation> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      monAutoDans(tx, user),
+    );
+  }
+
+  /** Le brouillon de son auto-évaluation, gardé tel qu'il est. */
+  async enregistrerMonAuto(user: SessionUser, auto: AutoEvaluation): Promise<MonAutoEvaluation> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await ecrireMonAuto(tx, user, auto, false);
+      return monAutoDans(tx, user);
+    });
+  }
+
+  /**
+   * Son auto-évaluation, complète, transmise au N+1 : elle ne change plus.
+   * Incomplète, elle reste en brouillon et la réponse dit ce qui manque.
+   */
+  async transmettreMonAuto(user: SessionUser, auto: AutoEvaluation): Promise<MonAutoEvaluation> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await ecrireMonAuto(tx, user, auto, true);
+      return monAutoDans(tx, user);
+    });
+  }
+}
+
+/** Le dossier de la personne connectée, évalué cette année ; sinon, introuvable. */
+async function monDossierEvalue(
+  tx: Tx,
+  user: SessionUser,
+  annee: number,
+): Promise<{ id: string; fiche: AgentDeLaCampagne; auto: AutoDeLAgent }> {
+  const id = await employeDuCompte(tx, user.userId);
+  const fiche = id ? await ficheDe(tx, id, annee) : null;
+  if (!id || !fiche?.auto) {
+    problem(404, 'campagne.sans_auto_evaluation', 'Aucune auto-évaluation pour ce compte');
+  }
+  return { id, fiche, auto: fiche.auto };
+}
+
+async function monAutoDans(tx: Tx, user: SessionUser): Promise<MonAutoEvaluation> {
+  const annee = await anneeDeLaCampagne(tx);
+  const { fiche, auto, id } = await monDossierEvalue(tx, user, annee);
+  const { periode, phase } = await periodeDe(tx, annee);
+  const annuelle = await ficheDeLAnnee(tx, id, annee);
+  return {
+    annee,
+    periode,
+    phase,
+    objectifs: annuelle.objectifs,
+    auto: annuelle.auto ?? autoEvaluationVide(),
+    etat: auto.etat,
+    transmiseLe: auto.transmiseLe,
+    evaluateur: fiche.evaluateur,
+    modifiable: phase === 'auto_evaluation' && auto.etat !== 'transmise',
+  };
+}
+
+/**
+ * Écrit son auto-évaluation : le brouillon, ou la version transmise, une
+ * fois complète. Seulement pendant l'auto-évaluation, et tant qu'elle n'est
+ * pas transmise.
+ */
+async function ecrireMonAuto(
+  tx: Tx,
+  user: SessionUser,
+  auto: AutoEvaluation,
+  transmettre: boolean,
+): Promise<void> {
+  const annee = await anneeDeLaCampagne(tx);
+  const { id, auto: etat } = await monDossierEvalue(tx, user, annee);
+  const { phase } = await periodeDe(tx, annee);
+  if (phase !== 'auto_evaluation') {
+    problem(409, 'campagne.auto_fermee', 'L’auto-évaluation n’est pas ouverte');
+  }
+  if (etat.etat === 'transmise') {
+    problem(409, 'campagne.auto_transmise', 'Auto-évaluation déjà transmise');
+  }
+  const { objectifs } = await ficheDeLAnnee(tx, id, annee);
+  const propre = surLesObjectifs(auto, objectifs);
+  if (transmettre) {
+    const manque = ceQuiManqueALAutoEvaluation(propre, objectifs);
+    if (manque.length > 0) {
+      problem(
+        422,
+        'campagne.auto_incomplete',
+        'Auto-évaluation incomplète',
+        `À compléter : ${manque.join(', ')}.`,
+      );
+    }
+  }
+  // La ligne de l'année se crée au premier enregistrement. Transmise, elle
+  // ne se réécrit plus, même par deux envois qui se croisent.
+  await tx.execute(sql`
+    INSERT INTO fiches_entretien (id, tenant_id, employee_id, annee, auto, auto_transmise_le)
+    VALUES (${uuidv7()}, ${user.tenantId}, ${id}, ${annee}, ${JSON.stringify(propre)}::jsonb,
+            ${transmettre ? sql`now()` : sql`NULL`})
+    ON CONFLICT (tenant_id, employee_id, annee) DO UPDATE
+       SET auto = EXCLUDED.auto,
+           auto_transmise_le = EXCLUDED.auto_transmise_le,
+           updated_at = now()
+     WHERE fiches_entretien.auto_transmise_le IS NULL`);
+}
+
+/** De ce qu'écrit l'agent, les appréciations des objectifs de sa fiche seulement. */
+function surLesObjectifs(
+  auto: AutoEvaluation,
+  objectifs: readonly ObjectifEvalue[],
+): AutoEvaluation {
+  const ids = new Set(objectifs.map((o) => o.id));
+  return {
+    ...auto,
+    objectifs: Object.fromEntries(Object.entries(auto.objectifs).filter(([id]) => ids.has(id))),
+  };
+}
+
+/**
+ * La fiche de l'année d'un agent : ses objectifs, et son auto-évaluation
+ * telle qu'elle est écrite (`null` tant que rien ne l'est). Ce que la base
+ * garde se relit au contrat ; un champ qui manque reprend sa valeur vide.
+ */
+async function ficheDeLAnnee(
+  tx: Tx,
+  employeeId: string,
+  annee: number,
+): Promise<{ objectifs: ObjectifEvalue[]; auto: AutoEvaluation | null }> {
+  const { rows } = await tx.execute<{ objectifs: unknown; auto: unknown }>(sql`
+    SELECT objectifs, auto FROM fiches_entretien
+     WHERE employee_id = ${employeeId} AND annee = ${annee}`);
+  const r = rows[0];
+  const objectifs = objectifEvalueSchema.array().safeParse(r?.objectifs ?? []);
+  const auto = r?.auto ? autoEvaluationSchema.partial().safeParse(r.auto) : null;
+  return {
+    objectifs: objectifs.success ? objectifs.data : [],
+    auto: auto?.success ? { ...autoEvaluationVide(), ...auto.data } : null,
+  };
 }
 
 /** L'année de la campagne : celle du mode campagne, sinon l'année en cours. */

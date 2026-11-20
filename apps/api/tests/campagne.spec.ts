@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { SessionUser } from '@teranga/contracts';
+import { autoEvaluationVide, type AutoEvaluation, type SessionUser } from '@teranga/contracts';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
@@ -317,6 +317,103 @@ describe('la fiche d’un agent, ouverte depuis sa carte', () => {
     await expect(campagne.agentDeLEquipe(session('admin'), agents.moussa)).rejects.toMatchObject(
       introuvable,
     );
+  });
+});
+
+describe('l’auto-évaluation (ADR-0215)', () => {
+  const OBJ1 = randomUUID();
+  const OBJ2 = randomUUID();
+  const brouillon: AutoEvaluation = {
+    ...autoEvaluationVide(),
+    vecu: 'Une année chargée, avec la reprise des dossiers.',
+    objectifs: {
+      [OBJ1]: { niveau: 'B', resultats: '', commentaire: '' },
+      // Un objectif qui n'est pas sur la fiche : il ne s'enregistre pas.
+      [randomUUID()]: { niveau: 'A', resultats: 'Hors fiche.', commentaire: '' },
+    },
+  };
+  const complete: AutoEvaluation = {
+    ...brouillon,
+    difficultes: 'Non.',
+    objectifs: {
+      [OBJ1]: { niveau: 'B', resultats: 'Délai de 48 heures tenu.', commentaire: '' },
+      [OBJ2]: {
+        niveau: 'C',
+        resultats: 'Deux tiers des dossiers à jour.',
+        commentaire: 'Archives.',
+      },
+    },
+  };
+
+  beforeAll(async () => {
+    await raw(`UPDATE fiches_entretien SET objectifs = $1::jsonb WHERE employee_id = $2`, [
+      JSON.stringify([
+        { id: OBJ1, intitule: 'Délivrer les attestations sous 48 heures', indicateurs: 'Délai' },
+        { id: OBJ2, intitule: 'Tenir à jour les dossiers du personnel', indicateurs: '' },
+      ]),
+      agents.ibou,
+    ]);
+    await periode(-2, 3, 10);
+  });
+
+  it('se lit vide, avec les objectifs de la fiche, ouverte à l’écriture', async () => {
+    const v = await campagne.monAuto(session('ibou'));
+    expect(v.objectifs.map((o) => o.id)).toEqual([OBJ1, OBJ2]);
+    expect(v.auto).toEqual(autoEvaluationVide());
+    expect([v.etat, v.modifiable, v.evaluateur?.nom]).toEqual(['a_faire', true, 'Diop']);
+  });
+
+  it('garde le brouillon, que le N+1 ne lit pas', async () => {
+    const v = await campagne.enregistrerMonAuto(session('ibou'), brouillon);
+    expect(v.etat).toBe('en_cours');
+    expect(v.auto.vecu).toBe(brouillon.vecu);
+    expect(Object.keys(v.auto.objectifs)).toEqual([OBJ1]);
+    const vu = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect(vu.objectifs).toHaveLength(2);
+    expect(vu.autoEvaluation).toBeNull();
+  });
+
+  it('ne part pas incomplète, et dit ce qui manque', async () => {
+    await expect(campagne.transmettreMonAuto(session('ibou'), brouillon)).rejects.toMatchObject({
+      problem: {
+        status: 422,
+        code: 'campagne.auto_incomplete',
+        detail:
+          'À compléter : les difficultés rencontrées, les résultats de l’objectif 1, ' +
+          'le niveau de l’objectif 2, les résultats de l’objectif 2.',
+      },
+    });
+    expect((await campagne.monAuto(session('ibou'))).etat).toBe('en_cours');
+  });
+
+  it('complète, part au N+1, qui la lit ; elle ne change plus', async () => {
+    const v = await campagne.transmettreMonAuto(session('ibou'), complete);
+    expect([v.etat, v.modifiable, v.transmiseLe]).toEqual(['transmise', false, AUJOURD_HUI]);
+    const vu = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect(vu.autoEvaluation?.difficultes).toBe('Non.');
+    expect(vu.autoEvaluation?.objectifs[OBJ2]?.niveau).toBe('C');
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.auto.etat).toBe('transmise');
+    await expect(campagne.enregistrerMonAuto(session('ibou'), complete)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.auto_transmise' },
+    });
+  });
+
+  it('se ferme quand la période de l’auto-évaluation est passée', async () => {
+    await periode(-8, -3, 10);
+    expect((await campagne.monAuto(session('fatou'))).modifiable).toBe(false);
+    await expect(
+      campagne.enregistrerMonAuto(session('fatou'), autoEvaluationVide()),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.auto_fermee' } });
+    await periode(-2, 3, 10);
+  });
+
+  it('n’existe ni au sommet de l’organigramme, ni pour un stage, ni sans dossier', async () => {
+    for (const qui of ['dg', 'lamine', 'admin'] as const) {
+      await expect(campagne.monAuto(session(qui))).rejects.toMatchObject({
+        problem: { status: 404, code: 'campagne.sans_auto_evaluation' },
+      });
+    }
   });
 });
 
