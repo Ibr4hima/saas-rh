@@ -58,6 +58,27 @@ export interface RenvoiDeLEvaluation {
   le: string;
 }
 
+/** Les commentaires du N+2 sur la fiche d'un agent (ADR-0218). */
+export type EtatDesCommentaires =
+  /** La fiche n'est pas encore validée par l'agent. */
+  | 'en_attente'
+  /** Validée par l'agent : le N+2 la lit, et la commente s'il y a lieu. */
+  | 'a_commenter'
+  /** Le N+2 a commencé d'écrire. */
+  | 'en_cours'
+  /** Transmis au N+1 : ils ne changent plus. */
+  | 'transmis';
+
+/** Les commentaires du N+2, une fois transmis au N+1. */
+export interface CommentairesDuN2 {
+  /** Vide : la fiche est revenue sans commentaire. */
+  texte: string;
+  /** AAAA-MM-JJ : le jour de leur transmission. */
+  le: string;
+  /** Le N+2 qui les a écrits. */
+  par: PersonneDeLaCampagne | null;
+}
+
 /** Son évaluation par le N+1, sur son accueil. */
 export interface EvaluationRecue {
   etat: EtatDeMonEvaluation;
@@ -120,6 +141,25 @@ export interface AgentDeLEquipe {
   auto: AutoDeLAgent;
   /** Où en est son évaluation par la personne connectée (ADR-0216). */
   evaluation: EtatDeLEvaluation;
+  /** Où en sont les commentaires du N+2 ; `null` : l'agent n'a pas de N+2 (ADR-0218). */
+  commentaires: EtatDesCommentaires | null;
+}
+
+/**
+ * Un agent dont la personne connectée est le N+2, tel que sa carte le
+ * présente : l'agent, son N+1, et où en est sa fiche (ADR-0218).
+ */
+export interface AgentACommenter {
+  employeeId: string;
+  prenom: string;
+  nom: string;
+  matricule: string;
+  poste: string | null;
+  /** Son N+1, l'évaluateur de la campagne. */
+  n1: PersonneDeLaCampagne;
+  auto: AutoDeLAgent;
+  evaluation: EtatDeLEvaluation;
+  commentaires: EtatDesCommentaires;
 }
 
 export interface AccueilDeLaCampagne {
@@ -132,6 +172,8 @@ export interface AccueilDeLaCampagne {
   equipe: AgentDeLEquipe[];
   /** Son évaluation par le N+1 ; `null` : cette personne n'est pas évaluée (ADR-0217). */
   monEvaluation: EvaluationRecue | null;
+  /** Les agents dont la personne connectée est le N+2 ; vide s'il n'y en a pas (ADR-0218). */
+  aCommenter: AgentACommenter[];
 }
 
 /** Un agent de l'équipe, tel que son évaluateur l'ouvre depuis sa carte. */
@@ -155,6 +197,11 @@ export interface EvaluationDeLAgent {
   valideeLe: string | null;
   /** Le mot de l'agent qui l'a renvoyée, tant que le N+1 ne l'a pas transmise à nouveau. */
   renvoi: RenvoiDeLEvaluation | null;
+  /** Le N+2 de l'agent : l'évaluateur du N+1 ; `null` s'il n'y en a pas (ADR-0218). */
+  n2: PersonneDeLaCampagne | null;
+  etatDesCommentaires: EtatDesCommentaires | null;
+  /** Les commentaires du N+2, une fois transmis. */
+  commentairesDuN2: CommentairesDuN2 | null;
   /**
    * Ouverte à l'écriture du N+1 : l'auto-évaluation transmise, pendant la
    * période de l'année, tant que l'évaluation n'est pas transmise, ou une
@@ -219,3 +266,39 @@ export const renvoiSchema = z.object({
   mot: z.string().trim().min(1).max(LONGUEURS_DE_LA_FICHE.texte),
 });
 export type Renvoi = z.infer<typeof renvoiSchema>;
+
+/** La fiche complète d'un agent : son auto-évaluation, l'évaluation du N+1, la partie réservée. */
+export interface FicheComplete {
+  auto: AutoEvaluation;
+  evaluation: EvaluationDuN1;
+  reservee: PartieReservee;
+}
+
+/** La fiche d'un agent, telle que son N+2 l'ouvre pour la commenter (ADR-0218). */
+export interface FichePourLeN2 {
+  annee: number;
+  periode: PeriodeDeLaCampagne | null;
+  phase: PhaseDeLaCampagne;
+  /** L'agent, et son N+1 en évaluateur. */
+  agent: AgentDeLaCampagne;
+  objectifs: ObjectifEvalue[];
+  /** La fiche, une fois validée par l'agent ; `null` avant. */
+  fiche: FicheComplete | null;
+  /** AAAA-MM-JJ. */
+  autoTransmiseLe: string | null;
+  evaluationTransmiseLe: string | null;
+  valideeLe: string | null;
+  /** Ses commentaires, tels qu'ils sont écrits. */
+  commentaires: string;
+  etat: EtatDesCommentaires;
+  /** AAAA-MM-JJ : le jour de leur transmission au N+1. */
+  transmisLe: string | null;
+  /** Ouverts à l'écriture : la fiche validée par l'agent, tant qu'ils ne sont pas transmis. */
+  modifiable: boolean;
+}
+
+/** L'écriture des commentaires du N+2 : le brouillon, ou la version transmise. */
+export const ecritureDesCommentairesSchema = z.object({
+  commentaires: z.string().max(LONGUEURS_DE_LA_FICHE.texte),
+});
+export type EcritureDesCommentaires = z.infer<typeof ecritureDesCommentairesSchema>;

@@ -14,21 +14,26 @@ import {
   personnelDeLaFiche,
   sansLignesVides,
   type AccueilDeLaCampagne,
+  type AgentACommenter,
   type AgentDeLaCampagne,
   type AgentDeLEquipe,
   type AutoDeLAgent,
   type AutoEvaluation,
+  type CommentairesDuN2,
   type EcritureDeLEvaluation,
   type EtatDeLEvaluation,
   type EtatDeMonEvaluation,
+  type EtatDesCommentaires,
   type EvaluationDeLAgent,
   type EvaluationDuN1,
   type EvaluationRecue,
+  type FichePourLeN2,
   type MonAutoEvaluation,
   type MonEvaluation,
   type ObjectifEvalue,
   type PartieReservee,
   type PeriodeDeLaCampagne,
+  type PersonneDeLaCampagne,
   type PersonnelDeLaFiche,
   type PhaseDeLaCampagne,
   type RenvoiDeLEvaluation,
@@ -64,6 +69,10 @@ import { directionDeLUnite } from '../people/chaine';
    plus. En désaccord, l'agent la renvoie au N+1 avec un mot, tant que le
    N+1 peut encore la reprendre ; le N+1 la corrige et la transmet de
    nouveau (ADR-0217).
+
+   Validée par l'agent, la fiche arrive chez le N+2, l'évaluateur du N+1 :
+   le N+2 la lit en entier, partie réservée comprise, la commente s'il y a
+   lieu, et transmet ses commentaires au N+1 (ADR-0218).
    ──────────────────────────────────────────────────────────────── */
 
 /** L'évaluateur de la campagne, sur un agent `e` et sa fiche de l'année `f`. */
@@ -85,15 +94,26 @@ export class CampagneService {
       const annee = await anneeDeLaCampagne(tx);
       const { periode, phase } = await periodeDe(tx, annee);
       const moi = await employeDuCompte(tx, user.userId);
-      if (!moi) return { annee, periode, phase, moi: null, equipe: [], monEvaluation: null };
+      if (!moi) {
+        return {
+          annee,
+          periode,
+          phase,
+          moi: null,
+          equipe: [],
+          monEvaluation: null,
+          aCommenter: [],
+        };
+      }
       const fiche = await ficheDe(tx, moi, annee);
       return {
         annee,
         periode,
         phase,
         moi: fiche,
-        equipe: await equipeDe(tx, moi, annee),
+        equipe: await equipeDe(tx, moi, annee, fiche.evaluateur !== null),
         monEvaluation: fiche.auto ? evaluationRecue(await ficheDeLAnnee(tx, moi, annee)) : null,
+        aCommenter: await aCommenterDe(tx, moi, annee),
       };
     });
   }
@@ -133,6 +153,37 @@ export class CampagneService {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await ecrireEvaluation(tx, user, employeeId, ecriture, true);
       return agentDans(tx, user, employeeId);
+    });
+  }
+
+  /** La fiche d'un agent dont la personne connectée est le N+2, pour la commenter (ADR-0218). */
+  async ficheDuN2(user: SessionUser, employeeId: string): Promise<FichePourLeN2> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      ficheDuN2Dans(tx, user, employeeId),
+    );
+  }
+
+  /** Le brouillon des commentaires du N+2, gardé tel qu'il est. */
+  async enregistrerCommentaires(
+    user: SessionUser,
+    employeeId: string,
+    commentaires: string,
+  ): Promise<FichePourLeN2> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await ecrireCommentaires(tx, user, employeeId, commentaires, false);
+      return ficheDuN2Dans(tx, user, employeeId);
+    });
+  }
+
+  /** Les commentaires du N+2, transmis au N+1, avec ou sans un mot : ils ne changent plus. */
+  async transmettreCommentaires(
+    user: SessionUser,
+    employeeId: string,
+    commentaires: string,
+  ): Promise<FichePourLeN2> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await ecrireCommentaires(tx, user, employeeId, commentaires, true);
+      return ficheDuN2Dans(tx, user, employeeId);
     });
   }
 
@@ -206,6 +257,7 @@ async function agentDans(
   const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
   const autoTransmise = agent.auto?.etat === 'transmise';
   const etatDeLEvaluation = etatSurLaFiche(annuelle);
+  const n2 = await n2De(tx, employeeId, annee);
   return {
     annee,
     periode,
@@ -220,6 +272,10 @@ async function agentDans(
     evaluationTransmiseLe: annuelle.evaluationTransmiseLe,
     valideeLe: annuelle.valideeLe,
     renvoi: etatDeLEvaluation === 'renvoyee' ? annuelle.renvoi : null,
+    n2: n2?.personne ?? null,
+    etatDesCommentaires: n2 ? etatDesCommentaires(annuelle) : null,
+    // Le brouillon du N+2 reste au N+2 : le N+1 ne lit que ce qui est transmis.
+    commentairesDuN2: annuelle.commentairesDuN2,
     modifiable:
       autoTransmise &&
       evaluationOuverte(phase) &&
@@ -412,6 +468,10 @@ interface FicheDeLAnnee {
   valideeLe: string | null;
   /** Le dernier renvoi de l'agent au N+1, s'il y en a eu un. */
   renvoi: RenvoiDeLEvaluation | null;
+  /** Le brouillon des commentaires du N+2 ; `null` tant que rien n'est écrit. */
+  commentairesN2: string | null;
+  /** Les commentaires du N+2, une fois transmis au N+1. */
+  commentairesDuN2: CommentairesDuN2 | null;
 }
 
 /**
@@ -429,13 +489,23 @@ async function ficheDeLAnnee(tx: Tx, employeeId: string, annee: number): Promise
     validee_le: string | null;
     renvoyee_le: string | null;
     renvoi_mot: string | null;
+    commentaires_n2: string | null;
+    commentaires_n2_le: string | null;
+    n2_prenom: string | null;
+    n2_nom: string | null;
+    n2_poste: string | null;
   }>(sql`
-    SELECT objectifs, auto, evaluation, reservee,
-           evaluation_transmise_le::date::text AS evaluation_transmise_le,
-           validee_le::date::text AS validee_le, renvoyee_le::date::text AS renvoyee_le,
-           renvoi_mot
-      FROM fiches_entretien
-     WHERE employee_id = ${employeeId} AND annee = ${annee}`);
+    SELECT f.objectifs, f.auto, f.evaluation, f.reservee,
+           f.evaluation_transmise_le::date::text AS evaluation_transmise_le,
+           f.validee_le::date::text AS validee_le, f.renvoyee_le::date::text AS renvoyee_le,
+           f.renvoi_mot, f.commentaires_n2,
+           f.commentaires_n2_transmis_le::date::text AS commentaires_n2_le,
+           pc.given_name AS n2_prenom, pc.family_name AS n2_nom, ac.position_title AS n2_poste
+      FROM fiches_entretien f
+      LEFT JOIN employees c ON c.id = f.commentaires_n2_par
+      LEFT JOIN persons pc ON pc.id = c.person_id
+      LEFT JOIN assignments ac ON ac.employee_id = c.id AND ac.validity @> CURRENT_DATE
+     WHERE f.employee_id = ${employeeId} AND f.annee = ${annee}`);
   const r = rows[0];
   const objectifs = objectifEvalueSchema.array().safeParse(r?.objectifs ?? []);
   const auto = r?.auto ? autoEvaluationSchema.partial().safeParse(r.auto) : null;
@@ -449,7 +519,22 @@ async function ficheDeLAnnee(tx: Tx, employeeId: string, annee: number): Promise
     evaluationTransmiseLe: r?.evaluation_transmise_le ?? null,
     valideeLe: r?.validee_le ?? null,
     renvoi: r?.renvoyee_le ? { mot: r.renvoi_mot ?? '', le: r.renvoyee_le } : null,
+    commentairesN2: r?.commentaires_n2 ?? null,
+    commentairesDuN2: r?.commentaires_n2_le
+      ? {
+          texte: r.commentaires_n2 ?? '',
+          le: r.commentaires_n2_le,
+          par: r.n2_nom ? { prenom: r.n2_prenom!, nom: r.n2_nom, poste: r.n2_poste } : null,
+        }
+      : null,
   };
+}
+
+/** Où en sont les commentaires du N+2, sur ce que garde la fiche de l'année. */
+function etatDesCommentaires(f: FicheDeLAnnee): EtatDesCommentaires {
+  if (!f.valideeLe) return 'en_attente';
+  if (f.commentairesDuN2) return 'transmis';
+  return f.commentairesN2 !== null ? 'en_cours' : 'a_commenter';
 }
 
 /**
@@ -685,8 +770,16 @@ async function dansLEquipe(
   return rows.length > 0;
 }
 
-/** Les agents qu'évalue la personne connectée, par ordre alphabétique. */
-async function equipeDe(tx: Tx, id: string, annee: number): Promise<AgentDeLEquipe[]> {
+/**
+ * Les agents qu'évalue la personne connectée, par ordre alphabétique. Leur
+ * N+2 est l'évaluateur de cette personne : `avecN2` dit s'il y en a un.
+ */
+async function equipeDe(
+  tx: Tx,
+  id: string,
+  annee: number,
+  avecN2: boolean,
+): Promise<AgentDeLEquipe[]> {
   const { rows } = await tx.execute<{
     id: string;
     prenom: string;
@@ -699,9 +792,13 @@ async function equipeDe(tx: Tx, id: string, annee: number): Promise<AgentDeLEqui
     evaluation_transmise: boolean;
     evaluation_validee: boolean;
     evaluation_renvoyee: boolean;
+    commentaires_commences: boolean;
+    commentaires_transmis: boolean;
   }>(sql`
     SELECT e.id, p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
            a.position_title AS poste,
+           f.commentaires_n2 IS NOT NULL AS commentaires_commences,
+           f.commentaires_n2_transmis_le IS NOT NULL AS commentaires_transmis,
            f.auto IS NOT NULL AS commencee, f.auto_transmise_le::date::text AS transmise_le,
            f.evaluation IS NOT NULL AS evaluation_commencee,
            f.evaluation_transmise_le IS NOT NULL AS evaluation_transmise,
@@ -726,5 +823,198 @@ async function equipeDe(tx: Tx, id: string, annee: number): Promise<AgentDeLEqui
       validee: r.evaluation_validee,
       renvoyee: r.evaluation_renvoyee,
     }),
+    commentaires: avecN2
+      ? etatDesCommentairesDe({
+          validee: r.evaluation_validee,
+          commences: r.commentaires_commences,
+          transmis: r.commentaires_transmis,
+        })
+      : null,
   }));
+}
+
+const etatDesCommentairesDe = (f: {
+  validee: boolean;
+  commences: boolean;
+  transmis: boolean;
+}): EtatDesCommentaires =>
+  !f.validee ? 'en_attente' : f.transmis ? 'transmis' : f.commences ? 'en_cours' : 'a_commenter';
+
+/**
+ * Le N+2 de la campagne, sur un agent `e` et sa fiche `f`, son N+1 `n1` et
+ * la fiche de l'année du N+1 `f1` : l'évaluateur de l'évaluateur, choisi
+ * pour la campagne, sinon le N+1 de l'organigramme.
+ */
+const N2 = sql`COALESCE(f1.evaluateur_employee_id, n1.manager_employee_id)`;
+
+/** Le N+2 d'un agent, pour la campagne de l'année ; `null` s'il n'y en a pas (le N+1 au sommet). */
+async function n2De(
+  tx: Tx,
+  employeeId: string,
+  annee: number,
+): Promise<{ id: string; personne: PersonneDeLaCampagne } | null> {
+  const { rows } = await tx.execute<{
+    id: string;
+    prenom: string;
+    nom: string;
+    poste: string | null;
+  }>(sql`
+    SELECT n2.id, p2.given_name AS prenom, p2.family_name AS nom, a2.position_title AS poste
+      FROM employees e
+      LEFT JOIN fiches_entretien f ON f.employee_id = e.id AND f.annee = ${annee}
+      JOIN employees n1 ON n1.id = ${EVALUATEUR}
+      LEFT JOIN fiches_entretien f1 ON f1.employee_id = n1.id AND f1.annee = ${annee}
+      JOIN employees n2 ON n2.id = ${N2} AND n2.status = 'active'
+      JOIN persons p2 ON p2.id = n2.person_id
+      LEFT JOIN assignments a2 ON a2.employee_id = n2.id AND a2.validity @> CURRENT_DATE
+     WHERE e.id = ${employeeId} AND ${evaluable(sql`e`)} AND n2.id <> e.id
+     LIMIT 1`);
+  const r = rows[0];
+  return r ? { id: r.id, personne: { prenom: r.prenom, nom: r.nom, poste: r.poste } } : null;
+}
+
+/**
+ * Les agents dont la personne connectée est le N+2, rangés par N+1, puis
+ * par ordre alphabétique : chacune de leurs fiches, où qu'elle en soit.
+ */
+async function aCommenterDe(tx: Tx, id: string, annee: number): Promise<AgentACommenter[]> {
+  const { rows } = await tx.execute<{
+    id: string;
+    prenom: string;
+    nom: string;
+    matricule: string;
+    poste: string | null;
+    commencee: boolean;
+    transmise_le: string | null;
+    evaluation_commencee: boolean;
+    evaluation_transmise: boolean;
+    evaluation_validee: boolean;
+    evaluation_renvoyee: boolean;
+    commentaires_commences: boolean;
+    commentaires_transmis: boolean;
+    n1_prenom: string;
+    n1_nom: string;
+    n1_poste: string | null;
+  }>(sql`
+    SELECT e.id, p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
+           a.position_title AS poste,
+           f.auto IS NOT NULL AS commencee, f.auto_transmise_le::date::text AS transmise_le,
+           f.evaluation IS NOT NULL AS evaluation_commencee,
+           f.evaluation_transmise_le IS NOT NULL AS evaluation_transmise,
+           f.validee_le IS NOT NULL AS evaluation_validee,
+           f.renvoyee_le IS NOT NULL AS evaluation_renvoyee,
+           f.commentaires_n2 IS NOT NULL AS commentaires_commences,
+           f.commentaires_n2_transmis_le IS NOT NULL AS commentaires_transmis,
+           p1.given_name AS n1_prenom, p1.family_name AS n1_nom, a1.position_title AS n1_poste
+      FROM employees e
+      JOIN persons p ON p.id = e.person_id
+      LEFT JOIN assignments a ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
+      LEFT JOIN fiches_entretien f ON f.employee_id = e.id AND f.annee = ${annee}
+      JOIN employees n1 ON n1.id = ${EVALUATEUR}
+      JOIN persons p1 ON p1.id = n1.person_id
+      LEFT JOIN assignments a1 ON a1.employee_id = n1.id AND a1.validity @> CURRENT_DATE
+      LEFT JOIN fiches_entretien f1 ON f1.employee_id = n1.id AND f1.annee = ${annee}
+     WHERE ${evaluable(sql`e`)} AND ${N2} = ${id} AND e.id <> ${id}
+     ORDER BY p1.family_name, p1.given_name, p.family_name, p.given_name`);
+  return rows.map((r) => ({
+    employeeId: r.id,
+    prenom: r.prenom,
+    nom: r.nom,
+    matricule: r.matricule,
+    poste: r.poste,
+    n1: { prenom: r.n1_prenom, nom: r.n1_nom, poste: r.n1_poste },
+    auto: autoDe(r.commencee, r.transmise_le),
+    evaluation: etatDeLEvaluation({
+      commencee: r.evaluation_commencee,
+      transmise: r.evaluation_transmise,
+      validee: r.evaluation_validee,
+      renvoyee: r.evaluation_renvoyee,
+    }),
+    commentaires: etatDesCommentairesDe({
+      validee: r.evaluation_validee,
+      commences: r.commentaires_commences,
+      transmis: r.commentaires_transmis,
+    }),
+  }));
+}
+
+/** Un agent dont la personne connectée est le N+2 ; sinon, introuvable. */
+async function monN2(
+  tx: Tx,
+  user: SessionUser,
+  employeeId: string,
+): Promise<{ moi: string; annee: number }> {
+  const annee = await anneeDeLaCampagne(tx);
+  const moi = await employeDuCompte(tx, user.userId);
+  if (!moi || (await n2De(tx, employeeId, annee))?.id !== moi) {
+    problem(404, 'campagne.agent_hors_perimetre', 'Agent introuvable parmi les équipes de vos N+1');
+  }
+  return { moi, annee };
+}
+
+/**
+ * La fiche d'un agent, telle que son N+2 l'ouvre : en entier, partie
+ * réservée comprise, une fois validée par l'agent ; avant, seulement où
+ * elle en est.
+ */
+async function ficheDuN2Dans(
+  tx: Tx,
+  user: SessionUser,
+  employeeId: string,
+): Promise<FichePourLeN2> {
+  const { annee } = await monN2(tx, user, employeeId);
+  const { periode, phase } = await periodeDe(tx, annee);
+  const agent = await ficheDe(tx, employeeId, annee);
+  const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
+  const etat = etatDesCommentaires(annuelle);
+  return {
+    annee,
+    periode,
+    phase,
+    agent,
+    objectifs: annuelle.objectifs,
+    fiche: annuelle.valideeLe
+      ? {
+          auto: annuelle.auto ?? autoEvaluationVide(),
+          evaluation: annuelle.evaluation ?? evaluationDuN1Vide(),
+          reservee: annuelle.reservee ?? partieReserveeVide(),
+        }
+      : null,
+    autoTransmiseLe: agent.auto?.transmiseLe ?? null,
+    evaluationTransmiseLe: annuelle.evaluationTransmiseLe,
+    valideeLe: annuelle.valideeLe,
+    commentaires: annuelle.commentairesDuN2?.texte ?? annuelle.commentairesN2 ?? '',
+    etat,
+    transmisLe: annuelle.commentairesDuN2?.le ?? null,
+    modifiable: etat === 'a_commenter' || etat === 'en_cours',
+  };
+}
+
+/**
+ * Écrit les commentaires du N+2 : le brouillon, ou la version transmise au
+ * N+1, avec ou sans un mot. Seulement la fiche validée par l'agent, et tant
+ * qu'ils ne sont pas transmis ; transmis, ils ne se réécrivent plus.
+ */
+async function ecrireCommentaires(
+  tx: Tx,
+  user: SessionUser,
+  employeeId: string,
+  commentaires: string,
+  transmettre: boolean,
+): Promise<void> {
+  const { moi, annee } = await monN2(tx, user, employeeId);
+  const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
+  if (!annuelle.valideeLe) {
+    problem(409, 'campagne.fiche_non_validee', 'La fiche n’est pas encore validée par l’agent');
+  }
+  if (annuelle.commentairesDuN2) {
+    problem(409, 'campagne.commentaires_transmis', 'Commentaires déjà transmis');
+  }
+  await tx.execute(sql`
+    UPDATE fiches_entretien
+       SET commentaires_n2 = ${commentaires}, commentaires_n2_par = ${moi},
+           commentaires_n2_transmis_le = ${transmettre ? sql`now()` : sql`NULL`},
+           updated_at = now()
+     WHERE employee_id = ${employeeId} AND annee = ${annee}
+       AND validee_le IS NOT NULL AND commentaires_n2_transmis_le IS NULL`);
 }

@@ -3,14 +3,16 @@ import {
   dateEnLettres,
   periodeDEvaluationEnLettres,
   type AgentDeLaCampagne,
+  type AgentACommenter,
   type AutoDeLAgent,
   type EtatDeLEvaluation,
+  type EtatDesCommentaires,
   type EvaluationRecue,
   type PeriodeDeLaCampagne,
   type PersonnelDeLaFiche,
   type RenvoiDeLEvaluation,
 } from '@teranga/contracts';
-import { Card, CardInteractive, classesDeBouton, type BadgeTone } from '@teranga/ui';
+import { Card, CardInteractive, classesDeBouton, cn, type BadgeTone } from '@teranga/ui';
 import { ACCUEIL_DE_LA_CAMPAGNE, AUTO_EVALUATION, MON_EVALUATION } from '../../lib/campagne';
 import { EnTete, Repere } from '../fiche';
 import { Icon, type IconName } from '../icons';
@@ -148,12 +150,19 @@ export function statutDeLAgent(auto: AutoDeLAgent): Statut {
 /**
  * L'évaluation d'un agent par son N+1, sur sa carte d'équipe, une fois
  * l'auto-évaluation faite : en orange, ce qui attend le N+1 ; en vert, la
- * fin du parcours, l'évaluation validée par l'agent.
+ * fin du parcours, la fiche validée par l'agent, puis par le N+2 s'il y en
+ * a un (ADR-0218).
  */
-export function statutDeLEvaluation(etat: EtatDeLEvaluation): Statut {
-  switch (etat) {
+export function statutDeLEvaluation(a: {
+  evaluation: EtatDeLEvaluation;
+  commentaires: EtatDesCommentaires | null;
+}): Statut {
+  switch (a.evaluation) {
     case 'validee':
-      return { libelle: 'Validée par l’agent', ton: 'vert' };
+      if (a.commentaires === 'transmis') return { libelle: 'Validée par le N+2', ton: 'vert' };
+      return a.commentaires === null
+        ? { libelle: 'Validée par l’agent', ton: 'vert' }
+        : { libelle: 'Chez le N+2', ton: 'teal' };
     case 'transmise':
       return { libelle: 'Transmise à l’agent', ton: 'teal' };
     case 'renvoyee':
@@ -185,6 +194,53 @@ export function statutDeMonEvaluation(
       return { libelle: 'En cours', ton: 'bleu' };
     case 'a_faire':
       return null;
+  }
+}
+
+/**
+ * Les commentaires du N+2, sur leur carte, à la page de l'agent : chez le N+1
+ * qui les attend, puis reçus ; chez le N+2 qui les écrit, en cours, puis
+ * transmis. Rien avant la validation de l'agent.
+ */
+export function statutDesCommentaires(
+  etat: EtatDesCommentaires | null,
+  le: string | null,
+  vu: 'n1' | 'n2',
+): Statut | null {
+  const jour = le ? ` le ${jourCourt(le)}` : '';
+  switch (etat) {
+    case 'transmis':
+      return { libelle: `${vu === 'n1' ? 'Reçus' : 'Transmis'}${jour}`, ton: 'vert' };
+    case 'en_cours':
+      return vu === 'n1'
+        ? { libelle: 'Chez le N+2', ton: 'teal' }
+        : { libelle: 'En cours', ton: 'bleu' };
+    case 'a_commenter':
+      return vu === 'n1' ? { libelle: 'Chez le N+2', ton: 'teal' } : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Un agent dont la personne connectée est le N+2, sur sa carte : une fois
+ * sa fiche validée, ce qui attend le N+2, en orange ; avant, l'étape où en
+ * est sa fiche.
+ */
+export function statutPourLeN2(a: AgentACommenter): Statut {
+  switch (a.commentaires) {
+    case 'transmis':
+      return { libelle: 'Commentaires transmis', ton: 'vert' };
+    case 'en_cours':
+      return { libelle: 'Commentaires en cours', ton: 'bleu' };
+    case 'a_commenter':
+      return { libelle: 'À commenter', ton: 'orange' };
+    case 'en_attente':
+      if (a.auto.etat !== 'transmise')
+        return { libelle: 'Auto-évaluation en attente', ton: 'gris' };
+      return a.evaluation === 'transmise'
+        ? { libelle: 'Chez l’agent', ton: 'teal' }
+        : { libelle: 'Chez le N+1', ton: 'bleu' };
   }
 }
 
@@ -300,6 +356,17 @@ export function MotDeRenvoi({
         </blockquote>
       </div>
     </Card>
+  );
+}
+
+/** Les étapes d'une fiche, côte à côte sur un grand écran, l'une sous l'autre ailleurs. */
+export function Etapes({ nombre, children }: { nombre: number; children: React.ReactNode }) {
+  return (
+    <div
+      className={cn('grid grid-cols-1 gap-x-4', nombre >= 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}
+    >
+      {children}
+    </div>
   );
 }
 

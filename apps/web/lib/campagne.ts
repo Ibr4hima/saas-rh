@@ -13,6 +13,9 @@ export const AUTO_EVALUATION = `${ACCUEIL_DE_LA_CAMPAGNE}/auto-evaluation`;
 /** Son évaluation par le N+1, à lire et à valider (ADR-0217). */
 export const MON_EVALUATION = `${ACCUEIL_DE_LA_CAMPAGNE}/mon-evaluation`;
 
+/** La fiche d'un agent dont on est le N+2, à commenter (ADR-0218). */
+export const ficheDuN2 = (employeeId: string) => `${ACCUEIL_DE_LA_CAMPAGNE}/n2/${employeeId}`;
+
 export const CLE_CAMPAGNE = ['campagne'] as const;
 
 /**

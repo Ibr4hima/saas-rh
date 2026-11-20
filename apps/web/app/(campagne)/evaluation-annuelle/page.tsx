@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { AgentDeLEquipe } from '@teranga/contracts';
+import type { AgentACommenter, AgentDeLEquipe } from '@teranga/contracts';
 import { Badge, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import {
   AutoFaite,
@@ -14,12 +14,15 @@ import {
   periodeDeLAuto,
   statutDeLAgent,
   statutDeLEvaluation,
+  statutPourLeN2,
+  type Statut,
 } from '../../../components/campagne/fiche';
 import { Icon } from '../../../components/icons';
 import { ApiError } from '../../../lib/api';
 import {
   ACCUEIL_DE_LA_CAMPAGNE,
   AUTO_EVALUATION,
+  ficheDuN2,
   MON_EVALUATION,
   useAccueilDeLaCampagne,
 } from '../../../lib/campagne';
@@ -36,10 +39,12 @@ import {
    auto-évaluation, sa période, et la coche bleue une fois transmise ; une
    fois transmise, à côté, l'évaluation du N+1, avec la coche bleue une fois
    validée. Chacune s'ouvre dès qu'il y a quelque chose à y lire.
-   Enfin, si la personne évalue des agents, son équipe : une carte par
+   Ensuite, si la personne évalue des agents, son équipe : une carte par
    agent, en deux groupes. Une auto-évaluation faite rend la carte
    cliquable : le N+1 ouvre alors l'évaluation de l'agent, et la carte dit
-   où elle en est (ADR-0216).
+   où elle en est (ADR-0216). Enfin, si la personne est le N+2 d'agents,
+   les équipes de ses N+1 : une fiche validée par l'agent s'ouvre pour ses
+   commentaires (ADR-0218).
    ──────────────────────────────────────────────────────────────── */
 
 export default function AccueilDeLaCampagnePage() {
@@ -114,6 +119,7 @@ export default function AccueilDeLaCampagnePage() {
         carteDeLAuto
       )}
       {v.equipe.length > 0 ? <Equipe equipe={v.equipe} /> : null}
+      {v.aCommenter.length > 0 ? <ACommenter agents={v.aCommenter} /> : null}
     </div>
   );
 }
@@ -125,37 +131,109 @@ export default function AccueilDeLaCampagnePage() {
  * un grand écran. Un seul groupe quand tous les agents sont dans le même cas.
  */
 function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
-  const parts = [
-    {
-      titre: 'Auto-évaluation faite',
-      agents: equipe.filter((a) => a.auto.etat === 'transmise'),
-    },
-    {
-      titre: 'Auto-évaluation en attente',
-      agents: equipe.filter((a) => a.auto.etat !== 'transmise'),
-    },
-  ].filter((p) => p.agents.length > 0);
+  const carte = (a: AgentDeLEquipe): CarteDUnAgent => {
+    const faite = a.auto.etat === 'transmise';
+    return {
+      agent: a,
+      statut: faite ? statutDeLEvaluation(a) : statutDeLAgent(a.auto),
+      href: faite ? `${ACCUEIL_DE_LA_CAMPAGNE}/equipe/${a.employeeId}` : undefined,
+    };
+  };
   return (
-    <section aria-labelledby="mon-equipe" className="flex flex-col gap-4">
+    <SectionDAgents
+      id="mon-equipe"
+      titre="Mon équipe"
+      groupes={[
+        {
+          titre: 'Auto-évaluation faite',
+          cartes: equipe.filter((a) => a.auto.etat === 'transmise').map(carte),
+        },
+        {
+          titre: 'Auto-évaluation en attente',
+          cartes: equipe.filter((a) => a.auto.etat !== 'transmise').map(carte),
+        },
+      ]}
+    />
+  );
+}
+
+/**
+ * Les agents dont la personne est le N+2, rangés par N+1, en deux groupes :
+ * d'abord les fiches validées par l'agent, qui s'ouvrent pour les
+ * commentaires du N+2, puis celles qui n'y sont pas encore, avec l'étape où
+ * elles en sont. Chaque carte dit le N+1 de l'agent (ADR-0218).
+ */
+function ACommenter({ agents }: { agents: AgentACommenter[] }) {
+  const carte = (a: AgentACommenter): CarteDUnAgent => ({
+    agent: a,
+    statut: statutPourLeN2(a),
+    precision: `N+1 : ${a.n1.prenom} ${a.n1.nom}`,
+    href: a.commentaires === 'en_attente' ? undefined : ficheDuN2(a.employeeId),
+  });
+  return (
+    <SectionDAgents
+      id="commentaires-du-n2"
+      titre="Commentaires du N+2"
+      groupes={[
+        {
+          titre: 'Évaluation validée par l’agent',
+          cartes: agents.filter((a) => a.commentaires !== 'en_attente').map(carte),
+        },
+        {
+          titre: 'Évaluation en cours',
+          cartes: agents.filter((a) => a.commentaires === 'en_attente').map(carte),
+        },
+      ]}
+    />
+  );
+}
+
+/** Un agent sur sa carte : où en est sa fiche, et la page qu'elle ouvre s'il y a lieu. */
+interface CarteDUnAgent {
+  agent: Pick<AgentDeLEquipe, 'employeeId' | 'prenom' | 'nom' | 'poste' | 'matricule'>;
+  statut: Statut;
+  /** Une ligne de plus, sous le poste : son N+1. */
+  precision?: string;
+  href?: string;
+}
+
+/**
+ * Une section d'agents, sous son titre et leur nombre, en groupes l'un sous
+ * l'autre, séparés d'un filet. Un groupe vide ne s'affiche pas.
+ */
+function SectionDAgents({
+  id,
+  titre,
+  groupes,
+}: {
+  id: string;
+  titre: string;
+  groupes: readonly { titre: string; cartes: CarteDUnAgent[] }[];
+}) {
+  const pleins = groupes.filter((g) => g.cartes.length > 0);
+  const total = pleins.reduce((n, g) => n + g.cartes.length, 0);
+  return (
+    // Une section qui en suit une autre s'en écarte comme les blocs de la page.
+    <section aria-labelledby={id} className="flex flex-col gap-4 [section+&]:mt-4">
       <h2
-        id="mon-equipe"
+        id={id}
         className="flex items-center gap-2 text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase"
       >
-        Mon équipe
-        <span className="text-ink-muted tabular-nums">{equipe.length}</span>
+        {titre}
+        <span className="text-ink-muted tabular-nums">{total}</span>
       </h2>
-      {parts.map((p, i) => (
+      {pleins.map((g, i) => (
         <div
-          key={p.titre}
+          key={g.titre}
           className={cn('flex flex-col gap-3', i > 0 && 'border-t border-line-soft pt-5')}
         >
           <h3 className="flex items-center gap-2 text-[10.5px] font-bold tracking-[0.12em] text-ink-muted uppercase">
-            {p.titre}
-            <span className="tabular-nums">{p.agents.length}</span>
+            {g.titre}
+            <span className="tabular-nums">{g.cartes.length}</span>
           </h3>
           <Grille>
-            {p.agents.map((a) => (
-              <CarteAgent key={a.employeeId} agent={a} />
+            {g.cartes.map((c) => (
+              <CarteAgent key={c.agent.employeeId} carte={c} />
             ))}
           </Grille>
         </div>
@@ -174,13 +252,10 @@ function Grille({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Un agent, en une carte : son nom, son poste, son matricule, et où en est
- * son auto-évaluation. Faite, la carte s'ouvre sur son évaluation, et dit
- * où en est l'évaluation.
+ * Un agent, en une carte : son nom, son poste, son matricule, la précision
+ * s'il y en a une, et où en est sa fiche. Avec `href`, la carte s'ouvre.
  */
-function CarteAgent({ agent: a }: { agent: AgentDeLEquipe }) {
-  const faite = a.auto.etat === 'transmise';
-  const statut = faite ? statutDeLEvaluation(a.evaluation) : statutDeLAgent(a.auto);
+function CarteAgent({ carte: { agent: a, statut, precision, href } }: { carte: CarteDUnAgent }) {
   const contenu = (
     <>
       <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12.5px] font-bold text-primary uppercase">
@@ -197,11 +272,14 @@ function CarteAgent({ agent: a }: { agent: AgentDeLEquipe }) {
         <span className="mt-1 block truncate font-mono text-[11.5px] tracking-tight text-ink-muted">
           {a.matricule}
         </span>
+        {precision ? (
+          <span className="mt-1 block truncate text-[12px] text-ink-muted">{precision}</span>
+        ) : null}
         <Badge tone={statut.ton} size="sm" className="mt-2.5">
           {statut.libelle}
         </Badge>
       </span>
-      {faite ? (
+      {href ? (
         <Icon
           name="chevron_right"
           size={16}
@@ -212,9 +290,9 @@ function CarteAgent({ agent: a }: { agent: AgentDeLEquipe }) {
   );
   const forme =
     'flex w-full items-start gap-3 rounded-bloc border border-card-line bg-surface px-4 py-3.5 text-left';
-  return faite ? (
+  return href ? (
     <Link
-      href={`${ACCUEIL_DE_LA_CAMPAGNE}/equipe/${a.employeeId}`}
+      href={href}
       className={cn(
         forme,
         'group transition-all duration-200 hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',

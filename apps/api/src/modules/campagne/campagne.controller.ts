@@ -14,9 +14,11 @@ import {
 import {
   ecritureDeLAutoSchema,
   ecritureDeLEvaluationSchema,
+  ecritureDesCommentairesSchema,
   renvoiSchema,
   type EcritureDeLAuto,
   type EcritureDeLEvaluation,
+  type EcritureDesCommentaires,
   type Renvoi,
 } from '@teranga/contracts';
 import { ZodValidationPipe } from '../../common/zod.pipe';
@@ -25,10 +27,11 @@ import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { CampagneService } from './campagne.service';
 
 /**
- * La campagne d'évaluation annuelle (ADR-0211, ADR-0215 à ADR-0217) :
- * ouverte à tout agent. On n'y lit que sa propre fiche et celles des agents
- * qu'on évalue ; on n'y écrit que sa propre auto-évaluation, l'évaluation des
- * agents qu'on évalue, et la validation de sa propre évaluation.
+ * La campagne d'évaluation annuelle (ADR-0211, ADR-0215 à ADR-0218) :
+ * ouverte à tout agent. On n'y lit que sa propre fiche, celles des agents
+ * qu'on évalue et celles des équipes de ses N+1 ; on n'y écrit que sa propre
+ * auto-évaluation, l'évaluation des agents qu'on évalue, la validation de sa
+ * propre évaluation, et ses commentaires de N+2.
  */
 @Controller('campagne')
 @UseGuards(SessionGuard, AccesGuard)
@@ -67,6 +70,36 @@ export class CampagneController {
     @Body(new ZodValidationPipe(ecritureDeLEvaluationSchema)) body: EcritureDeLEvaluation,
   ) {
     return this.campagne.transmettreEvaluation(req.sessionUser, employeeId, body);
+  }
+
+  /** La fiche d'un agent dont on est le N+2 : la page ne s'ouvre qu'au N+2. */
+  @Get('n2/:employeeId')
+  ficheDuN2(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+  ) {
+    return this.campagne.ficheDuN2(req.sessionUser, employeeId);
+  }
+
+  /** Le brouillon de ses commentaires de N+2. */
+  @Put('n2/:employeeId/commentaires')
+  enregistrerCommentaires(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Body(new ZodValidationPipe(ecritureDesCommentairesSchema)) body: EcritureDesCommentaires,
+  ) {
+    return this.campagne.enregistrerCommentaires(req.sessionUser, employeeId, body.commentaires);
+  }
+
+  /** Ses commentaires de N+2, transmis au N+1, avec ou sans un mot. */
+  @Post('n2/:employeeId/commentaires/transmission')
+  @HttpCode(200)
+  transmettreCommentaires(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Body(new ZodValidationPipe(ecritureDesCommentairesSchema)) body: EcritureDesCommentaires,
+  ) {
+    return this.campagne.transmettreCommentaires(req.sessionUser, employeeId, body.commentaires);
   }
 
   /** Son évaluation par le N+1, une fois transmise, sans la partie réservée. */

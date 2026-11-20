@@ -1022,6 +1022,10 @@ export const fichesEntretien = pgTable('fiches_entretien', {
   valideeLe: timestamp('validee_le', { withTimezone: true }),
   renvoyeeLe: timestamp('renvoyee_le', { withTimezone: true }),
   renvoiMot: text('renvoi_mot'),
+  /** Les commentaires du N+2, qui les a écrits, leur transmission au N+1 (0141, ADR-0218). */
+  commentairesN2: text('commentaires_n2'),
+  commentairesN2Par: uuid('commentaires_n2_par'),
+  commentairesN2TransmisLe: timestamp('commentaires_n2_transmis_le', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

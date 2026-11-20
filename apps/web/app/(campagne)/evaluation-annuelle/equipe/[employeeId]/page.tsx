@@ -15,9 +15,13 @@ import {
   BarreDeTransmission,
   useEnregistrementAuto,
 } from '../../../../../components/campagne/enregistrement';
-import { FicheDuN1 } from '../../../../../components/campagne/evaluation-du-n1';
+import {
+  CommentairesDuN2Lus,
+  FicheDuN1,
+} from '../../../../../components/campagne/evaluation-du-n1';
 import {
   CarteDEtape,
+  Etapes,
   IdentiteDeLaCampagne,
   MotDeRenvoi,
   periodeDeLAuto,
@@ -25,6 +29,7 @@ import {
   RetourALAccueil,
   statutDeLAgent,
   statutDeMonEvaluation,
+  statutDesCommentaires,
 } from '../../../../../components/campagne/fiche';
 import { Confirmation, messageDe } from '../../../../../components/grille-evaluation';
 import { Icon } from '../../../../../components/icons';
@@ -40,7 +45,9 @@ import { CLE_CAMPAGNE } from '../../../../../lib/campagne';
    l'écran dit ce qui manque et porte « Transmettre à l'agent ».
    Transmise, l'évaluation se lit ; l'agent la valide, ou la renvoie avec un
    mot, qui s'affiche alors au-dessus de la fiche, de nouveau à remplir
-   (ADR-0217). Cette page ne s'ouvre qu'à l'évaluateur de l'agent.
+   (ADR-0217). Validée, la fiche passe au N+2 s'il y en a un : une troisième
+   étape le dit, et ses commentaires ferment la partie réservée une fois
+   transmis (ADR-0218). Cette page ne s'ouvre qu'à l'évaluateur de l'agent.
    ──────────────────────────────────────────────────────────────── */
 
 export default function AgentDeLEquipePage() {
@@ -86,6 +93,12 @@ export default function AgentDeLEquipePage() {
 function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
   const auto = v.agent.auto ? statutDeLAgent(v.agent.auto) : null;
   const evaluation = statutDeMonEvaluation(v);
+  const commentaires = statutDesCommentaires(
+    v.etatDesCommentaires,
+    v.commentairesDuN2?.le ?? null,
+    'n1',
+  );
+  const n2 = v.commentairesDuN2;
   const carteDeLAuto = auto ? (
     <CarteDEtape
       icone="rate_review"
@@ -99,8 +112,8 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
       <IdentiteDeLaCampagne agent={v.agent} />
       {v.autoEvaluation ? (
         <>
-          {/* Les deux étapes côte à côte : l'auto-évaluation faite, puis celle du N+1. */}
-          <div className="grid grid-cols-1 gap-x-4 lg:grid-cols-2">
+          {/* Les étapes côte à côte : l'auto-évaluation faite, celle du N+1, puis le N+2. */}
+          <Etapes nombre={v.n2 ? 3 : 2}>
             {carteDeLAuto}
             <CarteDEtape
               icone="checklist"
@@ -108,7 +121,19 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
               marque={evaluation ? <Badge tone={evaluation.ton}>{evaluation.libelle}</Badge> : null}
               periode={periodeDeLEvaluation(v.periode)}
             />
-          </div>
+            {v.n2 ? (
+              <CarteDEtape
+                icone="how_to_reg"
+                titre="Commentaires du N+2"
+                marque={
+                  commentaires ? (
+                    <Badge tone={commentaires.ton}>{commentaires.libelle}</Badge>
+                  ) : null
+                }
+                periode={`${v.n2.prenom} ${v.n2.nom}`}
+              />
+            ) : null}
+          </Etapes>
           {v.renvoi ? (
             <MotDeRenvoi
               titre={`Renvoyée par ${v.agent.prenom} ${v.agent.nom}`}
@@ -125,6 +150,9 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
               auto={v.autoEvaluation}
               evaluation={v.evaluation}
               reservee={v.reservee}
+              commentairesDuN2={
+                n2 ? <CommentairesDuN2Lus texte={n2.texte} par={n2.par} le={n2.le} /> : undefined
+              }
             />
           )}
         </>

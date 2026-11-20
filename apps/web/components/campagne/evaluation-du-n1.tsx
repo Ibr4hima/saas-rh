@@ -20,6 +20,7 @@ import {
   type ObjectifDeLAnneeAVenir,
   type ObjectifEvalue,
   type PartieReservee,
+  type PersonneDeLaCampagne,
   type PersonnelDeLaFiche,
 } from '@teranga/contracts';
 import { cn, DateInput, Input } from '@teranga/ui';
@@ -64,7 +65,9 @@ const appreciationVide = (): AppreciationDuN1 => ({ niveau: null, commentaire: '
  * de chaque objectif, chaque compétence (sauf le management, s'il y a lieu),
  * les points forts, les axes de développement, puis la compréhension et la
  * tenue du poste. Sans `onChange`, la fiche se lit ; sans `reservee`, c'est
- * celle de l'agent, qui s'arrête avant la partie réservée (ADR-0217).
+ * celle de l'agent, qui s'arrête avant la partie réservée (ADR-0217). Les
+ * commentaires du N+2, en lecture ou à écrire, ferment la partie réservée
+ * (ADR-0218).
  */
 export function FicheDuN1({
   annee,
@@ -73,6 +76,7 @@ export function FicheDuN1({
   auto,
   evaluation: ecrite,
   reservee,
+  commentairesDuN2,
   onChange,
 }: {
   annee: number;
@@ -81,6 +85,7 @@ export function FicheDuN1({
   auto: AutoEvaluation;
   evaluation: EvaluationDuN1;
   reservee: PartieReservee | null;
+  commentairesDuN2?: ReactNode;
   onChange?: Changement<EcritureDeLEvaluation>;
 }) {
   // En lecture, les lignes laissées vides d'un tableau ne se montrent pas.
@@ -107,7 +112,9 @@ export function FicheDuN1({
       <Synthese evaluation={evaluation} onChange={changer} />
       <Perspectives annee={annee} evaluation={evaluation} onChange={changer} />
       <SouhaitsEnLecture auto={auto} qui={PAR_L_AGENT} />
-      {reservee ? <Reservee reservee={reservee} onChange={reserver} /> : null}
+      {reservee ? (
+        <Reservee reservee={reservee} commentairesDuN2={commentairesDuN2} onChange={reserver} />
+      ) : null}
     </>
   );
 }
@@ -710,11 +717,18 @@ function CaseLue({ texte }: { texte: string }) {
 
 // ──────────────────────────────────────────────── 8. la partie réservée
 
+/**
+ * La partie strictement réservée à la hiérarchie : la synthèse générale et
+ * les observations du N+1, puis les commentaires du N+2. Chaque partie dit
+ * qui l'écrit, comme sur la fiche.
+ */
 function Reservee({
   reservee: r,
+  commentairesDuN2,
   onChange,
 }: {
   reservee: PartieReservee;
+  commentairesDuN2?: ReactNode;
   onChange?: (maj: Partial<PartieReservee>) => void;
 }) {
   const choisir = (cle: 'comprehension' | 'tenue', niveau: Niveau | null) =>
@@ -723,7 +737,9 @@ function Reservee({
     <CarteDeLaFiche
       titre="Partie strictement réservée à la hiérarchie"
       icone="lock"
-      qui={PAR_LE_N1}
+      // Avec les commentaires du N+2, la carte a deux auteurs : chaque partie
+      // dit le sien.
+      qui={commentairesDuN2 ? undefined : PAR_LE_N1}
     >
       <SousPartie titre="Synthèse générale du N+1">
         <div className="flex flex-col gap-5 px-5 pt-4 pb-5">
@@ -762,6 +778,41 @@ function Reservee({
           )}
         </div>
       </SousPartie>
+      {commentairesDuN2 ? (
+        <SousPartie titre="Commentaires du N+2">
+          <div className="px-5 pt-3 pb-5">{commentairesDuN2}</div>
+        </SousPartie>
+      ) : null}
     </CarteDeLaFiche>
+  );
+}
+
+/**
+ * Les commentaires du N+2, en lecture, et dessous qui les a transmis, et
+ * quand, comme la signature de la fiche. Sans un mot, la fiche porte
+ * « Néant », comme le PDF.
+ */
+export function CommentairesDuN2Lus({
+  texte,
+  par,
+  le,
+}: {
+  texte: string;
+  par?: PersonneDeLaCampagne | null;
+  le?: string | null;
+}) {
+  return (
+    <>
+      {texte.trim() ? (
+        <TexteLu texte={texte} />
+      ) : (
+        <p className="text-[13px] text-ink-muted">Néant</p>
+      )}
+      {par && le ? (
+        <p className="mt-2.5 text-[12px] text-ink-muted">
+          {par.prenom} {par.nom}, le {dateEnLettres(le)}
+        </p>
+      ) : null}
+    </>
   );
 }

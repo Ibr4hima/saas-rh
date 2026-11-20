@@ -686,6 +686,90 @@ describe('la validation par l’agent (ADR-0217)', () => {
   });
 });
 
+describe('les commentaires du N+2 (ADR-0218)', () => {
+  it('le N+2 voit les équipes de ses N+1, où qu’en soient les fiches', async () => {
+    // Cheikh Mbaye évalue Awa Diop, qui évalue Ibou Ndiaye, Fatou Sall et Moussa Sarr.
+    const { aCommenter, equipe } = await campagne.accueil(session('dg'));
+    expect(aCommenter.map((a) => [a.employeeId, a.commentaires])).toEqual([
+      [agents.ibou, 'a_commenter'],
+      [agents.fatou, 'en_attente'],
+      [agents.moussa, 'a_commenter'],
+    ]);
+    expect(aCommenter[0]!.n1).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
+    // Au sommet de l'organigramme, son équipe n'a pas de N+2.
+    expect(equipe.every((a) => a.commentaires === null)).toBe(true);
+    const awa = await campagne.accueil(session('awa'));
+    expect(awa.aCommenter).toEqual([]);
+    expect(awa.equipe.find((a) => a.employeeId === agents.ibou)?.commentaires).toBe('a_commenter');
+  });
+
+  it('s’ouvre au N+2 en entier, partie réservée comprise, une fois validée par l’agent', async () => {
+    const v = await campagne.ficheDuN2(session('dg'), agents.ibou);
+    expect([v.etat, v.modifiable, v.valideeLe]).toEqual(['a_commenter', true, AUJOURD_HUI]);
+    expect(v.fiche?.reservee.comprehension).toBe('B');
+    expect(v.fiche?.evaluation.pointsForts).toBe('Rigueur et disponibilité.');
+    expect(v.agent.evaluateur).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
+
+    const attente = await campagne.ficheDuN2(session('dg'), agents.fatou);
+    expect([attente.etat, attente.fiche, attente.modifiable]).toEqual(['en_attente', null, false]);
+    await expect(
+      campagne.enregistrerCommentaires(session('dg'), agents.fatou, 'Trop tôt.'),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.fiche_non_validee' } });
+
+    // Le N+1 n'est pas le N+2 ; sans N+2 (le N+1 au sommet), personne ne l'est.
+    for (const [qui, agent] of [
+      ['awa', agents.ibou],
+      ['dg', agents.ousmane],
+      ['fatou', agents.moussa],
+    ] as const) {
+      await expect(campagne.ficheDuN2(session(qui), agent)).rejects.toMatchObject({
+        problem: { status: 404, code: 'campagne.agent_hors_perimetre' },
+      });
+    }
+  });
+
+  it('garde le brouillon, que le N+1 ne lit pas', async () => {
+    const v = await campagne.enregistrerCommentaires(session('dg'), agents.ibou, 'Brouillon.');
+    expect([v.etat, v.commentaires]).toEqual(['en_cours', 'Brouillon.']);
+    const n1 = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect(n1.n2).toMatchObject({ prenom: 'Cheikh', nom: 'Mbaye' });
+    expect([n1.etatDesCommentaires, n1.commentairesDuN2]).toEqual(['en_cours', null]);
+    expect((await campagne.agentDeLEquipe(session('dg'), agents.ousmane)).n2).toBeNull();
+  });
+
+  it('transmis au N+1, ils ne changent plus ; l’agent ne les lit jamais', async () => {
+    const texte = 'Un agent fiable, à préparer à plus de responsabilités.';
+    const v = await campagne.transmettreCommentaires(session('dg'), agents.ibou, texte);
+    expect([v.etat, v.transmisLe, v.modifiable, v.commentaires]).toEqual([
+      'transmis',
+      AUJOURD_HUI,
+      false,
+      texte,
+    ]);
+    await expect(
+      campagne.transmettreCommentaires(session('dg'), agents.ibou, 'Encore.'),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.commentaires_transmis' } });
+    const n1 = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect(n1.etatDesCommentaires).toBe('transmis');
+    expect(n1.commentairesDuN2).toEqual({
+      texte,
+      le: AUJOURD_HUI,
+      par: { prenom: 'Cheikh', nom: 'Mbaye', poste: 'Direction générale' },
+    });
+    expect(JSON.stringify(await campagne.monEvaluation(session('ibou')))).not.toContain('fiable');
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.commentaires).toBe('transmis');
+  });
+
+  it('sans un mot, la fiche revient au N+1 sans commentaire', async () => {
+    const v = await campagne.transmettreCommentaires(session('dg'), agents.moussa, '');
+    expect([v.etat, v.commentaires]).toEqual(['transmis', '']);
+    expect(
+      (await campagne.agentDeLEquipe(session('awa'), agents.moussa)).commentairesDuN2?.texte,
+    ).toBe('');
+  });
+});
+
 describe('les phases de la campagne', () => {
   it('à venir, auto-évaluation, évaluation, terminée, et sans période', async () => {
     const phase = async () => (await campagne.accueil(session('moussa'))).phase;
