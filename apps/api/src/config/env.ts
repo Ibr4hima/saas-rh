@@ -48,6 +48,15 @@ export const envSchema = z
       .default('false')
       .transform((v) => v === 'true'),
     /**
+     * Le mode campagne (ADR-0211) : l'année de l'évaluation annuelle que la
+     * plateforme montre seule à ses agents. Vide : la plateforme complète.
+     */
+    CAMPAGNE_D_EVALUATION: z
+      .string()
+      .regex(/^(20\d\d)?$/, 'Une année, comme 2026, ou rien')
+      .optional()
+      .transform((v) => (v ? Number(v) : null)),
+    /**
      * Derrière un reverse proxy : les proxys dont on croit l'en-tête
      * X-Forwarded-For, pour que req.ip soit l'adresse du client et non celle
      * du proxy. Un nombre de sauts ('2'), ou une liste d'adresses, de réseaux

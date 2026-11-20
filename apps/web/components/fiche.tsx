@@ -40,10 +40,13 @@ export function EnTete({
   /** Une ligne sous la précision : un refus, un avertissement. */
   note?: React.ReactNode;
   action?: React.ReactNode;
-  /** Des `<Repere>`, quatre au plus. */
+  /** Des `<Repere>`, cinq au plus. */
   reperes?: React.ReactNode;
-  /** Deux ou trois repères se partagent la bande à parts égales, sans colonne vide. */
-  colonnes?: 2 | 3 | 4;
+  /**
+   * Deux ou trois repères se partagent la bande à parts égales, sans colonne
+   * vide ; cinq passent par deux, puis trois, avant de tenir sur une ligne.
+   */
+  colonnes?: 2 | 3 | 4 | 5;
 }) {
   return (
     <Card className="mb-4">
@@ -74,10 +77,12 @@ export function EnTete({
             className={
               colonnes === 4
                 ? 'grid grid-cols-2 gap-x-6 gap-y-5 @[44rem]:grid-cols-4 @[44rem]:gap-x-0 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:border-l @[44rem]:[&>*+*]:border-line-soft @[44rem]:[&>*+*]:pl-5'
-                : cn(
-                    colonnes === 2 ? 'grid-cols-2' : 'grid-cols-3',
-                    'grid gap-x-0 gap-y-5 [&>*]:pr-4 [&>*+*]:border-l [&>*+*]:border-line-soft [&>*+*]:pl-4 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:pl-5',
-                  )
+                : colonnes === 5
+                  ? 'grid grid-cols-2 gap-x-6 gap-y-5 @[36rem]:grid-cols-3 @[52rem]:grid-cols-5 @[52rem]:gap-x-0 @[52rem]:[&>*]:pr-5 @[52rem]:[&>*+*]:border-l @[52rem]:[&>*+*]:border-line-soft @[52rem]:[&>*+*]:pl-5'
+                  : cn(
+                      colonnes === 2 ? 'grid-cols-2' : 'grid-cols-3',
+                      'grid gap-x-0 gap-y-5 [&>*]:pr-4 [&>*+*]:border-l [&>*+*]:border-line-soft [&>*+*]:pl-4 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:pl-5',
+                    )
             }
           >
             {reperes}

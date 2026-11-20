@@ -61,6 +61,7 @@ export function MenuCompte({
   bascule,
   certificats,
   identite,
+  notifications = true,
 }: {
   /**
    * `colonne` : en bas du menu, la personne en toutes lettres, et tout son
@@ -73,6 +74,8 @@ export function MenuCompte({
   certificats: boolean;
   /** Le bloc du bas du menu : son nom et son espace, sous sa silhouette. */
   identite?: Identite;
+  /** « Notifications » : partout, sauf dans la campagne d'évaluation (ADR-0211). */
+  notifications?: boolean;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -226,14 +229,16 @@ export function MenuCompte({
               }}
             />
           ) : null}
-          <Rangee
-            icone="notifications"
-            libelle="Notifications"
-            onClick={() => {
-              setOuvert(false);
-              router.push('/notifications');
-            }}
-          />
+          {notifications ? (
+            <Rangee
+              icone="notifications"
+              libelle="Notifications"
+              onClick={() => {
+                setOuvert(false);
+                router.push('/notifications');
+              }}
+            />
+          ) : null}
           <Rangee
             icone={nuit ? 'light_mode' : 'dark_mode'}
             libelle={nuit ? 'Mode clair' : 'Mode sombre'}

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { peut } from '@teranga/contracts';
 import { Skeleton } from '@teranga/ui';
+import { ACCUEIL_DE_LA_CAMPAGNE, enCampagne } from '../lib/campagne';
 import { useMe } from '../lib/hooks';
 
 export default function HomePage() {
@@ -11,9 +12,17 @@ export default function HomePage() {
   const me = useMe();
 
   useEffect(() => {
-    // Qui pilote arrive sur le tableau de bord ; un agent, sur son espace.
-    if (me.data) router.replace(peut(me.data, 'pilotage') ? '/dashboard' : '/moi');
-    else if (me.isError) router.replace('/login');
+    // En campagne (ADR-0211), un agent arrive sur l'évaluation annuelle.
+    // Sinon, qui pilote arrive sur le tableau de bord ; un agent, sur son espace.
+    if (me.data) {
+      router.replace(
+        enCampagne(me.data)
+          ? ACCUEIL_DE_LA_CAMPAGNE
+          : peut(me.data, 'pilotage')
+            ? '/dashboard'
+            : '/moi',
+      );
+    } else if (me.isError) router.replace('/login');
   }, [me.data, me.isError, router]);
 
   return (

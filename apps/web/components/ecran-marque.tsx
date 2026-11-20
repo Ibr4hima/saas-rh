@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { passwordRulesFor } from '@teranga/contracts';
 import { cn, Input } from '@teranga/ui';
+import { useAnneeDeLaCampagne } from '../lib/campagne';
 import { Icon, type IconName } from './icons';
 import { SceneDeLaCharte } from './scene-de-la-charte';
 
@@ -34,9 +35,24 @@ export function EcranMarque({
   note?: { icone: IconName; texte: React.ReactNode };
   children: React.ReactNode;
 }) {
+  // En campagne (ADR-0211), ces écrans présentent la plateforme de
+  // l'évaluation annuelle, jusque dans l'onglet. Le temps de le savoir, la
+  // signature reste vide plutôt que d'annoncer la mauvaise plateforme.
+  const annee = useAnneeDeLaCampagne();
+  React.useEffect(() => {
+    if (annee) document.title = 'Évaluation annuelle · APIX S.A';
+  }, [annee]);
   return (
     <SceneDeLaCharte
-      signature="Système de Gestion des Ressources Humaines"
+      signature={
+        annee === undefined
+          ? '\u00a0'
+          : annee
+            ? // Sur un téléphone, la ligne se coupe après « d’évaluation » :
+              // l'année ne reste jamais seule.
+              `Plateforme d’évaluation annuelle\u00a0·\u00a0Année\u00a0${annee}`
+            : 'Système de Gestion des Ressources Humaines'
+      }
       droite="Plateforme à usage interne"
     >
       <div

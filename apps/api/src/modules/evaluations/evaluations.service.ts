@@ -46,6 +46,7 @@ import {
 } from './circuit';
 import { grilleDuPersonnelCadre } from './grille-cadre';
 import { grilleDuPersonnelNonCadre } from './grille-non-cadre';
+import { unitesDe, type Unites } from './unites';
 
 /* ────────────────────────────────────────────────────────────────
    L'évaluation annuelle sur la grille de l'APIX (ADR-0149).
@@ -1174,34 +1175,7 @@ export class EvaluationsService {
             poste: r.n2_poste,
           }
         : null,
-      unites: await this.unites(tx, r.unite_id),
+      unites: await unitesDe(tx, r.unite_id),
     };
   }
-
-  /** La direction, le département et le service d'une unité, en remontant l'organigramme. */
-  private async unites(tx: Tx, uniteId: string | null): Promise<Unites> {
-    const vide: Unites = { direction: null, departement: null, service: null };
-    if (!uniteId) return vide;
-    const { rows } = await tx.execute<{ unit_type: string; name: string }>(sql`
-      WITH RECURSIVE remontee AS (
-        SELECT id, parent_id, unit_type, name, 0 AS prof
-          FROM org_units WHERE id = ${uniteId} AND deleted_at IS NULL
-        UNION ALL
-        SELECT o.id, o.parent_id, o.unit_type, o.name, r.prof + 1
-          FROM remontee r JOIN org_units o ON o.id = r.parent_id AND o.deleted_at IS NULL
-         WHERE r.prof < 64 AND r.unit_type <> 'direction')
-      SELECT unit_type, name FROM remontee ORDER BY prof`);
-    const premier = (type: string) => rows.find((u) => u.unit_type === type)?.name ?? null;
-    return {
-      direction: premier('direction'),
-      departement: premier('department'),
-      service: premier('service'),
-    };
-  }
-}
-
-interface Unites {
-  direction: string | null;
-  departement: string | null;
-  service: string | null;
 }

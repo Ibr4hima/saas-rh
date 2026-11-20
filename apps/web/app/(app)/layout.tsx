@@ -39,6 +39,7 @@ import {
 import { ANCRE_ONGLETS } from '../../components/onglets';
 import { RechercheAcademy } from '../../components/recherche-academy';
 import { api } from '../../lib/api';
+import { ACCUEIL_DE_LA_CAMPAGNE, enCampagne as estEnCampagne } from '../../lib/campagne';
 import { useMe } from '../../lib/hooks';
 
 interface NavChild {
@@ -1278,9 +1279,15 @@ function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [me.isError, router]);
 
+  // En campagne (ADR-0211), un agent ne voit que l'évaluation annuelle :
+  // chaque page de la plateforme complète renvoie à l'accueil de la campagne.
+  // L'administration garde la plateforme complète.
+  const enCampagne = estEnCampagne(me.data);
+
   useEffect(() => {
-    if (me.data && !allowed) router.replace(accueil);
-  }, [me.data, allowed, accueil, router]);
+    if (enCampagne) router.replace(ACCUEIL_DE_LA_CAMPAGNE);
+    else if (me.data && !allowed) router.replace(accueil);
+  }, [me.data, enCampagne, allowed, accueil, router]);
 
   if (!me.data) {
     return (
@@ -1291,7 +1298,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!allowed) {
+  if (!allowed || enCampagne) {
     // La page interdite n'est jamais montée : l'effet ci-dessus redirige.
     return null;
   }

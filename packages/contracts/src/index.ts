@@ -30,5 +30,6 @@ export * from './reference-texts';
 export * from './academy';
 export * from './evaluations';
 export * from './entretien-annuel';
+export * from './campagne';
 export * from './texte-riche';
 export * from './notifications-reglages';

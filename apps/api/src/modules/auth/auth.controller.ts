@@ -36,6 +36,7 @@ import {
 } from '../../common/limiteur';
 import { ProblemException, problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
+import { loadEnv } from '../../config/env';
 import { SESSION_COOKIE, optionsDuCookie } from './auth.constants';
 import { AuthService, type IssuedSession } from './auth.service';
 import { ReinitialisationService } from './reinitialisation.service';
@@ -66,6 +67,16 @@ export class AuthController {
   @Get('auth/inscription')
   async inscription(): Promise<{ ouverte: boolean }> {
     return { ouverte: await this.auth.inscriptionOuverte() };
+  }
+
+  /**
+   * Les écrans d'avant la connexion demandent si une campagne d'évaluation
+   * est en cours (ADR-0211) : ils se présentent alors comme la plateforme
+   * de l'évaluation annuelle.
+   */
+  @Get('auth/campagne')
+  campagne(): { annee: number | null } {
+    return { annee: loadEnv().CAMPAGNE_D_EVALUATION };
   }
 
   @Post('auth/register')

@@ -991,7 +991,26 @@ export const evaluationPeriodes = pgTable('evaluation_periodes', {
   annee: smallint('annee').notNull(),
   du: date('du').notNull(),
   au: date('au').notNull(),
+  /** La fin de l'auto-évaluation, dans la période (0137, ADR-0211). */
+  autoAu: date('auto_au'),
   ouvertureAnnonceeLe: timestamp('ouverture_annoncee_le', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * La fiche d'entretien d'un agent pour une année (0137, ADR-0211) : son
+ * auto-évaluation, et l'évaluateur de la campagne quand l'administration le
+ * choisit (sinon, le N+1 de l'organigramme).
+ */
+export const fichesEntretien = pgTable('fiches_entretien', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  employeeId: uuid('employee_id').notNull(),
+  annee: smallint('annee').notNull(),
+  evaluateurEmployeeId: uuid('evaluateur_employee_id'),
+  auto: jsonb('auto'),
+  autoTransmiseLe: timestamp('auto_transmise_le', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

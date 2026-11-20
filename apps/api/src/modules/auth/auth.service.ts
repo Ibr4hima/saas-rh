@@ -310,6 +310,7 @@ export class AuthService {
           finDAcces,
           gender:
             personne?.gender === 'female' || personne?.gender === 'male' ? personne.gender : null,
+          campagne: loadEnv().CAMPAGNE_D_EVALUATION,
         };
       },
     );

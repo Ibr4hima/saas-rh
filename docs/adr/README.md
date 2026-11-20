@@ -215,4 +215,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0207](0207-fiche-titre-noir-sections-en-bleu.md)     | La fiche d'entretien : titre en noir, numéros de section en bleu, sans barres en pied   | acceptée                                    |
 | [0208](0208-fiche-d-entretien-vierge.md)              | La fiche d'entretien vierge, toutes ses sections à remplir à la main                    | acceptée, révisée : 0209                    |
 | [0209](0209-paraphes-sur-la-fiche-d-entretien.md)     | Les paraphes sur la fiche d'entretien, et les lignes de la section 8.4                  | acceptée                                    |
-| [0210](0210-connexion-de-l-administration.md)         | La page de connexion de l'administration, à l'adresse et au mot de passe                | acceptée                                    |
+| [0210](0210-connexion-de-l-administration.md)         | La page de connexion de l'administration, à l'adresse et au mot de passe                | acceptée, complétée par 0211                |
+| [0211](0211-mode-campagne-et-accueil.md)              | Le mode campagne et l'accueil de l'évaluation annuelle, sans menu                       | acceptée                                    |

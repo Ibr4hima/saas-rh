@@ -174,6 +174,11 @@ export const sessionUserSchema = z.object({
   finDAcces: z.string().nullable().default(null),
   /** Le sexe à son dossier, pour l'icône de son compte. `null` : inconnu, ou pas de dossier. */
   gender: z.enum(['female', 'male']).nullable().default(null),
+  /**
+   * Le mode campagne (ADR-0211) : l'année de l'évaluation annuelle que la
+   * plateforme montre seule à ses agents. `null` : la plateforme complète.
+   */
+  campagne: z.number().int().nullable().default(null),
 });
 export type SessionUser = z.infer<typeof sessionUserSchema>;
 

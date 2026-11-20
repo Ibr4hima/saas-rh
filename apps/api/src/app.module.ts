@@ -9,6 +9,8 @@ import {
   PublicCertificatsController,
 } from './modules/academy/academy.controller';
 import { AcademySuiviService } from './modules/academy/academy-suivi.service';
+import { CampagneController } from './modules/campagne/campagne.controller';
+import { CampagneService } from './modules/campagne/campagne.service';
 import { EvaluationsController } from './modules/evaluations/evaluations.controller';
 import { EvaluationsService } from './modules/evaluations/evaluations.service';
 import { AcademyEvaluationService } from './modules/academy/academy-evaluation.service';
@@ -85,6 +87,7 @@ import { AbsencesService } from './modules/time/absences.service';
     AcademyMediaController,
     PublicCertificatsController,
     EvaluationsController,
+    CampagneController,
   ],
   providers: [
     TenantDb,
@@ -125,6 +128,7 @@ import { AbsencesService } from './modules/time/absences.service';
     AcademyEvaluationService,
     AcademySuiviService,
     EvaluationsService,
+    CampagneService,
     PassageDeMinuit,
     Veille,
   ],
