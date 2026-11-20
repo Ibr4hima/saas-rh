@@ -4,10 +4,11 @@ import Link from 'next/link';
 import type { AgentDeLEquipe } from '@teranga/contracts';
 import { Badge, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import {
+  AutoFaite,
+  BoutonMAutoEvaluer,
   CarteDeLAuto,
   IdentiteDeLaCampagne,
   statutDeLAgent,
-  statutDeMonAuto,
 } from '../../../components/campagne/fiche';
 import { Icon } from '../../../components/icons';
 import { ApiError } from '../../../lib/api';
@@ -19,7 +20,9 @@ import { ACCUEIL_DE_LA_CAMPAGNE, useAccueilDeLaCampagne } from '../../../lib/cam
    Trois blocs, de haut en bas, sur toute la largeur. D'abord la fiche de
    la personne, comme celle de son dossier : son nom, son matricule, son
    poste, et en repères sa direction, son département, son service, son N+1
-   et son statut. Puis son auto-évaluation : où elle en est, et sa période.
+   et son statut ; à droite du nom, le bouton « M’auto-évaluer » tant que
+   l'auto-évaluation est ouverte (ADR-0214). Puis son auto-évaluation : sa
+   période, et la coche bleue une fois transmise.
    Enfin, si la personne évalue des agents, son équipe : une carte par
    agent, en deux groupes. Une auto-évaluation faite rend la carte
    cliquable : le N+1 ouvre alors l'évaluation de l'agent.
@@ -56,15 +59,18 @@ export default function AccueilDeLaCampagnePage() {
       </Card>
     );
   }
+  const auto = v.moi.auto;
+  // Le bouton, tant que l'auto-évaluation est ouverte et pas encore transmise.
+  const aFaire = auto !== null && auto.etat !== 'transmise' && v.phase === 'auto_evaluation';
   // L'en-tête et la carte de l'auto-évaluation portent leur marge du bas :
   // le même écart sépare les blocs, que cette carte soit là ou non.
   return (
     <div className="flex flex-col gap-4">
-      <IdentiteDeLaCampagne agent={v.moi} />
-      {v.moi.auto ? (
+      <IdentiteDeLaCampagne agent={v.moi} action={aFaire ? <BoutonMAutoEvaluer /> : null} />
+      {auto ? (
         <CarteDeLAuto
           titre="Mon auto-évaluation"
-          statut={statutDeMonAuto(v.moi.auto, v.phase)}
+          marque={auto.etat === 'transmise' ? <AutoFaite le={auto.transmiseLe} /> : null}
           periode={v.periode}
         />
       ) : null}

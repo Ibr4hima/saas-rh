@@ -1,6 +1,6 @@
 export { cn } from './cn';
 export { Checkbox } from './checkbox';
-export { Button } from './button';
+export { Button, classesDeBouton } from './button';
 export { Input } from './input';
 export { CalendrierFlottant, DateInput } from './date';
 export { Label } from './label';

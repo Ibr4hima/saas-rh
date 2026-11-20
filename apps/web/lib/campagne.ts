@@ -7,6 +7,9 @@ import { api } from './api';
 /** L'accueil de la campagne d'évaluation annuelle (ADR-0211). */
 export const ACCUEIL_DE_LA_CAMPAGNE = '/evaluation-annuelle';
 
+/** Son auto-évaluation (ADR-0214). */
+export const AUTO_EVALUATION = `${ACCUEIL_DE_LA_CAMPAGNE}/auto-evaluation`;
+
 export const CLE_CAMPAGNE = ['campagne'] as const;
 
 /**

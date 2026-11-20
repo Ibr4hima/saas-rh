@@ -31,6 +31,22 @@ const sizes: Record<Size, string> = {
   lg: 'h-[42px] rounded-controle px-5 text-[14px]',
 };
 
+/**
+ * Les classes d'un bouton : le composant s'en sert, et un lien qui mène à une
+ * page les reprend pour en avoir l'allure, sans perdre ce qu'un lien permet
+ * (l'ouvrir dans un onglet, le copier).
+ */
+export function classesDeBouton(variant: Variant = 'primary', size: Size = 'md'): string {
+  return cn(
+    'inline-flex items-center justify-center gap-2 font-semibold',
+    'transition-[background-color,border-color,color,box-shadow,opacity] duration-150 ease-out',
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+    'disabled:pointer-events-none disabled:opacity-50',
+    variants[variant],
+    sizes[size],
+  );
+}
+
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
@@ -51,15 +67,7 @@ export function Button({
     <button
       type={type ?? 'button'}
       disabled={disabled || loading}
-      className={cn(
-        'inline-flex items-center justify-center gap-2 font-semibold',
-        'transition-[background-color,border-color,color,box-shadow,opacity] duration-150 ease-out',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
-        'disabled:pointer-events-none disabled:opacity-50',
-        variants[variant],
-        sizes[size],
-        className,
-      )}
+      className={cn(classesDeBouton(variant, size), className)}
       {...props}
     >
       {loading ? (
