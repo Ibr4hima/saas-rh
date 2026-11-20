@@ -178,7 +178,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0170](0170-page-montree-d-un-bloc.md)                | La page qui arrive se montre d'un bloc, sans squelette fugitif, à largeur constante     | acceptée                                    |
 | [0171](0171-maladie-visible-du-n1.md)                 | La maladie se lit comme les autres motifs d'absence : le N+1 la voit                    | acceptée                                    |
 | [0172](0172-disponibilite-deux-ans.md)                | La disponibilité dure deux ans au plus, renouvelable, pour le type comme les documents  | acceptée                                    |
-| [0173](0173-papier-de-la-charte.md)                   | Les documents de la DCH sur le papier de la charte de l'APIX ; le fond clair #F5F7F9    | précisée (0175), révisée (0185, 0186, 0203) |
+| [0173](0173-papier-de-la-charte.md)                   | Les documents de la DCH sur le papier de la charte de l'APIX ; le fond clair #F5F7F9    | précisée (0175), révisée de 0185 à 0213     |
 | [0174](0174-fiches-depuis-le-dossier.md)              | Fiches préremplies au dossier, prime de transport facultative, stage de 1 à 6 mois      | acceptée, précisée par 0189, 0197           |
 | [0175](0175-date-entre-numero-et-emetteur.md)         | La date de l'en-tête, à égale distance du numéro et de l'émetteur                       | acceptée                                    |
 | [0176](0176-sans-dossier-ou-avant-le-depart.md)       | Certificat de travail et attestation de stage, sans dossier ou avant le départ          | acceptée                                    |
@@ -216,4 +216,6 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0208](0208-fiche-d-entretien-vierge.md)              | La fiche d'entretien vierge, toutes ses sections à remplir à la main                    | acceptée, révisée : 0209                    |
 | [0209](0209-paraphes-sur-la-fiche-d-entretien.md)     | Les paraphes sur la fiche d'entretien, et les lignes de la section 8.4                  | acceptée                                    |
 | [0210](0210-connexion-de-l-administration.md)         | La page de connexion de l'administration, à l'adresse et au mot de passe                | acceptée, complétée par 0211                |
-| [0211](0211-mode-campagne-et-accueil.md)              | Le mode campagne et l'accueil de l'évaluation annuelle, sans menu                       | acceptée                                    |
+| [0211](0211-mode-campagne-et-accueil.md)              | Le mode campagne et l'accueil de l'évaluation annuelle, sans menu                       | acceptée, révisée : 0212                    |
+| [0212](0212-barre-de-la-campagne.md)                  | La barre de la campagne, son titre en grand ; la connexion des agents par code          | acceptée                                    |
+| [0213](0213-fond-clair-fafafa.md)                     | Le fond clair de l'application revient à #FAFAFA                                        | acceptée                                    |

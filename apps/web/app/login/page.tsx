@@ -7,6 +7,7 @@ import { DOMAINE_COURRIEL_PRO, type AttenteDuCode } from '@teranga/contracts';
 import { BoutonMarque } from '../../components/bouton-marque';
 import { ChampMarque, EcranMarque, SaisieMarque } from '../../components/ecran-marque';
 import { api, ApiError } from '../../lib/api';
+import { useAnneeDeLaCampagne } from '../../lib/campagne';
 import { memoire, useEcranDeConnexion, versLEcran } from './connexion';
 
 /* ────────────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ function partieLocale(saisie: string): string {
 export default function ConnexionPage() {
   const router = useRouter();
   const ecran = useEcranDeConnexion();
+  const annee = useAnneeDeLaCampagne();
   const [nom, setNom] = useState(memoire.nom);
   const [email, setEmail] = useState(memoire.email);
   const [erreur, setErreur] = useState<string | null>(memoire.erreur);
@@ -133,12 +135,17 @@ export default function ConnexionPage() {
           Recevoir mon code
         </BoutonMarque>
 
-        <Link
-          href={ecran('/login/mot-de-passe')}
-          className="mx-auto -mt-1 text-[13px] font-semibold text-ink-muted underline-offset-4 hover:text-primary hover:underline"
-        >
-          Se connecter avec un mot de passe
-        </Link>
+        {/* En campagne (ADR-0212), les agents entrent par leur code, et
+            seulement par lui. Le lien attend de savoir s'il y a une campagne
+            plutôt que de paraître puis de disparaître. */}
+        {annee === null ? (
+          <Link
+            href={ecran('/login/mot-de-passe')}
+            className="mx-auto -mt-1 text-[13px] font-semibold text-ink-muted underline-offset-4 hover:text-primary hover:underline"
+          >
+            Se connecter avec un mot de passe
+          </Link>
+        ) : null}
       </form>
     </EcranMarque>
   );
