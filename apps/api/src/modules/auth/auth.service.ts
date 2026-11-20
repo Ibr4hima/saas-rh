@@ -125,6 +125,7 @@ export class AuthService {
         .select({
           tenantId: t.userTenantMemberships.tenantId,
           slug: t.tenants.slug,
+          role: t.userTenantMemberships.role,
           accesCoupeLe: t.userTenantMemberships.accesCoupeLe,
         })
         .from(t.userTenantMemberships)
@@ -146,6 +147,17 @@ export class AuthService {
         'auth.organization_required',
         'Plusieurs organisations pour ce compte',
         `Préciser organizationSlug parmi : ${orgs.map((o) => o.slug).join(', ')}`,
+      );
+    }
+
+    // La page de connexion de l'administration n'ouvre que les comptes
+    // d'administration (ADR-0210) ; un agent se connecte par son code.
+    if (input.administration && selected.role !== 'admin') {
+      problem(
+        403,
+        'auth.reserve_a_l_administration',
+        'Accès réservé à l’administration',
+        'Ce compte n’a pas accès à l’administration de la plateforme.',
       );
     }
 

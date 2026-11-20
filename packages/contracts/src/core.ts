@@ -120,6 +120,11 @@ export const loginInputSchema = z.object({
     .string()
     .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/)
     .optional(),
+  /**
+   * Depuis la page de connexion de l'administration (ADR-0210) : seul un
+   * compte d'administration y ouvre sa session.
+   */
+  administration: z.boolean().optional(),
 });
 export type LoginInput = z.infer<typeof loginInputSchema>;
 
