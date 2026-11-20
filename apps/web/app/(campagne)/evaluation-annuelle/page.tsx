@@ -1,7 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import type { AgentACommenter, AgentDeLEquipe } from '@teranga/contracts';
+import {
+  periodeDEvaluationEnLettres,
+  type AgentACommenter,
+  type AgentDeLEquipe,
+  type PeriodeDeLaCampagne,
+} from '@teranga/contracts';
 import { Badge, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import {
   BoutonMAutoEvaluer,
@@ -18,6 +23,7 @@ import { Icon } from '../../../components/icons';
 import { ApiError } from '../../../lib/api';
 import {
   ACCUEIL_DE_LA_CAMPAGNE,
+  ADMINISTRATION_DE_LA_CAMPAGNE,
   ficheDuN2,
   SUIVI_DE_LA_DCH,
   useAccueilDeLaCampagne,
@@ -42,7 +48,9 @@ import {
    les équipes de ses N+1 : une fiche validée par l'agent s'ouvre pour ses
    commentaires (ADR-0218).
    Avec l'habilitation « Tableau de bord », une carte de plus, sous la
-   période, ouvre le suivi de la DCH (ADR-0221).
+   période, ouvre le suivi de la DCH (ADR-0221) ; pour un compte
+   d'administration, une autre ouvre l'administration de la campagne
+   (ADR-0222).
    ──────────────────────────────────────────────────────────────── */
 
 export default function AccueilDeLaCampagnePage() {
@@ -65,17 +73,29 @@ export default function AccueilDeLaCampagnePage() {
     );
   }
   if (!v) return <Squelette />;
-  const suivi = v.dch ? (
-    <CarteDEtape
-      icone="folder_managed"
-      titre="Suivi de la DCH"
-      periode={`Fiches transmises : ${v.dch.transmises} sur ${v.dch.fiches}`}
-      href={SUIVI_DE_LA_DCH}
-    />
-  ) : null;
+  const suivi = (
+    <>
+      {v.administration ? (
+        <CarteDEtape
+          icone="settings"
+          titre="Administration de la campagne"
+          periode={periodeEnBref(v.periode)}
+          href={ADMINISTRATION_DE_LA_CAMPAGNE}
+        />
+      ) : null}
+      {v.dch ? (
+        <CarteDEtape
+          icone="folder_managed"
+          titre="Suivi de la DCH"
+          periode={`Fiches transmises : ${v.dch.transmises} sur ${v.dch.fiches}`}
+          href={SUIVI_DE_LA_DCH}
+        />
+      ) : null}
+    </>
+  );
   if (!v.moi) {
-    // Un compte sans dossier d'agent, l'administration : le suivi seul, avec l'habilitation.
-    if (suivi) return <div className="flex flex-col gap-4">{suivi}</div>;
+    // Un compte sans dossier d'agent, l'administration : ses pages, et le suivi.
+    if (v.administration || v.dch) return <div className="flex flex-col gap-4">{suivi}</div>;
     return (
       <Card>
         <EmptyState
@@ -178,6 +198,13 @@ function ACommenter({ agents }: { agents: AgentACommenter[] }) {
       ]}
     />
   );
+}
+
+/** « Du 15 au 30 décembre 2026 », ou ce qui manque, sous la carte de l'administration. */
+function periodeEnBref(periode: PeriodeDeLaCampagne | null): string {
+  if (!periode) return 'Dates de l’évaluation à fixer';
+  const texte = periodeDEvaluationEnLettres(periode);
+  return texte.charAt(0).toLocaleUpperCase('fr') + texte.slice(1);
 }
 
 /** Un agent sur sa carte : où en est sa fiche, et la page qu'elle ouvre s'il y a lieu. */

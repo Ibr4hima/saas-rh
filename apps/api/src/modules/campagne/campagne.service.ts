@@ -17,14 +17,17 @@ import {
   peut,
   sansLignesVides,
   type AccueilDeLaCampagne,
+  type AdministrationDeLaCampagne,
   type AgentACommenter,
   type AgentDeLaCampagne,
   type AgentDeLEquipe,
   type AutoDeLAgent,
   type AutoEvaluation,
   type CommentairesDuN2,
+  type DatesDeLaCampagne,
   type EcritureDeLEvaluation,
   type EtapeDeLaFiche,
+  type EvaluateurDeLAgent,
   type EtatDeLaTransmission,
   type EtatDeLEvaluation,
   type EtatDeMonEvaluation,
@@ -40,6 +43,7 @@ import {
   type PartieReservee,
   type PeriodeDeLaCampagne,
   type PersonneDeLaCampagne,
+  type PersonneDesignee,
   type PersonnelDeLaFiche,
   type PhaseDeLaCampagne,
   type RenvoiDeLEvaluation,
@@ -120,6 +124,7 @@ export class CampagneService {
           monEvaluation: null,
           aCommenter: [],
           dch,
+          administration: user.role === 'admin',
         };
       }
       const fiche = await ficheDe(tx, moi, annee);
@@ -132,6 +137,7 @@ export class CampagneService {
         monEvaluation: fiche.auto ? evaluationRecue(await ficheDeLAnnee(tx, moi, annee)) : null,
         aCommenter: await aCommenterDe(tx, moi, annee),
         dch,
+        administration: user.role === 'admin',
       };
     });
   }
@@ -229,7 +235,7 @@ export class CampagneService {
     });
   }
 
-  /** Le suivi de la DCH : chaque agent évalué cette année, et où en est sa fiche. */
+  /** Le suivi de la DCH : chaque agent à évaluer cette année, et où en est sa fiche. */
   async suiviDeLaDCH(user: SessionUser): Promise<SuiviDeLaDCH> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
       suiviDans(tx, user),
@@ -257,6 +263,36 @@ export class CampagneService {
       filename: nomDeLaFiche(lue.fiche.annee, lue.fiche.agent.matricule, true),
       pdf: await ficheDEntretienPdf(donneesDuPdf(lue)),
     };
+  }
+
+  /** L'administration de la campagne : les dates, et qui évalue qui (ADR-0222). */
+  async administration(user: SessionUser): Promise<AdministrationDeLaCampagne> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      administrationDans(tx, user),
+    );
+  }
+
+  /** Les dates de l'évaluation de l'année. */
+  async fixerLesDates(
+    user: SessionUser,
+    dates: DatesDeLaCampagne,
+  ): Promise<AdministrationDeLaCampagne> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await fixerLesDatesDans(tx, user, dates);
+      return administrationDans(tx, user);
+    });
+  }
+
+  /** L'évaluateur d'un agent pour la campagne ; `null` : le N+1 de l'organigramme. */
+  async choisirLEvaluateur(
+    user: SessionUser,
+    employeeId: string,
+    evaluateurId: string | null,
+  ): Promise<AdministrationDeLaCampagne> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await choisirLEvaluateurDans(tx, user, employeeId, evaluateurId);
+      return administrationDans(tx, user);
+    });
   }
 
   /** Son évaluation par le N+1, pour la lire, puis la valider ou la renvoyer (ADR-0217). */
@@ -1278,7 +1314,7 @@ async function suiviEnBref(tx: Tx, annee: number): Promise<{ fiches: number; tra
   return rows[0] ?? { fiches: 0, transmises: 0 };
 }
 
-/** Chaque agent évalué cette année, par ordre alphabétique, et où en est sa fiche. */
+/** Chaque agent à évaluer cette année, par ordre alphabétique, et où en est sa fiche. */
 async function suiviDans(tx: Tx, user: SessionUser): Promise<SuiviDeLaDCH> {
   reserveALaDCH(user);
   const annee = await anneeDeLaCampagne(tx);
@@ -1459,4 +1495,171 @@ function donneesDuPdf({ fiche: f, posteDepuis, aujourdhui }: FicheLueParLaDCH): 
         ? { prenom: n2.prenom, nom: n2.nom, fonction: n2.poste, le: c.le, commentaires: c.texte }
         : null,
   };
+}
+
+// ──────────────────────────────────────────────── l'administration (ADR-0222)
+
+/** Les dates de l'évaluation et qui évalue qui : les comptes d'administration seulement. */
+function reserveALAdministration(user: SessionUser): void {
+  if (user.role !== 'admin') {
+    problem(
+      403,
+      'campagne.administration_reservee',
+      'L’administration de la campagne est réservée aux comptes d’administration',
+    );
+  }
+}
+
+/** Une personne désignée, lue sous un préfixe de colonnes (`m_`, `c_`). */
+const designee = (
+  id: string | null,
+  prenom: string | null,
+  nom: string | null,
+  matricule: string | null,
+  poste: string | null,
+): PersonneDesignee | null =>
+  id && nom
+    ? { employeeId: id, prenom: prenom ?? '', nom, matricule: matricule ?? '', poste }
+    : null;
+
+/**
+ * Les agents à évaluer cette année, par ordre alphabétique : leur N+1 dans
+ * l'organigramme, et le choix de l'administration pour la campagne, s'il y
+ * en a un.
+ */
+async function administrationDans(tx: Tx, user: SessionUser): Promise<AdministrationDeLaCampagne> {
+  reserveALAdministration(user);
+  const annee = await anneeDeLaCampagne(tx);
+  const { periode, phase } = await periodeDe(tx, annee);
+  const { rows } = await tx.execute<{
+    id: string;
+    prenom: string;
+    nom: string;
+    matricule: string;
+    poste: string | null;
+    direction: string | null;
+    m_id: string | null;
+    m_prenom: string | null;
+    m_nom: string | null;
+    m_matricule: string | null;
+    m_poste: string | null;
+    c_id: string | null;
+    c_prenom: string | null;
+    c_nom: string | null;
+    c_matricule: string | null;
+    c_poste: string | null;
+    transmise: boolean;
+  }>(sql`
+    SELECT e.id, p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
+           a.position_title AS poste,
+           ${directionDeLUnite(sql`a.org_unit_id`, 'short_name')} AS direction,
+           m.id AS m_id, pm.given_name AS m_prenom, pm.family_name AS m_nom,
+           m.employee_number AS m_matricule, am.position_title AS m_poste,
+           c.id AS c_id, pc.given_name AS c_prenom, pc.family_name AS c_nom,
+           c.employee_number AS c_matricule, ac.position_title AS c_poste,
+           f.transmise_dch_le IS NOT NULL AS transmise
+      FROM employees e
+      JOIN persons p ON p.id = e.person_id
+      LEFT JOIN assignments a ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
+      LEFT JOIN fiches_entretien f ON f.employee_id = e.id AND f.annee = ${annee}
+      LEFT JOIN employees m ON m.id = e.manager_employee_id
+      LEFT JOIN persons pm ON pm.id = m.person_id
+      LEFT JOIN assignments am ON am.employee_id = m.id AND am.validity @> CURRENT_DATE
+      LEFT JOIN employees c ON c.id = f.evaluateur_employee_id
+      LEFT JOIN persons pc ON pc.id = c.person_id
+      LEFT JOIN assignments ac ON ac.employee_id = c.id AND ac.validity @> CURRENT_DATE
+     WHERE ${evaluable(sql`e`)}
+     ORDER BY p.family_name, p.given_name`);
+  return {
+    annee,
+    periode,
+    phase,
+    agents: rows.map((r): EvaluateurDeLAgent => ({
+      employeeId: r.id,
+      prenom: r.prenom,
+      nom: r.nom,
+      matricule: r.matricule,
+      poste: r.poste,
+      direction: r.direction,
+      organigramme: designee(r.m_id, r.m_prenom, r.m_nom, r.m_matricule, r.m_poste),
+      choisi: designee(r.c_id, r.c_prenom, r.c_nom, r.c_matricule, r.c_poste),
+      transmise: r.transmise,
+    })),
+  };
+}
+
+/**
+ * Les dates de l'évaluation de l'année : le début, la fin de
+ * l'auto-évaluation, la fin. La période commence dans l'année évaluée ou
+ * la suivante, comme sur la plateforme de base.
+ */
+async function fixerLesDatesDans(tx: Tx, user: SessionUser, d: DatesDeLaCampagne): Promise<void> {
+  reserveALAdministration(user);
+  const annee = await anneeDeLaCampagne(tx);
+  const debut = Number(d.du.slice(0, 4));
+  if (debut < annee || debut > annee + 1) {
+    problem(
+      422,
+      'campagne.dates_hors_annee',
+      `La période de l’évaluation ${annee} doit commencer en ${annee} ou en ${annee + 1}`,
+    );
+  }
+  await tx.execute(sql`
+    INSERT INTO evaluation_periodes (id, tenant_id, annee, du, auto_au, au)
+    VALUES (${uuidv7()}, ${user.tenantId}, ${annee}, ${d.du}, ${d.autoAu}, ${d.au})
+    ON CONFLICT (tenant_id, annee) DO UPDATE
+       SET du = EXCLUDED.du, auto_au = EXCLUDED.auto_au, au = EXCLUDED.au, updated_at = now()`);
+}
+
+/**
+ * L'évaluateur d'un agent pour la campagne, au choix de l'administration :
+ * tout agent en activité, sans les règles de l'organigramme. `null`, ou le
+ * choix du N+1 de l'organigramme : la fiche suit l'organigramme. Après un
+ * changement d'évaluateur, la fiche reprend où elle en est ; transmise à la
+ * DCH, elle ne change plus d'évaluateur.
+ */
+async function choisirLEvaluateurDans(
+  tx: Tx,
+  user: SessionUser,
+  employeeId: string,
+  evaluateurId: string | null,
+): Promise<void> {
+  reserveALAdministration(user);
+  const annee = await anneeDeLaCampagne(tx);
+  const { rows } = await tx.execute<{ manager: string | null; transmise: boolean }>(sql`
+    SELECT e.manager_employee_id AS manager, f.transmise_dch_le IS NOT NULL AS transmise
+      FROM employees e
+      LEFT JOIN fiches_entretien f ON f.employee_id = e.id AND f.annee = ${annee}
+     WHERE e.id = ${employeeId} AND ${evaluable(sql`e`)}`);
+  const agent = rows[0];
+  if (!agent) {
+    problem(404, 'campagne.agent_introuvable', 'Agent introuvable parmi les agents de la campagne');
+  }
+  if (agent.transmise) ficheTransmise();
+  if (evaluateurId) {
+    if (evaluateurId === employeeId) {
+      problem(
+        422,
+        'campagne.evaluateur_soi_meme',
+        'L’agent ne peut pas être son propre évaluateur',
+      );
+    }
+    const { rows: actifs } = await tx.execute(
+      sql`SELECT 1 FROM employees WHERE id = ${evaluateurId} AND status = 'active'`,
+    );
+    if (actifs.length === 0) {
+      problem(
+        422,
+        'campagne.evaluateur_introuvable',
+        'Évaluateur introuvable parmi les agents en activité',
+      );
+    }
+  }
+  const choisi = evaluateurId && evaluateurId !== agent.manager ? evaluateurId : null;
+  await tx.execute(sql`
+    INSERT INTO fiches_entretien (id, tenant_id, employee_id, annee, evaluateur_employee_id)
+    VALUES (${uuidv7()}, ${user.tenantId}, ${employeeId}, ${annee}, ${choisi})
+    ON CONFLICT (tenant_id, employee_id, annee) DO UPDATE
+       SET evaluateur_employee_id = EXCLUDED.evaluateur_employee_id, updated_at = now()
+     WHERE fiches_entretien.transmise_dch_le IS NULL`);
 }

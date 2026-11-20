@@ -215,8 +215,8 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0207](0207-fiche-titre-noir-sections-en-bleu.md)     | La fiche d'entretien : titre en noir, numéros de section en bleu, sans barres en pied   | acceptée                                    |
 | [0208](0208-fiche-d-entretien-vierge.md)              | La fiche d'entretien vierge, toutes ses sections à remplir à la main                    | acceptée, révisée : 0209                    |
 | [0209](0209-paraphes-sur-la-fiche-d-entretien.md)     | Les paraphes sur la fiche d'entretien, et les lignes de la section 8.4                  | acceptée                                    |
-| [0210](0210-connexion-de-l-administration.md)         | La page de connexion de l'administration, à l'adresse et au mot de passe                | acceptée, complétée par 0211                |
-| [0211](0211-mode-campagne-et-accueil.md)              | Le mode campagne et l'accueil de l'évaluation annuelle, sans menu                       | acceptée, révisée : 0212, 0214, 0216        |
+| [0210](0210-connexion-de-l-administration.md)         | La page de connexion de l'administration, à l'adresse et au mot de passe                | acceptée, complétée par 0211 et 0222        |
+| [0211](0211-mode-campagne-et-accueil.md)              | Le mode campagne et l'accueil de l'évaluation annuelle, sans menu                       | acceptée, révisée : 0212, 0214, 0216, 0222  |
 | [0212](0212-barre-de-la-campagne.md)                  | La barre de la campagne, son titre en grand ; la connexion des agents par code          | acceptée, complétée par 0219                |
 | [0213](0213-fond-clair-fafafa.md)                     | Le fond clair de l'application revient à #FAFAFA                                        | acceptée                                    |
 | [0214](0214-bouton-m-auto-evaluer.md)                 | Le bouton M'auto-évaluer et la coche bleue de l'auto-évaluation faite                   | acceptée, complétée (0217), révisée (0220)  |
@@ -227,3 +227,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée                                    |
 | [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée                                    |
 | [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | acceptée                                    |
+| [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | acceptée                                    |

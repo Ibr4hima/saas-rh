@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   autoEvaluationVide,
   competencesDe,
+  datesDeLaCampagneSchema,
   evaluationDuN1Vide,
   partieReserveeVide,
   type AutoEvaluation,
@@ -902,6 +903,91 @@ describe('la transmission à la DCH (ADR-0221)', () => {
     const { filename, pdf } = await campagne.pdfDeLaDCH(dch, agents.ibou);
     expect(filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU-complete.pdf`);
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+});
+
+describe('l’administration de la campagne (ADR-0222)', () => {
+  it('est réservée aux comptes d’administration', async () => {
+    for (const geste of [
+      () => campagne.administration(session('awa')),
+      () => campagne.fixerLesDates(session('awa'), { du: jour(-2), autoAu: jour(3), au: jour(10) }),
+      () => campagne.choisirLEvaluateur(session('awa'), agents.fatou, agents.dg),
+    ]) {
+      await expect(geste()).rejects.toMatchObject({
+        problem: { status: 403, code: 'campagne.administration_reservee' },
+      });
+    }
+    expect((await campagne.accueil(session('admin'))).administration).toBe(true);
+    expect((await campagne.accueil(session('awa'))).administration).toBe(false);
+  });
+
+  it('liste les agents à évaluer, leur N+1 dans l’organigramme et le choix de l’administration', async () => {
+    const { agents: liste } = await campagne.administration(session('admin'));
+    // Le sommet de l'organigramme et les stages restent hors de la campagne.
+    expect(liste.map((a) => a.nom)).toEqual(['Diop', 'Fall', 'Ndiaye', 'Sall', 'Sarr']);
+    const ibou = liste.find((a) => a.employeeId === agents.ibou)!;
+    expect(ibou.organigramme).toMatchObject({ prenom: 'Cheikh', nom: 'Mbaye' });
+    expect(ibou.choisi).toMatchObject({ prenom: 'Awa', nom: 'Diop', matricule: 'CAMP-AWA' });
+    const fatou = liste.find((a) => a.employeeId === agents.fatou)!;
+    expect([fatou.organigramme?.nom, fatou.choisi, fatou.transmise]).toEqual(['Diop', null, false]);
+    expect(ibou.transmise).toBe(true);
+  });
+
+  it('fixe les dates : le début, la fin de l’auto-évaluation, la fin', async () => {
+    const v = await campagne.fixerLesDates(session('admin'), {
+      du: jour(-4),
+      autoAu: jour(1),
+      au: jour(12),
+    });
+    expect(v.periode).toEqual({ du: jour(-4), autoAu: jour(1), au: jour(12) });
+    expect((await campagne.accueil(session('moussa'))).periode?.autoAu).toBe(jour(1));
+    // Les dates se suivent, et la période commence dans l'année évaluée ou la suivante.
+    expect(
+      datesDeLaCampagneSchema.safeParse({ du: jour(5), autoAu: jour(2), au: jour(9) }).success,
+    ).toBe(false);
+    await expect(
+      campagne.fixerLesDates(session('admin'), {
+        du: `${ANNEE + 2}-01-05`,
+        autoAu: `${ANNEE + 2}-01-10`,
+        au: `${ANNEE + 2}-01-20`,
+      }),
+    ).rejects.toMatchObject({ problem: { status: 422, code: 'campagne.dates_hors_annee' } });
+    await periode(-2, 3, 10);
+  });
+
+  it('choisit librement l’évaluateur, puis revient à l’organigramme', async () => {
+    // Fatou Sall a Awa Diop pour N+1 dans l'organigramme ; Cheikh Mbaye l'évalue pour la campagne.
+    const v = await campagne.choisirLEvaluateur(session('admin'), agents.fatou, agents.dg);
+    expect(v.agents.find((a) => a.employeeId === agents.fatou)?.choisi?.nom).toBe('Mbaye');
+    expect((await campagne.accueil(session('dg'))).equipe.map((a) => a.employeeId)).toContain(
+      agents.fatou,
+    );
+    expect((await campagne.accueil(session('awa'))).equipe.map((a) => a.employeeId)).not.toContain(
+      agents.fatou,
+    );
+    // Choisir le N+1 de l'organigramme, c'est revenir à l'organigramme.
+    const retour = await campagne.choisirLEvaluateur(session('admin'), agents.fatou, agents.awa);
+    expect(retour.agents.find((a) => a.employeeId === agents.fatou)?.choisi).toBeNull();
+    await campagne.choisirLEvaluateur(session('admin'), agents.fatou, agents.dg);
+    const sans = await campagne.choisirLEvaluateur(session('admin'), agents.fatou, null);
+    expect(sans.agents.find((a) => a.employeeId === agents.fatou)?.choisi).toBeNull();
+    expect((await campagne.accueil(session('awa'))).equipe.map((a) => a.employeeId)).toContain(
+      agents.fatou,
+    );
+  });
+
+  it('refuse l’agent comme son propre évaluateur, un évaluateur inconnu, une fiche transmise, un agent hors campagne', async () => {
+    for (const [agent, evaluateur, status, code] of [
+      [agents.fatou, agents.fatou, 422, 'campagne.evaluateur_soi_meme'],
+      [agents.fatou, randomUUID(), 422, 'campagne.evaluateur_introuvable'],
+      [agents.ibou, agents.dg, 409, 'campagne.fiche_transmise'],
+      [agents.dg, agents.awa, 404, 'campagne.agent_introuvable'],
+      [agents.lamine, agents.awa, 404, 'campagne.agent_introuvable'],
+    ] as const) {
+      await expect(
+        campagne.choisirLEvaluateur(session('admin'), agent, evaluateur),
+      ).rejects.toMatchObject({ problem: { status, code } });
+    }
   });
 });
 

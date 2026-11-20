@@ -33,7 +33,7 @@ import { api, ApiError } from '../../../../lib/api';
 import { CLE_CAMPAGNE, ficheDeLaDCH } from '../../../../lib/campagne';
 
 /* ────────────────────────────────────────────────────────────────
-   Le suivi de la DCH (ADR-0221) : chaque agent évalué cette année, et où
+   Le suivi de la DCH (ADR-0221) : chaque agent à évaluer cette année, et où
    en est sa fiche, de l'auto-évaluation à sa transmission à la DCH. En
    tête, les grands nombres ; dessous, la liste, qu'on cherche par nom ou
    matricule et qu'on filtre par étape. Une fiche transmise s'ouvre en

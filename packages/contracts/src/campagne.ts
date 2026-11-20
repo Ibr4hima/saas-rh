@@ -192,6 +192,8 @@ export interface AccueilDeLaCampagne {
    * de bord » ; `null` sinon (ADR-0221).
    */
   dch: { fiches: number; transmises: number } | null;
+  /** Un compte d'administration : l'accueil ouvre l'administration de la campagne (ADR-0222). */
+  administration: boolean;
 }
 
 /** Un agent de l'équipe, tel que son évaluateur l'ouvre depuis sa carte. */
@@ -360,7 +362,7 @@ export interface FicheSuivie {
   transmiseLe: string | null;
 }
 
-/** Le suivi de la DCH : chaque agent évalué cette année, et où en est sa fiche. */
+/** Le suivi de la DCH : chaque agent à évaluer cette année, et où en est sa fiche. */
 export interface SuiviDeLaDCH {
   annee: number;
   periode: PeriodeDeLaCampagne | null;
@@ -390,3 +392,56 @@ export interface FichePourLaDCH {
   /** Le N+1 qui l'a transmise. */
   transmisePar: PersonneDeLaCampagne | null;
 }
+
+/* ────────────────────────────────────────────────────────────────
+   L'administration de la campagne (ADR-0222) : les dates de l'évaluation
+   et qui évalue qui, réservées aux comptes d'administration.
+   ──────────────────────────────────────────────────────────────── */
+
+/** Une personne désignée : son dossier, son nom, son poste. */
+export interface PersonneDesignee extends PersonneDeLaCampagne {
+  employeeId: string;
+  matricule: string;
+}
+
+/** Un agent de la campagne, et qui l'évalue. */
+export interface EvaluateurDeLAgent {
+  employeeId: string;
+  prenom: string;
+  nom: string;
+  matricule: string;
+  poste: string | null;
+  /** L'abrégé de la direction (« DCH »). */
+  direction: string | null;
+  /** Le N+1 de l'organigramme ; `null` : l'agent n'en a pas. */
+  organigramme: PersonneDesignee | null;
+  /** Le choix de l'administration pour la campagne ; `null` : le N+1 de l'organigramme. */
+  choisi: PersonneDesignee | null;
+  /** Transmise à la DCH, la fiche garde son évaluateur. */
+  transmise: boolean;
+}
+
+export interface AdministrationDeLaCampagne {
+  annee: number;
+  periode: PeriodeDeLaCampagne | null;
+  phase: PhaseDeLaCampagne;
+  /** Les agents à évaluer cette année, par ordre alphabétique. */
+  agents: EvaluateurDeLAgent[];
+}
+
+/** Les dates de l'évaluation : le début, la fin de l'auto-évaluation, la fin. */
+export const datesDeLaCampagneSchema = z
+  .object({ du: z.iso.date(), autoAu: z.iso.date(), au: z.iso.date() })
+  .refine((p) => p.du <= p.autoAu, {
+    message: 'La fin de l’auto-évaluation doit suivre le début de la période',
+    path: ['autoAu'],
+  })
+  .refine((p) => p.autoAu <= p.au, {
+    message: 'La fin de la période doit suivre la fin de l’auto-évaluation',
+    path: ['au'],
+  });
+export type DatesDeLaCampagne = z.infer<typeof datesDeLaCampagneSchema>;
+
+/** L'évaluateur d'un agent pour la campagne ; `null` : le N+1 de l'organigramme. */
+export const choixDeLEvaluateurSchema = z.object({ evaluateurEmployeeId: z.uuid().nullable() });
+export type ChoixDeLEvaluateur = z.infer<typeof choixDeLEvaluateurSchema>;

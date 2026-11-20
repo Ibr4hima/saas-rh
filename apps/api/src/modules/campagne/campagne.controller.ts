@@ -14,10 +14,14 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
+  choixDeLEvaluateurSchema,
+  datesDeLaCampagneSchema,
   ecritureDeLAutoSchema,
   ecritureDeLEvaluationSchema,
   ecritureDesCommentairesSchema,
   renvoiSchema,
+  type ChoixDeLEvaluateur,
+  type DatesDeLaCampagne,
   type EcritureDeLAuto,
   type EcritureDeLEvaluation,
   type EcritureDesCommentaires,
@@ -36,7 +40,9 @@ import { CampagneService } from './campagne.service';
  * que sa propre auto-évaluation, l'évaluation des agents qu'on évalue et
  * leur transmission à la DCH, la validation de sa propre évaluation, et ses
  * commentaires de N+2. Le suivi de la DCH et les fiches qui lui sont
- * transmises demandent l'habilitation « Tableau de bord ».
+ * transmises demandent l'habilitation « Tableau de bord » ; les dates de
+ * l'évaluation et le choix des évaluateurs, un compte d'administration
+ * (ADR-0222).
  */
 @Controller('campagne')
 @UseGuards(SessionGuard, AccesGuard)
@@ -107,7 +113,32 @@ export class CampagneController {
     return this.campagne.renvoyerAuN2(req.sessionUser, employeeId);
   }
 
-  /** Le suivi de la DCH : chaque agent évalué cette année, et où en est sa fiche. */
+  /** L'administration de la campagne : les dates, et qui évalue qui (ADR-0222). */
+  @Get('administration')
+  administration(@Req() req: AuthenticatedRequest) {
+    return this.campagne.administration(req.sessionUser);
+  }
+
+  /** Les dates de l'évaluation : le début, la fin de l'auto-évaluation, la fin. */
+  @Put('administration/dates')
+  fixerLesDates(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(datesDeLaCampagneSchema)) body: DatesDeLaCampagne,
+  ) {
+    return this.campagne.fixerLesDates(req.sessionUser, body);
+  }
+
+  /** L'évaluateur d'un agent pour la campagne ; `null` : le N+1 de l'organigramme. */
+  @Put('administration/evaluateurs/:employeeId')
+  choisirLEvaluateur(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Body(new ZodValidationPipe(choixDeLEvaluateurSchema)) body: ChoixDeLEvaluateur,
+  ) {
+    return this.campagne.choisirLEvaluateur(req.sessionUser, employeeId, body.evaluateurEmployeeId);
+  }
+
+  /** Le suivi de la DCH : chaque agent à évaluer cette année, et où en est sa fiche. */
   @Get('dch')
   suiviDeLaDCH(@Req() req: AuthenticatedRequest) {
     return this.campagne.suiviDeLaDCH(req.sessionUser);
