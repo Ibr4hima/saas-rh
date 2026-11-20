@@ -7,7 +7,6 @@ import {
   type AutoDeLAgent,
   type EtatDeLEvaluation,
   type EtatDesCommentaires,
-  type EvaluationRecue,
   type PeriodeDeLaCampagne,
   type PersonnelDeLaFiche,
   type RenvoiDeLEvaluation,
@@ -241,29 +240,6 @@ export function statutPourLeN2(a: AgentACommenter): Statut {
       return a.evaluation === 'transmise'
         ? { libelle: 'Chez l’agent', ton: 'teal' }
         : { libelle: 'Chez le N+1', ton: 'bleu' };
-  }
-}
-
-/**
- * Son évaluation par le N+1, sous le titre de sa carte, à l'accueil de
- * l'agent : jusqu'à quand le N+1 l'écrit, puis le jour où elle est arrivée,
- * renvoyée ou validée.
- */
-export function ouEnEstMonEvaluation(
-  recue: EvaluationRecue,
-  periode: PeriodeDeLaCampagne | null,
-): string {
-  switch (recue.etat) {
-    case 'validee':
-      return recue.valideeLe ? `Validée le ${dateEnLettres(recue.valideeLe)}` : 'Validée';
-    case 'a_valider':
-      return recue.transmiseLe ? `Reçue le ${dateEnLettres(recue.transmiseLe)}` : 'Reçue';
-    case 'renvoyee':
-      return recue.renvoyeeLe
-        ? `Renvoyée à votre N+1 le ${dateEnLettres(recue.renvoyeeLe)}`
-        : 'Renvoyée à votre N+1';
-    case 'en_attente':
-      return periodeDeLEvaluation(periode);
   }
 }
 
