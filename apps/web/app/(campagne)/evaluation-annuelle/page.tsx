@@ -6,6 +6,7 @@ import { Badge, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import {
   BoutonMAutoEvaluer,
   BoutonValiderMonEvaluation,
+  CarteDEtape,
   IdentiteDeLaCampagne,
   statutDeLAgent,
   statutDeLEvaluation,
@@ -15,7 +16,12 @@ import {
 import { CarteDeLaPeriode } from '../../../components/campagne/periode';
 import { Icon } from '../../../components/icons';
 import { ApiError } from '../../../lib/api';
-import { ACCUEIL_DE_LA_CAMPAGNE, ficheDuN2, useAccueilDeLaCampagne } from '../../../lib/campagne';
+import {
+  ACCUEIL_DE_LA_CAMPAGNE,
+  ficheDuN2,
+  SUIVI_DE_LA_DCH,
+  useAccueilDeLaCampagne,
+} from '../../../lib/campagne';
 
 /* ────────────────────────────────────────────────────────────────
    L'accueil de la campagne d'évaluation annuelle (ADR-0211).
@@ -35,6 +41,8 @@ import { ACCUEIL_DE_LA_CAMPAGNE, ficheDuN2, useAccueilDeLaCampagne } from '../..
    où elle en est (ADR-0216). Enfin, si la personne est le N+2 d'agents,
    les équipes de ses N+1 : une fiche validée par l'agent s'ouvre pour ses
    commentaires (ADR-0218).
+   Avec l'habilitation « Tableau de bord », une carte de plus, sous la
+   période, ouvre le suivi de la DCH (ADR-0221).
    ──────────────────────────────────────────────────────────────── */
 
 export default function AccueilDeLaCampagnePage() {
@@ -57,7 +65,17 @@ export default function AccueilDeLaCampagnePage() {
     );
   }
   if (!v) return <Squelette />;
+  const suivi = v.dch ? (
+    <CarteDEtape
+      icone="folder_managed"
+      titre="Suivi de la DCH"
+      periode={`Fiches transmises : ${v.dch.transmises} sur ${v.dch.fiches}`}
+      href={SUIVI_DE_LA_DCH}
+    />
+  ) : null;
   if (!v.moi) {
+    // Un compte sans dossier d'agent, l'administration : le suivi seul, avec l'habilitation.
+    if (suivi) return <div className="flex flex-col gap-4">{suivi}</div>;
     return (
       <Card>
         <EmptyState
@@ -87,6 +105,7 @@ export default function AccueilDeLaCampagnePage() {
       {auto ? (
         <CarteDeLaPeriode annee={v.annee} periode={v.periode} auto={auto} recue={recue} />
       ) : null}
+      {suivi}
       {v.equipe.length > 0 ? <Equipe equipe={v.equipe} /> : null}
       {v.aCommenter.length > 0 ? <ACommenter agents={v.aCommenter} /> : null}
     </div>
@@ -130,14 +149,18 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
  * Les agents dont la personne est le N+2, rangés par N+1, en deux groupes :
  * d'abord les fiches validées par l'agent, qui s'ouvrent pour les
  * commentaires du N+2, puis celles qui n'y sont pas encore, avec l'étape où
- * elles en sont. Chaque carte dit le N+1 de l'agent (ADR-0218).
+ * elles en sont. Chaque carte dit le N+1 de l'agent (ADR-0218). Une fiche
+ * reprise par le N+1 ne s'ouvre plus (ADR-0221).
  */
 function ACommenter({ agents }: { agents: AgentACommenter[] }) {
   const carte = (a: AgentACommenter): CarteDUnAgent => ({
     agent: a,
     statut: statutPourLeN2(a),
     precision: `N+1 : ${a.n1.prenom} ${a.n1.nom}`,
-    href: a.commentaires === 'en_attente' ? undefined : ficheDuN2(a.employeeId),
+    href:
+      a.commentaires === 'en_attente' || a.commentaires === 'reprise'
+        ? undefined
+        : ficheDuN2(a.employeeId),
   });
   return (
     <SectionDAgents

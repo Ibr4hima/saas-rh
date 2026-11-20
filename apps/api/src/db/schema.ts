@@ -1026,6 +1026,10 @@ export const fichesEntretien = pgTable('fiches_entretien', {
   commentairesN2: text('commentaires_n2'),
   commentairesN2Par: uuid('commentaires_n2_par'),
   commentairesN2TransmisLe: timestamp('commentaires_n2_transmis_le', { withTimezone: true }),
+  /** La reprise au N+2, la transmission à la DCH et qui l'a faite (0142, ADR-0221). */
+  repriseN2Le: timestamp('reprise_n2_le', { withTimezone: true }),
+  transmiseDchLe: timestamp('transmise_dch_le', { withTimezone: true }),
+  transmiseDchPar: uuid('transmise_dch_par'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

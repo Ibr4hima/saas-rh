@@ -67,7 +67,18 @@ export type EtatDesCommentaires =
   /** Le N+2 a commencé d'écrire. */
   | 'en_cours'
   /** Transmis au N+1 : ils ne changent plus. */
-  | 'transmis';
+  | 'transmis'
+  /** Le N+1 a repris la fiche avant les commentaires : le N+2 ne la commente plus (ADR-0221). */
+  | 'reprise';
+
+/** La transmission de la fiche à la DCH, par le N+1 (ADR-0221). */
+export type EtatDeLaTransmission =
+  /** Pas encore : la fiche attend la validation de l'agent, ou les commentaires du N+2. */
+  | 'en_attente'
+  /** Validée par l'agent, commentée par le N+2 s'il y en a un, ou reprise au N+2 : le N+1 la transmet. */
+  | 'a_transmettre'
+  /** Transmise : la fiche ne change plus. */
+  | 'transmise';
 
 /** Les commentaires du N+2, une fois transmis au N+1. */
 export interface CommentairesDuN2 {
@@ -143,6 +154,8 @@ export interface AgentDeLEquipe {
   evaluation: EtatDeLEvaluation;
   /** Où en sont les commentaires du N+2 ; `null` : l'agent n'a pas de N+2 (ADR-0218). */
   commentaires: EtatDesCommentaires | null;
+  /** Où en est sa transmission à la DCH (ADR-0221). */
+  dch: EtatDeLaTransmission;
 }
 
 /**
@@ -174,6 +187,11 @@ export interface AccueilDeLaCampagne {
   monEvaluation: EvaluationRecue | null;
   /** Les agents dont la personne connectée est le N+2 ; vide s'il n'y en a pas (ADR-0218). */
   aCommenter: AgentACommenter[];
+  /**
+   * Le suivi de la DCH, en deux nombres, pour qui a l'habilitation « Tableau
+   * de bord » ; `null` sinon (ADR-0221).
+   */
+  dch: { fiches: number; transmises: number } | null;
 }
 
 /** Un agent de l'équipe, tel que son évaluateur l'ouvre depuis sa carte. */
@@ -202,6 +220,12 @@ export interface EvaluationDeLAgent {
   etatDesCommentaires: EtatDesCommentaires | null;
   /** Les commentaires du N+2, une fois transmis. */
   commentairesDuN2: CommentairesDuN2 | null;
+  /** AAAA-MM-JJ : le jour où le N+1 a repris la fiche au N+2, tant qu'elle n'est pas renvoyée au N+2. */
+  repriseAuN2Le: string | null;
+  /** Où en est sa transmission à la DCH (ADR-0221). */
+  dch: EtatDeLaTransmission;
+  /** AAAA-MM-JJ : le jour de sa transmission à la DCH. */
+  transmiseALaDCHLe: string | null;
   /**
    * Ouverte à l'écriture du N+1 : l'auto-évaluation transmise, pendant la
    * période de l'année, tant que l'évaluation n'est pas transmise, ou une
@@ -302,3 +326,67 @@ export const ecritureDesCommentairesSchema = z.object({
   commentaires: z.string().max(LONGUEURS_DE_LA_FICHE.texte),
 });
 export type EcritureDesCommentaires = z.infer<typeof ecritureDesCommentairesSchema>;
+
+/** Où en est la fiche d'un agent, pour la DCH (ADR-0221). */
+export type EtapeDeLaFiche =
+  /** L'auto-évaluation n'est pas commencée. */
+  | 'auto_a_faire'
+  /** L'auto-évaluation est commencée, pas transmise. */
+  | 'auto_en_cours'
+  /** Le N+1 l'évalue, ou la reprend après un renvoi de l'agent. */
+  | 'chez_le_n1'
+  /** Transmise à l'agent, qui la valide ou la renvoie. */
+  | 'chez_l_agent'
+  /** Validée par l'agent : le N+2 la commente. */
+  | 'chez_le_n2'
+  /** De retour chez le N+1, qui la transmet à la DCH. */
+  | 'a_transmettre'
+  /** Transmise à la DCH. */
+  | 'transmise';
+
+/** La fiche d'un agent, sur une ligne du suivi de la DCH. */
+export interface FicheSuivie {
+  employeeId: string;
+  prenom: string;
+  nom: string;
+  matricule: string;
+  poste: string | null;
+  /** L'abrégé de la direction (« DCH »). */
+  direction: string | null;
+  /** Son N+1, l'évaluateur de la campagne. */
+  n1: PersonneDeLaCampagne | null;
+  etape: EtapeDeLaFiche;
+  /** AAAA-MM-JJ : le jour de sa transmission à la DCH. */
+  transmiseLe: string | null;
+}
+
+/** Le suivi de la DCH : chaque agent évalué cette année, et où en est sa fiche. */
+export interface SuiviDeLaDCH {
+  annee: number;
+  periode: PeriodeDeLaCampagne | null;
+  phase: PhaseDeLaCampagne;
+  /** Par ordre alphabétique. */
+  fiches: FicheSuivie[];
+}
+
+/** La fiche d'un agent, telle que la DCH la lit une fois transmise : en entier. */
+export interface FichePourLaDCH {
+  annee: number;
+  /** L'agent, et son N+1 en évaluateur. */
+  agent: AgentDeLaCampagne;
+  objectifs: ObjectifEvalue[];
+  fiche: FicheComplete;
+  /** AAAA-MM-JJ. */
+  autoTransmiseLe: string | null;
+  evaluationTransmiseLe: string | null;
+  valideeLe: string | null;
+  /** Le N+2 de l'agent ; `null` s'il n'y en a pas. */
+  n2: PersonneDeLaCampagne | null;
+  commentairesDuN2: CommentairesDuN2 | null;
+  /** AAAA-MM-JJ : le jour où le N+1 l'a reprise au N+2, sans ses commentaires. */
+  repriseAuN2Le: string | null;
+  /** AAAA-MM-JJ. */
+  transmiseLe: string;
+  /** Le N+1 qui l'a transmise. */
+  transmisePar: PersonneDeLaCampagne | null;
+}

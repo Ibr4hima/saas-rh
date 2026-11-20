@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import {
+  ancienneteEnLettres,
   autoEvaluationSchema,
   autoEvaluationVide,
   ceQuiManqueALAutoEvaluation,
@@ -8,10 +9,12 @@ import {
   competencesDe,
   evaluationDuN1Schema,
   evaluationDuN1Vide,
+  nomDeLaFiche,
   objectifEvalueSchema,
   partieReserveeSchema,
   partieReserveeVide,
   personnelDeLaFiche,
+  peut,
   sansLignesVides,
   type AccueilDeLaCampagne,
   type AgentACommenter,
@@ -21,12 +24,15 @@ import {
   type AutoEvaluation,
   type CommentairesDuN2,
   type EcritureDeLEvaluation,
+  type EtapeDeLaFiche,
+  type EtatDeLaTransmission,
   type EtatDeLEvaluation,
   type EtatDeMonEvaluation,
   type EtatDesCommentaires,
   type EvaluationDeLAgent,
   type EvaluationDuN1,
   type EvaluationRecue,
+  type FichePourLaDCH,
   type FichePourLeN2,
   type MonAutoEvaluation,
   type MonEvaluation,
@@ -38,11 +44,13 @@ import {
   type PhaseDeLaCampagne,
   type RenvoiDeLEvaluation,
   type SessionUser,
+  type SuiviDeLaDCH,
 } from '@teranga/contracts';
 import { v7 as uuidv7 } from 'uuid';
 import { problem } from '../../common/problem';
 import { loadEnv } from '../../config/env';
 import { TenantDb, type Tx } from '../../db/tenant-db';
+import { ficheDEntretienPdf, type DonneesDeLaFiche } from '../entretiens/fiche-pdf';
 import { evaluable } from '../evaluations/circuit';
 import { unitesDe } from '../evaluations/unites';
 import { directionDeLUnite } from '../people/chaine';
@@ -73,6 +81,13 @@ import { directionDeLUnite } from '../people/chaine';
    Validée par l'agent, la fiche arrive chez le N+2, l'évaluateur du N+1 :
    le N+2 la lit en entier, partie réservée comprise, la commente s'il y a
    lieu, et transmet ses commentaires au N+1 (ADR-0218).
+
+   Le N+1 transmet ensuite la fiche à la DCH : une fois les commentaires du
+   N+2 reçus, ou dès la validation de l'agent sans N+2. Un N+2 qui tarde ne
+   bloque rien : le N+1 reprend la fiche au N+2, puis la transmet, ou la
+   renvoie au N+2. La DCH, avec l'habilitation « Tableau de bord », suit toutes
+   les fiches de l'année et lit en entier celles qui lui sont transmises,
+   avec leur PDF (ADR-0221).
    ──────────────────────────────────────────────────────────────── */
 
 /** L'évaluateur de la campagne, sur un agent `e` et sa fiche de l'année `f`. */
@@ -94,6 +109,7 @@ export class CampagneService {
       const annee = await anneeDeLaCampagne(tx);
       const { periode, phase } = await periodeDe(tx, annee);
       const moi = await employeDuCompte(tx, user.userId);
+      const dch = peut(user, 'pilotage') ? await suiviEnBref(tx, annee) : null;
       if (!moi) {
         return {
           annee,
@@ -103,6 +119,7 @@ export class CampagneService {
           equipe: [],
           monEvaluation: null,
           aCommenter: [],
+          dch,
         };
       }
       const fiche = await ficheDe(tx, moi, annee);
@@ -114,6 +131,7 @@ export class CampagneService {
         equipe: await equipeDe(tx, moi, annee, fiche.evaluateur !== null),
         monEvaluation: fiche.auto ? evaluationRecue(await ficheDeLAnnee(tx, moi, annee)) : null,
         aCommenter: await aCommenterDe(tx, moi, annee),
+        dch,
       };
     });
   }
@@ -185,6 +203,60 @@ export class CampagneService {
       await ecrireCommentaires(tx, user, employeeId, commentaires, true);
       return ficheDuN2Dans(tx, user, employeeId);
     });
+  }
+
+  /** Le N+1 transmet la fiche à la DCH : elle ne change plus (ADR-0221). */
+  async transmettreALaDCH(user: SessionUser, employeeId: string): Promise<EvaluationDeLAgent> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await transmettreALaDCHDans(tx, user, employeeId);
+      return agentDans(tx, user, employeeId);
+    });
+  }
+
+  /** Le N+1 reprend la fiche au N+2 qui ne l'a pas encore commentée. */
+  async reprendreAuN2(user: SessionUser, employeeId: string): Promise<EvaluationDeLAgent> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await reprendreAuN2Dans(tx, user, employeeId);
+      return agentDans(tx, user, employeeId);
+    });
+  }
+
+  /** La fiche reprise repart au N+2. */
+  async renvoyerAuN2(user: SessionUser, employeeId: string): Promise<EvaluationDeLAgent> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await renvoyerAuN2Dans(tx, user, employeeId);
+      return agentDans(tx, user, employeeId);
+    });
+  }
+
+  /** Le suivi de la DCH : chaque agent évalué cette année, et où en est sa fiche. */
+  async suiviDeLaDCH(user: SessionUser): Promise<SuiviDeLaDCH> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      suiviDans(tx, user),
+    );
+  }
+
+  /** La fiche d'un agent, transmise à la DCH, en entier. */
+  async ficheDeLaDCH(user: SessionUser, employeeId: string): Promise<FichePourLaDCH> {
+    const { fiche } = await this.db.withTenant(
+      { tenantId: user.tenantId, userId: user.userId },
+      (tx) => ficheDeLaDCHDans(tx, user, employeeId),
+    );
+    return fiche;
+  }
+
+  /** Le PDF de la fiche transmise : la version complète, pour le dossier de l'agent. */
+  async pdfDeLaDCH(
+    user: SessionUser,
+    employeeId: string,
+  ): Promise<{ filename: string; pdf: Buffer }> {
+    const lue = await this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      ficheDeLaDCHDans(tx, user, employeeId),
+    );
+    return {
+      filename: nomDeLaFiche(lue.fiche.annee, lue.fiche.agent.matricule, true),
+      pdf: await ficheDEntretienPdf(donneesDuPdf(lue)),
+    };
   }
 
   /** Son évaluation par le N+1, pour la lire, puis la valider ou la renvoyer (ADR-0217). */
@@ -276,6 +348,9 @@ async function agentDans(
     etatDesCommentaires: n2 ? etatDesCommentaires(annuelle) : null,
     // Le brouillon du N+2 reste au N+2 : le N+1 ne lit que ce qui est transmis.
     commentairesDuN2: annuelle.commentairesDuN2,
+    repriseAuN2Le: n2 ? annuelle.repriseAuN2Le : null,
+    dch: etatDeLaTransmission(annuelle, n2 !== null),
+    transmiseALaDCHLe: annuelle.transmiseALaDCHLe,
     modifiable:
       autoTransmise &&
       evaluationOuverte(phase) &&
@@ -472,6 +547,12 @@ interface FicheDeLAnnee {
   commentairesN2: string | null;
   /** Les commentaires du N+2, une fois transmis au N+1. */
   commentairesDuN2: CommentairesDuN2 | null;
+  /** AAAA-MM-JJ : la reprise au N+2, tant que la fiche n'est pas renvoyée au N+2. */
+  repriseAuN2Le: string | null;
+  /** AAAA-MM-JJ : la transmission à la DCH. */
+  transmiseALaDCHLe: string | null;
+  /** Le N+1 qui l'a transmise. */
+  transmisePar: PersonneDeLaCampagne | null;
 }
 
 /**
@@ -494,17 +575,28 @@ async function ficheDeLAnnee(tx: Tx, employeeId: string, annee: number): Promise
     n2_prenom: string | null;
     n2_nom: string | null;
     n2_poste: string | null;
+    reprise_n2_le: string | null;
+    transmise_dch_le: string | null;
+    t_prenom: string | null;
+    t_nom: string | null;
+    t_poste: string | null;
   }>(sql`
     SELECT f.objectifs, f.auto, f.evaluation, f.reservee,
            f.evaluation_transmise_le::date::text AS evaluation_transmise_le,
            f.validee_le::date::text AS validee_le, f.renvoyee_le::date::text AS renvoyee_le,
            f.renvoi_mot, f.commentaires_n2,
            f.commentaires_n2_transmis_le::date::text AS commentaires_n2_le,
-           pc.given_name AS n2_prenom, pc.family_name AS n2_nom, ac.position_title AS n2_poste
+           pc.given_name AS n2_prenom, pc.family_name AS n2_nom, ac.position_title AS n2_poste,
+           f.reprise_n2_le::date::text AS reprise_n2_le,
+           f.transmise_dch_le::date::text AS transmise_dch_le,
+           pt.given_name AS t_prenom, pt.family_name AS t_nom, atr.position_title AS t_poste
       FROM fiches_entretien f
       LEFT JOIN employees c ON c.id = f.commentaires_n2_par
       LEFT JOIN persons pc ON pc.id = c.person_id
       LEFT JOIN assignments ac ON ac.employee_id = c.id AND ac.validity @> CURRENT_DATE
+      LEFT JOIN employees t ON t.id = f.transmise_dch_par
+      LEFT JOIN persons pt ON pt.id = t.person_id
+      LEFT JOIN assignments atr ON atr.employee_id = t.id AND atr.validity @> CURRENT_DATE
      WHERE f.employee_id = ${employeeId} AND f.annee = ${annee}`);
   const r = rows[0];
   const objectifs = objectifEvalueSchema.array().safeParse(r?.objectifs ?? []);
@@ -527,15 +619,48 @@ async function ficheDeLAnnee(tx: Tx, employeeId: string, annee: number): Promise
           par: r.n2_nom ? { prenom: r.n2_prenom!, nom: r.n2_nom, poste: r.n2_poste } : null,
         }
       : null,
+    repriseAuN2Le: r?.reprise_n2_le ?? null,
+    transmiseALaDCHLe: r?.transmise_dch_le ?? null,
+    transmisePar: r?.t_nom ? { prenom: r.t_prenom!, nom: r.t_nom, poste: r.t_poste } : null,
   };
 }
 
 /** Où en sont les commentaires du N+2, sur ce que garde la fiche de l'année. */
 function etatDesCommentaires(f: FicheDeLAnnee): EtatDesCommentaires {
-  if (!f.valideeLe) return 'en_attente';
-  if (f.commentairesDuN2) return 'transmis';
-  return f.commentairesN2 !== null ? 'en_cours' : 'a_commenter';
+  return etatDesCommentairesDe({
+    validee: f.valideeLe !== null,
+    commences: f.commentairesN2 !== null,
+    transmis: f.commentairesDuN2 !== null,
+    reprise: f.repriseAuN2Le !== null,
+  });
 }
+
+/**
+ * Où en est la transmission de la fiche à la DCH : transmise, prête, ou en
+ * attente de la validation de l'agent, puis des commentaires du N+2 s'il y
+ * en a un. Reprise au N+2, la fiche est prête (ADR-0221).
+ */
+const etatDeLaTransmissionDe = (f: {
+  validee: boolean;
+  avecN2: boolean;
+  commentairesTransmis: boolean;
+  reprise: boolean;
+  transmise: boolean;
+}): EtatDeLaTransmission =>
+  f.transmise
+    ? 'transmise'
+    : f.validee && (!f.avecN2 || f.commentairesTransmis || f.reprise)
+      ? 'a_transmettre'
+      : 'en_attente';
+
+const etatDeLaTransmission = (f: FicheDeLAnnee, avecN2: boolean) =>
+  etatDeLaTransmissionDe({
+    validee: f.valideeLe !== null,
+    avecN2,
+    commentairesTransmis: f.commentairesDuN2 !== null,
+    reprise: f.repriseAuN2Le !== null,
+    transmise: f.transmiseALaDCHLe !== null,
+  });
 
 /**
  * L'état de l'évaluation, sur ce que garde la fiche de l'année : validée,
@@ -794,11 +919,15 @@ async function equipeDe(
     evaluation_renvoyee: boolean;
     commentaires_commences: boolean;
     commentaires_transmis: boolean;
+    reprise: boolean;
+    transmise_dch: boolean;
   }>(sql`
     SELECT e.id, p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
            a.position_title AS poste,
            f.commentaires_n2 IS NOT NULL AS commentaires_commences,
            f.commentaires_n2_transmis_le IS NOT NULL AS commentaires_transmis,
+           f.reprise_n2_le IS NOT NULL AS reprise,
+           f.transmise_dch_le IS NOT NULL AS transmise_dch,
            f.auto IS NOT NULL AS commencee, f.auto_transmise_le::date::text AS transmise_le,
            f.evaluation IS NOT NULL AS evaluation_commencee,
            f.evaluation_transmise_le IS NOT NULL AS evaluation_transmise,
@@ -828,8 +957,16 @@ async function equipeDe(
           validee: r.evaluation_validee,
           commences: r.commentaires_commences,
           transmis: r.commentaires_transmis,
+          reprise: r.reprise,
         })
       : null,
+    dch: etatDeLaTransmissionDe({
+      validee: r.evaluation_validee,
+      avecN2,
+      commentairesTransmis: r.commentaires_transmis,
+      reprise: r.reprise,
+      transmise: r.transmise_dch,
+    }),
   }));
 }
 
@@ -837,8 +974,17 @@ const etatDesCommentairesDe = (f: {
   validee: boolean;
   commences: boolean;
   transmis: boolean;
+  reprise: boolean;
 }): EtatDesCommentaires =>
-  !f.validee ? 'en_attente' : f.transmis ? 'transmis' : f.commences ? 'en_cours' : 'a_commenter';
+  !f.validee
+    ? 'en_attente'
+    : f.transmis
+      ? 'transmis'
+      : f.reprise
+        ? 'reprise'
+        : f.commences
+          ? 'en_cours'
+          : 'a_commenter';
 
 /**
  * Le N+2 de la campagne, sur un agent `e` et sa fiche `f`, son N+1 `n1` et
@@ -892,6 +1038,7 @@ async function aCommenterDe(tx: Tx, id: string, annee: number): Promise<AgentACo
     evaluation_renvoyee: boolean;
     commentaires_commences: boolean;
     commentaires_transmis: boolean;
+    reprise: boolean;
     n1_prenom: string;
     n1_nom: string;
     n1_poste: string | null;
@@ -905,6 +1052,7 @@ async function aCommenterDe(tx: Tx, id: string, annee: number): Promise<AgentACo
            f.renvoyee_le IS NOT NULL AS evaluation_renvoyee,
            f.commentaires_n2 IS NOT NULL AS commentaires_commences,
            f.commentaires_n2_transmis_le IS NOT NULL AS commentaires_transmis,
+           f.reprise_n2_le IS NOT NULL AS reprise,
            p1.given_name AS n1_prenom, p1.family_name AS n1_nom, a1.position_title AS n1_poste
       FROM employees e
       JOIN persons p ON p.id = e.person_id
@@ -934,6 +1082,7 @@ async function aCommenterDe(tx: Tx, id: string, annee: number): Promise<AgentACo
       validee: r.evaluation_validee,
       commences: r.commentaires_commences,
       transmis: r.commentaires_transmis,
+      reprise: r.reprise,
     }),
   }));
 }
@@ -967,6 +1116,8 @@ async function ficheDuN2Dans(
   const agent = await ficheDe(tx, employeeId, annee);
   const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
   const etat = etatDesCommentaires(annuelle);
+  // Reprise par le N+1, la fiche quitte le N+2, comme sur la plateforme de base (ADR-0156).
+  if (etat === 'reprise') repriseParLeN1();
   return {
     annee,
     periode,
@@ -1010,11 +1161,302 @@ async function ecrireCommentaires(
   if (annuelle.commentairesDuN2) {
     problem(409, 'campagne.commentaires_transmis', 'Commentaires déjà transmis');
   }
+  if (annuelle.repriseAuN2Le) repriseParLeN1();
   await tx.execute(sql`
     UPDATE fiches_entretien
        SET commentaires_n2 = ${commentaires}, commentaires_n2_par = ${moi},
            commentaires_n2_transmis_le = ${transmettre ? sql`now()` : sql`NULL`},
            updated_at = now()
      WHERE employee_id = ${employeeId} AND annee = ${annee}
-       AND validee_le IS NOT NULL AND commentaires_n2_transmis_le IS NULL`);
+       AND validee_le IS NOT NULL AND commentaires_n2_transmis_le IS NULL
+       AND reprise_n2_le IS NULL`);
+}
+
+/** La fiche reprise par le N+1 : le N+2 ne l'ouvre plus. */
+function repriseParLeN1(): never {
+  problem(409, 'campagne.fiche_reprise', 'La fiche a été reprise par le N+1');
+}
+
+// ──────────────────────────────────────────────── la transmission à la DCH (ADR-0221)
+
+/** Un agent de l'équipe de la personne connectée, son évaluateur ; hors de son équipe, introuvable. */
+async function monAgent(
+  tx: Tx,
+  user: SessionUser,
+  employeeId: string,
+): Promise<{ moi: string; annee: number }> {
+  const annee = await anneeDeLaCampagne(tx);
+  const moi = await employeDuCompte(tx, user.userId);
+  if (!moi || !(await dansLEquipe(tx, employeeId, moi, annee))) {
+    problem(404, 'campagne.agent_hors_equipe', 'Agent introuvable dans votre équipe');
+  }
+  return { moi, annee };
+}
+
+const ficheTransmise = () =>
+  problem(409, 'campagne.fiche_transmise', 'Fiche déjà transmise à la DCH');
+
+/**
+ * Le N+1 transmet la fiche à la DCH : validée par l'agent, une fois les
+ * commentaires du N+2 reçus, ou reprise au N+2 ; sans N+2, dès la
+ * validation. Transmise, elle ne change plus.
+ */
+async function transmettreALaDCHDans(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
+  const { moi, annee } = await monAgent(tx, user, employeeId);
+  const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
+  const n2 = await n2De(tx, employeeId, annee);
+  const etat = etatDeLaTransmission(annuelle, n2 !== null);
+  if (etat === 'transmise') ficheTransmise();
+  if (!annuelle.valideeLe) {
+    problem(409, 'campagne.fiche_non_validee', 'La fiche n’est pas encore validée par l’agent');
+  }
+  if (etat !== 'a_transmettre') {
+    problem(
+      409,
+      'campagne.fiche_chez_le_n2',
+      'La fiche est chez le N+2',
+      'Attendez ses commentaires, ou reprenez la fiche au N+2.',
+    );
+  }
+  await tx.execute(sql`
+    UPDATE fiches_entretien
+       SET transmise_dch_le = now(), transmise_dch_par = ${moi}, updated_at = now()
+     WHERE employee_id = ${employeeId} AND annee = ${annee}
+       AND validee_le IS NOT NULL AND transmise_dch_le IS NULL`);
+}
+
+/**
+ * Le N+1 reprend la fiche au N+2 qui ne l'a pas encore commentée : le N+2
+ * ne l'ouvre plus, et le N+1 peut la transmettre à la DCH (ADR-0156).
+ */
+async function reprendreAuN2Dans(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
+  const { annee } = await monAgent(tx, user, employeeId);
+  const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
+  if (annuelle.transmiseALaDCHLe) ficheTransmise();
+  const n2 = await n2De(tx, employeeId, annee);
+  if (!n2 || etatDesCommentaires(annuelle) === 'en_attente' || annuelle.repriseAuN2Le) {
+    problem(409, 'campagne.fiche_pas_chez_le_n2', 'La fiche n’est pas chez le N+2');
+  }
+  if (annuelle.commentairesDuN2) {
+    problem(409, 'campagne.commentaires_transmis', 'Commentaires déjà transmis');
+  }
+  await tx.execute(sql`
+    UPDATE fiches_entretien SET reprise_n2_le = now(), updated_at = now()
+     WHERE employee_id = ${employeeId} AND annee = ${annee}
+       AND validee_le IS NOT NULL AND commentaires_n2_transmis_le IS NULL
+       AND reprise_n2_le IS NULL AND transmise_dch_le IS NULL`);
+}
+
+/** La fiche reprise repart au N+2, avec le brouillon de ses commentaires. */
+async function renvoyerAuN2Dans(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
+  const { annee } = await monAgent(tx, user, employeeId);
+  const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
+  if (annuelle.transmiseALaDCHLe) ficheTransmise();
+  if (!annuelle.repriseAuN2Le || !(await n2De(tx, employeeId, annee))) {
+    problem(409, 'campagne.fiche_non_reprise', 'La fiche n’a pas été reprise au N+2');
+  }
+  await tx.execute(sql`
+    UPDATE fiches_entretien SET reprise_n2_le = NULL, updated_at = now()
+     WHERE employee_id = ${employeeId} AND annee = ${annee}
+       AND reprise_n2_le IS NOT NULL AND transmise_dch_le IS NULL`);
+}
+
+/** Le suivi de la DCH et la lecture des fiches : l'habilitation « Tableau de bord ». */
+function reserveALaDCH(user: SessionUser): void {
+  if (!peut(user, 'pilotage')) {
+    problem(403, 'auth.forbidden', 'Vous n’avez pas les droits nécessaires pour cette action');
+  }
+}
+
+/** Le suivi en deux nombres, pour l'accueil : les fiches de l'année, celles transmises. */
+async function suiviEnBref(tx: Tx, annee: number): Promise<{ fiches: number; transmises: number }> {
+  const { rows } = await tx.execute<{ fiches: number; transmises: number }>(sql`
+    SELECT count(*)::int AS fiches, count(f.transmise_dch_le)::int AS transmises
+      FROM employees e
+      LEFT JOIN fiches_entretien f ON f.employee_id = e.id AND f.annee = ${annee}
+     WHERE ${evaluable(sql`e`)}`);
+  return rows[0] ?? { fiches: 0, transmises: 0 };
+}
+
+/** Chaque agent évalué cette année, par ordre alphabétique, et où en est sa fiche. */
+async function suiviDans(tx: Tx, user: SessionUser): Promise<SuiviDeLaDCH> {
+  reserveALaDCH(user);
+  const annee = await anneeDeLaCampagne(tx);
+  const { periode, phase } = await periodeDe(tx, annee);
+  const { rows } = await tx.execute<{
+    id: string;
+    prenom: string;
+    nom: string;
+    matricule: string;
+    poste: string | null;
+    direction: string | null;
+    commencee: boolean;
+    auto_transmise: boolean;
+    evaluation_commencee: boolean;
+    evaluation_transmise: boolean;
+    evaluation_validee: boolean;
+    evaluation_renvoyee: boolean;
+    commentaires_transmis: boolean;
+    reprise: boolean;
+    avec_n2: boolean;
+    transmise_le: string | null;
+    n1_prenom: string | null;
+    n1_nom: string | null;
+    n1_poste: string | null;
+  }>(sql`
+    SELECT e.id, p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
+           a.position_title AS poste,
+           ${directionDeLUnite(sql`a.org_unit_id`, 'short_name')} AS direction,
+           f.auto IS NOT NULL AS commencee, f.auto_transmise_le IS NOT NULL AS auto_transmise,
+           f.evaluation IS NOT NULL AS evaluation_commencee,
+           f.evaluation_transmise_le IS NOT NULL AS evaluation_transmise,
+           f.validee_le IS NOT NULL AS evaluation_validee,
+           f.renvoyee_le IS NOT NULL AS evaluation_renvoyee,
+           f.commentaires_n2_transmis_le IS NOT NULL AS commentaires_transmis,
+           f.reprise_n2_le IS NOT NULL AS reprise,
+           n2.id IS NOT NULL AS avec_n2,
+           f.transmise_dch_le::date::text AS transmise_le,
+           p1.given_name AS n1_prenom, p1.family_name AS n1_nom, a1.position_title AS n1_poste
+      FROM employees e
+      JOIN persons p ON p.id = e.person_id
+      LEFT JOIN assignments a ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
+      LEFT JOIN fiches_entretien f ON f.employee_id = e.id AND f.annee = ${annee}
+      LEFT JOIN employees n1 ON n1.id = ${EVALUATEUR}
+      LEFT JOIN persons p1 ON p1.id = n1.person_id
+      LEFT JOIN assignments a1 ON a1.employee_id = n1.id AND a1.validity @> CURRENT_DATE
+      LEFT JOIN fiches_entretien f1 ON f1.employee_id = n1.id AND f1.annee = ${annee}
+      LEFT JOIN employees n2 ON n2.id = ${N2} AND n2.status = 'active' AND n2.id <> e.id
+     WHERE ${evaluable(sql`e`)}
+     ORDER BY p.family_name, p.given_name`);
+  return {
+    annee,
+    periode,
+    phase,
+    fiches: rows.map((r) => ({
+      employeeId: r.id,
+      prenom: r.prenom,
+      nom: r.nom,
+      matricule: r.matricule,
+      poste: r.poste,
+      direction: r.direction,
+      n1: r.n1_nom ? { prenom: r.n1_prenom!, nom: r.n1_nom, poste: r.n1_poste } : null,
+      etape: etapeDe(r),
+      transmiseLe: r.transmise_le,
+    })),
+  };
+}
+
+/** L'étape d'une fiche, pour le suivi de la DCH. */
+function etapeDe(r: {
+  commencee: boolean;
+  auto_transmise: boolean;
+  evaluation_commencee: boolean;
+  evaluation_transmise: boolean;
+  evaluation_validee: boolean;
+  evaluation_renvoyee: boolean;
+  commentaires_transmis: boolean;
+  reprise: boolean;
+  avec_n2: boolean;
+  transmise_le: string | null;
+}): EtapeDeLaFiche {
+  if (r.transmise_le) return 'transmise';
+  if (!r.auto_transmise) return r.commencee ? 'auto_en_cours' : 'auto_a_faire';
+  const evaluation = etatDeLEvaluation({
+    commencee: r.evaluation_commencee,
+    transmise: r.evaluation_transmise,
+    validee: r.evaluation_validee,
+    renvoyee: r.evaluation_renvoyee,
+  });
+  if (evaluation === 'transmise') return 'chez_l_agent';
+  if (evaluation !== 'validee') return 'chez_le_n1';
+  return r.avec_n2 && !r.commentaires_transmis && !r.reprise ? 'chez_le_n2' : 'a_transmettre';
+}
+
+/** Une fiche transmise, et ce que le PDF imprime en plus : la prise du poste, le jour. */
+interface FicheLueParLaDCH {
+  fiche: FichePourLaDCH;
+  /** AAAA-MM-JJ. */
+  posteDepuis: string | null;
+  aujourdhui: string;
+}
+
+/** La fiche d'un agent, transmise à la DCH, en entier ; avant, la DCH ne la lit pas. */
+async function ficheDeLaDCHDans(
+  tx: Tx,
+  user: SessionUser,
+  employeeId: string,
+): Promise<FicheLueParLaDCH> {
+  reserveALaDCH(user);
+  const annee = await anneeDeLaCampagne(tx);
+  const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
+  if (!annuelle.transmiseALaDCHLe) {
+    problem(409, 'campagne.fiche_non_transmise', 'La fiche n’est pas encore transmise à la DCH');
+  }
+  const agent = await ficheDe(tx, employeeId, annee);
+  const n2 = await n2De(tx, employeeId, annee);
+  const { rows } = await tx.execute<{ poste_depuis: string | null; aujourdhui: string }>(sql`
+    SELECT (SELECT lower(a.validity)::text FROM assignments a
+             WHERE a.employee_id = ${employeeId} AND a.validity @> CURRENT_DATE
+             LIMIT 1) AS poste_depuis,
+           CURRENT_DATE::text AS aujourdhui`);
+  return {
+    fiche: {
+      annee,
+      agent,
+      objectifs: annuelle.objectifs,
+      fiche: {
+        auto: annuelle.auto ?? autoEvaluationVide(),
+        evaluation: annuelle.evaluation ?? evaluationDuN1Vide(),
+        reservee: annuelle.reservee ?? partieReserveeVide(),
+      },
+      autoTransmiseLe: agent.auto?.transmiseLe ?? null,
+      evaluationTransmiseLe: annuelle.evaluationTransmiseLe,
+      valideeLe: annuelle.valideeLe,
+      n2: n2?.personne ?? null,
+      commentairesDuN2: annuelle.commentairesDuN2,
+      repriseAuN2Le: annuelle.commentairesDuN2 ? null : annuelle.repriseAuN2Le,
+      transmiseLe: annuelle.transmiseALaDCHLe,
+      transmisePar: annuelle.transmisePar,
+    },
+    posteDepuis: rows[0]?.poste_depuis ?? null,
+    aujourdhui: rows[0]!.aujourdhui,
+  };
+}
+
+/**
+ * Ce que le PDF imprime d'une fiche transmise : la version complète, partie
+ * réservée comprise, avec les validations en ligne. La date de l'entretien
+ * ne se saisit pas pendant la campagne : le PDF la laisse à fixer.
+ */
+function donneesDuPdf({ fiche: f, posteDepuis, aujourdhui }: FicheLueParLaDCH): DonneesDeLaFiche {
+  const a = f.agent;
+  const n1 = a.evaluateur;
+  const c = f.commentairesDuN2;
+  const n2 = c?.par ?? f.n2;
+  return {
+    annee: f.annee,
+    personnel: personnelDeLaFiche(a.personnel),
+    agent: {
+      prenom: a.prenom,
+      nom: a.nom,
+      fonction: a.poste,
+      matricule: a.matricule,
+      direction: a.direction,
+      departement: a.departement,
+      service: a.service,
+      anciennete: posteDepuis ? ancienneteEnLettres(posteDepuis, aujourdhui) : null,
+      posteDepuis,
+    },
+    n1: n1 ? { prenom: n1.prenom, nom: n1.nom, fonction: n1.poste } : null,
+    dateDeLEntretien: null,
+    objectifs: f.objectifs,
+    auto: f.fiche.auto,
+    evaluation: f.fiche.evaluation,
+    reservee: f.fiche.reservee,
+    validations: { n1: f.evaluationTransmiseLe, agent: f.valideeLe },
+    n2:
+      c && n2
+        ? { prenom: n2.prenom, nom: n2.nom, fonction: n2.poste, le: c.le, commentaires: c.texte }
+        : null,
+  };
 }

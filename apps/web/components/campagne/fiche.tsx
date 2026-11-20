@@ -5,6 +5,7 @@ import {
   type AgentDeLaCampagne,
   type AgentACommenter,
   type AutoDeLAgent,
+  type EtatDeLaTransmission,
   type EtatDeLEvaluation,
   type EtatDesCommentaires,
   type PeriodeDeLaCampagne,
@@ -130,7 +131,7 @@ export interface Statut {
 }
 
 /** « 18 déc. » : le jour d'une transmission, court, pour un badge. */
-const jourCourt = (iso: string) =>
+export const jourCourt = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 
 /** L'auto-évaluation d'un agent, vue par son évaluateur. */
@@ -148,20 +149,20 @@ export function statutDeLAgent(auto: AutoDeLAgent): Statut {
 
 /**
  * L'évaluation d'un agent par son N+1, sur sa carte d'équipe, une fois
- * l'auto-évaluation faite : en orange, ce qui attend le N+1 ; en vert, la
- * fin du parcours, la fiche validée par l'agent, puis par le N+2 s'il y en
- * a un (ADR-0218).
+ * l'auto-évaluation faite : en orange, ce qui attend le N+1, jusqu'à la
+ * transmission de la fiche à la DCH ; en vert, la fin du parcours, la fiche
+ * transmise (ADR-0221).
  */
 export function statutDeLEvaluation(a: {
   evaluation: EtatDeLEvaluation;
-  commentaires: EtatDesCommentaires | null;
+  dch: EtatDeLaTransmission;
 }): Statut {
+  if (a.dch === 'transmise') return { libelle: 'Transmise à la DCH', ton: 'vert' };
+  if (a.dch === 'a_transmettre') return { libelle: 'À transmettre à la DCH', ton: 'orange' };
   switch (a.evaluation) {
     case 'validee':
-      if (a.commentaires === 'transmis') return { libelle: 'Validée par le N+2', ton: 'vert' };
-      return a.commentaires === null
-        ? { libelle: 'Validée par l’agent', ton: 'vert' }
-        : { libelle: 'Chez le N+2', ton: 'teal' };
+      // Validée par l'agent, la fiche n'attend plus que les commentaires du N+2.
+      return { libelle: 'Chez le N+2', ton: 'teal' };
     case 'transmise':
       return { libelle: 'Transmise à l’agent', ton: 'teal' };
     case 'renvoyee':
@@ -198,8 +199,8 @@ export function statutDeMonEvaluation(
 
 /**
  * Les commentaires du N+2, sur leur carte, à la page de l'agent : chez le N+1
- * qui les attend, puis reçus ; chez le N+2 qui les écrit, en cours, puis
- * transmis. Rien avant la validation de l'agent.
+ * qui les attend, puis reçus, ou la fiche reprise au N+2 ; chez le N+2 qui
+ * les écrit, en cours, puis transmis. Rien avant la validation de l'agent.
  */
 export function statutDesCommentaires(
   etat: EtatDesCommentaires | null,
@@ -210,6 +211,8 @@ export function statutDesCommentaires(
   switch (etat) {
     case 'transmis':
       return { libelle: `${vu === 'n1' ? 'Reçus' : 'Transmis'}${jour}`, ton: 'vert' };
+    case 'reprise':
+      return { libelle: vu === 'n1' ? `Reprise${jour}` : 'Reprise par le N+1', ton: 'gris' };
     case 'en_cours':
       return vu === 'n1'
         ? { libelle: 'Chez le N+2', ton: 'teal' }
@@ -230,6 +233,8 @@ export function statutPourLeN2(a: AgentACommenter): Statut {
   switch (a.commentaires) {
     case 'transmis':
       return { libelle: 'Commentaires transmis', ton: 'vert' };
+    case 'reprise':
+      return { libelle: 'Reprise par le N+1', ton: 'gris' };
     case 'en_cours':
       return { libelle: 'Commentaires en cours', ton: 'bleu' };
     case 'a_commenter':
@@ -337,20 +342,27 @@ export function MotDeRenvoi({
 
 /** Les étapes d'une fiche, côte à côte sur un grand écran, l'une sous l'autre ailleurs. */
 export function Etapes({ nombre, children }: { nombre: number; children: React.ReactNode }) {
+  // Quatre étapes tiennent mieux en deux rangs de deux qu'en un rang de quatre.
   return (
     <div
-      className={cn('grid grid-cols-1 gap-x-4', nombre >= 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}
+      className={cn('grid grid-cols-1 gap-x-4', nombre === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}
     >
       {children}
     </div>
   );
 }
 
-/** Le retour à l'accueil de la campagne, au-dessus de la page. */
-export function RetourALAccueil({ libelle }: { libelle: string }) {
+/** Le retour à l'accueil de la campagne, au-dessus de la page, ou à la page d'où l'on vient. */
+export function RetourALAccueil({
+  libelle,
+  href = ACCUEIL_DE_LA_CAMPAGNE,
+}: {
+  libelle: string;
+  href?: string;
+}) {
   return (
     <Link
-      href={ACCUEIL_DE_LA_CAMPAGNE}
+      href={href}
       className="-ml-1.5 inline-flex items-center gap-0.5 self-start rounded-controle py-1 pr-2 text-[12.5px] font-semibold text-ink-muted transition-colors duration-200 hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
     >
       <Icon name="chevron_backward" size={18} />
