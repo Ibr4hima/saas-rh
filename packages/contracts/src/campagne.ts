@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import {
   autoEvaluationSchema,
+  evaluationDuN1Schema,
+  partieReserveeSchema,
   type AutoEvaluation,
+  type EvaluationDuN1,
   type ObjectifEvalue,
+  type PartieReservee,
   type PersonnelDeLaFiche,
 } from './entretien-annuel';
 
@@ -28,6 +32,9 @@ export type PhaseDeLaCampagne =
 
 /** L'auto-évaluation d'un agent. */
 export type EtatDeLAuto = 'a_faire' | 'en_cours' | 'transmise';
+
+/** L'évaluation d'un agent par son N+1 (ADR-0216). */
+export type EtatDeLEvaluation = 'a_faire' | 'en_cours' | 'transmise';
 
 export interface AutoDeLAgent {
   etat: EtatDeLAuto;
@@ -78,6 +85,8 @@ export interface AgentDeLEquipe {
   matricule: string;
   poste: string | null;
   auto: AutoDeLAgent;
+  /** Où en est son évaluation par la personne connectée (ADR-0216). */
+  evaluation: EtatDeLEvaluation;
 }
 
 export interface AccueilDeLaCampagne {
@@ -100,7 +109,26 @@ export interface EvaluationDeLAgent {
   objectifs: ObjectifEvalue[];
   /** Son auto-évaluation, une fois transmise ; `null` avant (ADR-0215). */
   autoEvaluation: AutoEvaluation | null;
+  /** L'évaluation du N+1, telle qu'elle est écrite ; vide tant que rien ne l'est (ADR-0216). */
+  evaluation: EvaluationDuN1;
+  /** La partie réservée à la hiérarchie : jamais lue par l'agent. */
+  reservee: PartieReservee;
+  etatDeLEvaluation: EtatDeLEvaluation;
+  /** AAAA-MM-JJ : le jour où le N+1 l'a transmise à l'agent. */
+  evaluationTransmiseLe: string | null;
+  /**
+   * Ouverte à l'écriture du N+1 : l'auto-évaluation transmise, pendant la
+   * période de l'année, tant que l'évaluation n'est pas transmise.
+   */
+  modifiable: boolean;
 }
+
+/** L'écriture de l'évaluation du N+1 : le brouillon, ou la version transmise. */
+export const ecritureDeLEvaluationSchema = z.object({
+  evaluation: evaluationDuN1Schema,
+  reservee: partieReserveeSchema,
+});
+export type EcritureDeLEvaluation = z.infer<typeof ecritureDeLEvaluationSchema>;
 
 /** Son auto-évaluation, telle que son formulaire la lit (ADR-0215). */
 export interface MonAutoEvaluation {

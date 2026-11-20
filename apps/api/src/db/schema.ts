@@ -1013,6 +1013,11 @@ export const fichesEntretien = pgTable('fiches_entretien', {
   objectifs: jsonb('objectifs').notNull().default([]),
   auto: jsonb('auto'),
   autoTransmiseLe: timestamp('auto_transmise_le', { withTimezone: true }),
+  /** L'évaluation du N+1 et la partie réservée, à part (0139, ADR-0216). */
+  evaluation: jsonb('evaluation'),
+  reservee: jsonb('reservee'),
+  evaluationParEmployeeId: uuid('evaluation_par_employee_id'),
+  evaluationTransmiseLe: timestamp('evaluation_transmise_le', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

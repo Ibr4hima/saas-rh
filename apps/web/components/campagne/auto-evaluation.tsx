@@ -14,6 +14,8 @@ import {
 } from '@teranga/contracts';
 import { Card, CardHeader, CardTitle, cn, Field } from '@teranga/ui';
 import { ChoixDeNiveau, NiveauDonne, ZoneDeTexte } from '../grille-evaluation';
+import { Icon, type IconName } from '../icons';
+import type { Changement } from './enregistrement';
 
 /* ────────────────────────────────────────────────────────────────
    L'auto-évaluation sur la fiche S1/EN05 (ADR-0215) : ce que l'agent
@@ -21,13 +23,17 @@ import { ChoixDeNiveau, NiveauDonne, ZoneDeTexte } from '../grille-evaluation';
    mot (contrats, entretien-annuel.ts). Trois cartes : le récapitulatif de
    l'année, l'évaluation des résultats (chaque objectif, puis les autres
    réalisations), les préoccupations et les souhaits. La même forme se lit
-   une fois transmise, par l'agent comme par son N+1.
+   une fois transmise. Les pièces servent aussi la fiche du N+1 (ADR-0216).
    ──────────────────────────────────────────────────────────────── */
 
 /** Les niveaux d'atteinte d'un objectif, en un mot : « Dépassé », « Réalisé »… */
-const LIBELLES_D_ATTEINTE = Object.fromEntries(
+export const LIBELLES_D_ATTEINTE = Object.fromEntries(
   NIVEAUX.map((n) => [n, NIVEAUX_D_ATTEINTE[n].libelle]),
 ) as Record<Niveau, string>;
+
+/** Qui remplit une partie de la fiche, comme le dit le PDF. */
+export const PAR_L_AGENT = 'Rempli par l’agent';
+export const PAR_LE_N1 = 'Rempli par le N+1';
 
 const MAX = LONGUEURS_DE_LA_FICHE.texte;
 
@@ -49,21 +55,36 @@ const appreciationVide = (): AppreciationDeLAgent => ({
   commentaire: '',
 });
 
-/** Une carte de la fiche : son titre, une phrase qui l'introduit s'il y a lieu, son contenu. */
-function CarteDeLaFiche({
+/**
+ * Une carte de la fiche : son titre, qui la remplit, une phrase qui
+ * l'introduit s'il y a lieu, son contenu.
+ */
+export function CarteDeLaFiche({
   titre,
+  icone,
+  qui,
   chapeau,
   children,
 }: {
   titre: string;
-  chapeau?: string;
+  /** Une icône devant le titre : le cadenas de la partie réservée. */
+  icone?: IconName;
+  /** « Rempli par l'agent », « Rempli par le N+1 ». */
+  qui?: string;
+  chapeau?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <Card>
       <CardHeader className="border-b border-line-soft">
-        <CardTitle>{titre}</CardTitle>
-        {chapeau ? <p className="mt-1.5 text-[12.5px] text-ink-muted">{chapeau}</p> : null}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <CardTitle className="flex items-center gap-1.5">
+            {icone ? <Icon name={icone} size={14} className="-mt-px" /> : null}
+            {titre}
+          </CardTitle>
+          {qui ? <p className="text-[11.5px] font-semibold text-ink-muted">{qui}</p> : null}
+        </div>
+        {chapeau ? <div className="mt-1.5 text-[12.5px] text-ink-muted">{chapeau}</div> : null}
       </CardHeader>
       {children}
     </Card>
@@ -76,16 +97,27 @@ function CarteDeLaFiche({
  * l'intitulé, la réponse, la place du compteur. Un intitulé sur deux lignes
  * ne décale donc pas la zone d'à côté, comme dans les fiches de la DCH.
  */
-function DeuxParDeux({ children }: { children: ReactNode }) {
+export function DeuxParDeux({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className="grid grid-cols-1 gap-x-5 px-5 pt-5 *:row-span-3 *:grid *:grid-rows-subgrid *:items-start *:pb-5 lg:grid-cols-2">
+    <div
+      className={cn(
+        'grid grid-cols-1 gap-x-5 px-5 pt-5 *:row-span-3 *:grid *:grid-rows-subgrid *:items-start *:pb-5 lg:grid-cols-2',
+        className,
+      )}
+    >
       {children}
     </div>
   );
 }
 
 /** L'intitulé d'un objectif et ses indicateurs, comme sur la fiche. */
-function EnTeteDeLObjectif({ objectif: o, rang }: { objectif: ObjectifEvalue; rang: number }) {
+export function EnTeteDeLObjectif({
+  objectif: o,
+  rang,
+}: {
+  objectif: ObjectifEvalue;
+  rang: number;
+}) {
   return (
     <div>
       <p className="text-[10.5px] font-bold tracking-[0.12em] text-accent-text uppercase">
@@ -103,7 +135,7 @@ function EnTeteDeLObjectif({ objectif: o, rang }: { objectif: ObjectifEvalue; ra
 }
 
 /** Une question et sa zone de réponse, qui grandit avec le texte. */
-function Question({
+export function Question({
   question,
   requise = false,
   large = false,
@@ -130,9 +162,6 @@ function Question({
   );
 }
 
-/** Ce qui change dans une auto-évaluation : le dernier état, une modification à la fois. */
-export type ChangementDeLAuto = (maj: (a: AutoEvaluation) => AutoEvaluation) => void;
-
 /**
  * Le formulaire de l'auto-évaluation. Obligatoires, et marqués d'un
  * astérisque : les deux questions du récapitulatif, puis, pour chaque
@@ -147,7 +176,7 @@ export function SaisieDeLAuto({
   annee: number;
   objectifs: readonly ObjectifEvalue[];
   auto: AutoEvaluation;
-  onChange: ChangementDeLAuto;
+  onChange: Changement<AutoEvaluation>;
 }) {
   const texte = (cle: CleDeTexte) => (v: string) => onChange((a) => ({ ...a, [cle]: v }));
   const objectif =
@@ -182,9 +211,7 @@ export function SaisieDeLAuto({
         chapeau={`L’atteinte des objectifs fixés pour ${annee}.`}
       >
         {objectifs.length === 0 ? (
-          <p className="px-5 py-5 text-[13px] text-ink-muted">
-            Aucun objectif n’a été fixé pour cette année.
-          </p>
+          <AucunObjectif />
         ) : (
           <ol>
             {objectifs.map((o, i) => {
@@ -250,7 +277,7 @@ export function SaisieDeLAuto({
 }
 
 /** Une réponse en lecture : la question, petite et grise, puis le texte. */
-function Reponse({
+export function Reponse({
   question,
   texte,
   large = false,
@@ -273,6 +300,64 @@ function Reponse({
   );
 }
 
+/** Le récapitulatif de l'année, en lecture. */
+export function RecapitulatifEnLecture({ auto, qui }: { auto: AutoEvaluation; qui?: string }) {
+  return (
+    <CarteDeLaFiche titre="Récapitulatif et faits marquants" qui={qui}>
+      <DeuxParDeux>
+        {QUESTIONS_DU_BILAN.map((q) => (
+          <Reponse key={q.cle} question={q.question} texte={auto[q.cle]} />
+        ))}
+      </DeuxParDeux>
+    </CarteDeLaFiche>
+  );
+}
+
+/** Ce que l'agent dit d'un objectif, en lecture : le niveau, les résultats obtenus, le commentaire. */
+export function AppreciationDeLAgentEnLecture({
+  appreciation,
+  colonnes = true,
+}: {
+  appreciation: AppreciationDeLAgent | undefined;
+  /** Les résultats et le commentaire côte à côte sur un grand écran. */
+  colonnes?: boolean;
+}) {
+  const a = appreciation ?? appreciationVide();
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <p className="mb-1.5 text-[12.5px] font-semibold text-ink-muted">Niveau</p>
+        <NiveauDonne
+          niveau={a.niveau}
+          libelle={a.niveau ? LIBELLES_D_ATTEINTE[a.niveau] : undefined}
+        />
+      </div>
+      <div className={cn('grid grid-cols-1 gap-4', colonnes && 'lg:grid-cols-2')}>
+        <Reponse question="Résultats obtenus" texte={a.resultats} />
+        <Reponse question="Commentaire" texte={a.commentaire} />
+      </div>
+    </div>
+  );
+}
+
+/** Les préoccupations et les souhaits de l'agent, en lecture. */
+export function SouhaitsEnLecture({ auto, qui }: { auto: AutoEvaluation; qui?: string }) {
+  return (
+    <CarteDeLaFiche titre="Préoccupations et souhaits" qui={qui}>
+      <DeuxParDeux>
+        {SOUHAITS.map((q) => (
+          <Reponse
+            key={q.cle}
+            question={q.question}
+            texte={auto[q.cle]}
+            large={q.cle === 'autresCommentaires'}
+          />
+        ))}
+      </DeuxParDeux>
+    </CarteDeLaFiche>
+  );
+}
+
 /** L'auto-évaluation en lecture : la même forme que le formulaire, les réponses à la place des zones. */
 export function AutoEvaluationEnLecture({
   annee,
@@ -285,65 +370,49 @@ export function AutoEvaluationEnLecture({
 }) {
   return (
     <>
-      <CarteDeLaFiche titre="Récapitulatif et faits marquants">
-        <DeuxParDeux>
-          {QUESTIONS_DU_BILAN.map((q) => (
-            <Reponse key={q.cle} question={q.question} texte={auto[q.cle]} />
-          ))}
-        </DeuxParDeux>
-      </CarteDeLaFiche>
+      <RecapitulatifEnLecture auto={auto} />
 
       <CarteDeLaFiche
         titre="Évaluation des résultats"
         chapeau={`L’atteinte des objectifs fixés pour ${annee}.`}
       >
         {objectifs.length === 0 ? (
-          <p className="px-5 py-5 text-[13px] text-ink-muted">
-            Aucun objectif n’a été fixé pour cette année.
-          </p>
+          <AucunObjectif />
         ) : (
           <ol>
-            {objectifs.map((o, i) => {
-              const a = auto.objectifs[o.id] ?? appreciationVide();
-              return (
-                <li key={o.id} className="flex flex-col gap-4 border-b border-line-soft px-5 py-5">
-                  <EnTeteDeLObjectif objectif={o} rang={i + 1} />
-                  <div>
-                    <p className="mb-1.5 text-[12.5px] font-semibold text-ink-muted">Niveau</p>
-                    <NiveauDonne
-                      niveau={a.niveau}
-                      libelle={a.niveau ? LIBELLES_D_ATTEINTE[a.niveau] : undefined}
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <Reponse question="Résultats obtenus" texte={a.resultats} />
-                    <Reponse question="Commentaire" texte={a.commentaire} />
-                  </div>
-                </li>
-              );
-            })}
+            {objectifs.map((o, i) => (
+              <li key={o.id} className="flex flex-col gap-4 border-b border-line-soft px-5 py-5">
+                <EnTeteDeLObjectif objectif={o} rang={i + 1} />
+                <AppreciationDeLAgentEnLecture appreciation={auto.objectifs[o.id]} />
+              </li>
+            ))}
           </ol>
         )}
-        <div className="px-5 py-5">
-          <Reponse
-            question="Autres réalisations en dehors des objectifs"
-            texte={auto.autresRealisations}
-          />
-        </div>
+        <AutresRealisationsEnLecture auto={auto} />
       </CarteDeLaFiche>
 
-      <CarteDeLaFiche titre="Préoccupations et souhaits">
-        <DeuxParDeux>
-          {SOUHAITS.map((q) => (
-            <Reponse
-              key={q.cle}
-              question={q.question}
-              texte={auto[q.cle]}
-              large={q.cle === 'autresCommentaires'}
-            />
-          ))}
-        </DeuxParDeux>
-      </CarteDeLaFiche>
+      <SouhaitsEnLecture auto={auto} />
     </>
+  );
+}
+
+/** La fiche d'un agent sans objectif fixé pour l'année. */
+export function AucunObjectif() {
+  return (
+    <p className="px-5 py-5 text-[13px] text-ink-muted">
+      Aucun objectif n’a été fixé pour cette année.
+    </p>
+  );
+}
+
+/** Les autres réalisations de l'agent, en lecture, au bas de l'évaluation des résultats. */
+export function AutresRealisationsEnLecture({ auto }: { auto: AutoEvaluation }) {
+  return (
+    <div className="px-5 py-5">
+      <Reponse
+        question="Autres réalisations en dehors des objectifs"
+        texte={auto.autresRealisations}
+      />
+    </div>
   );
 }

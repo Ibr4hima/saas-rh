@@ -4,21 +4,22 @@ import {
   periodeDEvaluationEnLettres,
   type AgentDeLaCampagne,
   type AutoDeLAgent,
+  type EtatDeLEvaluation,
   type PeriodeDeLaCampagne,
   type PersonnelDeLaFiche,
 } from '@teranga/contracts';
 import { Card, classesDeBouton, type BadgeTone } from '@teranga/ui';
 import { ACCUEIL_DE_LA_CAMPAGNE, AUTO_EVALUATION } from '../../lib/campagne';
 import { EnTete, Repere } from '../fiche';
-import { Icon } from '../icons';
+import { Icon, type IconName } from '../icons';
 import { Sceau } from '../sceau';
 
 /* ────────────────────────────────────────────────────────────────
-   Les pièces de la campagne d'évaluation annuelle (ADR-0211, ADR-0214),
-   communes à ses pages : l'en-tête qui situe la personne, comme celui de
-   son dossier ; le bouton qui ouvre son auto-évaluation ; la carte de
-   l'auto-évaluation, avec la coche bleue quand elle est faite ; le retour à
-   l'accueil.
+   Les pièces de la campagne d'évaluation annuelle (ADR-0211, ADR-0214,
+   ADR-0216), communes à ses pages : l'en-tête qui situe la personne, comme
+   celui de son dossier ; le bouton qui ouvre son auto-évaluation ; la carte
+   d'une étape, l'auto-évaluation ou l'évaluation du N+1, avec ce qui dit où
+   elle en est ; le retour à l'accueil.
    ──────────────────────────────────────────────────────────────── */
 
 /** Le statut, en un mot. */
@@ -97,7 +98,8 @@ export function AutoFaite({ le }: { le: string | null }) {
   );
 }
 
-export interface StatutDeLAuto {
+/** Où en est une étape, en un badge. */
+export interface Statut {
   libelle: string;
   ton: BadgeTone;
 }
@@ -107,7 +109,7 @@ const jourCourt = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 
 /** L'auto-évaluation d'un agent, vue par son évaluateur. */
-export function statutDeLAgent(auto: AutoDeLAgent): StatutDeLAuto {
+export function statutDeLAgent(auto: AutoDeLAgent): Statut {
   if (auto.etat === 'transmise') {
     return {
       libelle: auto.transmiseLe ? `Faite le ${jourCourt(auto.transmiseLe)}` : 'Faite',
@@ -119,6 +121,29 @@ export function statutDeLAgent(auto: AutoDeLAgent): StatutDeLAuto {
     : { libelle: 'Non commencée', ton: 'gris' };
 }
 
+/**
+ * L'évaluation d'un agent par son N+1, sur sa carte d'équipe, une fois
+ * l'auto-évaluation faite : en orange, ce qui attend le N+1.
+ */
+export function statutDeLEvaluation(etat: EtatDeLEvaluation): Statut {
+  switch (etat) {
+    case 'transmise':
+      return { libelle: 'Évaluation transmise', ton: 'vert' };
+    case 'en_cours':
+      return { libelle: 'Évaluation en cours', ton: 'bleu' };
+    case 'a_faire':
+      return { libelle: 'À évaluer', ton: 'orange' };
+  }
+}
+
+/** L'évaluation du N+1, sur sa carte : rien tant qu'elle n'est pas commencée. */
+export function statutDeMonEvaluation(etat: EtatDeLEvaluation, le: string | null): Statut | null {
+  if (etat === 'transmise') {
+    return { libelle: le ? `Transmise le ${jourCourt(le)}` : 'Transmise', ton: 'vert' };
+  }
+  return etat === 'en_cours' ? { libelle: 'En cours', ton: 'bleu' } : null;
+}
+
 /** « Du 16 novembre au 20 décembre 2026 » : la période de l'auto-évaluation. */
 export function periodeDeLAuto(periode: PeriodeDeLaCampagne | null): string {
   if (!periode) return 'Période non fixée';
@@ -126,33 +151,38 @@ export function periodeDeLAuto(periode: PeriodeDeLaCampagne | null): string {
   return texte.charAt(0).toLocaleUpperCase('fr') + texte.slice(1);
 }
 
+/** « Jusqu'au 31 décembre 2026 » : le temps de l'évaluation du N+1, qui suit l'auto-évaluation. */
+export function periodeDeLEvaluation(periode: PeriodeDeLaCampagne | null): string {
+  return periode ? `Jusqu’au ${dateEnLettres(periode.au)}` : 'Période non fixée';
+}
+
 /**
- * Une auto-évaluation, en une carte : son titre, et à côté ce qui dit où
- * elle en est ; puis la période où elle se fait.
+ * Une étape de la campagne, en une carte : l'auto-évaluation, l'évaluation
+ * du N+1. Son titre, et à côté ce qui dit où elle en est ; puis sa période.
  */
-export function CarteDeLAuto({
+export function CarteDEtape({
+  icone,
   titre,
   marque,
   periode,
 }: {
+  icone: IconName;
   titre: string;
   marque?: React.ReactNode;
-  periode: PeriodeDeLaCampagne | null;
+  periode: string;
 }) {
   return (
     <Card className="mb-4">
       <div className="flex items-center gap-4 p-5">
         <span className="flex size-11 shrink-0 items-center justify-center rounded-bloc bg-primary-soft text-primary">
-          <Icon name="rate_review" size={22} />
+          <Icon name={icone} size={22} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
             <h2 className="text-[15px] leading-tight font-bold text-ink-strong">{titre}</h2>
             {marque}
           </div>
-          <p className="mt-1.5 text-[12.5px] leading-tight text-ink-muted">
-            {periodeDeLAuto(periode)}
-          </p>
+          <p className="mt-1.5 text-[12.5px] leading-tight text-ink-muted">{periode}</p>
         </div>
       </div>
     </Card>

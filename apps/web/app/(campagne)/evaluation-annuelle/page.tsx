@@ -6,9 +6,11 @@ import { Badge, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import {
   AutoFaite,
   BoutonMAutoEvaluer,
-  CarteDeLAuto,
+  CarteDEtape,
   IdentiteDeLaCampagne,
+  periodeDeLAuto,
   statutDeLAgent,
+  statutDeLEvaluation,
 } from '../../../components/campagne/fiche';
 import { Icon } from '../../../components/icons';
 import { ApiError } from '../../../lib/api';
@@ -25,7 +27,8 @@ import { ACCUEIL_DE_LA_CAMPAGNE, useAccueilDeLaCampagne } from '../../../lib/cam
    période, et la coche bleue une fois transmise.
    Enfin, si la personne évalue des agents, son équipe : une carte par
    agent, en deux groupes. Une auto-évaluation faite rend la carte
-   cliquable : le N+1 ouvre alors l'évaluation de l'agent.
+   cliquable : le N+1 ouvre alors l'évaluation de l'agent, et la carte dit
+   où elle en est (ADR-0216).
    ──────────────────────────────────────────────────────────────── */
 
 export default function AccueilDeLaCampagnePage() {
@@ -68,10 +71,11 @@ export default function AccueilDeLaCampagnePage() {
     <div className="flex flex-col gap-4">
       <IdentiteDeLaCampagne agent={v.moi} action={aFaire ? <BoutonMAutoEvaluer /> : null} />
       {auto ? (
-        <CarteDeLAuto
+        <CarteDEtape
+          icone="rate_review"
           titre="Mon auto-évaluation"
           marque={auto.etat === 'transmise' ? <AutoFaite le={auto.transmiseLe} /> : null}
-          periode={v.periode}
+          periode={periodeDeLAuto(v.periode)}
         />
       ) : null}
       {v.equipe.length > 0 ? <Equipe equipe={v.equipe} /> : null}
@@ -136,11 +140,12 @@ function Grille({ children }: { children: React.ReactNode }) {
 
 /**
  * Un agent, en une carte : son nom, son poste, son matricule, et où en est
- * son auto-évaluation. Faite, la carte s'ouvre sur son évaluation.
+ * son auto-évaluation. Faite, la carte s'ouvre sur son évaluation, et dit
+ * où en est l'évaluation.
  */
 function CarteAgent({ agent: a }: { agent: AgentDeLEquipe }) {
   const faite = a.auto.etat === 'transmise';
-  const statut = statutDeLAgent(a.auto);
+  const statut = faite ? statutDeLEvaluation(a.evaluation) : statutDeLAgent(a.auto);
   const contenu = (
     <>
       <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12.5px] font-bold text-primary uppercase">

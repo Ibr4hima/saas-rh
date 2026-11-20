@@ -187,6 +187,13 @@ export const competencesDe = (personnel: PersonnelDeLaFiche): readonly Competenc
 export const PERSONNELS_DE_LA_FICHE = ['cadre', 'non_cadre'] as const;
 export type PersonnelDeLaFiche = (typeof PERSONNELS_DE_LA_FICHE)[number];
 
+/**
+ * Le personnel de la fiche d'un agent : cadre, sinon non cadre. Sans statut
+ * connu, le management ne s'applique pas.
+ */
+export const personnelDeLaFiche = (statut: PersonnelDeLaFiche | null): PersonnelDeLaFiche =>
+  statut === 'cadre' ? 'cadre' : 'non_cadre';
+
 export const LIBELLES_DU_PERSONNEL: Record<PersonnelDeLaFiche, string> = {
   cadre: 'Cadre',
   non_cadre: 'Non-cadre',
@@ -373,6 +380,53 @@ export function ceQuiManqueALAutoEvaluation(
     if (!a?.resultats.trim()) manque.push(`les résultats de l’objectif ${i + 1}`);
   });
   return manque;
+}
+
+/**
+ * Ce qui manque à l'évaluation du N+1 pour partir à l'agent (ADR-0216), dans
+ * l'ordre de la fiche : l'appréciation de chaque objectif, chaque compétence
+ * (le management, pour le personnel cadre, seulement s'il y a lieu), les
+ * points forts et les axes de développement, puis la synthèse générale de la
+ * partie réservée. Le plan d'action, les objectifs de l'année suivante, les
+ * formations et les observations se remplissent s'il y a lieu.
+ */
+export function ceQuiManqueALEvaluationDuN1(
+  evaluation: EvaluationDuN1,
+  reservee: PartieReservee,
+  objectifs: readonly ObjectifEvalue[],
+  personnel: PersonnelDeLaFiche,
+): string[] {
+  const manque: string[] = [];
+  objectifs.forEach((o, i) => {
+    if (!evaluation.objectifs[o.id]?.niveau) manque.push(`l’appréciation de l’objectif ${i + 1}`);
+  });
+  for (const c of competencesDe(personnel)) {
+    if (!c.cadres && !evaluation.competences[c.cle]) {
+      manque.push(`la compétence « ${c.intitule} »`);
+    }
+  }
+  if (!evaluation.pointsForts.trim()) manque.push('les points forts');
+  if (!evaluation.axesDeDeveloppement.trim()) manque.push('les axes de développement');
+  for (const c of SYNTHESE_GENERALE) {
+    if (!reservee[c.cle]) manque.push(`la ${c.intitule.toLocaleLowerCase('fr')}`);
+  }
+  return manque;
+}
+
+/** Une case écrite : un texte qui n'est pas que des blancs, une date. */
+const ecrite = (...cases: (string | null)[]) => cases.some((c) => c !== null && c.trim() !== '');
+
+/**
+ * Les tableaux de l'évaluation du N+1 sans leurs lignes restées vides : une
+ * ligne ajoutée puis laissée blanche ne part pas avec l'évaluation transmise.
+ */
+export function sansLignesVides(e: EvaluationDuN1): EvaluationDuN1 {
+  return {
+    ...e,
+    plan: e.plan.filter((a) => ecrite(a.action, a.delai, a.suivi)),
+    objectifsAVenir: e.objectifsAVenir.filter((o) => ecrite(o.objectif, o.indicateur, o.echeance)),
+    formations: e.formations.filter((f) => ecrite(f.intitule, f.justification)),
+  };
 }
 
 export const autoEvaluationVide = (): AutoEvaluation => ({

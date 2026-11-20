@@ -275,12 +275,15 @@ export const ChoixDeNiveau = memo(function ChoixDeNiveau({
   return (
     // `relative` : la légende, cachée, se place dans son cadre ; sans lui,
     // elle débordait de la zone qui défile et faisait défiler la page entière.
-    <fieldset className="relative min-w-0">
+    // `@container` : les quatre niveaux courts se mettent sur une ligne selon
+    // la place de leur zone, pas celle de l'écran ; dans une colonne étroite,
+    // ils passent deux par deux plutôt que de couper « Partiellement ».
+    <fieldset className="relative min-w-0 @container">
       <legend className="sr-only">{legende}</legend>
       <div
         className={cn(
           'grid gap-2',
-          court ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4',
+          court ? 'grid-cols-2 @[36rem]:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4',
         )}
       >
         {NIVEAUX.map((n) => {

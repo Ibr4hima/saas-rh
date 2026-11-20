@@ -11,7 +11,15 @@
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { autoEvaluationVide, type AutoEvaluation, type SessionUser } from '@teranga/contracts';
+import {
+  autoEvaluationVide,
+  competencesDe,
+  evaluationDuN1Vide,
+  partieReserveeVide,
+  type AutoEvaluation,
+  type EcritureDeLEvaluation,
+  type SessionUser,
+} from '@teranga/contracts';
 import { loadEnv } from '../src/config/env';
 import { runMigrations } from '../src/db/migrate';
 import { TenantDb } from '../src/db/tenant-db';
@@ -414,6 +422,144 @@ describe('l’auto-évaluation (ADR-0215)', () => {
         problem: { status: 404, code: 'campagne.sans_auto_evaluation' },
       });
     }
+  });
+});
+
+describe('l’évaluation du N+1 (ADR-0216)', () => {
+  /** Toutes les compétences d'une fiche au niveau B, le management laissé de côté. */
+  const competencesB = (personnel: 'cadre' | 'non_cadre') =>
+    Object.fromEntries(
+      competencesDe(personnel)
+        .filter((c) => !c.cadres)
+        .map((c) => [c.cle, 'B' as const]),
+    );
+
+  it('s’ouvre au N+1 une fois l’auto-évaluation transmise, vide', async () => {
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.moussa);
+    expect([v.etatDeLEvaluation, v.modifiable]).toEqual(['a_faire', true]);
+    expect(v.evaluation).toEqual(evaluationDuN1Vide());
+    expect(v.reservee).toEqual(partieReserveeVide());
+    // Fatou Sall n'a pas transmis : pas d'évaluation.
+    expect((await campagne.agentDeLEquipe(session('awa'), agents.fatou)).modifiable).toBe(false);
+    await expect(
+      campagne.enregistrerEvaluation(session('awa'), agents.fatou, {
+        evaluation: evaluationDuN1Vide(),
+        reservee: partieReserveeVide(),
+      }),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.auto_non_transmise' } });
+  });
+
+  it('garde le brouillon : les objectifs de la fiche, les compétences de l’agent', async () => {
+    const { objectifs } = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const [o1] = objectifs;
+    const v = await campagne.enregistrerEvaluation(session('awa'), agents.ibou, {
+      evaluation: {
+        ...evaluationDuN1Vide(),
+        objectifs: {
+          [o1!.id]: { niveau: 'B', commentaire: 'Délai tenu.' },
+          [randomUUID()]: { niveau: 'A', commentaire: 'Hors fiche.' },
+        },
+        // Ibou Ndiaye n'est pas cadre : le management ne s'enregistre pas.
+        competences: { connaissances: 'B', management: 'A' },
+      },
+      reservee: { comprehension: 'B', tenue: null, observations: 'Bonne année.' },
+    });
+    expect(v.etatDeLEvaluation).toBe('en_cours');
+    expect(Object.keys(v.evaluation.objectifs)).toEqual([o1!.id]);
+    expect(v.evaluation.competences).toEqual({ connaissances: 'B' });
+    expect(v.reservee.comprehension).toBe('B');
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('en_cours');
+  });
+
+  it('ne part pas incomplète, et dit ce qui manque', async () => {
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const erreur = await campagne
+      .transmettreEvaluation(session('awa'), agents.ibou, {
+        evaluation: v.evaluation,
+        reservee: v.reservee,
+      })
+      .then(
+        () => null,
+        (e: { problem: { status: number; code: string; detail: string } }) => e.problem,
+      );
+    expect(erreur).toMatchObject({ status: 422, code: 'campagne.evaluation_incomplete' });
+    expect(erreur?.detail).toContain('l’appréciation de l’objectif 2');
+    expect(erreur?.detail).toContain('la compétence « Qualité du travail »');
+    expect(erreur?.detail).toContain('les points forts');
+    expect(erreur?.detail).toContain('la tenue du poste');
+    expect(erreur?.detail).not.toContain('Management');
+  });
+
+  it('complète, part à l’agent ; elle ne change plus', async () => {
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const complete: EcritureDeLEvaluation = {
+      evaluation: {
+        ...v.evaluation,
+        objectifs: Object.fromEntries(
+          v.objectifs.map((o) => [o.id, { niveau: 'B' as const, commentaire: '' }]),
+        ),
+        competences: competencesB('non_cadre'),
+        pointsForts: 'Rigueur et disponibilité.',
+        axesDeDeveloppement: 'Déléguer davantage.',
+        // Une ligne ajoutée puis laissée vide ne part pas.
+        plan: [
+          { action: 'Tutorat par un pair', delai: '3 mois', suivi: '' },
+          { action: ' ', delai: '', suivi: '' },
+        ],
+        objectifsAVenir: [{ objectif: '', indicateur: '', echeance: null }],
+      },
+      reservee: { comprehension: 'B', tenue: 'A', observations: '' },
+    };
+    const t = await campagne.transmettreEvaluation(session('awa'), agents.ibou, complete);
+    expect([t.etatDeLEvaluation, t.modifiable, t.evaluationTransmiseLe]).toEqual([
+      'transmise',
+      false,
+      AUJOURD_HUI,
+    ]);
+    expect(t.evaluation.plan).toEqual([
+      { action: 'Tutorat par un pair', delai: '3 mois', suivi: '' },
+    ]);
+    expect(t.evaluation.objectifsAVenir).toEqual([]);
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('transmise');
+    await expect(
+      campagne.enregistrerEvaluation(session('awa'), agents.ibou, complete),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.evaluation_transmise' } });
+  });
+
+  it('pour le personnel cadre, le management se remplit s’il y a lieu', async () => {
+    const t = await campagne.transmettreEvaluation(session('awa'), agents.moussa, {
+      evaluation: {
+        ...evaluationDuN1Vide(),
+        competences: competencesB('cadre'),
+        pointsForts: 'Autonomie.',
+        axesDeDeveloppement: 'Prise de parole.',
+      },
+      reservee: { comprehension: 'A', tenue: 'B', observations: '' },
+    });
+    expect(t.etatDeLEvaluation).toBe('transmise');
+    expect(t.evaluation.competences.management).toBeUndefined();
+  });
+
+  it('ne s’ouvre qu’à l’évaluateur, et pendant la période', async () => {
+    const vide = { evaluation: evaluationDuN1Vide(), reservee: partieReserveeVide() };
+    await expect(
+      campagne.enregistrerEvaluation(session('fatou'), agents.moussa, vide),
+    ).rejects.toMatchObject({ problem: { status: 404, code: 'campagne.agent_hors_equipe' } });
+    // Ousmane Fall a transmis ; son évaluateur pour la campagne est Cheikh Mbaye.
+    await raw(
+      `UPDATE fiches_entretien SET auto = '{}'::jsonb, auto_transmise_le = now()
+        WHERE employee_id = $1`,
+      [agents.ousmane],
+    );
+    await periode(-20, -15, -1);
+    await expect(
+      campagne.enregistrerEvaluation(session('dg'), agents.ousmane, vide),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.evaluation_fermee' } });
+    await periode(-2, 3, 10);
+    const v = await campagne.enregistrerEvaluation(session('dg'), agents.ousmane, vide);
+    expect(v.etatDeLEvaluation).toBe('en_cours');
   });
 });
 
