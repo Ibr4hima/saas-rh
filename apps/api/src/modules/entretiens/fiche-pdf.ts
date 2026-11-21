@@ -57,7 +57,9 @@ import { initiales } from '../evaluations/feuille-de-grille';
    Deux versions : celle de l'agent, sections 1 à 7 ; la version complète,
    avec la partie réservée à la hiérarchie, toujours sur une page à part.
    Et la fiche vierge, toutes ses sections à remplir à la main : des cases
-   vides, des lignes pour chaque réponse.
+   vides, des lignes pour chaque réponse. Avant l'évaluation, la partie de
+   l'agent seule : l'identification, le bilan, chaque objectif avec son
+   auto-évaluation, et les souhaits (ADR-0241).
    ──────────────────────────────────────────────────────────────── */
 
 type Doc = typeof PDFDocument.prototype;
@@ -247,10 +249,14 @@ class Composition {
   /** Le haut du texte qui suit le titre d'une section : la sous-section n'y ajoute pas son air. */
   private sousLeTitre = -1;
 
-  /** `vierge` : la fiche à remplir à la main, ses cases vides, ses lignes à écrire. */
+  /**
+   * `vierge` : la fiche à remplir à la main, ses cases vides, ses lignes à
+   * écrire. `agentSeul` : ce que l'agent remplit, sans le N+1 (ADR-0241).
+   */
   constructor(
     readonly doc: Doc,
     readonly vierge = false,
+    readonly agentSeul = false,
   ) {}
 
   get gauche(): number {
@@ -876,6 +882,16 @@ export async function ficheDEntretienPdf(d: DonneesDeLaFiche): Promise<Buffer> {
 }
 
 /**
+ * La partie de l'agent, avant sa transmission au N+1 (ADR-0241) :
+ * l'identification, le bilan de l'année, chaque objectif avec son
+ * auto-évaluation, et les souhaits. Rien du N+1 : ni son appréciation,
+ * ni les compétences, ni les perspectives, ni les validations.
+ */
+export async function ficheDeLAgentPdf(d: DonneesDeLaFiche): Promise<Buffer> {
+  return composer(d, false, true);
+}
+
+/**
  * La fiche vierge d'une année : toutes ses sections, celles de l'agent, du
  * N+1 et du N+2, à remplir à la main (ADR-0208).
  */
@@ -909,7 +925,7 @@ export async function ficheViergePdf(annee: number): Promise<Buffer> {
   );
 }
 
-async function composer(d: DonneesDeLaFiche, vierge: boolean): Promise<Buffer> {
+async function composer(d: DonneesDeLaFiche, vierge: boolean, agentSeul = false): Promise<Buffer> {
   const doc = new PDFDocument({
     size: 'A4',
     margin: 0,
@@ -934,15 +950,19 @@ async function composer(d: DonneesDeLaFiche, vierge: boolean): Promise<Buffer> {
     doc.on('error', reject);
   });
 
-  const f = new Composition(doc, vierge);
+  const f = new Composition(doc, vierge, agentSeul);
   identification(f, d);
   bilan(f, d);
-  competences(f, d);
-  synthese(f, d);
-  perspectives(f, d);
-  souhaits(f, d);
-  validation(f, d);
-  if (d.reservee) partieReservee(f, d, d.reservee);
+  if (agentSeul) {
+    souhaits(f, d);
+  } else {
+    competences(f, d);
+    synthese(f, d);
+    perspectives(f, d);
+    souhaits(f, d);
+    validation(f, d);
+    if (d.reservee) partieReservee(f, d, d.reservee);
+  }
 
   // L'en-tête et le pied de chaque page, une fois le nombre de pages connu.
   const pages = doc.bufferedPageRange();
@@ -1206,7 +1226,7 @@ function bilan(f: Composition, d: DonneesDeLaFiche): void {
     '2.2.1',
     'Les objectifs fixés',
     premier,
-    'Auto-évaluation, puis appréciation du N+1',
+    f.agentSeul ? 'Rempli par l’agent' : 'Auto-évaluation, puis appréciation du N+1',
   );
   if (objectifs.length === 0) f.mention('Aucun objectif n’a été fixé pour cette année.', 0);
   for (const o of objectifs) o.poser();
@@ -1237,9 +1257,10 @@ function lignesQuiRestent(f: Composition, titre: number, apres = 0): number {
 
 /**
  * Un objectif : son intitulé et ses indicateurs, l'auto-évaluation de
- * l'agent, puis l'appréciation du N+1. Sa hauteur, et de quoi le poser,
- * d'un seul tenant sur sa page quand il y tient. Sur la fiche vierge
- * (`o` à null), l'intitulé et les indicateurs s'écrivent aussi à la main.
+ * l'agent, puis l'appréciation du N+1, sauf sur la partie de l'agent seule.
+ * Sa hauteur, et de quoi le poser, d'un seul tenant sur sa page quand il y
+ * tient. Sur la fiche vierge (`o` à null), l'intitulé et les indicateurs
+ * s'écrivent aussi à la main.
  */
 function objectif(
   f: Composition,
@@ -1287,7 +1308,7 @@ function objectif(
     hIntitule +
     hIndicateurs +
     (16 + f.hauteurDeLEtiquette(etiquettes.agent) + f.hauteurDesCles(deLAgent)) +
-    (18 + f.hauteurDeLEtiquette(etiquettes.n1) + f.hauteurDesCles(duN1)) +
+    (f.agentSeul ? 0 : 18 + f.hauteurDeLEtiquette(etiquettes.n1) + f.hauteurDesCles(duN1)) +
     2;
   return {
     hauteur,
@@ -1307,8 +1328,10 @@ function objectif(
       }
       f.etiquette(etiquettes.agent, BLEU, 60, 16);
       f.cles(deLAgent);
-      f.etiquette(etiquettes.n1, BLEU, 60, 18);
-      f.cles(duN1);
+      if (!f.agentSeul) {
+        f.etiquette(etiquettes.n1, BLEU, 60, 18);
+        f.cles(duN1);
+      }
     },
   };
 }

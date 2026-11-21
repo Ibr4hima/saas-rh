@@ -44,8 +44,8 @@ import { CLE_CAMPAGNE } from '../../../../../lib/campagne';
    comme sur l'accueil ; ses deux étapes, l'auto-évaluation et l'évaluation
    du N+1, côte à côte sur un grand écran ; puis, l'auto-évaluation
    transmise, la fiche S1/EN05 entière, que le N+1 remplit (ADR-0216).
-   Chaque modification s'enregistre seule ; la barre collée au bas de
-   l'écran dit ce qui manque et porte « Transmettre à l'agent ».
+   Chaque modification s'enregistre seule ; la barre au bas de la page dit
+   ce qui manque et porte « Transmettre à l'agent » (ADR-0241).
    Transmise, l'évaluation se lit ; l'agent la valide, ou la renvoie avec un
    mot, qui s'affiche alors au-dessus de la fiche, de nouveau à remplir
    (ADR-0217). Validée, la fiche passe au N+2 s'il y en a un : une troisième

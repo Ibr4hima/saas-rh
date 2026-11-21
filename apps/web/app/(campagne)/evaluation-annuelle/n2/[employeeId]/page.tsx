@@ -39,8 +39,8 @@ import { CLE_CAMPAGNE } from '../../../../../lib/campagne';
    l'en-tête de l'agent, ses trois étapes, puis, une fois la fiche validée
    par l'agent, la fiche S1/EN05 entière, en lecture, partie réservée
    comprise. Les commentaires du N+2 ferment la partie réservée : ils
-   s'enregistrent seuls, et la barre collée au bas de l'écran porte
-   « Transmettre au N+1 », avec ou sans un mot. Transmis, ils se lisent et
+   s'enregistrent seuls, et la barre au bas de la page porte
+   « Transmettre au N+1 », avec ou sans un mot (ADR-0241). Transmis, ils se lisent et
    ne changent plus. Cette page ne s'ouvre qu'au N+2 de l'agent.
    ──────────────────────────────────────────────────────────────── */
 

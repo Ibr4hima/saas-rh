@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { LONGUEURS_DE_LA_FICHE, MAXIMUMS_DE_LA_FICHE } from '@teranga/contracts';
 import {
   ficheDEntretienPdf,
+  ficheDeLAgentPdf,
   ficheViergePdf,
   typographie,
   type DonneesDeLaFiche,
@@ -57,6 +58,19 @@ describe('la fiche en PDF', () => {
     expect(complete.tout).toContain('Avis conforme à celui du N+1.');
     // La partie réservée commence sur sa propre page : elle se détache.
     expect(pagesDe(complete.pdf)).toBe(pagesDe(agent.pdf) + 1);
+  });
+
+  it('la partie de l’agent seule : ni le N+1, ni ses sections, ni les validations (ADR-0241)', async () => {
+    const agent = await capter(() => ficheDeLAgentPdf(ficheExemple()));
+    const complete = await imprimer(ficheExemple());
+    // L'auto-évaluation d'un objectif, et les souhaits.
+    expect(agent.tout).toContain('Le nouveau circuit de collecte a fait gagner une semaine.');
+    expect(agent.tout).toContain('Évoluer vers la gestion de projets');
+    // Rien de ce que remplit le N+1.
+    expect(agent.tout).not.toContain('Résultat remarquable, salué par la Direction générale.');
+    expect(agent.tout).not.toContain('VALIDATION ET SUIVI');
+    expect(agent.tout).not.toContain('PARTIE STRICTEMENT RÉSERVÉE À LA HIÉRARCHIE');
+    expect(pagesDe(agent.pdf)).toBeLessThan(pagesDe(complete.pdf));
   });
 
   it('imprime le texte de la grille, corrigé', async () => {

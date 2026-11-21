@@ -445,6 +445,14 @@ describe('l’auto-évaluation (ADR-0215)', () => {
     expect((await campagne.monAuto(session('ibou'))).etat).toBe('en_cours');
   });
 
+  it('se montre en PDF, la partie de l’agent, telle que le formulaire la porte (ADR-0241)', async () => {
+    const { filename, pdf } = await campagne.apercuDeMonAuto(session('ibou'), complete);
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU.pdf`);
+    // Rien ne s'enregistre : le brouillon reste celui d'avant.
+    expect((await campagne.monAuto(session('ibou'))).auto.avenir).toBe('');
+  });
+
   it('écrite avant les choix oui ou non, une réponse se relit en oui ou en non (ADR-0238)', () => {
     const lue = autoEvaluationRelue({ vecu: 'Une année.', difficultes: 'Des retards.' });
     expect([lue.aDesDifficultes, lue.aDesCompetencesInexploitees]).toEqual([true, null]);

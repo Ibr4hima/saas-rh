@@ -56,7 +56,11 @@ import { v7 as uuidv7 } from 'uuid';
 import { problem } from '../../common/problem';
 import { loadEnv } from '../../config/env';
 import { TenantDb, type Tx } from '../../db/tenant-db';
-import { ficheDEntretienPdf, type DonneesDeLaFiche } from '../entretiens/fiche-pdf';
+import {
+  ficheDEntretienPdf,
+  ficheDeLAgentPdf,
+  type DonneesDeLaFiche,
+} from '../entretiens/fiche-pdf';
 import { evaluable } from '../evaluations/circuit';
 import { unitesDe } from '../evaluations/unites';
 import { directionDeLUnite } from '../people/chaine';
@@ -339,6 +343,48 @@ export class CampagneService {
    * Son auto-évaluation, complète, transmise au N+1 : elle ne change plus.
    * Incomplète, elle reste en brouillon et la réponse dit ce qui manque.
    */
+  /**
+   * La partie de l'agent de sa fiche, en PDF, telle que son formulaire la
+   * montre, enregistrée ou non : ce que « Valider » affiche avant la
+   * transmission (ADR-0241).
+   */
+  async apercuDeMonAuto(
+    user: SessionUser,
+    auto: AutoEvaluation,
+  ): Promise<{ filename: string; pdf: Buffer }> {
+    const d = await this.db.withTenant(
+      { tenantId: user.tenantId, userId: user.userId },
+      async (tx) => {
+        const annee = await anneeDeLaCampagne(tx);
+        const { id } = await monDossierEvalue(tx, user, annee);
+        const agent = await ficheDe(tx, id, annee);
+        const { objectifs } = await ficheDeLAnnee(tx, id, annee);
+        const { posteDepuis, aujourdhui } = await prisePoste(tx, id);
+        const donnees: DonneesDeLaFiche = {
+          annee,
+          personnel: personnelDeLaFiche(agent.personnel),
+          agent: agentDuPdf(agent, posteDepuis, aujourdhui),
+          n1: agent.evaluateur
+            ? {
+                prenom: agent.evaluateur.prenom,
+                nom: agent.evaluateur.nom,
+                fonction: agent.evaluateur.poste,
+              }
+            : null,
+          dateDeLEntretien: null,
+          objectifs,
+          auto: surLesObjectifs(auto, objectifs),
+          evaluation: evaluationDuN1Vide(),
+          reservee: null,
+          validations: { n1: null, agent: null },
+          n2: null,
+        };
+        return donnees;
+      },
+    );
+    return { filename: nomDeLaFiche(d.annee, d.agent.matricule), pdf: await ficheDeLAgentPdf(d) };
+  }
+
   async transmettreMonAuto(user: SessionUser, auto: AutoEvaluation): Promise<MonAutoEvaluation> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await ecrireMonAuto(tx, user, auto, true);
@@ -1453,11 +1499,7 @@ async function ficheDeLaDCHDans(
   }
   const agent = await ficheDe(tx, employeeId, annee);
   const n2 = await n2De(tx, employeeId, annee);
-  const { rows } = await tx.execute<{ poste_depuis: string | null; aujourdhui: string }>(sql`
-    SELECT (SELECT lower(a.validity)::text FROM assignments a
-             WHERE a.employee_id = ${employeeId} AND a.validity @> CURRENT_DATE
-             LIMIT 1) AS poste_depuis,
-           CURRENT_DATE::text AS aujourdhui`);
+  const { posteDepuis, aujourdhui } = await prisePoste(tx, employeeId);
   return {
     fiche: {
       annee,
@@ -1477,8 +1519,40 @@ async function ficheDeLaDCHDans(
       transmiseLe: annuelle.transmiseALaDCHLe,
       transmisePar: annuelle.transmisePar,
     },
-    posteDepuis: rows[0]?.poste_depuis ?? null,
-    aujourdhui: rows[0]!.aujourdhui,
+    posteDepuis,
+    aujourdhui,
+  };
+}
+
+/** Le jour où l'agent a pris son poste actuel, et celui d'aujourd'hui : son ancienneté. */
+async function prisePoste(
+  tx: Tx,
+  employeeId: string,
+): Promise<{ posteDepuis: string | null; aujourdhui: string }> {
+  const { rows } = await tx.execute<{ poste_depuis: string | null; aujourdhui: string }>(sql`
+    SELECT (SELECT lower(a.validity)::text FROM assignments a
+             WHERE a.employee_id = ${employeeId} AND a.validity @> CURRENT_DATE
+             LIMIT 1) AS poste_depuis,
+           CURRENT_DATE::text AS aujourdhui`);
+  return { posteDepuis: rows[0]?.poste_depuis ?? null, aujourdhui: rows[0]!.aujourdhui };
+}
+
+/** L'agent tel que le PDF de sa fiche le présente. */
+function agentDuPdf(
+  a: AgentDeLaCampagne,
+  posteDepuis: string | null,
+  aujourdhui: string,
+): DonneesDeLaFiche['agent'] {
+  return {
+    prenom: a.prenom,
+    nom: a.nom,
+    fonction: a.poste,
+    matricule: a.matricule,
+    direction: a.direction,
+    departement: a.departement,
+    service: a.service,
+    anciennete: posteDepuis ? ancienneteEnLettres(posteDepuis, aujourdhui) : null,
+    posteDepuis,
   };
 }
 
@@ -1495,17 +1569,7 @@ function donneesDuPdf({ fiche: f, posteDepuis, aujourdhui }: FicheLueParLaDCH): 
   return {
     annee: f.annee,
     personnel: personnelDeLaFiche(a.personnel),
-    agent: {
-      prenom: a.prenom,
-      nom: a.nom,
-      fonction: a.poste,
-      matricule: a.matricule,
-      direction: a.direction,
-      departement: a.departement,
-      service: a.service,
-      anciennete: posteDepuis ? ancienneteEnLettres(posteDepuis, aujourdhui) : null,
-      posteDepuis,
-    },
+    agent: agentDuPdf(a, posteDepuis, aujourdhui),
     n1: n1 ? { prenom: n1.prenom, nom: n1.nom, fonction: n1.poste } : null,
     dateDeLEntretien: null,
     objectifs: f.objectifs,

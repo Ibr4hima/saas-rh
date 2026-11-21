@@ -10,7 +10,7 @@ import {
   type AutoEvaluation,
   type MonAutoEvaluation,
 } from '@teranga/contracts';
-import { Card, EmptyState, Skeleton } from '@teranga/ui';
+import { Button, Card, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
 import {
   AutoEvaluationEnLecture,
   SaisieDeLAuto,
@@ -29,8 +29,10 @@ import { Repere } from '../../../../components/fiche';
 import { BandeauDePage } from '../../../../components/campagne/charte';
 import { Confirmation, messageDe } from '../../../../components/grille-evaluation';
 import { Icon } from '../../../../components/icons';
+import { PdfEnLargeur } from '../../../../components/pdf-viewer';
 import { api, ApiError } from '../../../../lib/api';
 import { ACCUEIL_DE_LA_CAMPAGNE, CLE_CAMPAGNE } from '../../../../lib/campagne';
+import { lireFichier } from '../../../../lib/fichiers';
 
 /* ────────────────────────────────────────────────────────────────
    L'auto-évaluation de la personne connectée (ADR-0214, ADR-0215), ouverte
@@ -39,11 +41,13 @@ import { ACCUEIL_DE_LA_CAMPAGNE, CLE_CAMPAGNE } from '../../../../lib/campagne';
    En tête : le titre, la période, et ce qui compte pour la remplir, le N+1
    qui la recevra, la date limite, l'avancement des réponses obligatoires.
    Dessous, les cartes de la fiche. Chaque modification s'enregistre seule,
-   un peu après la dernière frappe ; une barre, collée au bas de l'écran,
-   dit où en est l'enregistrement, ce qui manque, et porte « Transmettre à
-   mon N+1 ». Transmise, l'auto-évaluation se lit et ne change plus. Sans
-   auto-évaluation à faire (au sommet de l'organigramme, en stage), la page
-   renvoie à l'accueil.
+   un peu après la dernière frappe ; au bas de la page, une barre dit où en
+   est l'enregistrement, ce qui manque, et porte « Valider » et
+   « Transmettre à mon N+1 » (ADR-0241). « Valider » replie la saisie et
+   montre la fiche de l'agent en PDF, comme un document généré ;
+   « Modifier » rouvre la saisie. Transmise, l'auto-évaluation se lit et ne
+   change plus. Sans auto-évaluation à faire (au sommet de l'organigramme,
+   en stage), la page renvoie à l'accueil.
    ──────────────────────────────────────────────────────────────── */
 
 const CHEMIN = '/campagne/auto-evaluation';
@@ -104,11 +108,18 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
     contenu,
   } = useEnregistrementAuto(CHEMIN, vue.auto, corpsDeLAuto);
   const [confirmer, setConfirmer] = useState(false);
+  // Validée, la saisie se replie : la fiche s'affiche en PDF (ADR-0241).
+  const [validee, setValidee] = useState(false);
   const transmise = vue.etat === 'transmise';
   const manque = ceQuiManqueALAutoEvaluation(auto, vue.objectifs);
   const total = reponsesObligatoiresDeLAuto(vue.objectifs);
   const n1 = vue.evaluateur;
   const fin = vue.periode ? (vue.periode.autoAu ?? vue.periode.au) : null;
+  /** Valider, ou revenir à la saisie : la page repart de son haut. */
+  const basculer = (valider: boolean) => {
+    setValidee(valider);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const transmettre = useMutation({
     mutationFn: async () => {
       await vider();
@@ -162,18 +173,43 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
 
       {vue.modifiable ? (
         <>
-          <SaisieDeLAuto
-            annee={vue.annee}
-            objectifs={vue.objectifs}
-            auto={auto}
-            onChange={changer}
-          />
+          {validee ? (
+            <ApercuDeLaFiche
+              auto={auto}
+              titre={`Mon auto-évaluation ${vue.annee}`}
+              onModifier={() => basculer(false)}
+            />
+          ) : (
+            <SaisieDeLAuto
+              annee={vue.annee}
+              objectifs={vue.objectifs}
+              auto={auto}
+              onChange={changer}
+            />
+          )}
           <BarreDeTransmission
             etat={etat}
             manque={manque}
             libelle="Transmettre à mon N+1"
             enCours={transmettre.isPending}
             onTransmettre={() => setConfirmer(true)}
+            avant={
+              validee ? (
+                <Button variant="secondary" className="h-9 px-5" onClick={() => basculer(false)}>
+                  <Icon name="edit" size={15} />
+                  Modifier
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  className="h-9 px-5"
+                  disabled={manque.length > 0 || transmettre.isPending}
+                  onClick={() => basculer(true)}
+                >
+                  Valider
+                </Button>
+              )
+            }
           />
         </>
       ) : (
@@ -206,5 +242,60 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
         </Confirmation>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * La fiche de l'agent, telle que « Valider » la montre (ADR-0241) : la
+ * partie remplie par l'agent, en PDF, à la largeur de la page, comme un
+ * document généré. Au-dessus, ses réponses repliées, avec « Modifier ». Le PDF suit
+ * ce que montre la saisie, enregistré ou non.
+ */
+function ApercuDeLaFiche({
+  auto,
+  titre,
+  onModifier,
+}: {
+  auto: AutoEvaluation;
+  titre: string;
+  onModifier: () => void;
+}) {
+  const pdf = useQuery({
+    queryKey: [...CLE_AUTO, 'apercu', auto],
+    queryFn: ({ signal }) => lireFichier(`${CHEMIN}/apercu`, { signal, corps: { auto } }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  return (
+    <>
+      <Card className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:gap-5">
+        <CardTitle className="min-w-0 flex-1">Mes réponses</CardTitle>
+        <Button variant="secondary" className="h-9 w-full sm:w-auto" onClick={onModifier}>
+          <Icon name="edit" size={15} />
+          Modifier
+        </Button>
+      </Card>
+      {pdf.isError ? (
+        <Card>
+          <EmptyState
+            className="py-12"
+            icon={<Icon name="error" size={22} />}
+            title={messageDe(pdf.error, 'Impossible d’afficher la fiche')}
+            action={
+              <Button size="sm" variant="secondary" onClick={() => void pdf.refetch()}>
+                Réessayer
+              </Button>
+            }
+          />
+        </Card>
+      ) : pdf.data ? (
+        <PdfEnLargeur data={pdf.data} titre={titre} />
+      ) : (
+        // Une feuille blanche, le temps que le PDF arrive : rien ne saute à son arrivée.
+        <div className="grid aspect-[595/842] place-items-center rounded-bloc bg-white shadow-xs ring-1 ring-card-line">
+          <span className="size-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+        </div>
+      )}
+    </>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { heureEnLettres } from '@teranga/contracts';
 import { Button, Card } from '@teranga/ui';
 import { api } from '../../lib/api';
@@ -11,8 +11,8 @@ import { Icon } from '../icons';
    L'enregistrement automatique des saisies de la campagne : l'auto-
    évaluation de l'agent (ADR-0215), l'évaluation du N+1 (ADR-0216).
    Chaque modification part un peu après la dernière frappe, un envoi à la
-   fois. Une barre, collée au bas de l'écran, dit où en est
-   l'enregistrement, ce qui manque encore, et porte la transmission.
+   fois. Une barre, au bas de la page, dit où en est l'enregistrement, ce
+   qui manque encore, et porte la transmission (ADR-0241).
    ──────────────────────────────────────────────────────────────── */
 
 /** Le temps, après la dernière frappe, avant d'enregistrer. */
@@ -120,9 +120,10 @@ function ceQuiManqueEnBref(manque: readonly string[]): string {
 }
 
 /**
- * La barre collée au bas de l'écran pendant la saisie : où en est
- * l'enregistrement, ce qui manque, et le bouton qui transmet, actif une fois
- * tout l'obligatoire rempli.
+ * La barre au bas de la page, après la saisie : elle ne se voit qu'au bout
+ * du défilement (ADR-0241). Où en est l'enregistrement, ce qui manque, et le
+ * bouton qui transmet, actif une fois tout l'obligatoire rempli ; à sa
+ * gauche, s'il y a lieu, un autre geste (`avant`) : « Valider », « Modifier ».
  */
 export function BarreDeTransmission({
   etat,
@@ -130,30 +131,33 @@ export function BarreDeTransmission({
   libelle,
   enCours,
   onTransmettre,
+  avant,
 }: {
   etat: EtatDeLEnregistrement;
   manque: readonly string[];
   libelle: string;
   enCours: boolean;
   onTransmettre: () => void;
+  avant?: ReactNode;
 }) {
   return (
-    <div className="sticky bottom-4 z-20">
-      <Card className="flex flex-col gap-3 px-5 py-3.5 shadow-[0_10px_30px_-12px_rgb(0_40_90/0.3)] sm:flex-row sm:items-center sm:gap-5">
-        <div className="min-w-0 flex-1 text-[12px] leading-relaxed">
-          <EtatEcrit etat={etat} />
-          {manque.length > 0 ? <p className="text-ink-muted">{ceQuiManqueEnBref(manque)}</p> : null}
-        </div>
+    <Card className="flex flex-col gap-3 px-5 py-3.5 sm:flex-row sm:items-center sm:gap-5">
+      <div className="min-w-0 flex-1 text-[12px] leading-relaxed">
+        <EtatEcrit etat={etat} />
+        {manque.length > 0 ? <p className="text-ink-muted">{ceQuiManqueEnBref(manque)}</p> : null}
+      </div>
+      {/* Sur un téléphone, les gestes l'un sous l'autre, sur toute la largeur. */}
+      <div className="flex flex-col gap-2 *:w-full sm:flex-row sm:items-center sm:*:w-auto">
+        {avant}
         <Button
           className="h-9 shrink-0 px-5"
           disabled={manque.length > 0 || enCours}
           onClick={onTransmettre}
         >
-          <Icon name="arrow_forward" size={15} />
           {libelle}
         </Button>
-      </Card>
-    </div>
+      </div>
+    </Card>
   );
 }
 

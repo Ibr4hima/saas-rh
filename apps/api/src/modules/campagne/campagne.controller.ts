@@ -235,6 +235,24 @@ export class CampagneController {
     return this.campagne.enregistrerMonAuto(req.sessionUser, body.auto);
   }
 
+  /**
+   * La partie de l'agent de sa fiche, en PDF, telle que son formulaire la
+   * montre : ce que « Valider » affiche (ADR-0241). En POST, comme la
+   * génération d'un document : les réponses restent hors de l'adresse.
+   */
+  @Post('auto-evaluation/apercu')
+  async apercu(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(ecritureDeLAutoSchema)) body: EcritureDeLAuto,
+    @Res() res: Response,
+  ) {
+    const { filename, pdf } = await this.campagne.apercuDeMonAuto(req.sessionUser, body.auto);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', contentDisposition('inline', filename));
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(pdf);
+  }
+
   /** Son auto-évaluation, complète, transmise au N+1. */
   @Post('auto-evaluation/transmission')
   @HttpCode(200)
