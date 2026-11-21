@@ -959,6 +959,7 @@ async function equipeDe(
     nom: string;
     matricule: string;
     poste: string | null;
+    email: string | null;
     commencee: boolean;
     transmise_le: string | null;
     evaluation_commencee: boolean;
@@ -971,7 +972,7 @@ async function equipeDe(
     transmise_dch: boolean;
   }>(sql`
     SELECT e.id, p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
-           a.position_title AS poste,
+           a.position_title AS poste, e.work_email AS email,
            f.commentaires_n2 IS NOT NULL AS commentaires_commences,
            f.commentaires_n2_transmis_le IS NOT NULL AS commentaires_transmis,
            f.reprise_n2_le IS NOT NULL AS reprise,
@@ -993,6 +994,7 @@ async function equipeDe(
     nom: r.nom,
     matricule: r.matricule,
     poste: r.poste,
+    email: r.email,
     auto: autoDe(r.commencee, r.transmise_le),
     evaluation: etatDeLEvaluation({
       commencee: r.evaluation_commencee,
@@ -1078,6 +1080,7 @@ async function aCommenterDe(tx: Tx, id: string, annee: number): Promise<AgentACo
     nom: string;
     matricule: string;
     poste: string | null;
+    email: string | null;
     commencee: boolean;
     transmise_le: string | null;
     evaluation_commencee: boolean;
@@ -1092,7 +1095,7 @@ async function aCommenterDe(tx: Tx, id: string, annee: number): Promise<AgentACo
     n1_poste: string | null;
   }>(sql`
     SELECT e.id, p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
-           a.position_title AS poste,
+           a.position_title AS poste, e.work_email AS email,
            f.auto IS NOT NULL AS commencee, f.auto_transmise_le::date::text AS transmise_le,
            f.evaluation IS NOT NULL AS evaluation_commencee,
            f.evaluation_transmise_le IS NOT NULL AS evaluation_transmise,
@@ -1118,6 +1121,7 @@ async function aCommenterDe(tx: Tx, id: string, annee: number): Promise<AgentACo
     nom: r.nom,
     matricule: r.matricule,
     poste: r.poste,
+    email: r.email,
     n1: { prenom: r.n1_prenom, nom: r.n1_nom, poste: r.n1_poste },
     auto: autoDe(r.commencee, r.transmise_le),
     evaluation: etatDeLEvaluation({

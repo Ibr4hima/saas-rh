@@ -287,8 +287,11 @@ describe('l’équipe d’un N+1', () => {
       prenom: 'Moussa',
       matricule: 'CAMP-MOUSSA',
       poste: 'Gestionnaire de l’administration du personnel',
+      email: 'moussa.sarr@camp.test',
       auto: { transmiseLe: AUJOURD_HUI },
     });
+    // Sans adresse professionnelle au dossier, la carte n'en a pas (ADR-0234).
+    expect(equipe[0]!.email).toBeNull();
   });
 
   it('l’évaluateur choisi pour la campagne remplace le N+1, sans toucher à l’organigramme', async () => {
@@ -712,6 +715,7 @@ describe('les commentaires du N+2 (ADR-0218)', () => {
       [agents.moussa, 'a_commenter'],
     ]);
     expect(aCommenter[0]!.n1).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
+    expect(aCommenter.map((a) => a.email)).toEqual([null, null, 'moussa.sarr@camp.test']);
     // Au sommet de l'organigramme, son équipe n'a pas de N+2.
     expect(equipe.every((a) => a.commentaires === null)).toBe(true);
     const awa = await campagne.accueil(session('awa'));

@@ -8,11 +8,10 @@ import {
   type AgentDeLEquipe,
   type PeriodeDeLaCampagne,
 } from '@teranga/contracts';
-import { Badge, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
+import { Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import {
   BandeauDeLAgent,
   BandeauDeLaCampagne,
-  Initiales,
   TitreDeSection,
   TuileDePilotage,
 } from '../../../components/campagne/charte';
@@ -51,13 +50,14 @@ import {
    Puis des sections titrées en Anton : la période d'évaluation annuelle et
    ses deux temps, numérotés, chacun avec sa période, ce qu'il demande, et
    la coche bleue une fois fait (ADR-0220) ; si la personne évalue des
-   agents, son équipe, une carte par agent, en deux groupes. Une
+   agents, son équipe, en deux groupes, une carte par agent, comme celles
+   des événements de la plateforme de l'APIX (ADR-0234). Une
    auto-évaluation faite rend la carte cliquable : le N+1 ouvre alors
-   l'évaluation de l'agent, et la carte dit où elle en est (ADR-0216). En
-   haut à droite de chaque carte, un point dit l'auto-évaluation : vert,
-   faite ; rouge, non faite (ADR-0226). Enfin, si la personne est le N+2
-   d'agents, les équipes de ses N+1 : une fiche validée par l'agent s'ouvre
-   pour ses commentaires (ADR-0218).
+   l'évaluation de l'agent, et la carte dit où en est sa fiche (ADR-0216).
+   À hauteur du nom, un point dit l'auto-évaluation : vert, faite ; rouge,
+   non faite (ADR-0226). Enfin, si la personne est le N+2 d'agents, les
+   équipes de ses N+1 : une fiche validée par l'agent s'ouvre pour ses
+   commentaires (ADR-0218).
    Les blocs montent l'un après l'autre à l'arrivée sur la page.
    ──────────────────────────────────────────────────────────────── */
 
@@ -192,7 +192,7 @@ function Pilotage({ accueil: v }: { accueil: AccueilDeLaCampagne }) {
 /**
  * Les agents qu'évalue la personne, en deux groupes l'un sous l'autre :
  * d'abord les agents dont l'auto-évaluation est faite, à évaluer, puis les
- * autres. Chaque groupe prend toute la largeur, quatre cartes par ligne sur
+ * autres. Chaque groupe prend toute la largeur, trois cartes par ligne sur
  * un grand écran. Un seul groupe quand tous les agents sont dans le même cas.
  */
 function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
@@ -200,8 +200,8 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
     const faite = a.auto.etat === 'transmise';
     return {
       agent: a,
-      // L'auto-évaluation est faite ou ne l'est pas : le point le dit. Le
-      // badge, une fois faite, suit l'évaluation du N+1 (ADR-0226).
+      // L'auto-évaluation est faite ou ne l'est pas : le point le dit. Une
+      // fois faite, la carte suit la fiche (ADR-0226).
       autoFaite: faite,
       statut: faite ? statutDeLEvaluation(a) : null,
       href: faite ? `${ACCUEIL_DE_LA_CAMPAGNE}/equipe/${a.employeeId}` : undefined,
@@ -272,7 +272,7 @@ function periodeEnBref(periode: PeriodeDeLaCampagne | null): string {
 
 /** Un agent sur sa carte : où en est sa fiche, et la page qu'elle ouvre s'il y a lieu. */
 interface CarteDUnAgent {
-  agent: Pick<AgentDeLEquipe, 'employeeId' | 'prenom' | 'nom' | 'poste'>;
+  agent: Pick<AgentDeLEquipe, 'employeeId' | 'prenom' | 'nom' | 'poste' | 'email'>;
   /** L'auto-évaluation de l'agent : faite, ou pas. */
   autoFaite: boolean;
   /** Où en est la suite de sa fiche ; `null` tant que l'auto-évaluation n'est pas faite. */
@@ -337,19 +337,27 @@ function SectionDAgents({
   );
 }
 
-/** Autant de cartes par ligne que la place en laisse, chacune de 17 rem au moins. */
+/** Autant de cartes par ligne que la place en laisse, chacune de 20 rem au moins : trois sur un grand écran. */
 function Grille({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(17rem,100%),1fr))] gap-3">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(20rem,100%),1fr))] gap-3.5">
       {children}
     </div>
   );
 }
 
+/** Le libellé d'un repère de la carte, en petites capitales, et sa valeur dessous. */
+const LIBELLE =
+  'text-[10px] leading-none font-extrabold tracking-[0.12em] text-ink-muted uppercase';
+const VALEUR = 'mt-1.5 text-[12.5px] leading-snug font-bold text-ink-strong';
+
 /**
- * Un agent, en une carte : ses initiales, son nom, son poste, la précision
- * s'il y en a une, et où en est sa fiche ; en haut à droite, le point de son
- * auto-évaluation. Avec `href`, la carte s'ouvre.
+ * Un agent, en une carte, comme celles des événements de la plateforme de
+ * l'APIX (ADR-0234) : son nom en gras, son poste dessous, la précision s'il y
+ * en a une ; à hauteur du nom, le point de son auto-évaluation. Sous un
+ * filet, ses repères : son email professionnel et, l'auto-évaluation faite,
+ * où en est sa fiche, côte à côte quand la carte est assez large. Avec
+ * `href`, toute la carte s'ouvre et se soulève au survol.
  */
 function CarteAgent({
   carte: { agent: a, autoFaite, statut, precision, href },
@@ -359,56 +367,65 @@ function CarteAgent({
   const auto = autoFaite ? 'Auto-évaluation faite' : 'Auto-évaluation non faite';
   const contenu = (
     <>
-      {/* L'auto-évaluation en un point, en haut à droite, à hauteur du nom :
-          vert, faite ; rouge, non faite. */}
-      <span
-        role="img"
-        aria-label={auto}
-        title={auto}
-        className={cn(
-          'absolute top-5 right-4 size-2.5 rounded-full',
-          autoFaite ? 'bg-success' : 'bg-danger',
-        )}
-      />
-      <Initiales prenom={a.prenom} nom={a.nom} taille="carte" />
-      <span className="min-w-0 flex-1">
-        {/* Le nom s'arrête avant le point. */}
-        <span className="block truncate pr-4 text-[14.5px] leading-tight font-bold text-ink-strong">
-          {a.prenom} {a.nom}
-        </span>
-        {/* Le poste seul, sans le matricule, sur deux lignes au plus (ADR-0225). */}
-        {a.poste ? (
-          <span className="mt-1 line-clamp-2 text-[12.5px] leading-snug text-ink-muted">
-            {a.poste}
-          </span>
-        ) : null}
-        {precision ? (
-          <span className="mt-1 block truncate text-[12px] text-ink-muted">{precision}</span>
-        ) : null}
-        {statut ? (
-          <Badge tone={statut.ton} size="sm" className="mt-3">
-            {statut.libelle}
-          </Badge>
-        ) : null}
-      </span>
-      {/* La flèche descend au milieu : le coin haut appartient au point. */}
-      {href ? (
-        <Icon
-          name="chevron_right"
-          size={18}
-          className="shrink-0 self-center text-ink-muted/50 transition-[color,transform] duration-200 group-hover:translate-x-0.5 group-hover:text-primary"
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15.5px] leading-[1.35] font-extrabold tracking-[-0.01em] text-ink-strong">
+            {a.prenom} {a.nom}
+          </p>
+          {/* Le poste seul, sans le matricule, sur deux lignes au plus (ADR-0225). */}
+          {a.poste ? (
+            <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-ink-muted">
+              {a.poste}
+            </p>
+          ) : null}
+          {precision ? (
+            <p className="mt-0.5 truncate text-[12.5px] leading-snug text-ink-muted">{precision}</p>
+          ) : null}
+        </div>
+        {/* L'auto-évaluation en un point, à hauteur du nom : vert, faite ; rouge, non faite. */}
+        <span
+          role="img"
+          aria-label={auto}
+          title={auto}
+          className={cn(
+            'mt-[5.5px] size-2.5 shrink-0 rounded-full',
+            autoFaite ? 'bg-success' : 'bg-danger',
+          )}
         />
-      ) : null}
+      </div>
+      <dl
+        className={cn(
+          'mt-auto grid gap-x-5 gap-y-3 border-t border-line-soft pt-3.5',
+          statut && '@[20rem]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]',
+        )}
+      >
+        <div className="min-w-0">
+          <dt className={LIBELLE}>Email professionnel</dt>
+          {/* Trop longue, l'adresse s'arrête sur « … » ; le survol la donne en entier. */}
+          <dd
+            title={a.email ?? undefined}
+            className={cn(VALEUR, 'truncate', !a.email && 'font-medium text-ink-muted')}
+          >
+            {a.email ?? 'Non renseigné'}
+          </dd>
+        </div>
+        {statut ? (
+          <div className="min-w-0">
+            <dt className={LIBELLE}>Fiche</dt>
+            <dd className={VALEUR}>{statut.libelle}</dd>
+          </div>
+        ) : null}
+      </dl>
     </>
   );
   const forme =
-    'relative flex w-full items-start gap-3.5 rounded-bloc border border-card-line bg-surface p-4 text-left shadow-xs';
+    '@container flex h-full flex-col gap-3.5 rounded-bloc border border-card-line bg-surface px-5 pt-[18px] pb-4 text-left shadow-xs';
   return href ? (
     <Link
       href={href}
       className={cn(
         forme,
-        'group transition-all duration-200 hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
+        'transition-[box-shadow,transform,border-color] duration-[180ms] hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none motion-reduce:transition-none motion-reduce:hover:translate-y-0',
       )}
     >
       {contenu}
@@ -428,9 +445,9 @@ function Squelette() {
         <Skeleton className="h-[264px] w-full rounded-bloc" />
       </div>
       <Grille>
-        <Skeleton className="h-[112px] w-full rounded-bloc" />
-        <Skeleton className="h-[112px] w-full rounded-bloc" />
-        <Skeleton className="h-[112px] w-full rounded-bloc" />
+        <Skeleton className="h-[140px] w-full rounded-bloc" />
+        <Skeleton className="h-[140px] w-full rounded-bloc" />
+        <Skeleton className="h-[140px] w-full rounded-bloc" />
       </Grille>
     </div>
   );

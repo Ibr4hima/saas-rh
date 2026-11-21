@@ -76,25 +76,12 @@ function FiletDuBandeau() {
   return <div aria-hidden className="h-[3px] bg-[#ca631f]" />;
 }
 
-/** Les initiales d'une personne, dans un rond : sur sa carte, ou en grand dans le bandeau. */
-export function Initiales({
-  prenom,
-  nom,
-  taille,
-}: {
-  prenom: string;
-  nom: string;
-  taille: 'carte' | 'bandeau';
-}) {
+/** Les initiales d'une personne, dans un rond, sur le bleu du bandeau. */
+function Initiales({ prenom, nom }: { prenom: string; nom: string }) {
   return (
     <span
       aria-hidden
-      className={cn(
-        'flex shrink-0 items-center justify-center rounded-full font-bold uppercase',
-        taille === 'bandeau'
-          ? 'size-14 bg-white/12 text-[19px] tracking-[0.04em] text-white ring-1 ring-white/30 sm:size-16 sm:text-[21px]'
-          : 'size-11 bg-primary-soft text-[13px] text-primary',
-      )}
+      className="flex size-14 shrink-0 items-center justify-center rounded-full bg-white/12 text-[19px] font-bold tracking-[0.04em] text-white uppercase ring-1 ring-white/30 sm:size-16 sm:text-[21px]"
     >
       {prenom.charAt(0)}
       {nom.charAt(0)}
@@ -123,7 +110,7 @@ export function BandeauDeLAgent({
     >
       <Bleu className="px-5 py-6 sm:px-8 sm:py-8">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-5">
-          <Initiales prenom={a.prenom} nom={a.nom} taille="bandeau" />
+          <Initiales prenom={a.prenom} nom={a.nom} />
           <div className="min-w-0 flex-1 basis-52">
             <h1
               id="nom-de-l-agent"

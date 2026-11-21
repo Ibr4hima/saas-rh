@@ -154,6 +154,8 @@ export interface AgentDeLEquipe {
   nom: string;
   matricule: string;
   poste: string | null;
+  /** L'adresse professionnelle, sur la carte de l'agent (ADR-0234). */
+  email: string | null;
   auto: AutoDeLAgent;
   /** Où en est son évaluation par la personne connectée (ADR-0216). */
   evaluation: EtatDeLEvaluation;
@@ -173,6 +175,8 @@ export interface AgentACommenter {
   nom: string;
   matricule: string;
   poste: string | null;
+  /** L'adresse professionnelle, sur la carte de l'agent (ADR-0234). */
+  email: string | null;
   /** Son N+1, l'évaluateur de la campagne. */
   n1: PersonneDeLaCampagne;
   auto: AutoDeLAgent;
