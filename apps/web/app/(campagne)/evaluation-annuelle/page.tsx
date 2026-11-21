@@ -209,7 +209,7 @@ function periodeEnBref(periode: PeriodeDeLaCampagne | null): string {
 
 /** Un agent sur sa carte : où en est sa fiche, et la page qu'elle ouvre s'il y a lieu. */
 interface CarteDUnAgent {
-  agent: Pick<AgentDeLEquipe, 'employeeId' | 'prenom' | 'nom' | 'poste' | 'matricule'>;
+  agent: Pick<AgentDeLEquipe, 'employeeId' | 'prenom' | 'nom' | 'poste'>;
   statut: Statut;
   /** Une ligne de plus, sous le poste : son N+1. */
   precision?: string;
@@ -271,8 +271,8 @@ function Grille({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Un agent, en une carte : son nom, son poste, son matricule, la précision
- * s'il y en a une, et où en est sa fiche. Avec `href`, la carte s'ouvre.
+ * Un agent, en une carte : son nom, son poste, la précision s'il y en a
+ * une, et où en est sa fiche. Avec `href`, la carte s'ouvre.
  */
 function CarteAgent({ carte: { agent: a, statut, precision, href } }: { carte: CarteDUnAgent }) {
   const contenu = (
@@ -285,12 +285,12 @@ function CarteAgent({ carte: { agent: a, statut, precision, href } }: { carte: C
         <span className="block truncate text-[14px] leading-tight font-bold text-ink-strong">
           {a.prenom} {a.nom}
         </span>
+        {/* Le poste seul, sans le matricule, sur deux lignes au plus (ADR-0225). */}
         {a.poste ? (
-          <span className="mt-1 block truncate text-[12px] text-ink-muted">{a.poste}</span>
+          <span className="mt-1 line-clamp-2 text-[12px] leading-snug text-ink-muted">
+            {a.poste}
+          </span>
         ) : null}
-        <span className="mt-1 block truncate font-mono text-[11.5px] tracking-tight text-ink-muted">
-          {a.matricule}
-        </span>
         {precision ? (
           <span className="mt-1 block truncate text-[12px] text-ink-muted">{precision}</span>
         ) : null}

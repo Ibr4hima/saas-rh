@@ -30,10 +30,10 @@ import { Sceau } from '../sceau';
    ──────────────────────────────────────────────────────────────── */
 
 /**
- * L'en-tête d'un agent, comme celui de son dossier : le nom, puis le
- * matricule et le poste ; en repères, ce qui situe l'agent. Le département et le
- * service n'apparaissent que s'il y en a. Le N+1 ne manque qu'au sommet de
- * l'organigramme, qui n'est pas évalué. À droite du nom, le geste de la page.
+ * L'en-tête d'un agent, comme celui de son dossier : le nom, puis le poste ;
+ * en repères, ce qui situe l'agent. Le département et le service
+ * n'apparaissent que s'il y en a. Le N+1 ne manque qu'au sommet de
+ * l'organigramme, hors de la campagne. À droite du nom, le geste de la page.
  */
 export function IdentiteDeLaCampagne({
   agent: a,
@@ -85,12 +85,8 @@ export function IdentiteDeLaCampagne({
   return (
     <EnTete
       titre={`${a.prenom} ${a.nom}`}
-      sousTitre={
-        <>
-          <span className="font-mono tracking-tight">{a.matricule}</span>
-          {a.poste ? <> · {a.poste}</> : null}
-        </>
-      }
+      // Sous le nom, le poste seul, sans le matricule (ADR-0225).
+      sousTitre={a.poste ?? undefined}
       action={action}
       colonnes={reperes.length as 2 | 3 | 4 | 5}
       reperes={<>{reperes}</>}
