@@ -236,4 +236,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0228](0228-bandeau-droit.md)                         | Le bandeau de l'accueil, droit, souligné d'un filet orange                              | acceptée, révisée par 0229                  |
 | [0229](0229-pied-droit-et-nom-en-capitales.md)        | Le pied droit des écrans de la charte, et le nom de famille en capitales sans accents   | acceptée, révisée par 0230                  |
 | [0230](0230-email-sans-propositions.md)               | L'adresse professionnelle de la connexion, sans les propositions du navigateur          | acceptée                                    |
-| [0231](0231-titre-de-la-barre-en-anton.md)            | Le titre de la barre de la campagne en Anton, en capitales                              | acceptée                                    |
+| [0231](0231-titre-de-la-barre-en-anton.md)            | Le titre de la barre de la campagne en Anton, en capitales                              | acceptée, révisée par 0232                  |
+| [0232](0232-titre-de-la-barre-plus-petit.md)          | Le titre de la barre de la campagne, un peu plus petit                                  | acceptée                                    |

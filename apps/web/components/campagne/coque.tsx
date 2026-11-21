@@ -26,9 +26,8 @@ import { MenuCompte } from '../menu-compte';
 
 /**
  * Le titre de la campagne, en Anton et en capitales, comme les titres de la
- * charte et ceux des sections de l'accueil (ADR-0231). Anton est serrée : un
- * cran plus grand que le salut des accueils de la plateforme, pour la même
- * présence.
+ * charte et ceux des sections de l'accueil (ADR-0231), à peine plus grand
+ * que le salut des accueils de la plateforme : Anton est serrée (ADR-0232).
  */
 const TITRE = 'font-titre leading-[1.1] tracking-[0.015em] text-ink-strong uppercase';
 
@@ -72,7 +71,7 @@ export function CoqueDeLaCampagne({ children }: { children: React.ReactNode }) {
           >
             <BrandMark variant="barre" />
             <span aria-hidden className="hidden h-8 w-px shrink-0 bg-line sm:block" />
-            <span className={cn(TITRE, 'hidden truncate text-[26px] sm:block lg:text-[30px]')}>
+            <span className={cn(TITRE, 'hidden truncate text-[23px] sm:block lg:text-[26px]')}>
               {titre}
             </span>
           </Link>
@@ -86,7 +85,7 @@ export function CoqueDeLaCampagne({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="mx-auto flex w-full max-w-page flex-1 flex-col px-4 pt-2 pb-16 sm:px-6 sm:pt-4 sm:pb-12">
-        <p className={cn(TITRE, 'mb-4 text-[26px] sm:hidden')}>{titre}</p>
+        <p className={cn(TITRE, 'mb-4 text-[23px] sm:hidden')}>{titre}</p>
         {me.data ? children : <Skeleton className="h-64 w-full rounded-bloc" />}
       </main>
     </div>
