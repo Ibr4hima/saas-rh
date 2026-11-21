@@ -10,6 +10,7 @@ import {
   NIVEAUX_DE_COMPETENCE,
   partieReserveeVide,
   PERSONNELS_DE_LA_FICHE,
+  pucesDe,
   QUESTIONS_DES_SOUHAITS,
   QUESTIONS_DU_BILAN,
   REFERENCE_DE_LA_FICHE,
@@ -1152,10 +1153,34 @@ function identification(f: Composition, d: DonneesDeLaFiche): void {
 
 // ──────────────────────────────────────────────── 2. Bilan de l'année
 
+/** Une question de l'auto-évaluation, telle que les contrats la donnent. */
+type QuestionDeLAuto =
+  (typeof QUESTIONS_DU_BILAN)[number] | (typeof QUESTIONS_DES_SOUHAITS)[number];
+
+/**
+ * La réponse imprimée d'une question de l'auto-évaluation (ADR-0238) : ses
+ * puces, ou « Oui » et ses puces, ou « Non ». Sans choix, le texte tel qu'il
+ * est écrit : une fiche vierge garde ses lignes à remplir.
+ */
+function reponseDeLAuto(auto: AutoEvaluation, q: QuestionDeLAuto): string {
+  const texte = auto[q.cle];
+  const enPuces = () =>
+    pucesDe(texte)
+      .map((p) => `- ${p}`)
+      .join('\n');
+  if ('ouiNon' in q) {
+    const oui = auto[q.ouiNon];
+    if (oui === false) return 'Non';
+    if (oui === true) return ['Oui', enPuces()].filter(Boolean).join('\n');
+    return texte;
+  }
+  return 'puces' in q ? enPuces() : texte;
+}
+
 function bilan(f: Composition, d: DonneesDeLaFiche): void {
   const recapitulatif: Question[] = QUESTIONS_DU_BILAN.map((q) => [
     q.question,
-    d.auto[q.cle],
+    reponseDeLAuto(d.auto, q),
     VIERGE.recapitulatif,
   ]);
   const qui = 'Rempli par l’agent';
@@ -1536,7 +1561,7 @@ function souhaits(f: Composition, d: DonneesDeLaFiche): void {
   const questions: Question[] = [
     ...QUESTIONS_DES_SOUHAITS.map((q): Question => [
       `${q.question}${'precision' in q ? ` (${q.precision})` : ''}`,
-      d.auto[q.cle],
+      reponseDeLAuto(d.auto, q),
     ]),
     ['Autres commentaires', d.auto.autresCommentaires, VIERGE.reponse - 1],
   ];

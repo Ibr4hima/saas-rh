@@ -1,22 +1,26 @@
 'use client';
 
-import { useId, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import {
   LONGUEURS_DE_LA_FICHE,
   NIVEAUX_D_ATTEINTE,
   NIVEAUX,
+  pucesDe,
   QUESTIONS_DES_SOUHAITS,
   QUESTIONS_DU_BILAN,
   type AppreciationDeLAgent,
   type AutoEvaluation,
+  type ChoixDeLAuto,
   type Niveau,
   type ObjectifEvalue,
 } from '@teranga/contracts';
 import { Card, cn, Field } from '@teranga/ui';
 import { ChoixDeNiveau, NiveauDonne, ZoneDeTexte } from '../grille-evaluation';
-import { Icon, type IconName } from '../icons';
+import { type IconName } from '../icons';
+import { OuiNon } from '../saisie-de-fiche';
 import { TitreDeSection } from './charte';
 import type { Changement } from './enregistrement';
+import { ListeAPuces } from './liste-a-puces';
 
 /* ────────────────────────────────────────────────────────────────
    L'auto-évaluation sur la fiche S1/EN05 (ADR-0215) : ce que l'agent
@@ -38,16 +42,42 @@ export const PAR_LE_N1 = 'Rempli par le N+1';
 
 const MAX = LONGUEURS_DE_LA_FICHE.texte;
 
-/** Les réponses en toutes lettres de l'auto-évaluation : tout, sauf les objectifs. */
-type CleDeTexte = Exclude<keyof AutoEvaluation, 'objectifs'>;
+/** Les réponses en toutes lettres de l'auto-évaluation : tout, sauf les objectifs et les choix. */
+type CleDeTexte = Exclude<keyof AutoEvaluation, 'objectifs' | ChoixDeLAuto>;
 
-/** Les questions de la carte « Préoccupations et souhaits », avec « Autres commentaires ». */
-const SOUHAITS: readonly { cle: CleDeTexte; question: string }[] = [
-  ...QUESTIONS_DES_SOUHAITS.map((q) => ({
-    cle: q.cle,
-    question: 'precision' in q ? `${q.question} (${q.precision})` : q.question,
-  })),
-  { cle: 'autresCommentaires', question: 'Autres commentaires' },
+/**
+ * Une question de la fiche et sa forme : du texte, des puces, ou oui ou non
+ * puis des puces (ADR-0238).
+ */
+interface QuestionDeLaFiche {
+  cle: CleDeTexte;
+  question: string;
+  requise: boolean;
+  enPuces: boolean;
+  /** Le choix oui ou non qui ouvre les puces. */
+  choix?: ChoixDeLAuto;
+}
+
+const enQuestion = (
+  q: (typeof QUESTIONS_DU_BILAN)[number] | (typeof QUESTIONS_DES_SOUHAITS)[number],
+): QuestionDeLaFiche => ({
+  cle: q.cle,
+  question: 'precision' in q ? `${q.question} (${q.precision})` : q.question,
+  requise: true,
+  enPuces: 'puces' in q || 'ouiNon' in q,
+  ...('ouiNon' in q ? { choix: q.ouiNon } : {}),
+});
+
+/** Les questions du récapitulatif, toutes obligatoires. */
+const BILAN: readonly QuestionDeLaFiche[] = QUESTIONS_DU_BILAN.map(enQuestion);
+
+/**
+ * Les questions de la carte « Préoccupations et souhaits », obligatoires,
+ * puis « Autres commentaires », qui ne l'est pas (ADR-0238).
+ */
+const SOUHAITS: readonly QuestionDeLaFiche[] = [
+  ...QUESTIONS_DES_SOUHAITS.map(enQuestion),
+  { cle: 'autresCommentaires', question: 'Autres commentaires', requise: false, enPuces: false },
 ];
 
 const appreciationVide = (): AppreciationDeLAgent => ({
@@ -167,10 +197,124 @@ export function Question({
   );
 }
 
+/** Une question qui se répond en puces, une par ligne (ADR-0238). */
+export function QuestionEnPuces({
+  question,
+  requise = false,
+  valeur,
+  onChange,
+}: {
+  question: string;
+  requise?: boolean;
+  valeur: string;
+  onChange: (texte: string) => void;
+}) {
+  const id = useId();
+  return (
+    <Field label={question} htmlFor={id} required={requise}>
+      <ListeAPuces id={id} libelle={question} valeur={valeur} onChange={onChange} max={MAX} />
+    </Field>
+  );
+}
+
+/**
+ * Une question qui se répond d'abord par oui ou par non, obligatoirement
+ * (ADR-0238). Sur un oui, la réponse en puces s'ouvre, le curseur dans sa
+ * première puce ; sur un non, elle se replie.
+ */
+export function QuestionOuiNon({
+  question,
+  oui,
+  onChoisir,
+  valeur,
+  onChange,
+}: {
+  question: string;
+  oui: boolean | null;
+  onChoisir: (oui: boolean) => void;
+  valeur: string;
+  onChange: (texte: string) => void;
+}) {
+  const id = useId();
+  // Ouverte d'un clic sur « Oui » : le curseur y va ; rouverte avec la page, non.
+  const [ouverteALInstant, setOuverteALInstant] = useState(false);
+  return (
+    <Field label={question} htmlFor={oui ? id : undefined} required>
+      <div className="flex flex-col gap-3">
+        <div className="w-full max-w-56">
+          <OuiNon
+            libelle={question}
+            oui={oui}
+            onChoisir={(choix) => {
+              setOuverteALInstant(choix);
+              onChoisir(choix);
+            }}
+          />
+        </div>
+        {oui ? (
+          <ListeAPuces
+            id={id}
+            libelle={question}
+            valeur={valeur}
+            onChange={onChange}
+            max={MAX}
+            autoFocus={ouverteALInstant}
+          />
+        ) : null}
+      </div>
+    </Field>
+  );
+}
+
+/** La zone d'une question, selon sa forme : du texte, des puces, ou oui ou non puis des puces. */
+function ChampDeLaQuestion({
+  q,
+  auto,
+  onChange,
+}: {
+  q: QuestionDeLaFiche;
+  auto: AutoEvaluation;
+  onChange: Changement<AutoEvaluation>;
+}) {
+  const texte = (v: string) => onChange((a) => ({ ...a, [q.cle]: v }));
+  const choix = q.choix;
+  if (choix) {
+    return (
+      <QuestionOuiNon
+        question={q.question}
+        oui={auto[choix]}
+        onChoisir={(oui) => onChange((a) => ({ ...a, [choix]: oui }))}
+        valeur={auto[q.cle]}
+        onChange={texte}
+      />
+    );
+  }
+  if (q.enPuces) {
+    return (
+      <QuestionEnPuces
+        question={q.question}
+        requise={q.requise}
+        valeur={auto[q.cle]}
+        onChange={texte}
+      />
+    );
+  }
+  return (
+    <Question
+      question={q.question}
+      requise={q.requise}
+      large={q.cle === 'autresCommentaires'}
+      valeur={auto[q.cle]}
+      onChange={texte}
+    />
+  );
+}
+
 /**
  * Le formulaire de l'auto-évaluation. Obligatoires, et marqués d'un
- * astérisque : les deux questions du récapitulatif, puis, pour chaque
- * objectif, son niveau et ses résultats obtenus (ADR-0215).
+ * astérisque : les deux questions du récapitulatif, pour chaque objectif son
+ * niveau et ses résultats obtenus (ADR-0215), et les questions des
+ * préoccupations et des souhaits, sauf « Autres commentaires » (ADR-0238).
  */
 export function SaisieDeLAuto({
   annee,
@@ -199,14 +343,8 @@ export function SaisieDeLAuto({
     <>
       <CarteDeLaFiche titre="Récapitulatif et faits marquants">
         <DeuxParDeux>
-          {QUESTIONS_DU_BILAN.map((q) => (
-            <Question
-              key={q.cle}
-              question={q.question}
-              requise
-              valeur={auto[q.cle]}
-              onChange={texte(q.cle)}
-            />
+          {BILAN.map((q) => (
+            <ChampDeLaQuestion key={q.cle} q={q} auto={auto} onChange={onChange} />
           ))}
         </DeuxParDeux>
       </CarteDeLaFiche>
@@ -267,13 +405,7 @@ export function SaisieDeLAuto({
       <CarteDeLaFiche titre="Préoccupations et souhaits">
         <DeuxParDeux>
           {SOUHAITS.map((q) => (
-            <Question
-              key={q.cle}
-              question={q.question}
-              large={q.cle === 'autresCommentaires'}
-              valeur={auto[q.cle]}
-              onChange={texte(q.cle)}
-            />
+            <ChampDeLaQuestion key={q.cle} q={q} auto={auto} onChange={onChange} />
           ))}
         </DeuxParDeux>
       </CarteDeLaFiche>
@@ -281,27 +413,74 @@ export function SaisieDeLAuto({
   );
 }
 
-/** Une réponse en lecture : la question, petite et grise, puis le texte. */
+const TEXTE_LU = 'mt-1.5 text-[13.5px] leading-relaxed break-words text-ink-strong';
+
+/**
+ * Une réponse en lecture : la question, petite et grise, puis le texte, ses
+ * puces, ou le oui ou le non d'une question à choix et ses puces (ADR-0238).
+ */
 export function Reponse({
   question,
   texte,
   large = false,
+  enPuces = false,
+  choix,
 }: {
   question: string;
   texte: string;
   large?: boolean;
+  /** Une puce par ligne. */
+  enPuces?: boolean;
+  /** Le oui ou le non d'une question à choix ; `null` : aucun choix, comme sur une fiche d'avant. */
+  choix?: boolean | null;
 }) {
+  const puces = pucesDe(texte);
+  let reponse: ReactNode;
+  if (choix === false) {
+    reponse = <p className={TEXTE_LU}>Non</p>;
+  } else if (choix === true) {
+    reponse = (
+      <>
+        <p className={TEXTE_LU}>Oui</p>
+        {puces.length > 0 ? <Puces puces={puces} /> : null}
+      </>
+    );
+  } else if (enPuces && puces.length > 0) {
+    reponse = <Puces puces={puces} />;
+  } else if (texte.trim()) {
+    reponse = <p className={cn(TEXTE_LU, 'whitespace-pre-line')}>{texte.trim()}</p>;
+  } else {
+    reponse = <p className="mt-1.5 text-[13px] text-ink-muted/70">Non renseigné</p>;
+  }
   return (
     <div className={cn(large && 'lg:col-span-2')}>
       <p className="text-[12.5px] font-semibold text-ink-muted">{question}</p>
-      {texte.trim() ? (
-        <p className="mt-1.5 text-[13.5px] leading-relaxed break-words whitespace-pre-line text-ink-strong">
-          {texte.trim()}
-        </p>
-      ) : (
-        <p className="mt-1.5 text-[13px] text-ink-muted/70">Non renseigné</p>
-      )}
+      {reponse}
     </div>
+  );
+}
+
+/** Les puces d'une réponse, en lecture. */
+function Puces({ puces }: { puces: readonly string[] }) {
+  return (
+    <ul className={cn(TEXTE_LU, 'flex list-disc flex-col gap-1 pl-5 marker:text-ink-muted')}>
+      {puces.map((p, i) => (
+        <li key={i}>{p}</li>
+      ))}
+    </ul>
+  );
+}
+
+/** Une question de la fiche en lecture, selon sa forme. */
+function ReponseALaQuestion({ q, auto }: { q: QuestionDeLaFiche; auto: AutoEvaluation }) {
+  return (
+    <Reponse
+      question={q.question}
+      texte={auto[q.cle]}
+      large={q.cle === 'autresCommentaires'}
+      enPuces={q.enPuces}
+      choix={q.choix ? auto[q.choix] : undefined}
+    />
   );
 }
 
@@ -310,8 +489,8 @@ export function RecapitulatifEnLecture({ auto, qui }: { auto: AutoEvaluation; qu
   return (
     <CarteDeLaFiche titre="Récapitulatif et faits marquants" qui={qui}>
       <DeuxParDeux>
-        {QUESTIONS_DU_BILAN.map((q) => (
-          <Reponse key={q.cle} question={q.question} texte={auto[q.cle]} />
+        {BILAN.map((q) => (
+          <ReponseALaQuestion key={q.cle} q={q} auto={auto} />
         ))}
       </DeuxParDeux>
     </CarteDeLaFiche>
@@ -351,12 +530,7 @@ export function SouhaitsEnLecture({ auto, qui }: { auto: AutoEvaluation; qui?: s
     <CarteDeLaFiche titre="Préoccupations et souhaits" qui={qui}>
       <DeuxParDeux>
         {SOUHAITS.map((q) => (
-          <Reponse
-            key={q.cle}
-            question={q.question}
-            texte={auto[q.cle]}
-            large={q.cle === 'autresCommentaires'}
-          />
+          <ReponseALaQuestion key={q.cle} q={q} auto={auto} />
         ))}
       </DeuxParDeux>
     </CarteDeLaFiche>

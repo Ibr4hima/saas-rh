@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ceQuiManqueALAutoEvaluation,
   dateEnLettres,
+  reponsesObligatoiresDeLAuto,
   type AutoEvaluation,
   type MonAutoEvaluation,
 } from '@teranga/contracts';
@@ -105,7 +106,7 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
   const [confirmer, setConfirmer] = useState(false);
   const transmise = vue.etat === 'transmise';
   const manque = ceQuiManqueALAutoEvaluation(auto, vue.objectifs);
-  const total = 2 + 2 * vue.objectifs.length;
+  const total = reponsesObligatoiresDeLAuto(vue.objectifs);
   const n1 = vue.evaluateur;
   const fin = vue.periode ? (vue.periode.autoAu ?? vue.periode.au) : null;
   const transmettre = useMutation({

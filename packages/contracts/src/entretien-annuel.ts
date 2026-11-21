@@ -227,12 +227,19 @@ export const SYNTHESE_GENERALE: readonly {
   },
 ];
 
+/*
+   Une question peut se répondre en puces, une par ligne (`puces`), ou
+   d'abord par oui ou par non, puis, si oui, en puces (`ouiNon`, la clé du
+   choix) (ADR-0238).
+*/
+
 /** Le récapitulatif de l'année, rempli par l'agent. */
 export const QUESTIONS_DU_BILAN = [
   { cle: 'vecu', question: 'Comment avez-vous vécu l’année ?' },
   {
     cle: 'difficultes',
     question: 'Avez-vous rencontré des difficultés dans vos tâches ? Si oui, lesquelles ?',
+    ouiNon: 'aDesDifficultes',
   },
 ] as const;
 
@@ -247,16 +254,19 @@ export const QUESTIONS_DES_SOUHAITS = [
     cle: 'missions',
     question:
       'Quelles missions vous conviennent le mieux, et lesquelles souhaiteriez-vous développer ?',
+    puces: true,
   },
   {
     cle: 'contraintes',
     question:
       'Quelles sont les principales difficultés ou contraintes que vous rencontrez dans votre travail ?',
+    puces: true,
   },
   {
     cle: 'competencesInexploitees',
     question:
       'Y a-t-il des compétences ou des qualités qui ne sont pas assez exploitées dans votre poste ?',
+    ouiNon: 'aDesCompetencesInexploitees',
   },
 ] as const;
 
@@ -305,20 +315,43 @@ export const appreciationDuN1Schema = z.object({
 });
 export type AppreciationDuN1 = z.infer<typeof appreciationDuN1Schema>;
 
-/** L'auto-évaluation : tout ce que l'agent écrit. */
+/**
+ * L'auto-évaluation : tout ce que l'agent écrit. Une réponse en puces garde
+ * une puce par ligne. Un choix oui ou non vaut `null` tant que l'agent n'a
+ * pas choisi (ADR-0238).
+ */
 export const autoEvaluationSchema = z.object({
   vecu: texte,
+  aDesDifficultes: z.boolean().nullable(),
+  /** En puces, si oui. */
   difficultes: texte,
   /** Par objectif, sous son identifiant. */
   objectifs: z.record(z.uuid(), appreciationDeLAgentSchema),
   autresRealisations: texte,
   avenir: texte,
+  /** En puces. */
   missions: texte,
+  /** En puces. */
   contraintes: texte,
+  aDesCompetencesInexploitees: z.boolean().nullable(),
+  /** En puces, si oui. */
   competencesInexploitees: texte,
   autresCommentaires: texte,
 });
 export type AutoEvaluation = z.infer<typeof autoEvaluationSchema>;
+
+/** Les choix oui ou non de l'auto-évaluation. */
+export type ChoixDeLAuto = 'aDesDifficultes' | 'aDesCompetencesInexploitees';
+
+/**
+ * Les puces d'une réponse : ses lignes écrites, sans le tiret ou la puce
+ * qu'un texte collé ou écrit avant les puces mettait en tête (ADR-0238).
+ */
+export const pucesDe = (texte: string): string[] =>
+  texte
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*[-•*–]\s+/, '').trim())
+    .filter(Boolean);
 
 export const actionSchema = z.object({
   action: ligne,
@@ -362,24 +395,91 @@ export const partieReserveeSchema = z.object({
 export type PartieReservee = z.infer<typeof partieReserveeSchema>;
 
 /**
- * Ce qui manque à une auto-évaluation pour partir au N+1 (ADR-0215), dans
- * l'ordre de la fiche : les deux questions du récapitulatif, puis, pour
- * chaque objectif, son niveau et ses résultats obtenus. Le reste se remplit
- * s'il y a lieu. L'écran et l'API appliquent la même règle.
+ * Ce qui manque à une auto-évaluation pour partir au N+1 (ADR-0215,
+ * ADR-0238), dans l'ordre de la fiche : les deux questions du
+ * récapitulatif, pour chaque objectif son niveau et ses résultats obtenus,
+ * puis les quatre questions des préoccupations et des souhaits. Une
+ * question à choix demande oui ou non, et, si oui, une puce au moins. Les
+ * commentaires, les autres réalisations et les autres commentaires se
+ * remplissent s'il y a lieu. L'écran et l'API appliquent la même règle.
  */
 export function ceQuiManqueALAutoEvaluation(
   auto: AutoEvaluation,
   objectifs: readonly ObjectifEvalue[],
 ): string[] {
   const manque: string[] = [];
+  const choix = (oui: boolean | null, texte: string, quoi: string) => {
+    if (oui === null || (oui && pucesDe(texte).length === 0)) manque.push(quoi);
+  };
   if (!auto.vecu.trim()) manque.push('le vécu de l’année');
-  if (!auto.difficultes.trim()) manque.push('les difficultés rencontrées');
+  choix(auto.aDesDifficultes, auto.difficultes, 'les difficultés rencontrées');
   objectifs.forEach((o, i) => {
     const a = auto.objectifs[o.id];
     if (!a?.niveau) manque.push(`le niveau de l’objectif ${i + 1}`);
     if (!a?.resultats.trim()) manque.push(`les résultats de l’objectif ${i + 1}`);
   });
+  if (!auto.avenir.trim()) manque.push('l’avenir professionnel');
+  if (pucesDe(auto.missions).length === 0) manque.push('les missions');
+  if (pucesDe(auto.contraintes).length === 0) manque.push('les contraintes du travail');
+  choix(
+    auto.aDesCompetencesInexploitees,
+    auto.competencesInexploitees,
+    'les compétences peu exploitées',
+  );
   return manque;
+}
+
+/** Les réponses obligatoires d'une auto-évaluation : six questions, et deux par objectif (ADR-0238). */
+export const reponsesObligatoiresDeLAuto = (objectifs: readonly ObjectifEvalue[]): number =>
+  6 + 2 * objectifs.length;
+
+/**
+ * Le choix que donnait une réponse écrite avant les choix oui ou non
+ * (ADR-0238) : rien d'écrit, pas de choix ; une réponse courte qui commence
+ * par « Non », « Aucune », « Néant » ou « Rien », non ; une autre, oui.
+ */
+function choixDUneReponseEcrite(texte: string): boolean | null {
+  const mots = texte
+    .toLocaleLowerCase('fr')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .split(/[^a-z]+/)
+    .filter(Boolean);
+  if (mots.length === 0) return null;
+  return !(mots.length <= 3 && ['non', 'aucun', 'aucune', 'neant', 'rien'].includes(mots[0]!));
+}
+
+/**
+ * Une auto-évaluation relue depuis la base : un champ absent reprend sa
+ * valeur vide, et un choix absent se déduit de la réponse écrite avant les
+ * choix oui ou non (ADR-0238).
+ */
+export function autoEvaluationRelue(lue: Partial<AutoEvaluation>): AutoEvaluation {
+  const auto = { ...autoEvaluationVide(), ...lue };
+  return {
+    ...auto,
+    aDesDifficultes: auto.aDesDifficultes ?? choixDUneReponseEcrite(auto.difficultes),
+    aDesCompetencesInexploitees:
+      auto.aDesCompetencesInexploitees ?? choixDUneReponseEcrite(auto.competencesInexploitees),
+  };
+}
+
+/**
+ * L'auto-évaluation telle qu'elle part au N+1 : une réponse en puces sans
+ * ses lignes vides, et, sur un non, sans la liste écrite avant de changer
+ * d'avis (ADR-0238).
+ */
+export function autoEvaluationTransmise(auto: AutoEvaluation): AutoEvaluation {
+  const enPuces = (texte: string) => pucesDe(texte).join('\n');
+  return {
+    ...auto,
+    difficultes: auto.aDesDifficultes ? enPuces(auto.difficultes) : '',
+    missions: enPuces(auto.missions),
+    contraintes: enPuces(auto.contraintes),
+    competencesInexploitees: auto.aDesCompetencesInexploitees
+      ? enPuces(auto.competencesInexploitees)
+      : '',
+  };
 }
 
 /**
@@ -431,12 +531,14 @@ export function sansLignesVides(e: EvaluationDuN1): EvaluationDuN1 {
 
 export const autoEvaluationVide = (): AutoEvaluation => ({
   vecu: '',
+  aDesDifficultes: null,
   difficultes: '',
   objectifs: {},
   autresRealisations: '',
   avenir: '',
   missions: '',
   contraintes: '',
+  aDesCompetencesInexploitees: null,
   competencesInexploitees: '',
   autresCommentaires: '',
 });

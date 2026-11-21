@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  autoEvaluationRelue,
   autoEvaluationVide,
   competencesDe,
   datesDeLaCampagneSchema,
@@ -363,7 +364,9 @@ describe('l’auto-évaluation (ADR-0215)', () => {
   };
   const complete: AutoEvaluation = {
     ...brouillon,
-    difficultes: 'Non.',
+    // Un non, après une liste écrite sur un oui : elle ne part pas (ADR-0238).
+    aDesDifficultes: false,
+    difficultes: 'Une liste écrite avant le non.',
     objectifs: {
       [OBJ1]: { niveau: 'B', resultats: 'Délai de 48 heures tenu.', commentaire: '' },
       [OBJ2]: {
@@ -372,6 +375,12 @@ describe('l’auto-évaluation (ADR-0215)', () => {
         commentaire: 'Archives.',
       },
     },
+    avenir: 'Rester au service du personnel.',
+    // Une puce vide et un tiret collé : la liste part sans eux.
+    missions: 'L’accueil des agents\n\n- La tenue des dossiers',
+    contraintes: 'Des archives à reprendre.',
+    aDesCompetencesInexploitees: true,
+    competencesInexploitees: 'La rédaction',
   };
 
   beforeAll(async () => {
@@ -409,17 +418,46 @@ describe('l’auto-évaluation (ADR-0215)', () => {
         code: 'campagne.auto_incomplete',
         detail:
           'À compléter : les difficultés rencontrées, les résultats de l’objectif 1, ' +
-          'le niveau de l’objectif 2, les résultats de l’objectif 2.',
+          'le niveau de l’objectif 2, les résultats de l’objectif 2, l’avenir professionnel, ' +
+          'les missions, les contraintes du travail, les compétences peu exploitées.',
       },
     });
+    // Un oui demande une puce au moins (ADR-0238).
+    await expect(
+      campagne.transmettreMonAuto(session('ibou'), {
+        ...complete,
+        aDesDifficultes: true,
+        difficultes: '\n  \n',
+      }),
+    ).rejects.toMatchObject({
+      problem: { status: 422, detail: 'À compléter : les difficultés rencontrées.' },
+    });
     expect((await campagne.monAuto(session('ibou'))).etat).toBe('en_cours');
+  });
+
+  it('écrite avant les choix oui ou non, une réponse se relit en oui ou en non (ADR-0238)', () => {
+    const lue = autoEvaluationRelue({ vecu: 'Une année.', difficultes: 'Des retards.' });
+    expect([lue.aDesDifficultes, lue.aDesCompetencesInexploitees]).toEqual([true, null]);
+    expect(lue.missions).toBe('');
+    for (const non of ['Non.', 'Aucune difficulté.', 'Néant', 'Rien à signaler']) {
+      expect(autoEvaluationRelue({ difficultes: non }).aDesDifficultes).toBe(false);
+    }
+    expect(
+      autoEvaluationRelue({ difficultes: 'Non, mais des retards de livraison.' }),
+    ).toMatchObject({ aDesDifficultes: true });
   });
 
   it('complète, part au N+1, qui la lit ; elle ne change plus', async () => {
     const v = await campagne.transmettreMonAuto(session('ibou'), complete);
     expect([v.etat, v.modifiable, v.transmiseLe]).toEqual(['transmise', false, AUJOURD_HUI]);
     const vu = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
-    expect(vu.autoEvaluation?.difficultes).toBe('Non.');
+    expect(vu.autoEvaluation).toMatchObject({
+      aDesDifficultes: false,
+      difficultes: '',
+      missions: 'L’accueil des agents\nLa tenue des dossiers',
+      aDesCompetencesInexploitees: true,
+      competencesInexploitees: 'La rédaction',
+    });
     expect(vu.autoEvaluation?.objectifs[OBJ2]?.niveau).toBe('C');
     const { equipe } = await campagne.accueil(session('awa'));
     expect(equipe.find((a) => a.employeeId === agents.ibou)?.auto.etat).toBe('transmise');

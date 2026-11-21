@@ -3,6 +3,8 @@ import { sql } from 'drizzle-orm';
 import {
   ancienneteEnLettres,
   autoEvaluationSchema,
+  autoEvaluationRelue,
+  autoEvaluationTransmise,
   autoEvaluationVide,
   ceQuiManqueALAutoEvaluation,
   ceQuiManqueALEvaluationDuN1,
@@ -541,11 +543,13 @@ async function ecrireMonAuto(
       );
     }
   }
+  // Transmise, elle part sans ses puces vides ni la liste d'un non (ADR-0238).
+  const ecrite = transmettre ? autoEvaluationTransmise(propre) : propre;
   // La ligne de l'année se crée au premier enregistrement. Transmise, elle
   // ne se réécrit plus, même par deux envois qui se croisent.
   await tx.execute(sql`
     INSERT INTO fiches_entretien (id, tenant_id, employee_id, annee, auto, auto_transmise_le)
-    VALUES (${uuidv7()}, ${user.tenantId}, ${id}, ${annee}, ${JSON.stringify(propre)}::jsonb,
+    VALUES (${uuidv7()}, ${user.tenantId}, ${id}, ${annee}, ${JSON.stringify(ecrite)}::jsonb,
             ${transmettre ? sql`now()` : sql`NULL`})
     ON CONFLICT (tenant_id, employee_id, annee) DO UPDATE
        SET auto = EXCLUDED.auto,
@@ -641,7 +645,7 @@ async function ficheDeLAnnee(tx: Tx, employeeId: string, annee: number): Promise
   const reservee = r?.reservee ? partieReserveeSchema.partial().safeParse(r.reservee) : null;
   return {
     objectifs: objectifs.success ? objectifs.data : [],
-    auto: auto?.success ? { ...autoEvaluationVide(), ...auto.data } : null,
+    auto: auto?.success ? autoEvaluationRelue(auto.data) : null,
     evaluation: evaluation?.success ? { ...evaluationDuN1Vide(), ...evaluation.data } : null,
     reservee: reservee?.success ? { ...partieReserveeVide(), ...reservee.data } : null,
     evaluationTransmiseLe: r?.evaluation_transmise_le ?? null,

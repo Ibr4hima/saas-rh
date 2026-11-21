@@ -48,8 +48,9 @@ export function ficheExemple(o: Partial<DonneesDeLaFiche> = {}): DonneesDeLaFich
     ],
     auto: {
       vecu: 'Une année dense et motivante. La refonte du tableau de bord a demandé beaucoup d’énergie au premier semestre, mais le résultat est là.',
+      aDesDifficultes: true,
       difficultes:
-        'Oui :\n- des données arrivées en retard de la part de deux partenaires ;\n- un logiciel de modélisation installé seulement en avril.',
+        'Des données arrivées en retard de la part de deux partenaires.\nUn logiciel de modélisation installé seulement en avril.',
       objectifs: {
         [O1]: {
           niveau: 'A',
@@ -71,8 +72,9 @@ export function ficheExemple(o: Partial<DonneesDeLaFiche> = {}): DonneesDeLaFich
         'Appui à la préparation du forum Invest in Sénégal ; rédaction de deux notes de conjoncture.',
       avenir: 'Évoluer vers la gestion de projets d’études, à moyen terme.',
       missions:
-        'Les études de terrain et la modélisation. Je souhaite développer l’animation de formations.',
+        'Les études de terrain et la modélisation.\nJe souhaite développer l’animation de formations.',
       contraintes: 'L’accès aux données des partenaires reste lent.',
+      aDesCompetencesInexploitees: true,
       competencesInexploitees: 'La maîtrise de l’anglais, peu utilisée aujourd’hui.',
       autresCommentaires: '',
     },

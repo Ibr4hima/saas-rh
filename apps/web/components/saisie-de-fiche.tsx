@@ -76,7 +76,8 @@ export function Choix({ titre, children }: { titre: string; children: ReactNode 
 
 /**
  * Oui ou Non, à la mesure des onglets (36 px), sur toute la largeur du choix :
- * la question est l'intitulé de la section (ADR-0176).
+ * la question est l'intitulé de la section (ADR-0176). `null` : rien n'est
+ * encore choisi (ADR-0238).
  */
 export function OuiNon({
   libelle,
@@ -85,7 +86,7 @@ export function OuiNon({
 }: {
   /** La question, pour les lecteurs d'écran. */
   libelle: string;
-  oui: boolean;
+  oui: boolean | null;
   onChoisir: (oui: boolean) => void;
 }) {
   return (
