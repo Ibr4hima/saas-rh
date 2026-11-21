@@ -10,7 +10,7 @@ import {
   type AutoEvaluation,
   type MonAutoEvaluation,
 } from '@teranga/contracts';
-import { Button, Card, CardTitle, EmptyState, Skeleton } from '@teranga/ui';
+import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
 import {
   AutoEvaluationEnLecture,
   SaisieDeLAuto,
@@ -21,6 +21,7 @@ import {
 } from '../../../../components/campagne/enregistrement';
 import {
   AutoFaite,
+  BOUTON_DU_BANDEAU,
   periodeDeLAuto,
   RetourALAccueil,
   superieurHierarchique,
@@ -139,10 +140,18 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
     <div className="flex flex-col gap-4">
       <RetourALAccueil libelle="Accueil" />
       <BandeauDePage
-        icone="edit"
         titre="Mon auto-évaluation"
         marque={transmise ? <AutoFaite le={vue.transmiseLe} /> : null}
         sousTitre={periodeDeLAuto(vue.periode)}
+        // La fiche affichée, « Modifier » rouvre la saisie depuis le bandeau (ADR-0242).
+        action={
+          vue.modifiable && validee ? (
+            <button type="button" className={BOUTON_DU_BANDEAU} onClick={() => basculer(false)}>
+              <Icon name="edit" size={17} />
+              Modifier
+            </button>
+          ) : undefined
+        }
         // Quatre repères : quatre colonnes sur un grand écran, deux sur un
         // téléphone, où trois serraient la date limite jusqu'à la couper.
         reperes={[
@@ -174,11 +183,7 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
       {vue.modifiable ? (
         <>
           {validee ? (
-            <ApercuDeLaFiche
-              auto={auto}
-              titre={`Mon auto-évaluation ${vue.annee}`}
-              onModifier={() => basculer(false)}
-            />
+            <ApercuDeLaFiche auto={auto} titre={`Mon auto-évaluation ${vue.annee}`} />
           ) : (
             <SaisieDeLAuto
               annee={vue.annee}
@@ -248,18 +253,10 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
 /**
  * La fiche de l'agent, telle que « Valider » la montre (ADR-0241) : la
  * partie remplie par l'agent, en PDF, à la largeur de la page, comme un
- * document généré. Au-dessus, ses réponses repliées, avec « Modifier ». Le PDF suit
- * ce que montre la saisie, enregistré ou non.
+ * document généré ; « Modifier » se tient sur le bandeau et dans la barre
+ * (ADR-0242). Le PDF suit ce que montre la saisie, enregistré ou non.
  */
-function ApercuDeLaFiche({
-  auto,
-  titre,
-  onModifier,
-}: {
-  auto: AutoEvaluation;
-  titre: string;
-  onModifier: () => void;
-}) {
+function ApercuDeLaFiche({ auto, titre }: { auto: AutoEvaluation; titre: string }) {
   const pdf = useQuery({
     queryKey: [...CLE_AUTO, 'apercu', auto],
     queryFn: ({ signal }) => lireFichier(`${CHEMIN}/apercu`, { signal, corps: { auto } }),
@@ -268,13 +265,6 @@ function ApercuDeLaFiche({
   });
   return (
     <>
-      <Card className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:gap-5">
-        <CardTitle className="min-w-0 flex-1">Mes réponses</CardTitle>
-        <Button variant="secondary" className="h-9 w-full sm:w-auto" onClick={onModifier}>
-          <Icon name="edit" size={15} />
-          Modifier
-        </Button>
-      </Card>
       {pdf.isError ? (
         <Card>
           <EmptyState

@@ -153,9 +153,10 @@ function MarqueSurLeBleu({ children }: { children: React.ReactNode }) {
 /**
  * Le bandeau d'une page de la campagne qui ne porte pas sur un agent : son
  * auto-évaluation, son évaluation, le suivi de la DCH, l'administration.
- * L'icône de la page dans le rond des initiales, le titre et la coche s'il
- * y a lieu, la précision dessous, le geste de la page à droite ; puis le
- * filet orange et les repères.
+ * L'icône de la page dans le rond des initiales, s'il y en a une (aucune pour
+ * l'auto-évaluation, ADR-0242), le titre et la coche s'il y a lieu, la
+ * précision dessous, le geste de la page à droite ; puis le filet orange et
+ * les repères.
  */
 export function BandeauDePage({
   icone,
@@ -165,7 +166,7 @@ export function BandeauDePage({
   action,
   reperes,
 }: {
-  icone: IconName;
+  icone?: IconName;
   titre: string;
   /** La coche bleue d'une étape faite, passée en blanc sur le bleu. */
   marque?: React.ReactNode;
@@ -182,12 +183,14 @@ export function BandeauDePage({
     >
       <Bleu className="px-5 py-6 sm:px-8 sm:py-7">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-5">
-          <span
-            aria-hidden
-            className="flex size-14 shrink-0 items-center justify-center rounded-full bg-white/12 text-white ring-1 ring-white/30 sm:size-16"
-          >
-            <Icon name={icone} size={26} />
-          </span>
+          {icone ? (
+            <span
+              aria-hidden
+              className="flex size-14 shrink-0 items-center justify-center rounded-full bg-white/12 text-white ring-1 ring-white/30 sm:size-16"
+            >
+              <Icon name={icone} size={26} />
+            </span>
+          ) : null}
           <div className="min-w-0 flex-1 basis-52">
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
               <h1

@@ -238,7 +238,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0230](0230-email-sans-propositions.md)               | L'adresse professionnelle de la connexion, sans les propositions du navigateur          | acceptée                                    |
 | [0231](0231-titre-de-la-barre-en-anton.md)            | Le titre de la barre de la campagne en Anton, en capitales                              | acceptée, révisée par 0232                  |
 | [0232](0232-titre-de-la-barre-plus-petit.md)          | Le titre de la barre de la campagne, un peu plus petit                                  | acceptée                                    |
-| [0233](0233-pages-de-la-campagne-a-la-charte.md)      | Les pages de la campagne à la charte de l'APIX : bandeau, étapes numérotées, titres     | acceptée, révisée par 0240                  |
+| [0233](0233-pages-de-la-campagne-a-la-charte.md)      | Les pages de la campagne à la charte de l'APIX : bandeau, étapes numérotées, titres     | acceptée, révisée par 0240 et 0242          |
 | [0234](0234-cartes-des-agents.md)                     | Les cartes des agents comme celles des événements de la plateforme, avec l'email pro    | acceptée, révisée par 0235                  |
 | [0235](0235-statut-sur-les-cartes-de-l-equipe.md)     | Le statut à droite de l'email, sur les cartes de Mon équipe                             | acceptée                                    |
 | [0236](0236-puces-de-la-periode-reformulees.md)       | Deux puces de la période reformulées par l'APIX                                         | acceptée, révisée par 0237                  |
@@ -246,4 +246,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0238](0238-reponses-oui-non-et-puces.md)             | Les réponses par oui ou non et en puces de l'auto-évaluation, souhaits obligatoires     | acceptée                                    |
 | [0239](0239-trois-a-cinq-objectifs-a-venir.md)        | De trois à cinq objectifs pour l'année à venir, fixés par le N+1                        | acceptée                                    |
 | [0240](0240-titres-de-section-plus-petits.md)         | Les titres de section de la campagne, un peu plus petits                                | acceptée                                    |
-| [0241](0241-valider-l-auto-evaluation.md)             | Valider son auto-évaluation, la fiche en PDF, et la barre au bas de la page             | acceptée                                    |
+| [0241](0241-valider-l-auto-evaluation.md)             | Valider son auto-évaluation, la fiche en PDF, et la barre au bas de la page             | acceptée, révisée par 0242                  |
+| [0242](0242-bandeau-de-l-auto-evaluation.md)          | Le bandeau de l'auto-évaluation, sans icône, Modifier à droite                          | acceptée                                    |
