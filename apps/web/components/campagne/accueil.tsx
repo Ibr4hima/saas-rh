@@ -5,40 +5,21 @@ import type { AgentDeLaCampagne, PeriodeDeLaCampagne } from '@teranga/contracts'
 import { cn } from '@teranga/ui';
 import { GrilleDeReperes } from '../fiche';
 import { Icon, type IconName } from '../icons';
-import { COURBE_DE_LA_CHARTE } from '../scene-de-la-charte';
 import { periodeDeLAuto, periodeDeLEvaluationDuN1, reperesDeLAgent } from './fiche';
 
 /* ────────────────────────────────────────────────────────────────
    Les pièces de l'accueil de la campagne, à la charte de l'APIX (ADR-0227).
 
-   En tête, le bandeau : le bleu de la charte, ses ondulations, et en bas la
-   courbe du papier à en-tête soulignée d'orange, comme au pied de l'écran
-   de connexion. Dessus, la personne : ses initiales, son nom, son poste, et
-   le geste du moment en blanc ; dessous, sur le blanc de la fiche, ses
-   repères. Puis des sections titrées en Anton, la police des titres de la
-   charte, soulignées d'un filet orange ; et pour qui pilote la campagne,
-   des tuiles, l'icône en orange comme celles de la charte.
+   En tête, le bandeau : le bleu de la charte, ses ondulations, et en bas,
+   bien droit, un filet orange (ADR-0228). Dessus, la personne : ses
+   initiales, son nom, son poste, et le geste du moment en blanc ; dessous,
+   sur le blanc de la fiche, ses repères. Puis des sections titrées en Anton,
+   la police des titres de la charte, soulignées d'un filet orange ; et pour
+   qui pilote la campagne, des tuiles, l'icône en orange comme celles de la
+   charte.
    ──────────────────────────────────────────────────────────────── */
 
 const n = (v: number) => Number(v.toFixed(1));
-
-/** La courbe du bandeau, en unités de son cadre : étirée sur sa largeur. */
-const COURBE_L = 1440;
-const COURBE_H = 48;
-/**
- * Le papier à en-tête, ramené au cadre : la courbe part à 40 du haut, à
- * gauche, et monte à 6, à droite ; son creux reste dans le cadre.
- */
-const ARCS = COURBE_DE_LA_CHARTE.map((arc) =>
-  arc.map(([x, y]) => [(x * COURBE_L) / 595.28, 6 + ((y - 705.59) * 34) / (769.7 - 705.59)]),
-);
-const SOUS_LA_COURBE =
-  `M${n(ARCS[0]![0]![0]!)} ${n(ARCS[0]![0]![1]!)}` +
-  ARCS.map(
-    ([, p1, p2, p3]) =>
-      `C${n(p1![0]!)} ${n(p1![1]!)} ${n(p2![0]!)} ${n(p2![1]!)} ${n(p3![0]!)} ${n(p3![1]!)}`,
-  ).join('') +
-  `L${COURBE_L} ${COURBE_H}L0 ${COURBE_H}Z`;
 
 /**
  * Les ondulations du bandeau : des lignes qui montent vers la droite, comme
@@ -88,24 +69,9 @@ function Bleu({ className, children }: { className?: string; children: React.Rea
   );
 }
 
-/**
- * Le bas du bandeau : la courbe du papier à en-tête, soulignée d'orange.
- * Sous la courbe, `dessous` : le blanc de la fiche, ou le fond de la page.
- * Le cadre s'étire en largeur et garde sa hauteur : sur un téléphone, la
- * courbe se resserre sans s'épaissir.
- */
-function CourbeDuBandeau({ dessous }: { dessous: 'fiche' | 'page' }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox={`0 0 ${COURBE_L} ${COURBE_H}`}
-      preserveAspectRatio="none"
-      className="relative -mt-8 block h-8 w-full sm:-mt-12 sm:h-12"
-    >
-      <path d={SOUS_LA_COURBE} transform="translate(0 -3)" fill="#ca631f" />
-      <path d={SOUS_LA_COURBE} className={dessous === 'fiche' ? 'fill-surface' : 'fill-bg'} />
-    </svg>
-  );
+/** Le bas du bandeau : un filet orange, bien droit, l'orange de la charte de jour comme de nuit. */
+function FiletDuBandeau() {
+  return <div aria-hidden className="h-[3px] bg-[#ca631f]" />;
 }
 
 /** Les initiales d'une personne, dans un rond : sur sa carte, ou en grand dans le bandeau. */
@@ -153,7 +119,7 @@ export function BandeauDeLAgent({
       aria-labelledby="nom-de-l-agent"
       className="overflow-hidden rounded-barre border border-card-line bg-surface shadow-xs"
     >
-      <Bleu className="px-5 pt-6 pb-12 sm:px-8 sm:pt-8 sm:pb-16">
+      <Bleu className="px-5 py-6 sm:px-8 sm:py-8">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-5">
           <Initiales prenom={a.prenom} nom={a.nom} taille="bandeau" />
           <div className="min-w-0 flex-1 basis-52">
@@ -173,8 +139,8 @@ export function BandeauDeLAgent({
           {action ? <div className="w-full sm:w-auto">{action}</div> : null}
         </div>
       </Bleu>
-      <CourbeDuBandeau dessous="fiche" />
-      <div className="@container px-5 pt-2 pb-5 sm:px-8 sm:pt-3 sm:pb-6">
+      <FiletDuBandeau />
+      <div className="@container px-5 py-5 sm:px-8">
         <GrilleDeReperes colonnes={reperes.length as 2 | 3 | 4 | 5}>{reperes}</GrilleDeReperes>
       </div>
     </section>
@@ -185,8 +151,7 @@ export function BandeauDeLAgent({
  * Le bandeau d'un compte sans dossier d'agent, l'administration : la
  * campagne elle-même, ses deux temps et leurs dates, numérotés comme sur la
  * carte de la période. La barre en dit déjà le titre : il ne se lit ici que
- * par les lecteurs d'écran. Le bandeau s'arrête sur la courbe, à même le
- * fond de la page.
+ * par les lecteurs d'écran. Le filet orange le ferme, comme celui de l'agent.
  */
 export function BandeauDeLaCampagne({
   titre,
@@ -196,11 +161,14 @@ export function BandeauDeLaCampagne({
   periode: PeriodeDeLaCampagne | null;
 }) {
   return (
-    <section aria-labelledby="titre-de-la-campagne" className="overflow-hidden rounded-t-barre">
+    <section
+      aria-labelledby="titre-de-la-campagne"
+      className="overflow-hidden rounded-barre shadow-xs"
+    >
       <h1 id="titre-de-la-campagne" className="sr-only">
         {titre}
       </h1>
-      <Bleu className="px-5 pt-7 pb-14 sm:px-8 sm:pt-9 sm:pb-[4.5rem]">
+      <Bleu className="px-5 py-7 sm:px-8 sm:py-9">
         {periode ? (
           <ol className="grid gap-6 sm:grid-cols-2 sm:gap-10">
             <TempsDuBandeau numero={1} titre="Auto-évaluation" periode={periodeDeLAuto(periode)} />
@@ -217,7 +185,7 @@ export function BandeauDeLaCampagne({
           </p>
         )}
       </Bleu>
-      <CourbeDuBandeau dessous="page" />
+      <FiletDuBandeau />
     </section>
   );
 }

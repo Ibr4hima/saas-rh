@@ -41,10 +41,10 @@ import {
    En tête, le bandeau de la personne, sur le bleu de la charte : ses
    initiales, son nom et son poste ; à droite, le bouton « M’auto-évaluer »
    tant que l'auto-évaluation est ouverte (ADR-0214), puis « Valider mon
-   évaluation » quand le N+1 l'a transmise (ADR-0217). La courbe du papier à
-   en-tête, soulignée d'orange, le ferme ; dessous, ses repères, comme sur la
-   fiche de son dossier : direction, département, service, supérieur
-   hiérarchique, statut (ADR-0224).
+   évaluation » quand le N+1 l'a transmise (ADR-0217). Un filet orange, bien
+   droit, le ferme (ADR-0228) ; dessous, ses repères, comme sur la fiche de
+   son dossier : direction, département, service, supérieur hiérarchique,
+   statut (ADR-0224).
    Pour qui pilote la campagne, des tuiles juste dessous : le suivi de la
    DCH, avec l'habilitation « Tableau de bord » (ADR-0221), et
    l'administration, pour un compte d'administration (ADR-0222).
