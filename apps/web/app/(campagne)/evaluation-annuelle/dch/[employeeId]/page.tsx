@@ -9,14 +9,15 @@ import {
   FicheDuN1,
 } from '../../../../../components/campagne/evaluation-du-n1';
 import {
+  BOUTON_DU_BANDEAU,
   CarteDEtape,
   Etapes,
-  IdentiteDeLaCampagne,
   jourCourt,
   RetourALAccueil,
 } from '../../../../../components/campagne/fiche';
+import { BandeauDeLAgent } from '../../../../../components/campagne/charte';
 import { messageDe } from '../../../../../components/grille-evaluation';
-import { Icon, type IconName } from '../../../../../components/icons';
+import { Icon } from '../../../../../components/icons';
 import { api, ApiError } from '../../../../../lib/api';
 import { CLE_CAMPAGNE, SUIVI_DE_LA_DCH } from '../../../../../lib/campagne';
 import { enregistrerFichier, lireFichier } from '../../../../../lib/fichiers';
@@ -68,49 +69,25 @@ export default function FicheDeLaDCHPage() {
 function Fiche({ vue: v }: { vue: FichePourLaDCH }) {
   const n1 = v.agent.evaluateur;
   const recus = v.commentairesDuN2;
-  const etape = (icone: IconName, titre: string, libelle: string, ton: BadgeTone, qui: string) => (
-    <CarteDEtape
-      icone={icone}
-      titre={titre}
-      marque={<Badge tone={ton}>{libelle}</Badge>}
-      periode={qui}
-    />
+  const etape = (titre: string, libelle: string, ton: BadgeTone, qui: string) => (
+    <CarteDEtape titre={titre} marque={<Badge tone={ton}>{libelle}</Badge>} periode={qui} />
   );
   const le = (iso: string | null) => (iso ? ` le ${jourCourt(iso)}` : '');
   const nom = (p: { prenom: string; nom: string } | null) => (p ? `${p.prenom} ${p.nom}` : '');
 
   return (
     <>
-      <IdentiteDeLaCampagne agent={v.agent} action={<TelechargerLePdf vue={v} />} />
+      <BandeauDeLAgent agent={v.agent} action={<TelechargerLePdf vue={v} />} />
       {/* Les étapes, chacune avec son jour : qui l'a franchie, et quand. */}
       <Etapes nombre={v.n2 ? 4 : 3}>
-        {etape(
-          'rate_review',
-          'Auto-évaluation',
-          `Faite${le(v.autoTransmiseLe)}`,
-          'vert',
-          nom(v.agent),
-        )}
-        {etape('checklist', 'Évaluation du N+1', `Validée${le(v.valideeLe)}`, 'vert', nom(n1))}
+        {etape('Auto-évaluation', `Faite${le(v.autoTransmiseLe)}`, 'vert', nom(v.agent))}
+        {etape('Évaluation du N+1', `Validée${le(v.valideeLe)}`, 'vert', nom(n1))}
         {v.n2
           ? recus
-            ? etape(
-                'how_to_reg',
-                'Commentaires du N+2',
-                `Reçus${le(recus.le)}`,
-                'vert',
-                nom(recus.par ?? v.n2),
-              )
-            : etape(
-                'how_to_reg',
-                'Commentaires du N+2',
-                `Fiche reprise${le(v.repriseAuN2Le)}`,
-                'gris',
-                nom(v.n2),
-              )
+            ? etape('Commentaires du N+2', `Reçus${le(recus.le)}`, 'vert', nom(recus.par ?? v.n2))
+            : etape('Commentaires du N+2', `Fiche reprise${le(v.repriseAuN2Le)}`, 'gris', nom(v.n2))
           : null}
         {etape(
-          'inbox',
           'Transmission à la DCH',
           `Transmise${le(v.transmiseLe)}`,
           'vert',
@@ -145,13 +122,15 @@ function TelechargerLePdf({ vue: v }: { vue: FichePourLaDCH }) {
       ),
   });
   return (
-    <div className="flex flex-col items-end gap-1.5">
-      <Button className="h-9 px-4" loading={pdf.isPending} onClick={() => pdf.mutate()}>
-        <Icon name="download" size={15} />
+    // Dans le bandeau : le bouton blanc des gestes du bandeau, l'erreur en
+    // clair sur le bleu.
+    <div className="flex flex-col items-stretch gap-1.5 sm:items-end">
+      <Button className={BOUTON_DU_BANDEAU} loading={pdf.isPending} onClick={() => pdf.mutate()}>
+        <Icon name="download" size={17} />
         Télécharger le PDF
       </Button>
       {pdf.error ? (
-        <p role="alert" className="text-[12px] text-danger">
+        <p role="alert" className="text-[12px] font-semibold text-[#ffd0c9]">
           {messageDe(pdf.error)}
         </p>
       ) : null}

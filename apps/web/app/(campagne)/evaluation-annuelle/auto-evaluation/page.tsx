@@ -24,7 +24,8 @@ import {
   RetourALAccueil,
   superieurHierarchique,
 } from '../../../../components/campagne/fiche';
-import { EnTete, Repere } from '../../../../components/fiche';
+import { Repere } from '../../../../components/fiche';
+import { BandeauDePage } from '../../../../components/campagne/charte';
 import { Confirmation, messageDe } from '../../../../components/grille-evaluation';
 import { Icon } from '../../../../components/icons';
 import { api, ApiError } from '../../../../lib/api';
@@ -80,8 +81,8 @@ export default function AutoEvaluationPage() {
     return (
       <div className="flex flex-col gap-4">
         <RetourALAccueil libelle="Accueil" />
-        <Skeleton className="mb-4 h-[158px] w-full rounded-bloc" />
-        <Skeleton className="h-72 w-full rounded-bloc" />
+        <Skeleton className="h-[212px] w-full rounded-barre" />
+        <Skeleton className="mt-5 h-72 w-full rounded-bloc" />
       </div>
     );
   }
@@ -125,32 +126,37 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
   return (
     <div className="flex flex-col gap-4">
       <RetourALAccueil libelle="Accueil" />
-      <EnTete
+      <BandeauDePage
+        icone="edit"
         titre="Mon auto-évaluation"
         marque={transmise ? <AutoFaite le={vue.transmiseLe} /> : null}
         sousTitre={periodeDeLAuto(vue.periode)}
         // Quatre repères : quatre colonnes sur un grand écran, deux sur un
         // téléphone, où trois serraient la date limite jusqu'à la couper.
-        reperes={
-          <>
+        reperes={[
+          <Repere
+            key="n1"
+            label={superieurHierarchique(n1)}
+            valeur={n1 ? `${n1.prenom} ${n1.nom}` : null}
+          />,
+          <Repere key="fin" label="Date limite" valeur={fin ? dateEnLettres(fin) : null} />,
+          <Repere key="objectifs" label="Objectifs" valeur={String(vue.objectifs.length)} />,
+          transmise ? (
             <Repere
-              label={superieurHierarchique(n1)}
-              valeur={n1 ? `${n1.prenom} ${n1.nom}` : null}
+              key="transmise"
+              label="Transmise le"
+              valeur={vue.transmiseLe ? dateEnLettres(vue.transmiseLe) : null}
             />
-            <Repere label="Date limite" valeur={fin ? dateEnLettres(fin) : null} />
-            <Repere label="Objectifs" valeur={String(vue.objectifs.length)} />
-            {transmise ? (
-              <Repere
-                label="Transmise le"
-                valeur={vue.transmiseLe ? dateEnLettres(vue.transmiseLe) : null}
-              />
-            ) : (
-              <Repere label="Avancement" valeur={`${total - manque.length} sur ${total}`}>
-                réponses obligatoires
-              </Repere>
-            )}
-          </>
-        }
+          ) : (
+            <Repere
+              key="avancement"
+              label="Avancement"
+              valeur={`${total - manque.length} sur ${total}`}
+            >
+              réponses obligatoires
+            </Repere>
+          ),
+        ]}
       />
 
       {vue.modifiable ? (

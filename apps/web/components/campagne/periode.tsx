@@ -3,7 +3,7 @@ import type { AutoDeLAgent, EvaluationRecue, PeriodeDeLaCampagne } from '@terang
 import { Card } from '@teranga/ui';
 import { AUTO_EVALUATION, MON_EVALUATION } from '../../lib/campagne';
 import { Icon } from '../icons';
-import { TitreDeSection } from './accueil';
+import { TitreDeSection } from './charte';
 import { AutoFaite, EvaluationValidee, periodeDeLAuto, periodeDeLEvaluationDuN1 } from './fiche';
 
 /* ────────────────────────────────────────────────────────────────

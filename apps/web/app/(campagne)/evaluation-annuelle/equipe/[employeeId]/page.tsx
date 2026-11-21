@@ -23,7 +23,6 @@ import {
 import {
   CarteDEtape,
   Etapes,
-  IdentiteDeLaCampagne,
   jourCourt,
   MotDeRenvoi,
   periodeDeLAuto,
@@ -34,6 +33,7 @@ import {
   statutDesCommentaires,
   type Statut,
 } from '../../../../../components/campagne/fiche';
+import { BandeauDeLAgent } from '../../../../../components/campagne/charte';
 import { Confirmation, messageDe } from '../../../../../components/grille-evaluation';
 import { Icon } from '../../../../../components/icons';
 import { api, ApiError } from '../../../../../lib/api';
@@ -109,7 +109,6 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
   const n2 = v.commentairesDuN2;
   const carteDeLAuto = auto ? (
     <CarteDEtape
-      icone="rate_review"
       titre="Auto-évaluation"
       marque={<Badge tone={auto.ton}>{auto.libelle}</Badge>}
       periode={periodeDeLAuto(v.periode)}
@@ -117,21 +116,19 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
   ) : null;
   return (
     <>
-      <IdentiteDeLaCampagne agent={v.agent} />
+      <BandeauDeLAgent agent={v.agent} />
       {v.autoEvaluation ? (
         <>
           {/* Les étapes côte à côte : l'auto-évaluation faite, celle du N+1, le N+2, la DCH. */}
           <Etapes nombre={v.n2 ? 4 : 3}>
             {carteDeLAuto}
             <CarteDEtape
-              icone="checklist"
               titre="Évaluation du N+1"
               marque={evaluation ? <Badge tone={evaluation.ton}>{evaluation.libelle}</Badge> : null}
               periode={periodeDeLEvaluation(v.periode)}
             />
             {v.n2 ? (
               <CarteDEtape
-                icone="how_to_reg"
                 titre="Commentaires du N+2"
                 marque={
                   commentaires ? (
@@ -142,7 +139,6 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
               />
             ) : null}
             <CarteDEtape
-              icone="inbox"
               titre="Transmission à la DCH"
               marque={dch ? <Badge tone={dch.ton}>{dch.libelle}</Badge> : null}
               periode="Direction du Capital Humain"
@@ -174,7 +170,8 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
           )}
         </>
       ) : (
-        carteDeLAuto
+        // Sans auto-évaluation transmise, la première étape seule.
+        <Etapes nombre={1}>{carteDeLAuto}</Etapes>
       )}
     </>
   );

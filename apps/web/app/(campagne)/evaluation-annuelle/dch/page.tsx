@@ -12,8 +12,6 @@ import {
 import {
   Badge,
   Card,
-  CardHeader,
-  CardTitle,
   EmptyState,
   Select,
   Table,
@@ -25,7 +23,8 @@ import {
   type BadgeTone,
 } from '@teranga/ui';
 import { jourCourt, RetourALAccueil } from '../../../../components/campagne/fiche';
-import { EnTete, Repere } from '../../../../components/fiche';
+import { Repere } from '../../../../components/fiche';
+import { BandeauDePage, TitreDeSection } from '../../../../components/campagne/charte';
 import { CartePleine, CorpsDefilant } from '../../../../components/gabarit';
 import { Icon } from '../../../../components/icons';
 import { RechercheDuTableau, SqueletteTableau } from '../../../../components/tableau';
@@ -99,85 +98,100 @@ export default function SuiviDeLaDCHPage() {
   return (
     <div className="flex flex-col gap-4">
       <RetourALAccueil libelle="Accueil" />
-      <EnTete
+      <BandeauDePage
+        icone="folder_managed"
         titre="Suivi de la DCH"
         sousTitre={v ? `${TITRE_DE_LA_FICHE} ${v.annee}` : TITRE_DE_LA_FICHE}
         reperes={
-          v ? (
-            <>
-              <Repere label="Agents à évaluer" valeur={String(fiches.length)} />
-              <Repere
-                label="Auto-évaluations faites"
-                valeur={String(fiches.length - compte('auto_non_faite'))}
-              />
-              <Repere
-                label="Validées par l’agent"
-                valeur={String(compte('chez_le_n2', 'a_transmettre', 'transmise'))}
-              />
-              <Repere label="Transmises à la DCH" valeur={String(compte('transmise'))} />
-            </>
-          ) : null
+          v
+            ? [
+                <Repere key="agents" label="Agents à évaluer" valeur={String(fiches.length)} />,
+                <Repere
+                  key="autos"
+                  label="Auto-évaluations faites"
+                  valeur={String(fiches.length - compte('auto_non_faite'))}
+                />,
+                <Repere
+                  key="validees"
+                  label="Validées par l’agent"
+                  valeur={String(compte('chez_le_n2', 'a_transmettre', 'transmise'))}
+                />,
+                <Repere
+                  key="transmises"
+                  label="Transmises à la DCH"
+                  valeur={String(compte('transmise'))}
+                />,
+              ]
+            : undefined
         }
       />
 
-      <CartePleine>
-        <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-          <CardTitle>Fiches de l’année</CardTitle>
-          <div className="flex flex-wrap items-center gap-2">
-            <RechercheDuTableau
-              valeur={recherche}
-              onChange={setRecherche}
-              placeholder="Nom ou matricule…"
-              libelle="Rechercher un agent"
-            />
-            <Select
-              aria-label="Étape"
-              value={etape}
-              onChange={(e) => setEtape(e.target.value as EtapeDeLaFiche | 'toutes')}
-              className="h-8 w-auto text-[12.5px]"
-            >
-              <option value="toutes">Toutes les étapes</option>
-              {ORDRE.map((e) => (
-                <option key={e} value={e}>
-                  {ETAPES[e].libelle}
-                </option>
-              ))}
-            </Select>
-          </div>
-        </CardHeader>
-        {!v ? (
-          <CorpsDefilant>
-            <SqueletteTableau />
-          </CorpsDefilant>
-        ) : visibles.length === 0 ? (
-          <CorpsDefilant className="grid place-items-center py-10">
-            <EmptyState
-              icon={<Icon name="rate_review" size={22} />}
-              title={fiches.length === 0 ? 'Aucun agent à évaluer' : 'Aucun résultat'}
-            />
-          </CorpsDefilant>
-        ) : (
-          <Table>
-            <THead>
-              <tr>
-                <Th>Agent</Th>
-                <Th className="max-md:hidden">Direction</Th>
-                <Th className="max-lg:hidden">N+1</Th>
-                <Th className="max-sm:hidden">Étape</Th>
-                <Th className="max-sm:hidden">Transmise le</Th>
-                <Th>
-                  <span className="sr-only">Fiche</span>
-                </Th>
-              </tr>
-            </THead>
-            <TBody>
-              {visibles.map((f) => (
-                <Ligne key={f.employeeId} fiche={f} />
-              ))}
-            </TBody>
-          </Table>
-        )}
-      </CartePleine>
+      {/* Les fiches de l'année : le titre en Anton, la recherche et le filtre
+          à sa droite, le tableau dans la carte (ADR-0233). */}
+      <section aria-labelledby="fiches-de-l-annee" className="mt-5 flex flex-col gap-4">
+        <TitreDeSection
+          id="fiches-de-l-annee"
+          droite={
+            <>
+              <RechercheDuTableau
+                valeur={recherche}
+                onChange={setRecherche}
+                placeholder="Nom ou matricule…"
+                libelle="Rechercher un agent"
+              />
+              <Select
+                aria-label="Étape"
+                value={etape}
+                onChange={(e) => setEtape(e.target.value as EtapeDeLaFiche | 'toutes')}
+                className="h-8 w-auto text-[12.5px]"
+              >
+                <option value="toutes">Toutes les étapes</option>
+                {ORDRE.map((e) => (
+                  <option key={e} value={e}>
+                    {ETAPES[e].libelle}
+                  </option>
+                ))}
+              </Select>
+            </>
+          }
+        >
+          Fiches de l’année
+        </TitreDeSection>
+        <CartePleine>
+          {!v ? (
+            <CorpsDefilant>
+              <SqueletteTableau />
+            </CorpsDefilant>
+          ) : visibles.length === 0 ? (
+            <CorpsDefilant className="grid place-items-center py-10">
+              <EmptyState
+                icon={<Icon name="rate_review" size={22} />}
+                title={fiches.length === 0 ? 'Aucun agent à évaluer' : 'Aucun résultat'}
+              />
+            </CorpsDefilant>
+          ) : (
+            <Table>
+              <THead>
+                <tr>
+                  <Th>Agent</Th>
+                  <Th className="max-md:hidden">Direction</Th>
+                  <Th className="max-lg:hidden">N+1</Th>
+                  <Th className="max-sm:hidden">Étape</Th>
+                  <Th className="max-sm:hidden">Transmise le</Th>
+                  <Th>
+                    <span className="sr-only">Fiche</span>
+                  </Th>
+                </tr>
+              </THead>
+              <TBody>
+                {visibles.map((f) => (
+                  <Ligne key={f.employeeId} fiche={f} />
+                ))}
+              </TBody>
+            </Table>
+          )}
+        </CartePleine>
+      </section>
     </div>
   );
 }

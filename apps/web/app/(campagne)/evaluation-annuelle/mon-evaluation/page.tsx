@@ -17,7 +17,8 @@ import {
   RetourALAccueil,
   superieurHierarchique,
 } from '../../../../components/campagne/fiche';
-import { EnTete, Repere } from '../../../../components/fiche';
+import { Repere } from '../../../../components/fiche';
+import { BandeauDePage } from '../../../../components/campagne/charte';
 import { Confirmation, messageDe, ZoneDeTexte } from '../../../../components/grille-evaluation';
 import { Icon } from '../../../../components/icons';
 import { api, ApiError } from '../../../../lib/api';
@@ -70,8 +71,8 @@ export default function MonEvaluationPage() {
     return (
       <div className="flex flex-col gap-4">
         <RetourALAccueil libelle="Accueil" />
-        <Skeleton className="mb-4 h-[158px] w-full rounded-bloc" />
-        <Skeleton className="h-72 w-full rounded-bloc" />
+        <Skeleton className="h-[212px] w-full rounded-barre" />
+        <Skeleton className="mt-5 h-72 w-full rounded-bloc" />
       </div>
     );
   }
@@ -110,25 +111,33 @@ function Evaluation({ vue: v }: { vue: MonEvaluation }) {
   return (
     <div className="flex flex-col gap-4">
       <RetourALAccueil libelle="Accueil" />
-      <EnTete
+      <BandeauDePage
+        icone="task_alt"
         titre="Mon évaluation"
         marque={v.etat === 'validee' ? <EvaluationValidee le={v.valideeLe} /> : null}
         sousTitre={`${TITRE_DE_LA_FICHE} ${v.annee}`}
-        reperes={
-          <>
-            <Repere label={superieurHierarchique(n1)} valeur={nomDuN1} />
-            <Repere label="Reçue le" valeur={v.transmiseLe ? dateEnLettres(v.transmiseLe) : null} />
-            <Repere label="Objectifs" valeur={String(v.objectifs.length)} />
-            {v.etat === 'renvoyee' ? (
-              <Repere
-                label="Renvoyée le"
-                valeur={v.renvoyeeLe ? dateEnLettres(v.renvoyeeLe) : null}
-              />
-            ) : (
-              <Repere label="Validée le" valeur={v.valideeLe ? dateEnLettres(v.valideeLe) : null} />
-            )}
-          </>
-        }
+        reperes={[
+          <Repere key="n1" label={superieurHierarchique(n1)} valeur={nomDuN1} />,
+          <Repere
+            key="recue"
+            label="Reçue le"
+            valeur={v.transmiseLe ? dateEnLettres(v.transmiseLe) : null}
+          />,
+          <Repere key="objectifs" label="Objectifs" valeur={String(v.objectifs.length)} />,
+          v.etat === 'renvoyee' ? (
+            <Repere
+              key="renvoyee"
+              label="Renvoyée le"
+              valeur={v.renvoyeeLe ? dateEnLettres(v.renvoyeeLe) : null}
+            />
+          ) : (
+            <Repere
+              key="validee"
+              label="Validée le"
+              valeur={v.valideeLe ? dateEnLettres(v.valideeLe) : null}
+            />
+          ),
+        ]}
       />
 
       {v.etat === 'en_attente' ? (

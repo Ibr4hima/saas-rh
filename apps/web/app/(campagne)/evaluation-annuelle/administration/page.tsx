@@ -11,8 +11,6 @@ import {
   Badge,
   Button,
   Card,
-  CardHeader,
-  CardTitle,
   DateInput,
   EmptyState,
   Field,
@@ -24,13 +22,15 @@ import {
   THead,
   Tr,
 } from '@teranga/ui';
+import { BandeauDePage, TitreDeSection } from '../../../../components/campagne/charte';
 import {
+  BOUTON_DU_BANDEAU,
   periodeDeLAuto,
   periodeDeLEvaluationDuN1,
   RetourALAccueil,
 } from '../../../../components/campagne/fiche';
 import { ChoixDUnAgent, type AgentChoisi } from '../../../../components/complements-fiche';
-import { EnTete, Repere } from '../../../../components/fiche';
+import { Repere } from '../../../../components/fiche';
 import { CartePleine, CorpsDefilant } from '../../../../components/gabarit';
 import { messageDe } from '../../../../components/grille-evaluation';
 import { Icon } from '../../../../components/icons';
@@ -96,36 +96,38 @@ export default function AdministrationDeLaCampagnePage() {
   return (
     <div className="flex flex-col gap-4">
       <RetourALAccueil libelle="Accueil" />
-      <EnTete
+      <BandeauDePage
+        icone="settings"
         titre="Administration de la campagne"
         sousTitre={v ? `Évaluation annuelle ${v.annee}` : 'Évaluation annuelle'}
         action={
-          <Button
-            variant="secondary"
-            className="h-9 px-4"
+          <button
+            type="button"
+            className={BOUTON_DU_BANDEAU}
             title="Importer l’effectif depuis un classeur .xlsx"
             onClick={() => setImportOuvert(true)}
           >
-            <Icon name="upload_file" size={15} />
+            <Icon name="upload_file" size={17} />
             Importer le personnel
-          </Button>
+          </button>
         }
-        colonnes={3}
         reperes={
-          v ? (
-            <>
-              <Repere label="Agents à évaluer" valeur={String(agents.length)} />
-              <Repere
-                label="Sans évaluateur"
-                valeur={String(agents.filter((a) => !evaluateurDe(a)).length)}
-                ton={agents.some((a) => !evaluateurDe(a)) ? 'attente' : undefined}
-              />
-              <Repere
-                label="Évaluations hors organigramme"
-                valeur={String(agents.filter((a) => a.choisi).length)}
-              />
-            </>
-          ) : null
+          v
+            ? [
+                <Repere key="agents" label="Agents à évaluer" valeur={String(agents.length)} />,
+                <Repere
+                  key="sans"
+                  label="Sans évaluateur"
+                  valeur={String(agents.filter((a) => !evaluateurDe(a)).length)}
+                  ton={agents.some((a) => !evaluateurDe(a)) ? 'attente' : undefined}
+                />,
+                <Repere
+                  key="hors"
+                  label="Évaluations hors organigramme"
+                  valeur={String(agents.filter((a) => a.choisi).length)}
+                />,
+              ]
+            : undefined
         }
       />
       {v ? <Dates key={JSON.stringify(v.periode)} vue={v} /> : null}
@@ -174,77 +176,79 @@ function Dates({ vue: v }: { vue: AdministrationDeLaCampagne }) {
   const apercu = complete ? { du, autoAu, au } : null;
 
   return (
-    <Card>
-      <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-        <CardTitle>Dates de l’évaluation</CardTitle>
-      </CardHeader>
-      <div className="grid grid-cols-1 gap-4 px-5 pb-5 sm:grid-cols-3">
-        <Field label="Début de la période" htmlFor="periode-du" required>
-          <DateInput id="periode-du" value={du} onChange={(e) => setDu(e.target.value)} />
-        </Field>
-        <Field
-          label="Fin de l’auto-évaluation"
-          htmlFor="periode-auto"
-          required
-          error={
-            autoAvant ? 'La fin de l’auto-évaluation doit suivre le début de la période' : undefined
-          }
-        >
-          <DateInput
-            id="periode-auto"
-            min={du || undefined}
-            value={autoAu}
-            aria-invalid={autoAvant || undefined}
-            onChange={(e) => setAutoAu(e.target.value)}
-          />
-        </Field>
-        <Field
-          label="Fin de la période"
-          htmlFor="periode-au"
-          required
-          error={
-            finAvant ? 'La fin de la période doit suivre la fin de l’auto-évaluation' : undefined
-          }
-        >
-          <DateInput
-            id="periode-au"
-            min={autoAu || du || undefined}
-            value={au}
-            aria-invalid={finAvant || undefined}
-            onChange={(e) => setAu(e.target.value)}
-          />
-        </Field>
-      </div>
-      <div className="flex flex-col gap-3 border-t border-line-soft px-5 py-3.5 sm:flex-row sm:items-center sm:gap-5">
-        <dl className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-ink-muted">
-          {apercu ? (
-            <>
-              <div>
-                <dt className="inline font-semibold text-ink">Auto-évaluation : </dt>
-                <dd className="inline">{periodeDeLAuto(apercu)}</dd>
-              </div>
-              <div>
-                <dt className="inline font-semibold text-ink">Évaluation : </dt>
-                <dd className="inline">{periodeDeLEvaluationDuN1(apercu)}</dd>
-              </div>
-            </>
+    <section aria-labelledby="dates-de-l-evaluation" className="mt-5 flex flex-col gap-4">
+      <TitreDeSection id="dates-de-l-evaluation">Dates de l’évaluation</TitreDeSection>
+      <Card>
+        <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-3">
+          <Field label="Début de la période" htmlFor="periode-du" required>
+            <DateInput id="periode-du" value={du} onChange={(e) => setDu(e.target.value)} />
+          </Field>
+          <Field
+            label="Fin de l’auto-évaluation"
+            htmlFor="periode-auto"
+            required
+            error={
+              autoAvant
+                ? 'La fin de l’auto-évaluation doit suivre le début de la période'
+                : undefined
+            }
+          >
+            <DateInput
+              id="periode-auto"
+              min={du || undefined}
+              value={autoAu}
+              aria-invalid={autoAvant || undefined}
+              onChange={(e) => setAutoAu(e.target.value)}
+            />
+          </Field>
+          <Field
+            label="Fin de la période"
+            htmlFor="periode-au"
+            required
+            error={
+              finAvant ? 'La fin de la période doit suivre la fin de l’auto-évaluation' : undefined
+            }
+          >
+            <DateInput
+              id="periode-au"
+              min={autoAu || du || undefined}
+              value={au}
+              aria-invalid={finAvant || undefined}
+              onChange={(e) => setAu(e.target.value)}
+            />
+          </Field>
+        </div>
+        <div className="flex flex-col gap-3 border-t border-line-soft px-5 py-3.5 sm:flex-row sm:items-center sm:gap-5">
+          <dl className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-ink-muted">
+            {apercu ? (
+              <>
+                <div>
+                  <dt className="inline font-semibold text-ink">Auto-évaluation : </dt>
+                  <dd className="inline">{periodeDeLAuto(apercu)}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-semibold text-ink">Évaluation : </dt>
+                  <dd className="inline">{periodeDeLEvaluationDuN1(apercu)}</dd>
+                </div>
+              </>
+            ) : null}
+          </dl>
+          {enregistrer.error ? (
+            <p role="alert" className="text-[12px] text-danger">
+              {messageDe(enregistrer.error)}
+            </p>
           ) : null}
-        </dl>
-        {enregistrer.error ? (
-          <p role="alert" className="text-[12px] text-danger">
-            {messageDe(enregistrer.error)}
-          </p>
-        ) : null}
-        <Button
-          className="h-9 shrink-0 px-5"
-          disabled={!complete || !change}
-          loading={enregistrer.isPending}
-          onClick={() => enregistrer.mutate()}
-        >
-          Enregistrer
-        </Button>
-      </div>
-    </Card>
+          <Button
+            className="h-9 shrink-0 px-5"
+            disabled={!complete || !change}
+            loading={enregistrer.isPending}
+            onClick={() => enregistrer.mutate()}
+          >
+            Enregistrer
+          </Button>
+        </div>
+      </Card>
+    </section>
   );
 }
 
@@ -271,61 +275,67 @@ function QuiEvalueQui({ vue: v }: { vue: AdministrationDeLaCampagne | undefined 
   );
 
   return (
-    <CartePleine>
-      <CardHeader className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <CardTitle>Qui évalue qui</CardTitle>
-        <div className="flex flex-wrap items-center gap-2">
-          <RechercheDuTableau
-            valeur={recherche}
-            onChange={setRecherche}
-            placeholder="Nom ou matricule…"
-            libelle="Rechercher un agent"
-          />
-          <Select
-            aria-label="Évaluateur"
-            value={filtre}
-            onChange={(e) => setFiltre(e.target.value as Filtre)}
-            className="h-8 w-auto text-[12.5px]"
-          >
-            <option value="tous">Tous les agents</option>
-            <option value="sans">Sans évaluateur</option>
-            <option value="hors">Hors organigramme</option>
-          </Select>
-        </div>
-      </CardHeader>
-      {!v ? (
-        <CorpsDefilant>
-          <SqueletteTableau />
-        </CorpsDefilant>
-      ) : visibles.length === 0 ? (
-        <CorpsDefilant className="grid place-items-center py-10">
-          <EmptyState
-            icon={<Icon name="groups" size={22} />}
-            title={agents.length === 0 ? 'Aucun agent à évaluer' : 'Aucun résultat'}
-          />
-        </CorpsDefilant>
-      ) : (
-        <Table>
-          <THead>
-            <tr>
-              <Th>Agent</Th>
-              <Th className="max-md:hidden">Direction</Th>
-              <Th className="max-lg:hidden">N+1 dans l’organigramme</Th>
-              <Th className="max-sm:hidden">Évaluateur de la campagne</Th>
-              <Th>
-                <span className="sr-only">Modifier</span>
-              </Th>
-            </tr>
-          </THead>
-          <TBody>
-            {visibles.map((a) => (
-              <Ligne key={a.employeeId} agent={a} onModifier={() => setOuvert(a)} />
-            ))}
-          </TBody>
-        </Table>
-      )}
+    <section aria-labelledby="qui-evalue-qui" className="mt-5 flex flex-col gap-4">
+      <TitreDeSection
+        id="qui-evalue-qui"
+        droite={
+          <>
+            <RechercheDuTableau
+              valeur={recherche}
+              onChange={setRecherche}
+              placeholder="Nom ou matricule…"
+              libelle="Rechercher un agent"
+            />
+            <Select
+              aria-label="Évaluateur"
+              value={filtre}
+              onChange={(e) => setFiltre(e.target.value as Filtre)}
+              className="h-8 w-auto text-[12.5px]"
+            >
+              <option value="tous">Tous les agents</option>
+              <option value="sans">Sans évaluateur</option>
+              <option value="hors">Hors organigramme</option>
+            </Select>
+          </>
+        }
+      >
+        Qui évalue qui
+      </TitreDeSection>
+      <CartePleine>
+        {!v ? (
+          <CorpsDefilant>
+            <SqueletteTableau />
+          </CorpsDefilant>
+        ) : visibles.length === 0 ? (
+          <CorpsDefilant className="grid place-items-center py-10">
+            <EmptyState
+              icon={<Icon name="groups" size={22} />}
+              title={agents.length === 0 ? 'Aucun agent à évaluer' : 'Aucun résultat'}
+            />
+          </CorpsDefilant>
+        ) : (
+          <Table>
+            <THead>
+              <tr>
+                <Th>Agent</Th>
+                <Th className="max-md:hidden">Direction</Th>
+                <Th className="max-lg:hidden">N+1 dans l’organigramme</Th>
+                <Th className="max-sm:hidden">Évaluateur de la campagne</Th>
+                <Th>
+                  <span className="sr-only">Modifier</span>
+                </Th>
+              </tr>
+            </THead>
+            <TBody>
+              {visibles.map((a) => (
+                <Ligne key={a.employeeId} agent={a} onModifier={() => setOuvert(a)} />
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CartePleine>
       {ouvert ? <FenetreEvaluateur agent={ouvert} onClose={() => setOuvert(null)} /> : null}
-    </CartePleine>
+    </section>
   );
 }
 

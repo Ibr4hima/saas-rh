@@ -12,9 +12,10 @@ import {
   type Niveau,
   type ObjectifEvalue,
 } from '@teranga/contracts';
-import { Card, CardHeader, CardTitle, cn, Field } from '@teranga/ui';
+import { Card, cn, Field } from '@teranga/ui';
 import { ChoixDeNiveau, NiveauDonne, ZoneDeTexte } from '../grille-evaluation';
 import { Icon, type IconName } from '../icons';
+import { TitreDeSection } from './charte';
 import type { Changement } from './enregistrement';
 
 /* ────────────────────────────────────────────────────────────────
@@ -56,8 +57,11 @@ const appreciationVide = (): AppreciationDeLAgent => ({
 });
 
 /**
- * Une carte de la fiche : son titre, qui la remplit, une phrase qui
- * l'introduit s'il y a lieu, son contenu.
+ * Une partie de la fiche : son titre en Anton, comme les sections de
+ * l'accueil, au-dessus de sa carte (ADR-0233) ; à droite, qui la remplit ;
+ * dessous, une phrase qui l'introduit s'il y a lieu. Puis son contenu, dans
+ * la carte. Une partie qui en suit une autre s'en écarte un peu plus que
+ * les blocs de la page.
  */
 export function CarteDeLaFiche({
   titre,
@@ -74,20 +78,21 @@ export function CarteDeLaFiche({
   chapeau?: ReactNode;
   children: ReactNode;
 }) {
+  const id = useId();
   return (
-    <Card>
-      <CardHeader className="border-b border-line-soft">
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-          <CardTitle className="flex items-center gap-1.5">
-            {icone ? <Icon name={icone} size={14} className="-mt-px" /> : null}
-            {titre}
-          </CardTitle>
-          {qui ? <p className="text-[11.5px] font-semibold text-ink-muted">{qui}</p> : null}
-        </div>
-        {chapeau ? <div className="mt-1.5 text-[12.5px] text-ink-muted">{chapeau}</div> : null}
-      </CardHeader>
-      {children}
-    </Card>
+    <section aria-labelledby={id} className="flex flex-col gap-4 [&:not(:first-child)]:mt-5">
+      <TitreDeSection
+        id={id}
+        icone={icone}
+        chapeau={chapeau}
+        droite={
+          qui ? <span className="text-[12px] font-semibold text-ink-muted">{qui}</span> : undefined
+        }
+      >
+        {titre}
+      </TitreDeSection>
+      <Card>{children}</Card>
+    </section>
   );
 }
 

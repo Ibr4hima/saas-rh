@@ -15,7 +15,7 @@ import {
   Initiales,
   TitreDeSection,
   TuileDePilotage,
-} from '../../../components/campagne/accueil';
+} from '../../../components/campagne/charte';
 import {
   BoutonMAutoEvaluer,
   BoutonValiderMonEvaluation,

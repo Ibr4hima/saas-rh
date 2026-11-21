@@ -22,13 +22,13 @@ import {
 import {
   CarteDEtape,
   Etapes,
-  IdentiteDeLaCampagne,
   periodeDeLAuto,
   RetourALAccueil,
   statutDeLAgent,
   statutDeMonEvaluation,
   statutDesCommentaires,
 } from '../../../../../components/campagne/fiche';
+import { BandeauDeLAgent } from '../../../../../components/campagne/charte';
 import { Confirmation, messageDe, ZoneDeTexte } from '../../../../../components/grille-evaluation';
 import { Icon } from '../../../../../components/icons';
 import { api, ApiError } from '../../../../../lib/api';
@@ -99,16 +99,14 @@ function Fiche({ vue: v }: { vue: FichePourLeN2 }) {
   const commentaires = statutDesCommentaires(v.etat, v.transmisLe, 'n2');
   return (
     <>
-      <IdentiteDeLaCampagne agent={v.agent} />
+      <BandeauDeLAgent agent={v.agent} />
       <Etapes nombre={3}>
         <CarteDEtape
-          icone="rate_review"
           titre="Auto-évaluation"
           marque={auto ? <Badge tone={auto.ton}>{auto.libelle}</Badge> : null}
           periode={periodeDeLAuto(v.periode)}
         />
         <CarteDEtape
-          icone="checklist"
           titre="Évaluation du N+1"
           marque={evaluation ? <Badge tone={evaluation.ton}>{evaluation.libelle}</Badge> : null}
           periode={
@@ -118,7 +116,6 @@ function Fiche({ vue: v }: { vue: FichePourLeN2 }) {
           }
         />
         <CarteDEtape
-          icone="how_to_reg"
           titre="Commentaires du N+2"
           marque={
             commentaires ? <Badge tone={commentaires.ton}>{commentaires.libelle}</Badge> : null

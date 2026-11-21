@@ -220,21 +220,22 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0212](0212-barre-de-la-campagne.md)                  | La barre de la campagne, son titre en grand ; la connexion des agents par code          | acceptée, complétée (0219), révisée (0231)  |
 | [0213](0213-fond-clair-fafafa.md)                     | Le fond clair de l'application revient à #FAFAFA                                        | acceptée                                    |
 | [0214](0214-bouton-m-auto-evaluer.md)                 | Le bouton M'auto-évaluer et la coche bleue de l'auto-évaluation faite                   | complétée 0217, révisée 0220, 0226, 0227    |
-| [0215](0215-formulaire-d-auto-evaluation.md)          | Le formulaire d'auto-évaluation de la campagne, sur la fiche S1/EN05                    | acceptée, complétée par 0216                |
-| [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | acceptée, complétée (0217), révisée (0226)  |
-| [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | acceptée, complétée (0218), révisée (0220)  |
-| [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | acceptée, complétée (0221), révisée (0226)  |
+| [0215](0215-formulaire-d-auto-evaluation.md)          | Le formulaire d'auto-évaluation de la campagne, sur la fiche S1/EN05                    | acceptée, complétée (0216), révisée (0233)  |
+| [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | complétée 0217, révisée 0226, 0233          |
+| [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | complétée 0218, révisée 0220, 0233          |
+| [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | complétée 0221, révisée 0226, 0233          |
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée                                    |
 | [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223 et 0227          |
-| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | acceptée, révisée par 0226 et 0227          |
-| [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | acceptée, révisée par 0227                  |
+| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | acceptée, révisée par 0226, 0227, 0233      |
+| [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | acceptée, révisée par 0227 et 0233          |
 | [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée                                    |
 | [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée                                    |
 | [0225](0225-en-tete-sans-matricule.md)                | L'en-tête et les cartes des agents sans le matricule, le poste seul sous le nom         | acceptée                                    |
 | [0226](0226-auto-evaluation-faite-ou-non.md)          | L'auto-évaluation faite ou non faite, un point vert ou rouge sur les cartes             | acceptée                                    |
-| [0227](0227-accueil-a-la-charte.md)                   | L'accueil de la campagne à la charte de l'APIX : bandeau, titres en Anton, tuiles       | acceptée, révisée par 0228                  |
+| [0227](0227-accueil-a-la-charte.md)                   | L'accueil de la campagne à la charte de l'APIX : bandeau, titres en Anton, tuiles       | acceptée, révisée par 0228 et 0233          |
 | [0228](0228-bandeau-droit.md)                         | Le bandeau de l'accueil, droit, souligné d'un filet orange                              | acceptée, révisée par 0229                  |
 | [0229](0229-pied-droit-et-nom-en-capitales.md)        | Le pied droit des écrans de la charte, et le nom de famille en capitales sans accents   | acceptée, révisée par 0230                  |
 | [0230](0230-email-sans-propositions.md)               | L'adresse professionnelle de la connexion, sans les propositions du navigateur          | acceptée                                    |
 | [0231](0231-titre-de-la-barre-en-anton.md)            | Le titre de la barre de la campagne en Anton, en capitales                              | acceptée, révisée par 0232                  |
 | [0232](0232-titre-de-la-barre-plus-petit.md)          | Le titre de la barre de la campagne, un peu plus petit                                  | acceptée                                    |
+| [0233](0233-pages-de-la-campagne-a-la-charte.md)      | Les pages de la campagne à la charte de l'APIX : bandeau, étapes numérotées, titres     | acceptée                                    |

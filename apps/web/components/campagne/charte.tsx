@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useId } from 'react';
 import type { AgentDeLaCampagne, PeriodeDeLaCampagne } from '@teranga/contracts';
 import { cn } from '@teranga/ui';
 import { GrilleDeReperes } from '../fiche';
@@ -8,15 +9,16 @@ import { Icon, type IconName } from '../icons';
 import { periodeDeLAuto, periodeDeLEvaluationDuN1, reperesDeLAgent } from './fiche';
 
 /* ────────────────────────────────────────────────────────────────
-   Les pièces de l'accueil de la campagne, à la charte de l'APIX (ADR-0227).
+   Les pièces de la campagne à la charte de l'APIX (ADR-0227), sur l'accueil
+   puis sur toutes ses pages (ADR-0233).
 
    En tête, le bandeau : le bleu de la charte, ses ondulations, et en bas,
-   bien droit, un filet orange (ADR-0228). Dessus, la personne : ses
-   initiales, son nom, son poste, et le geste du moment en blanc ; dessous,
-   sur le blanc de la fiche, ses repères. Puis des sections titrées en Anton,
-   la police des titres de la charte, soulignées d'un filet orange ; et pour
-   qui pilote la campagne, des tuiles, l'icône en orange comme celles de la
-   charte.
+   bien droit, un filet orange (ADR-0228). Dessus, la personne (ses
+   initiales, son nom, son poste) ou la page (son icône, son titre), et le
+   geste du moment en blanc ; dessous, sur le blanc, les repères. Puis des
+   sections titrées en Anton, la police des titres de la charte, soulignées
+   d'un filet orange ; et pour qui pilote la campagne, des tuiles, l'icône
+   en orange comme celles de la charte.
    ──────────────────────────────────────────────────────────────── */
 
 const n = (v: number) => Number(v.toFixed(1));
@@ -148,6 +150,87 @@ export function BandeauDeLAgent({
 }
 
 /**
+ * Ce qui se pose à côté d'un titre sur le bleu : la coche bleue d'une étape
+ * faite y passe en blanc, sa coche en bleu, pour se voir encore. Les
+ * utilitaires de couleur lisent les jetons `--tg-*` eux-mêmes : c'est eux
+ * qui s'inversent ici.
+ */
+function MarqueSurLeBleu({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex [--tg-primary:#ffffff] [--tg-primary-ink:#004f91]">
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Le bandeau d'une page de la campagne qui ne porte pas sur un agent : son
+ * auto-évaluation, son évaluation, le suivi de la DCH, l'administration.
+ * L'icône de la page dans le rond des initiales, le titre et la coche s'il
+ * y a lieu, la précision dessous, le geste de la page à droite ; puis le
+ * filet orange et les repères.
+ */
+export function BandeauDePage({
+  icone,
+  titre,
+  marque,
+  sousTitre,
+  action,
+  reperes,
+}: {
+  icone: IconName;
+  titre: string;
+  /** La coche bleue d'une étape faite, passée en blanc sur le bleu. */
+  marque?: React.ReactNode;
+  sousTitre?: React.ReactNode;
+  action?: React.ReactNode;
+  /** Des `<Repere>`, cinq au plus. */
+  reperes?: React.ReactElement[];
+}) {
+  const id = useId();
+  return (
+    <section
+      aria-labelledby={id}
+      className="overflow-hidden rounded-barre border border-card-line bg-surface shadow-xs"
+    >
+      <Bleu className="px-5 py-6 sm:px-8 sm:py-7">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-5">
+          <span
+            aria-hidden
+            className="flex size-14 shrink-0 items-center justify-center rounded-full bg-white/12 text-white ring-1 ring-white/30 sm:size-16"
+          >
+            <Icon name={icone} size={26} />
+          </span>
+          <div className="min-w-0 flex-1 basis-52">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <h1
+                id={id}
+                className="text-[24px] leading-tight font-bold tracking-[-0.02em] sm:text-[28px]"
+              >
+                {titre}
+              </h1>
+              {marque ? <MarqueSurLeBleu>{marque}</MarqueSurLeBleu> : null}
+            </div>
+            {sousTitre ? (
+              <p className="mt-1.5 text-[13.5px] leading-snug text-white/80 sm:text-[14.5px]">
+                {sousTitre}
+              </p>
+            ) : null}
+          </div>
+          {action ? <div className="w-full sm:w-auto">{action}</div> : null}
+        </div>
+      </Bleu>
+      <FiletDuBandeau />
+      {reperes && reperes.length > 0 ? (
+        <div className="@container px-5 py-5 sm:px-8">
+          <GrilleDeReperes colonnes={reperes.length as 2 | 3 | 4 | 5}>{reperes}</GrilleDeReperes>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/**
  * Le bandeau d'un compte sans dossier d'agent, l'administration : la
  * campagne elle-même, ses deux temps et leurs dates, numérotés comme sur la
  * carte de la période. La barre en dit déjà le titre : il ne se lit ici que
@@ -226,25 +309,37 @@ function TempsDuBandeau({
 }
 
 /**
- * Le titre d'une section de l'accueil : en Anton, en capitales, dans le bleu
- * de la charte, souligné d'un filet orange comme le titre de la connexion ;
- * à côté, s'il y a lieu, le nombre de ce qu'elle réunit.
+ * Le titre d'une section de la campagne : en Anton, en capitales, dans le
+ * bleu de la charte, souligné d'un filet orange comme le titre de la
+ * connexion. À côté, s'il y a lieu, le nombre de ce qu'elle réunit ; devant,
+ * une icône (le cadenas de la partie réservée). À droite, ce qui la
+ * complète : qui la remplit, une recherche, un filtre. Dessous, une phrase
+ * qui l'introduit.
  */
 export function TitreDeSection({
   id,
   nombre,
+  icone,
+  droite,
+  chapeau,
   children,
 }: {
-  id: string;
+  id?: string;
   nombre?: number;
+  icone?: IconName;
+  droite?: React.ReactNode;
+  chapeau?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  // Sur un grand écran, ce qui complète le titre se range à sa hauteur, à
+  // droite ; ailleurs, sous le filet. Le chapeau prend toute la largeur.
   return (
-    <div>
+    <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-x-6">
       <h2
         id={id}
-        className="flex flex-wrap items-center gap-x-3 gap-y-1 font-titre text-[22px] leading-[1.15] tracking-[0.015em] text-primary uppercase sm:text-[25px]"
+        className="flex flex-wrap items-center gap-x-3 gap-y-1 font-titre text-[22px] leading-[1.15] tracking-[0.015em] text-primary uppercase sm:col-start-1 sm:row-start-1 sm:text-[25px]"
       >
+        {icone ? <Icon name={icone} size={22} className="-mr-1 self-center" /> : null}
         <span>{children}</span>
         {nombre !== undefined ? (
           <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary-soft px-2 font-sans text-[12px] font-bold tracking-normal text-primary tabular-nums">
@@ -252,7 +347,20 @@ export function TitreDeSection({
           </span>
         ) : null}
       </h2>
-      <span aria-hidden className="mt-2.5 block h-[3px] w-10 rounded-full bg-accent" />
+      <span
+        aria-hidden
+        className="mt-2.5 block h-[3px] w-10 rounded-full bg-accent sm:col-start-1 sm:row-start-2"
+      />
+      {droite ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 sm:col-start-2 sm:row-start-1 sm:mt-0 sm:justify-end">
+          {droite}
+        </div>
+      ) : null}
+      {chapeau ? (
+        <div className="mt-3 text-[13px] leading-relaxed text-ink-muted sm:col-span-2 sm:row-start-3">
+          {chapeau}
+        </div>
+      ) : null}
     </div>
   );
 }

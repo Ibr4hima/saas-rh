@@ -13,53 +13,27 @@ import {
   type PeriodeDeLaCampagne,
   type RenvoiDeLEvaluation,
 } from '@teranga/contracts';
-import { Card, CardInteractive, cn, type BadgeTone } from '@teranga/ui';
+import { Card, cn, type BadgeTone } from '@teranga/ui';
 import { ACCUEIL_DE_LA_CAMPAGNE, AUTO_EVALUATION, MON_EVALUATION } from '../../lib/campagne';
 import { Courriel } from '../courriel';
-import { EnTete, Repere } from '../fiche';
-import { Icon, type IconName } from '../icons';
+import { Repere } from '../fiche';
+import { Icon } from '../icons';
 import { Sceau } from '../sceau';
 
 /* ────────────────────────────────────────────────────────────────
    Les pièces de la campagne d'évaluation annuelle (ADR-0211, ADR-0214,
-   ADR-0216, ADR-0217), communes à ses pages : l'en-tête qui situe la
-   personne, comme celui de son dossier ; les boutons qui ouvrent son
-   auto-évaluation et son évaluation à valider ; la carte d'une étape,
-   l'auto-évaluation ou l'évaluation du N+1, avec ce qui dit où elle en est ;
-   le retour à l'accueil.
+   ADR-0216, ADR-0217), communes à ses pages : les repères qui situent la
+   personne, comme sur son dossier ; les boutons qui ouvrent son
+   auto-évaluation et son évaluation à valider ; les étapes d'une fiche,
+   numérotées, avec ce qui dit où chacune en est (ADR-0233) ; le retour à
+   l'accueil.
    ──────────────────────────────────────────────────────────────── */
-
-/**
- * L'en-tête d'un agent, comme celui de son dossier : le nom, puis le poste ;
- * en repères, ce qui situe l'agent. Le département et le service
- * n'apparaissent que s'il y en a. Le N+1 ne manque qu'au sommet de
- * l'organigramme, hors de la campagne. À droite du nom, le geste de la page.
- */
-export function IdentiteDeLaCampagne({
-  agent: a,
-  action,
-}: {
-  agent: AgentDeLaCampagne;
-  action?: React.ReactNode;
-}) {
-  const reperes = reperesDeLAgent(a);
-  return (
-    <EnTete
-      titre={`${a.prenom} ${a.nom}`}
-      // Sous le nom, le poste seul, sans le matricule (ADR-0225).
-      sousTitre={a.poste ?? undefined}
-      action={action}
-      colonnes={reperes.length as 2 | 3 | 4 | 5}
-      reperes={<>{reperes}</>}
-    />
-  );
-}
 
 /**
  * Les repères d'un agent : sa direction, son département et son service
  * s'il y en a, sinon son adresse professionnelle, son supérieur
- * hiérarchique et son statut. L'en-tête des pages et le bandeau de l'accueil
- * (ADR-0227) les posent de la même façon.
+ * hiérarchique et son statut, sous le bandeau de l'agent, à l'accueil comme
+ * sur les pages de ses fiches (ADR-0227, ADR-0233).
  */
 export function reperesDeLAgent(a: AgentDeLaCampagne): React.ReactElement[] {
   const n1 = a.evaluateur;
@@ -110,7 +84,7 @@ export function reperesDeLAgent(a: AgentDeLaCampagne): React.ReactElement[] {
  * bleu de la charte, de jour comme de nuit, posé sur le bleu. Sur un
  * téléphone, il prend la largeur du bandeau.
  */
-const BOUTON_DU_BANDEAU =
+export const BOUTON_DU_BANDEAU =
   'inline-flex h-11 w-full items-center justify-center gap-2 rounded-controle bg-white px-5 text-[13.5px] font-bold whitespace-nowrap text-[#004f91] shadow-[0_10px_24px_-12px_rgb(0_0_0/0.55)] transition-[background-color,transform] duration-150 hover:bg-[#eaf3fd] active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:w-auto';
 
 /** Le bouton qui ouvre son auto-évaluation, dans le bandeau de l'accueil. */
@@ -328,53 +302,33 @@ export function periodeDeLEvaluation(periode: PeriodeDeLaCampagne | null): strin
 }
 
 /**
- * Une étape de la campagne, en une carte : l'auto-évaluation, l'évaluation
- * du N+1. Son titre, et à côté ce qui dit où elle en est ; puis sa période,
- * ou le jour qui compte. Avec `href`, la carte s'ouvre sur l'étape.
+ * Une étape de la fiche, dans la carte des étapes : son numéro en orange,
+ * « 01 », « 02 »…, comme les temps de la période (ADR-0233) ; son titre, et
+ * à côté ce qui dit où elle en est ; puis sa période, ou qui la tient.
  */
 export function CarteDEtape({
-  icone,
   titre,
   marque,
   periode,
-  href,
 }: {
-  icone: IconName;
   titre: string;
   marque?: React.ReactNode;
   periode: string;
-  href?: string;
 }) {
-  const contenu = (
-    <div className="flex items-center gap-4 p-5">
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-bloc bg-primary-soft text-primary">
-        <Icon name={icone} size={22} />
-      </span>
-      <div className="min-w-0 flex-1">
+  return (
+    <li className="flex items-start gap-4 bg-surface p-5 [counter-increment:etape]">
+      <span
+        aria-hidden
+        className="w-11 shrink-0 font-titre text-[36px] leading-[0.9] text-accent before:content-[counter(etape,decimal-leading-zero)]"
+      />
+      <div className="min-w-0 pt-0.5">
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
           <h2 className="text-[15px] leading-tight font-bold text-ink-strong">{titre}</h2>
           {marque}
         </div>
         <p className="mt-1.5 text-[12.5px] leading-tight text-ink-muted">{periode}</p>
       </div>
-      {href ? (
-        <Icon
-          name="chevron_right"
-          size={18}
-          className="shrink-0 text-ink-muted/50 transition-transform duration-200 group-hover:translate-x-0.5"
-        />
-      ) : null}
-    </div>
-  );
-  return href ? (
-    <Link
-      href={href}
-      className="group mb-4 block rounded-bloc focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none"
-    >
-      <CardInteractive>{contenu}</CardInteractive>
-    </Link>
-  ) : (
-    <Card className="mb-4">{contenu}</Card>
+    </li>
   );
 }
 
@@ -407,15 +361,25 @@ export function MotDeRenvoi({
   );
 }
 
-/** Les étapes d'une fiche, côte à côte sur un grand écran, l'une sous l'autre ailleurs. */
+/**
+ * Les étapes d'une fiche, dans une seule carte, séparées d'un filet :
+ * côte à côte sur un grand écran, deux par deux ou l'une sous l'autre
+ * ailleurs, sans case vide. Le numéro de chacune suit son rang.
+ */
 export function Etapes({ nombre, children }: { nombre: number; children: React.ReactNode }) {
-  // Quatre étapes tiennent mieux en deux rangs de deux qu'en un rang de quatre.
   return (
-    <div
-      className={cn('grid grid-cols-1 gap-x-4', nombre === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}
-    >
-      {children}
-    </div>
+    <Card className="overflow-hidden">
+      <ol
+        className={cn(
+          'grid grid-cols-1 gap-px bg-line-soft [counter-reset:etape]',
+          nombre === 2 && 'sm:grid-cols-2',
+          nombre === 3 && 'md:grid-cols-3',
+          nombre >= 4 && 'sm:grid-cols-2 lg:grid-cols-4',
+        )}
+      >
+        {children}
+      </ol>
+    </Card>
   );
 }
 
