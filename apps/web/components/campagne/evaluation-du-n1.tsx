@@ -8,6 +8,7 @@ import {
   MAXIMUMS_DE_LA_FICHE,
   NIVEAUX,
   NIVEAUX_DE_COMPETENCE,
+  NOMBRE_D_OBJECTIFS_A_VENIR,
   sansLignesVides,
   SYNTHESE_GENERALE,
   type ActionDuPlan,
@@ -151,16 +152,22 @@ function TexteLu({ texte }: { texte: string }) {
 function SousPartie({
   titre,
   chapeau,
+  requise = false,
   children,
 }: {
   titre: string;
   chapeau?: string;
+  /** Marquée d'un astérisque, comme un champ obligatoire. */
+  requise?: boolean;
   children: ReactNode;
 }) {
   return (
     <section className="border-b border-line-soft last:border-b-0">
       <div className="px-5 pt-5">
-        <h3 className="text-[13.5px] leading-snug font-bold text-ink-strong">{titre}</h3>
+        <h3 className="text-[13.5px] leading-snug font-bold text-ink-strong">
+          {titre}
+          {requise ? <span className="text-danger"> *</span> : null}
+        </h3>
         {chapeau ? <p className="mt-1 text-[12.5px] text-ink-muted">{chapeau}</p> : null}
       </div>
       {children}
@@ -450,7 +457,8 @@ function Perspectives({
   const suivante = annee + 1;
   return (
     <CarteDeLaFiche titre={`Objectifs et perspectives pour ${suivante}`} qui={PAR_LE_N1}>
-      <SousPartie titre={`Les objectifs de l’année ${suivante}`}>
+      {/* De trois à cinq objectifs (ADR-0239). */}
+      <SousPartie titre={`Les objectifs de l’année ${suivante}`} requise={Boolean(onChange)}>
         <Tableau<ObjectifDeLAnneeAVenir>
           nom="Objectif"
           leNom="l’objectif"
@@ -461,7 +469,8 @@ function Perspectives({
           ]}
           gabarit="@[46rem]:grid-cols-[1.75rem_minmax(0,2.25fr)_minmax(0,2.05fr)_10.5rem_1.75rem]"
           lignes={e.objectifsAVenir}
-          max={MAXIMUMS_DE_LA_FICHE.objectifsAVenir}
+          min={NOMBRE_D_OBJECTIFS_A_VENIR.min}
+          max={NOMBRE_D_OBJECTIFS_A_VENIR.max}
           ajouter="Ajouter un objectif"
           vide={() => ({ objectif: '', indicateur: '', echeance: null })}
           lecture={(o) => [o.objectif, o.indicateur, o.echeance ? dateEnLettres(o.echeance) : '']}
@@ -566,13 +575,17 @@ function CelluleDeTexte({
  * ligne par entrée sous les titres des colonnes, comme sur la fiche ; sur
  * une zone étroite, chaque entrée s'empile, chaque case sous son titre.
  * Sans `onChange`, le tableau se lit ; vide, il dit « Néant », comme le PDF.
+ * Avec un minimum, il montre d'emblée autant de lignes à remplir, qui ne
+ * s'enregistrent qu'à la première frappe, et n'en retire pas en dessous
+ * (ADR-0239).
  */
 function Tableau<L>({
   nom,
   leNom,
   colonnes,
   gabarit,
-  lignes,
+  lignes: ecrites,
+  min = 0,
   max,
   ajouter,
   vide,
@@ -588,6 +601,8 @@ function Tableau<L>({
   /** Les colonnes, sur une zone large : le numéro, les cases, le retrait. */
   gabarit: string;
   lignes: readonly L[];
+  /** Les lignes que le tableau montre au moins pendant la saisie. */
+  min?: number;
   max: number;
   ajouter: string;
   vide: () => L;
@@ -600,6 +615,11 @@ function Tableau<L>({
   onChange?: (lignes: L[]) => void;
 }) {
   const uid = useId();
+  // Pendant la saisie, des lignes vides jusqu'au minimum.
+  const lignes: readonly L[] =
+    onChange && ecrites.length < min
+      ? [...ecrites, ...Array.from({ length: min - ecrites.length }, vide)]
+      : ecrites;
   // Une clé par ligne, qui la suit quand une ligne au-dessus se retire.
   const suivante = useRef(lignes.length);
   const [cles, setCles] = useState(() => lignes.map((_, i) => i));
@@ -674,7 +694,7 @@ function Tableau<L>({
                       {c}
                     </div>
                   ))}
-                  {onChange ? (
+                  {onChange && lignes.length > min ? (
                     <button
                       type="button"
                       aria-label={`Retirer ${leNom} ${i + 1}`}

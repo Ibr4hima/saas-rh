@@ -14,12 +14,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   autoEvaluationRelue,
   autoEvaluationVide,
+  ceQuiManqueALEvaluationDuN1,
   competencesDe,
   datesDeLaCampagneSchema,
   evaluationDuN1Vide,
   partieReserveeVide,
   type AutoEvaluation,
   type EcritureDeLEvaluation,
+  type EvaluationDuN1,
   type SessionUser,
 } from '@teranga/contracts';
 import { loadEnv } from '../src/config/env';
@@ -350,6 +352,14 @@ describe('la fiche d’un agent, ouverte depuis sa carte', () => {
   });
 });
 
+/** Des objectifs pour l'année à venir, écrits : trois, le minimum, par défaut (ADR-0239). */
+const objectifsAVenir = (n = 3) =>
+  Array.from({ length: n }, (_, i) => ({
+    objectif: `Objectif ${i + 1} de l’année à venir`,
+    indicateur: '',
+    echeance: null,
+  }));
+
 describe('l’auto-évaluation (ADR-0215)', () => {
   const OBJ1 = randomUUID();
   const OBJ2 = randomUUID();
@@ -547,7 +557,33 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
     expect(erreur?.detail).toContain('la compétence « Qualité du travail »');
     expect(erreur?.detail).toContain('les points forts');
     expect(erreur?.detail).toContain('la tenue du poste');
+    expect(erreur?.detail).toContain('les objectifs de l’année à venir (3 au moins)');
     expect(erreur?.detail).not.toContain('Management');
+  });
+
+  it('fixe de trois à cinq objectifs pour l’année à venir, chacun avec son intitulé (ADR-0239)', () => {
+    const base = {
+      ...evaluationDuN1Vide(),
+      competences: competencesB('non_cadre'),
+      pointsForts: 'Rigueur.',
+      axesDeDeveloppement: 'Déléguer.',
+    };
+    const reservee = { comprehension: 'B' as const, tenue: 'A' as const, observations: '' };
+    const manque = (objectifsAVenir: EvaluationDuN1['objectifsAVenir']) =>
+      ceQuiManqueALEvaluationDuN1({ ...base, objectifsAVenir }, reservee, [], 'non_cadre');
+    expect(manque(objectifsAVenir(2))).toEqual(['les objectifs de l’année à venir (3 au moins)']);
+    expect(manque(objectifsAVenir(3))).toEqual([]);
+    expect(manque(objectifsAVenir(5))).toEqual([]);
+    expect(manque(objectifsAVenir(6))).toEqual(['les objectifs de l’année à venir (5 au plus)']);
+    // Une ligne vide ne compte pas ; une ligne sans intitulé, si.
+    const sansIntitule = { objectif: ' ', indicateur: 'Délai tenu', echeance: null };
+    const vide = { objectif: '', indicateur: '', echeance: null };
+    expect(manque([...objectifsAVenir(2), vide])).toEqual([
+      'les objectifs de l’année à venir (3 au moins)',
+    ]);
+    expect(manque([...objectifsAVenir(2), sansIntitule])).toEqual([
+      'l’intitulé de l’objectif 3 de l’année à venir',
+    ]);
   });
 
   it('complète, part à l’agent ; elle ne change plus', async () => {
@@ -566,7 +602,8 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
           { action: 'Tutorat par un pair', delai: '3 mois', suivi: '' },
           { action: ' ', delai: '', suivi: '' },
         ],
-        objectifsAVenir: [{ objectif: '', indicateur: '', echeance: null }],
+        // Les trois objectifs de l'année à venir, et une ligne laissée vide qui ne part pas.
+        objectifsAVenir: [...objectifsAVenir(), { objectif: '', indicateur: '', echeance: null }],
       },
       reservee: { comprehension: 'B', tenue: 'A', observations: '' },
     };
@@ -579,7 +616,7 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
     expect(t.evaluation.plan).toEqual([
       { action: 'Tutorat par un pair', delai: '3 mois', suivi: '' },
     ]);
-    expect(t.evaluation.objectifsAVenir).toEqual([]);
+    expect(t.evaluation.objectifsAVenir).toEqual(objectifsAVenir());
     const { equipe } = await campagne.accueil(session('awa'));
     expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('transmise');
     await expect(
@@ -594,6 +631,7 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
         competences: competencesB('cadre'),
         pointsForts: 'Autonomie.',
         axesDeDeveloppement: 'Prise de parole.',
+        objectifsAVenir: objectifsAVenir(),
       },
       reservee: { comprehension: 'A', tenue: 'B', observations: '' },
     });

@@ -289,6 +289,12 @@ export const MAXIMUMS_DE_LA_FICHE = {
   formations: 6,
 } as const;
 
+/**
+ * Les objectifs de l'année à venir que fixe le N+1 : trois au moins, cinq au
+ * plus (ADR-0239). La fiche en garde jusqu'à dix, la limite d'avant la règle.
+ */
+export const NOMBRE_D_OBJECTIFS_A_VENIR = { min: 3, max: 5 } as const;
+
 const texte = z.string().max(LONGUEURS_DE_LA_FICHE.texte);
 const ligne = z.string().max(LONGUEURS_DE_LA_FICHE.ligne);
 
@@ -486,9 +492,10 @@ export function autoEvaluationTransmise(auto: AutoEvaluation): AutoEvaluation {
  * Ce qui manque à l'évaluation du N+1 pour partir à l'agent (ADR-0216), dans
  * l'ordre de la fiche : l'appréciation de chaque objectif, chaque compétence
  * (le management, pour le personnel cadre, seulement s'il y a lieu), les
- * points forts et les axes de développement, puis la synthèse générale de la
- * partie réservée. Le plan d'action, les objectifs de l'année suivante, les
- * formations et les observations se remplissent s'il y a lieu.
+ * points forts et les axes de développement, les objectifs de l'année à
+ * venir, de trois à cinq, chacun avec son intitulé (ADR-0239), puis la
+ * synthèse générale de la partie réservée. Le plan d'action, les formations
+ * et les observations se remplissent s'il y a lieu.
  */
 export function ceQuiManqueALEvaluationDuN1(
   evaluation: EvaluationDuN1,
@@ -507,6 +514,17 @@ export function ceQuiManqueALEvaluationDuN1(
   }
   if (!evaluation.pointsForts.trim()) manque.push('les points forts');
   if (!evaluation.axesDeDeveloppement.trim()) manque.push('les axes de développement');
+  const aVenir = evaluation.objectifsAVenir.filter((o) =>
+    ecrite(o.objectif, o.indicateur, o.echeance),
+  );
+  aVenir.forEach((o, i) => {
+    if (!o.objectif.trim()) manque.push(`l’intitulé de l’objectif ${i + 1} de l’année à venir`);
+  });
+  if (aVenir.length < NOMBRE_D_OBJECTIFS_A_VENIR.min) {
+    manque.push(`les objectifs de l’année à venir (${NOMBRE_D_OBJECTIFS_A_VENIR.min} au moins)`);
+  } else if (aVenir.length > NOMBRE_D_OBJECTIFS_A_VENIR.max) {
+    manque.push(`les objectifs de l’année à venir (${NOMBRE_D_OBJECTIFS_A_VENIR.max} au plus)`);
+  }
   for (const c of SYNTHESE_GENERALE) {
     if (!reservee[c.cle]) manque.push(`la ${c.intitule.toLocaleLowerCase('fr')}`);
   }
