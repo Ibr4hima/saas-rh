@@ -24,8 +24,11 @@ import {
   THead,
   Tr,
 } from '@teranga/ui';
-import { periodeDeLAuto, RetourALAccueil } from '../../../../components/campagne/fiche';
-import { periodeDeLEvaluationDuN1 } from '../../../../components/campagne/periode';
+import {
+  periodeDeLAuto,
+  periodeDeLEvaluationDuN1,
+  RetourALAccueil,
+} from '../../../../components/campagne/fiche';
 import { ChoixDUnAgent, type AgentChoisi } from '../../../../components/complements-fiche';
 import { EnTete, Repere } from '../../../../components/fiche';
 import { CartePleine, CorpsDefilant } from '../../../../components/gabarit';

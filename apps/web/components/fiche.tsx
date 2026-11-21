@@ -66,30 +66,46 @@ export function EnTete({
         {action}
       </div>
 
-      {/* Quatre colonnes séparées par un filet, repliées en deux sur une
-          carte étroite — où le filet disparaît, deux valeurs empilées n'ayant
-          rien à séparer. Le seuil suit la largeur du CONTENEUR et non celle
-          de l'écran : la même bande servira un panneau latéral sans se
-          couper en morceaux. */}
       {reperes ? (
         <div className="@container border-t border-line-soft px-5 py-4">
-          <dl
-            className={
-              colonnes === 4
-                ? 'grid grid-cols-2 gap-x-6 gap-y-5 @[44rem]:grid-cols-4 @[44rem]:gap-x-0 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:border-l @[44rem]:[&>*+*]:border-line-soft @[44rem]:[&>*+*]:pl-5'
-                : colonnes === 5
-                  ? 'grid grid-cols-2 gap-x-6 gap-y-5 @[36rem]:grid-cols-3 @[52rem]:grid-cols-5 @[52rem]:gap-x-0 @[52rem]:[&>*]:pr-5 @[52rem]:[&>*+*]:border-l @[52rem]:[&>*+*]:border-line-soft @[52rem]:[&>*+*]:pl-5'
-                  : cn(
-                      colonnes === 2 ? 'grid-cols-2' : 'grid-cols-3',
-                      'grid gap-x-0 gap-y-5 [&>*]:pr-4 [&>*+*]:border-l [&>*+*]:border-line-soft [&>*+*]:pl-4 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:pl-5',
-                    )
-            }
-          >
-            {reperes}
-          </dl>
+          <GrilleDeReperes colonnes={colonnes}>{reperes}</GrilleDeReperes>
         </div>
       ) : null}
     </Card>
+  );
+}
+
+/**
+ * La bande des repères d'une carte de tête : quatre colonnes séparées par un
+ * filet, repliées en deux sur une carte étroite, où le filet disparaît, deux
+ * valeurs empilées n'ayant rien à séparer. Le seuil suit la largeur du
+ * CONTENEUR (`@container`, posé par le parent) et non celle de l'écran : la
+ * même bande sert un panneau latéral sans se couper en morceaux. Le bandeau
+ * de l'accueil de la campagne la reprend (ADR-0227).
+ */
+export function GrilleDeReperes({
+  colonnes = 4,
+  children,
+}: {
+  colonnes?: 2 | 3 | 4 | 5;
+  /** Des `<Repere>`, cinq au plus. */
+  children: React.ReactNode;
+}) {
+  return (
+    <dl
+      className={
+        colonnes === 4
+          ? 'grid grid-cols-2 gap-x-6 gap-y-5 @[44rem]:grid-cols-4 @[44rem]:gap-x-0 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:border-l @[44rem]:[&>*+*]:border-line-soft @[44rem]:[&>*+*]:pl-5'
+          : colonnes === 5
+            ? 'grid grid-cols-2 gap-x-6 gap-y-5 @[36rem]:grid-cols-3 @[52rem]:grid-cols-5 @[52rem]:gap-x-0 @[52rem]:[&>*]:pr-5 @[52rem]:[&>*+*]:border-l @[52rem]:[&>*+*]:border-line-soft @[52rem]:[&>*+*]:pl-5'
+            : cn(
+                colonnes === 2 ? 'grid-cols-2' : 'grid-cols-3',
+                'grid gap-x-0 gap-y-5 [&>*]:pr-4 [&>*+*]:border-l [&>*+*]:border-line-soft [&>*+*]:pl-4 @[44rem]:[&>*]:pr-5 @[44rem]:[&>*+*]:pl-5',
+              )
+      }
+    >
+      {children}
+    </dl>
   );
 }
 

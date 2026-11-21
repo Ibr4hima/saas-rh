@@ -29,6 +29,9 @@ const ARCS = [
   ],
 ] as const;
 
+/** La courbe du papier à en-tête, en points de l'A4 : le bandeau de l'accueil de la campagne la reprend (ADR-0227). */
+export const COURBE_DE_LA_CHARTE = ARCS;
+
 /** La bande, en unités de son cadre : étirée sur la largeur de l'écran. */
 const BANDE_L = 1440;
 const BANDE_H = 120;

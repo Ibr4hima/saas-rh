@@ -13,7 +13,7 @@ import {
   type PeriodeDeLaCampagne,
   type RenvoiDeLEvaluation,
 } from '@teranga/contracts';
-import { Card, CardInteractive, classesDeBouton, cn, type BadgeTone } from '@teranga/ui';
+import { Card, CardInteractive, cn, type BadgeTone } from '@teranga/ui';
 import { ACCUEIL_DE_LA_CAMPAGNE, AUTO_EVALUATION, MON_EVALUATION } from '../../lib/campagne';
 import { Courriel } from '../courriel';
 import { EnTete, Repere } from '../fiche';
@@ -42,6 +42,26 @@ export function IdentiteDeLaCampagne({
   agent: AgentDeLaCampagne;
   action?: React.ReactNode;
 }) {
+  const reperes = reperesDeLAgent(a);
+  return (
+    <EnTete
+      titre={`${a.prenom} ${a.nom}`}
+      // Sous le nom, le poste seul, sans le matricule (ADR-0225).
+      sousTitre={a.poste ?? undefined}
+      action={action}
+      colonnes={reperes.length as 2 | 3 | 4 | 5}
+      reperes={<>{reperes}</>}
+    />
+  );
+}
+
+/**
+ * Les repères d'un agent : sa direction, son département et son service
+ * s'il y en a, sinon son adresse professionnelle, son supérieur
+ * hiérarchique et son statut. L'en-tête des pages et le bandeau de l'accueil
+ * (ADR-0227) les posent de la même façon.
+ */
+export function reperesDeLAgent(a: AgentDeLaCampagne): React.ReactElement[] {
   const n1 = a.evaluateur;
   // Avec un département ou un service, la direction s'abrège, comme sur la
   // fiche du dossier : « DSID » tient sur une ligne où le nom complet en
@@ -81,24 +101,23 @@ export function IdentiteDeLaCampagne({
       label="Statut"
       valeur={a.personnel ? LIBELLES_DU_PERSONNEL[a.personnel] : null}
     />,
-  ].filter(Boolean);
-  return (
-    <EnTete
-      titre={`${a.prenom} ${a.nom}`}
-      // Sous le nom, le poste seul, sans le matricule (ADR-0225).
-      sousTitre={a.poste ?? undefined}
-      action={action}
-      colonnes={reperes.length as 2 | 3 | 4 | 5}
-      reperes={<>{reperes}</>}
-    />
-  );
+  ];
+  return reperes.filter((r): r is React.ReactElement => r !== null);
 }
 
-/** Le bouton qui ouvre son auto-évaluation, en haut à droite de sa fiche. */
+/**
+ * Le geste du bandeau de l'accueil (ADR-0227) : un bouton blanc, le mot en
+ * bleu de la charte, de jour comme de nuit, posé sur le bleu. Sur un
+ * téléphone, il prend la largeur du bandeau.
+ */
+const BOUTON_DU_BANDEAU =
+  'inline-flex h-11 w-full items-center justify-center gap-2 rounded-controle bg-white px-5 text-[13.5px] font-bold whitespace-nowrap text-[#004f91] shadow-[0_10px_24px_-12px_rgb(0_0_0/0.55)] transition-[background-color,transform] duration-150 hover:bg-[#eaf3fd] active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:w-auto';
+
+/** Le bouton qui ouvre son auto-évaluation, dans le bandeau de l'accueil. */
 export function BoutonMAutoEvaluer() {
   return (
-    <Link href={AUTO_EVALUATION} className={classesDeBouton('primary', 'md')}>
-      <Icon name="edit" size={15} />
+    <Link href={AUTO_EVALUATION} className={BOUTON_DU_BANDEAU}>
+      <Icon name="edit" size={17} />
       M’auto-évaluer
     </Link>
   );
@@ -107,8 +126,8 @@ export function BoutonMAutoEvaluer() {
 /** Le bouton qui ouvre son évaluation à valider, à la place du précédent (ADR-0217). */
 export function BoutonValiderMonEvaluation() {
   return (
-    <Link href={MON_EVALUATION} className={classesDeBouton('primary', 'md')}>
-      <Icon name="task_alt" size={15} />
+    <Link href={MON_EVALUATION} className={BOUTON_DU_BANDEAU}>
+      <Icon name="task_alt" size={17} />
       Valider mon évaluation
     </Link>
   );
@@ -281,6 +300,25 @@ export function statutPourLeN2(a: AgentACommenter): Statut | null {
 export function periodeDeLAuto(periode: PeriodeDeLaCampagne | null): string {
   if (!periode) return 'Période non fixée';
   const texte = periodeDEvaluationEnLettres({ du: periode.du, au: periode.autoAu ?? periode.au });
+  return texte.charAt(0).toLocaleUpperCase('fr') + texte.slice(1);
+}
+
+/** Le lendemain d'un jour, AAAA-MM-JJ. */
+function lendemain(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * « Du 21 au 30 décembre 2026 » : le temps de l'évaluation, du lendemain de
+ * la fin de l'auto-évaluation à la fin de la période. Sans fin propre à
+ * l'auto-évaluation, la période entière.
+ */
+export function periodeDeLEvaluationDuN1(periode: PeriodeDeLaCampagne | null): string {
+  if (!periode) return 'Période non fixée';
+  const du = periode.autoAu && periode.autoAu < periode.au ? lendemain(periode.autoAu) : periode.du;
+  const texte = periodeDEvaluationEnLettres({ du, au: periode.au });
   return texte.charAt(0).toLocaleUpperCase('fr') + texte.slice(1);
 }
 

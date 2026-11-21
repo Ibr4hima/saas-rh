@@ -3,16 +3,22 @@
 import Link from 'next/link';
 import {
   periodeDEvaluationEnLettres,
+  type AccueilDeLaCampagne,
   type AgentACommenter,
   type AgentDeLEquipe,
   type PeriodeDeLaCampagne,
 } from '@teranga/contracts';
 import { Badge, Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import {
+  BandeauDeLAgent,
+  BandeauDeLaCampagne,
+  Initiales,
+  TitreDeSection,
+  TuileDePilotage,
+} from '../../../components/campagne/accueil';
+import {
   BoutonMAutoEvaluer,
   BoutonValiderMonEvaluation,
-  CarteDEtape,
-  IdentiteDeLaCampagne,
   statutDeLEvaluation,
   statutPourLeN2,
   type Statut,
@@ -29,29 +35,30 @@ import {
 } from '../../../lib/campagne';
 
 /* ────────────────────────────────────────────────────────────────
-   L'accueil de la campagne d'évaluation annuelle (ADR-0211).
+   L'accueil de la campagne d'évaluation annuelle (ADR-0211), à la charte
+   de l'APIX (ADR-0227).
 
-   Trois blocs, de haut en bas, sur toute la largeur. D'abord la fiche de
-   la personne, comme celle de son dossier : son nom, son matricule, son
-   poste, et en repères sa direction, son département, son service, son N+1
-   et son statut ; à droite du nom, le bouton « M’auto-évaluer » tant que
-   l'auto-évaluation est ouverte (ADR-0214), puis « Valider mon évaluation »
-   quand le N+1 l'a transmise (ADR-0217). Puis la période d'évaluation
-   annuelle et ses deux temps, l'auto-évaluation et l'évaluation, chacun
-   avec sa période, ce qu'il demande, et la coche bleue une fois fait
-   (ADR-0220).
-   Ensuite, si la personne évalue des agents, son équipe : une carte par
-   agent, en deux groupes. Une auto-évaluation faite rend la carte
-   cliquable : le N+1 ouvre alors l'évaluation de l'agent, et la carte dit
-   où elle en est (ADR-0216). En haut à droite de chaque carte, un point
-   dit l'auto-évaluation : vert, faite ; rouge, non faite (ADR-0226).
-   Enfin, si la personne est le N+2 d'agents,
-   les équipes de ses N+1 : une fiche validée par l'agent s'ouvre pour ses
-   commentaires (ADR-0218).
-   Avec l'habilitation « Tableau de bord », une carte de plus, sous la
-   période, ouvre le suivi de la DCH (ADR-0221) ; pour un compte
-   d'administration, une autre ouvre l'administration de la campagne
-   (ADR-0222).
+   En tête, le bandeau de la personne, sur le bleu de la charte : ses
+   initiales, son nom et son poste ; à droite, le bouton « M’auto-évaluer »
+   tant que l'auto-évaluation est ouverte (ADR-0214), puis « Valider mon
+   évaluation » quand le N+1 l'a transmise (ADR-0217). La courbe du papier à
+   en-tête, soulignée d'orange, le ferme ; dessous, ses repères, comme sur la
+   fiche de son dossier : direction, département, service, supérieur
+   hiérarchique, statut (ADR-0224).
+   Pour qui pilote la campagne, des tuiles juste dessous : le suivi de la
+   DCH, avec l'habilitation « Tableau de bord » (ADR-0221), et
+   l'administration, pour un compte d'administration (ADR-0222).
+   Puis des sections titrées en Anton : la période d'évaluation annuelle et
+   ses deux temps, numérotés, chacun avec sa période, ce qu'il demande, et
+   la coche bleue une fois fait (ADR-0220) ; si la personne évalue des
+   agents, son équipe, une carte par agent, en deux groupes. Une
+   auto-évaluation faite rend la carte cliquable : le N+1 ouvre alors
+   l'évaluation de l'agent, et la carte dit où elle en est (ADR-0216). En
+   haut à droite de chaque carte, un point dit l'auto-évaluation : vert,
+   faite ; rouge, non faite (ADR-0226). Enfin, si la personne est le N+2
+   d'agents, les équipes de ses N+1 : une fiche validée par l'agent s'ouvre
+   pour ses commentaires (ADR-0218).
+   Les blocs montent l'un après l'autre à l'arrivée sur la page.
    ──────────────────────────────────────────────────────────────── */
 
 export default function AccueilDeLaCampagnePage() {
@@ -74,29 +81,22 @@ export default function AccueilDeLaCampagnePage() {
     );
   }
   if (!v) return <Squelette />;
-  const suivi = (
-    <>
-      {v.administration ? (
-        <CarteDEtape
-          icone="settings"
-          titre="Administration de la campagne"
-          periode={periodeEnBref(v.periode)}
-          href={ADMINISTRATION_DE_LA_CAMPAGNE}
-        />
-      ) : null}
-      {v.dch ? (
-        <CarteDEtape
-          icone="folder_managed"
-          titre="Suivi de la DCH"
-          periode={`Fiches transmises : ${v.dch.transmises} sur ${v.dch.fiches}`}
-          href={SUIVI_DE_LA_DCH}
-        />
-      ) : null}
-    </>
-  );
+
+  const pilotage = v.administration || v.dch;
   if (!v.moi) {
-    // Un compte sans dossier d'agent, l'administration : ses pages, et le suivi.
-    if (v.administration || v.dch) return <div className="flex flex-col gap-4">{suivi}</div>;
+    // Un compte sans dossier d'agent, l'administration : la campagne, ses pages.
+    if (pilotage) {
+      return (
+        <div className="flex flex-col gap-8 sm:gap-10">
+          <Bloc rang={0}>
+            <BandeauDeLaCampagne titre={`Évaluation annuelle ${v.annee}`} periode={v.periode} />
+          </Bloc>
+          <Bloc rang={1}>
+            <Pilotage accueil={v} />
+          </Bloc>
+        </div>
+      );
+    }
     return (
       <Card>
         <EmptyState
@@ -118,18 +118,74 @@ export default function AccueilDeLaCampagnePage() {
   ) : recue?.etat === 'a_valider' ? (
     <BoutonValiderMonEvaluation />
   ) : null;
-  // L'en-tête et la carte de la période portent leur marge du bas : le même
-  // écart sépare les blocs, que cette carte soit là ou non.
+  let rang = 0;
   return (
-    <div className="flex flex-col gap-4">
-      <IdentiteDeLaCampagne agent={v.moi} action={action} />
-      {auto ? (
-        <CarteDeLaPeriode annee={v.annee} periode={v.periode} auto={auto} recue={recue} />
+    <div className="flex flex-col gap-8 sm:gap-10">
+      <Bloc rang={rang++}>
+        <BandeauDeLAgent agent={v.moi} action={action} />
+      </Bloc>
+      {pilotage ? (
+        <Bloc rang={rang++}>
+          <Pilotage accueil={v} />
+        </Bloc>
       ) : null}
-      {suivi}
-      {v.equipe.length > 0 ? <Equipe equipe={v.equipe} /> : null}
-      {v.aCommenter.length > 0 ? <ACommenter agents={v.aCommenter} /> : null}
+      {auto ? (
+        <Bloc rang={rang++}>
+          <CarteDeLaPeriode annee={v.annee} periode={v.periode} auto={auto} recue={recue} />
+        </Bloc>
+      ) : null}
+      {v.equipe.length > 0 ? (
+        <Bloc rang={rang++}>
+          <Equipe equipe={v.equipe} />
+        </Bloc>
+      ) : null}
+      {v.aCommenter.length > 0 ? (
+        <Bloc rang={rang++}>
+          <ACommenter agents={v.aCommenter} />
+        </Bloc>
+      ) : null}
     </div>
+  );
+}
+
+/** Un bloc de l'accueil, qui monte à son tour : 60 ms après le précédent. */
+function Bloc({ rang, children }: { rang: number; children: React.ReactNode }) {
+  return (
+    <div className="bloc-monte" style={{ '--retard': `${rang * 0.06}s` } as React.CSSProperties}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Les tuiles de qui pilote la campagne : l'administration, avec ses dates,
+ * et le suivi de la DCH, avec la jauge des fiches transmises. Elles se
+ * partagent la largeur : seule, une tuile la prend toute.
+ */
+function Pilotage({ accueil: v }: { accueil: AccueilDeLaCampagne }) {
+  return (
+    <nav
+      aria-label="Pilotage de la campagne"
+      className="grid grid-cols-[repeat(auto-fit,minmax(min(19rem,100%),1fr))] gap-4"
+    >
+      {v.administration ? (
+        <TuileDePilotage
+          href={ADMINISTRATION_DE_LA_CAMPAGNE}
+          icone="settings"
+          titre="Administration de la campagne"
+          texte={periodeEnBref(v.periode)}
+        />
+      ) : null}
+      {v.dch ? (
+        <TuileDePilotage
+          href={SUIVI_DE_LA_DCH}
+          icone="folder_managed"
+          titre="Suivi de la DCH"
+          texte={`Fiches transmises : ${v.dch.transmises} sur ${v.dch.fiches}`}
+          jauge={{ fait: v.dch.transmises, total: v.dch.fiches }}
+        />
+      ) : null}
+    </nav>
   );
 }
 
@@ -158,10 +214,12 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
       groupes={[
         {
           titre: 'Auto-évaluation faite',
+          point: 'faite',
           cartes: equipe.filter((a) => a.auto.etat === 'transmise').map(carte),
         },
         {
           titre: 'Auto-évaluation non faite',
+          point: 'non_faite',
           cartes: equipe.filter((a) => a.auto.etat !== 'transmise').map(carte),
         },
       ]}
@@ -205,7 +263,7 @@ function ACommenter({ agents }: { agents: AgentACommenter[] }) {
   );
 }
 
-/** « Du 15 au 30 décembre 2026 », ou ce qui manque, sous la carte de l'administration. */
+/** « Du 15 au 30 décembre 2026 », ou ce qui manque, sur la tuile de l'administration. */
 function periodeEnBref(periode: PeriodeDeLaCampagne | null): string {
   if (!periode) return 'Dates de l’évaluation à fixer';
   const texte = periodeDEvaluationEnLettres(periode);
@@ -225,8 +283,10 @@ interface CarteDUnAgent {
 }
 
 /**
- * Une section d'agents, sous son titre et leur nombre, en groupes l'un sous
- * l'autre, séparés d'un filet. Un groupe vide ne s'affiche pas.
+ * Une section d'agents, sous son titre en Anton et leur nombre, en groupes
+ * l'un sous l'autre, séparés d'un filet. Un groupe vide ne s'affiche pas.
+ * Le titre d'un groupe de « Mon équipe » porte la couleur de son point : il
+ * sert de légende aux points des cartes.
  */
 function SectionDAgents({
   id,
@@ -235,26 +295,34 @@ function SectionDAgents({
 }: {
   id: string;
   titre: string;
-  groupes: readonly { titre: string; cartes: CarteDUnAgent[] }[];
+  groupes: readonly {
+    titre: string;
+    point?: 'faite' | 'non_faite';
+    cartes: CarteDUnAgent[];
+  }[];
 }) {
   const pleins = groupes.filter((g) => g.cartes.length > 0);
   const total = pleins.reduce((n, g) => n + g.cartes.length, 0);
   return (
-    // Une section qui en suit une autre s'en écarte comme les blocs de la page.
-    <section aria-labelledby={id} className="flex flex-col gap-4 [section+&]:mt-4">
-      <h2
-        id={id}
-        className="flex items-center gap-2 text-[10.5px] font-extrabold tracking-[0.14em] text-primary uppercase"
-      >
+    <section aria-labelledby={id} className="flex flex-col gap-5">
+      <TitreDeSection id={id} nombre={total}>
         {titre}
-        <span className="text-ink-muted tabular-nums">{total}</span>
-      </h2>
+      </TitreDeSection>
       {pleins.map((g, i) => (
         <div
           key={g.titre}
           className={cn('flex flex-col gap-3', i > 0 && 'border-t border-line-soft pt-5')}
         >
-          <h3 className="flex items-center gap-2 text-[10.5px] font-bold tracking-[0.12em] text-ink-muted uppercase">
+          <h3 className="flex items-center gap-2 text-[11px] font-bold tracking-[0.12em] text-ink-muted uppercase">
+            {g.point ? (
+              <span
+                aria-hidden
+                className={cn(
+                  'size-2 shrink-0 rounded-full',
+                  g.point === 'faite' ? 'bg-success' : 'bg-danger',
+                )}
+              />
+            ) : null}
             {g.titre}
             <span className="tabular-nums">{g.cartes.length}</span>
           </h3>
@@ -279,8 +347,8 @@ function Grille({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Un agent, en une carte : son nom, son poste, la précision s'il y en a
- * une, et où en est sa fiche ; en haut à droite, le point de son
+ * Un agent, en une carte : ses initiales, son nom, son poste, la précision
+ * s'il y en a une, et où en est sa fiche ; en haut à droite, le point de son
  * auto-évaluation. Avec `href`, la carte s'ouvre.
  */
 function CarteAgent({
@@ -298,22 +366,19 @@ function CarteAgent({
         aria-label={auto}
         title={auto}
         className={cn(
-          'absolute top-4.5 right-4 size-2.5 rounded-full',
+          'absolute top-5 right-4 size-2.5 rounded-full',
           autoFaite ? 'bg-success' : 'bg-danger',
         )}
       />
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12.5px] font-bold text-primary uppercase">
-        {a.prenom.charAt(0)}
-        {a.nom.charAt(0)}
-      </span>
+      <Initiales prenom={a.prenom} nom={a.nom} taille="carte" />
       <span className="min-w-0 flex-1">
         {/* Le nom s'arrête avant le point. */}
-        <span className="block truncate pr-4 text-[14px] leading-tight font-bold text-ink-strong">
+        <span className="block truncate pr-4 text-[14.5px] leading-tight font-bold text-ink-strong">
           {a.prenom} {a.nom}
         </span>
         {/* Le poste seul, sans le matricule, sur deux lignes au plus (ADR-0225). */}
         {a.poste ? (
-          <span className="mt-1 line-clamp-2 text-[12px] leading-snug text-ink-muted">
+          <span className="mt-1 line-clamp-2 text-[12.5px] leading-snug text-ink-muted">
             {a.poste}
           </span>
         ) : null}
@@ -321,7 +386,7 @@ function CarteAgent({
           <span className="mt-1 block truncate text-[12px] text-ink-muted">{precision}</span>
         ) : null}
         {statut ? (
-          <Badge tone={statut.ton} size="sm" className="mt-2.5">
+          <Badge tone={statut.ton} size="sm" className="mt-3">
             {statut.libelle}
           </Badge>
         ) : null}
@@ -330,20 +395,20 @@ function CarteAgent({
       {href ? (
         <Icon
           name="chevron_right"
-          size={16}
-          className="shrink-0 self-center text-ink-muted/50 transition-transform duration-200 group-hover:translate-x-0.5"
+          size={18}
+          className="shrink-0 self-center text-ink-muted/50 transition-[color,transform] duration-200 group-hover:translate-x-0.5 group-hover:text-primary"
         />
       ) : null}
     </>
   );
   const forme =
-    'relative flex w-full items-start gap-3 rounded-bloc border border-card-line bg-surface px-4 py-3.5 text-left';
+    'relative flex w-full items-start gap-3.5 rounded-bloc border border-card-line bg-surface p-4 text-left shadow-xs';
   return href ? (
     <Link
       href={href}
       className={cn(
         forme,
-        'group transition-all duration-200 hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
+        'group transition-all duration-200 hover:-translate-y-0.5 hover:border-card-line-hover hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none',
       )}
     >
       {contenu}
@@ -356,13 +421,16 @@ function CarteAgent({
 /** La page en attendant ses données : les mêmes blocs, à leur taille. */
 function Squelette() {
   return (
-    <div className="flex flex-col gap-4">
-      <Skeleton className="mb-4 h-[158px] w-full rounded-bloc" />
-      <Skeleton className="mb-4 h-[86px] w-full rounded-bloc" />
+    <div className="flex flex-col gap-8 sm:gap-10">
+      <Skeleton className="h-[236px] w-full rounded-barre" />
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-7 w-full max-w-80 rounded-controle" />
+        <Skeleton className="h-[264px] w-full rounded-bloc" />
+      </div>
       <Grille>
-        <Skeleton className="h-[118px] w-full rounded-bloc" />
-        <Skeleton className="h-[118px] w-full rounded-bloc" />
-        <Skeleton className="h-[118px] w-full rounded-bloc" />
+        <Skeleton className="h-[112px] w-full rounded-bloc" />
+        <Skeleton className="h-[112px] w-full rounded-bloc" />
+        <Skeleton className="h-[112px] w-full rounded-bloc" />
       </Grille>
     </div>
   );

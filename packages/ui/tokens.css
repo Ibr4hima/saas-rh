@@ -142,6 +142,10 @@
      Il portait le bandeau de tête, retiré (ADR-0115). */
   --tg-hero: #004f91;
   --tg-hero-ink: #ffffff;
+  /* Le bandeau de l'accueil de la campagne (ADR-0227) : le bleu de la
+     charte, qui fonce vers le bas à droite, comme sur la page de garde. */
+  --tg-bandeau: #004f91;
+  --tg-bandeau-fin: #003a6c;
 
   /* Le menu se pose à même le fond de la page, sans colonne blanche
      (ADR-0115). Une rangée survolée y prend un voile d'encre, qui fonce le
@@ -188,6 +192,9 @@
   --tg-font-sans:
     'Google Sans', -apple-system, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --tg-font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  /* Anton, la police des titres de la charte de l'APIX : des capitales
+     serrées, pour les titres de section de l'accueil de la campagne (ADR-0227). */
+  --tg-font-titre: 'Anton', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif;
   --tg-text-xs: 0.75rem;
   --tg-text-sm: 0.875rem;
   --tg-text-base: 1rem;
@@ -287,6 +294,10 @@
     --tg-card-line-hover: rgb(133 185 236 / 0.35);
     --tg-hover: #1e2839;
     --tg-hero: #16213a;
+    /* La nuit, le bandeau reste bleu, un cran plus sombre : il se détache
+       encore du fond sans éblouir. */
+    --tg-bandeau: #0e3c6b;
+    --tg-bandeau-fin: #0a2a4c;
     --tg-menu-survol: rgb(237 241 247 / 0.05);
     /* La nuit, le logo passe au blanc pur : ses encres foncées se perdraient
        dans le fond. */
@@ -387,6 +398,8 @@
   --tg-card-line-hover: rgb(133 185 236 / 0.35);
   --tg-hover: #1e2839;
   --tg-hero: #16213a;
+  --tg-bandeau: #0e3c6b;
+  --tg-bandeau-fin: #0a2a4c;
   --tg-menu-survol: rgb(237 241 247 / 0.05);
   --tg-logo-coquille: brightness(0) invert(1);
 
