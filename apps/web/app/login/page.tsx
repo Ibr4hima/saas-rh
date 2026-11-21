@@ -23,9 +23,9 @@ const DOMAINE = `@${DOMAINE_COURRIEL_PRO}`;
 
 /**
  * Seule la partie avant « @ » se saisit, le domaine étant posé dans le
- * champ : une adresse complète de l'APIX, collée ou proposée par le
- * navigateur, y perd son domaine. Celle d'un autre domaine reste telle
- * quelle, et le serveur la refuse.
+ * champ : une adresse complète de l'APIX, collée dans le champ, y perd son
+ * domaine. Celle d'un autre domaine reste telle quelle, et le serveur la
+ * refuse.
  */
 function partieLocale(saisie: string): string {
   const arobase = saisie.indexOf('@');
@@ -123,14 +123,19 @@ export default function ConnexionPage() {
           />
         </ChampMarque>
 
+        {/* Pas de propositions ici non plus : ni les adresses déjà saisies
+            sur ce poste, ni celles des fiches du navigateur (ADR-0230). */}
         <ChampMarque id="email" label="Email professionnel" icone="mail">
           <SaisieMarque
             id="email"
             type="text"
             inputMode="email"
-            autoComplete="email"
+            autoComplete="off"
+            autoCorrect="off"
             autoCapitalize="none"
             spellCheck={false}
+            data-1p-ignore
+            data-lpignore="true"
             maxLength={254}
             aria-describedby="email-domaine"
             className="pr-24"

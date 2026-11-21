@@ -234,4 +234,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0226](0226-auto-evaluation-faite-ou-non.md)          | L'auto-évaluation faite ou non faite, un point vert ou rouge sur les cartes             | acceptée                                    |
 | [0227](0227-accueil-a-la-charte.md)                   | L'accueil de la campagne à la charte de l'APIX : bandeau, titres en Anton, tuiles       | acceptée, révisée par 0228                  |
 | [0228](0228-bandeau-droit.md)                         | Le bandeau de l'accueil, droit, souligné d'un filet orange                              | acceptée, révisée par 0229                  |
-| [0229](0229-pied-droit-et-nom-en-capitales.md)        | Le pied droit des écrans de la charte, et le nom de famille en capitales sans accents   | acceptée                                    |
+| [0229](0229-pied-droit-et-nom-en-capitales.md)        | Le pied droit des écrans de la charte, et le nom de famille en capitales sans accents   | acceptée, révisée par 0230                  |
+| [0230](0230-email-sans-propositions.md)               | L'adresse professionnelle de la connexion, sans les propositions du navigateur          | acceptée                                    |
