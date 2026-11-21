@@ -17,15 +17,20 @@ import { MenuCompte } from '../menu-compte';
 
    Ni menu ni espace : la plateforme ne montre que l'évaluation. En haut,
    posée sur le fond comme celle de la plateforme, une barre avec le logo,
-   « Évaluation annuelle 2026 » en grand, à la taille du salut des accueils,
+   « Évaluation annuelle 2026 » en grand, en Anton et en capitales,
    la date du jour et le menu du compte (le thème, la sortie). Sur
    téléphone, le titre descend en tête de la page. Dessous, la page,
    plafonnée à la largeur des pages de la plateforme, la barre alignée sur
    elle.
    ──────────────────────────────────────────────────────────────── */
 
-/** Le titre de la campagne, à la taille du salut des accueils de la plateforme. */
-const TITRE = 'leading-tight font-extrabold tracking-[-0.02em] text-ink-strong';
+/**
+ * Le titre de la campagne, en Anton et en capitales, comme les titres de la
+ * charte et ceux des sections de l'accueil (ADR-0231). Anton est serrée : un
+ * cran plus grand que le salut des accueils de la plateforme, pour la même
+ * présence.
+ */
+const TITRE = 'font-titre leading-[1.1] tracking-[0.015em] text-ink-strong uppercase';
 
 export function CoqueDeLaCampagne({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -67,7 +72,7 @@ export function CoqueDeLaCampagne({ children }: { children: React.ReactNode }) {
           >
             <BrandMark variant="barre" />
             <span aria-hidden className="hidden h-8 w-px shrink-0 bg-line sm:block" />
-            <span className={cn(TITRE, 'hidden truncate text-[22px] sm:block lg:text-[25px]')}>
+            <span className={cn(TITRE, 'hidden truncate text-[26px] sm:block lg:text-[30px]')}>
               {titre}
             </span>
           </Link>
@@ -81,7 +86,7 @@ export function CoqueDeLaCampagne({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="mx-auto flex w-full max-w-page flex-1 flex-col px-4 pt-2 pb-16 sm:px-6 sm:pt-4 sm:pb-12">
-        <p className={cn(TITRE, 'mb-4 text-[22px] sm:hidden')}>{titre}</p>
+        <p className={cn(TITRE, 'mb-4 text-[26px] sm:hidden')}>{titre}</p>
         {me.data ? children : <Skeleton className="h-64 w-full rounded-bloc" />}
       </main>
     </div>
