@@ -94,9 +94,10 @@ export function CoqueDeLaCampagne({ children }: { children: React.ReactNode }) {
 
 /**
  * La date du jour, à gauche du compte, comme dans la barre de la plateforme,
- * mais sans le calendrier des jours fériés derrière elle : en campagne, rien
+ * dans le même cadre : son filet, son fond, ses coins, sa hauteur (ADR-0243).
+ * Mais sans le calendrier des jours fériés derrière elle : en campagne, rien
  * d'autre que l'évaluation ne s'ouvre, et la date se lit sans se cliquer
- * (ADR-0219). Sur un téléphone, en court.
+ * (ADR-0219) ; le survol ne la change donc pas. Sur un téléphone, en court.
  */
 function DateDuJour() {
   const jour = new Date();
@@ -106,9 +107,9 @@ function DateDuJour() {
   return (
     <time
       dateTime={`${jour.getFullYear()}-${deux(jour.getMonth() + 1)}-${deux(jour.getDate())}`}
-      className="flex items-center gap-2 text-[12.5px] font-semibold whitespace-nowrap text-ink"
+      className="flex h-9 shrink-0 items-center gap-2 rounded-controle border border-card-line bg-surface px-3 text-[12.5px] font-semibold whitespace-nowrap text-ink shadow-bouton-borde"
     >
-      <Icon name="calendar_month" size={18} className="text-ink-muted" />
+      <Icon name="calendar_month" size={18} />
       <span className="sm:hidden">
         {enLettres({ day: 'numeric', month: 'short', year: 'numeric' })}
       </span>
