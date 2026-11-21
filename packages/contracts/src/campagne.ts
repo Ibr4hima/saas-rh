@@ -336,10 +336,8 @@ export type EcritureDesCommentaires = z.infer<typeof ecritureDesCommentairesSche
 
 /** Où en est la fiche d'un agent, pour la DCH (ADR-0221). */
 export type EtapeDeLaFiche =
-  /** L'auto-évaluation n'est pas commencée. */
-  | 'auto_a_faire'
-  /** L'auto-évaluation est commencée, pas transmise. */
-  | 'auto_en_cours'
+  /** L'auto-évaluation n'est pas faite : pas encore transmise au N+1, brouillon ou pas (ADR-0226). */
+  | 'auto_non_faite'
   /** Le N+1 l'évalue, ou la reprend après un renvoi de l'agent. */
   | 'chez_le_n1'
   /** Transmise à l'agent, qui la valide ou la renvoie. */

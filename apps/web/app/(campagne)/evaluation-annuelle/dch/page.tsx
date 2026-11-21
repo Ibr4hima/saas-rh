@@ -40,9 +40,9 @@ import { CLE_CAMPAGNE, ficheDeLaDCH } from '../../../../lib/campagne';
    entier. La page demande l'habilitation « Tableau de bord ».
    ──────────────────────────────────────────────────────────────── */
 
+/** L'auto-évaluation n'a que deux états : faite, ou non faite, en rouge (ADR-0226). */
 const ETAPES: Record<EtapeDeLaFiche, { libelle: string; ton: BadgeTone }> = {
-  auto_a_faire: { libelle: 'Auto-évaluation non commencée', ton: 'gris' },
-  auto_en_cours: { libelle: 'Auto-évaluation en cours', ton: 'bleu' },
+  auto_non_faite: { libelle: 'Auto-évaluation non faite', ton: 'rouge' },
   chez_le_n1: { libelle: 'Chez le N+1', ton: 'bleu' },
   chez_l_agent: { libelle: 'Chez l’agent', ton: 'teal' },
   chez_le_n2: { libelle: 'Chez le N+2', ton: 'teal' },
@@ -108,7 +108,7 @@ export default function SuiviDeLaDCHPage() {
               <Repere label="Agents à évaluer" valeur={String(fiches.length)} />
               <Repere
                 label="Auto-évaluations faites"
-                valeur={String(fiches.length - compte('auto_a_faire', 'auto_en_cours'))}
+                valeur={String(fiches.length - compte('auto_non_faite'))}
               />
               <Repere
                 label="Validées par l’agent"

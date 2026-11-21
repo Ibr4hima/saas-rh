@@ -163,17 +163,17 @@ export interface Statut {
 export const jourCourt = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 
-/** L'auto-évaluation d'un agent, vue par son évaluateur. */
+/**
+ * L'auto-évaluation d'un agent, vue par son N+1 ou son N+2 : faite, en vert,
+ * ou non faite, en rouge. Un brouillon commencé n'est pas une auto-évaluation
+ * faite (ADR-0226).
+ */
 export function statutDeLAgent(auto: AutoDeLAgent): Statut {
-  if (auto.etat === 'transmise') {
-    return {
-      libelle: auto.transmiseLe ? `Faite le ${jourCourt(auto.transmiseLe)}` : 'Faite',
-      ton: 'vert',
-    };
-  }
-  return auto.etat === 'en_cours'
-    ? { libelle: 'En cours', ton: 'bleu' }
-    : { libelle: 'Non commencée', ton: 'gris' };
+  if (auto.etat !== 'transmise') return { libelle: 'Non faite', ton: 'rouge' };
+  return {
+    libelle: auto.transmiseLe ? `Faite le ${jourCourt(auto.transmiseLe)}` : 'Faite',
+    ton: 'vert',
+  };
 }
 
 /**
@@ -256,9 +256,10 @@ export function statutDesCommentaires(
 /**
  * Un agent dont la personne connectée est le N+2, sur sa carte : une fois
  * sa fiche validée, ce qui attend le N+2, en orange ; avant, l'étape où en
- * est sa fiche.
+ * est sa fiche. Rien tant que l'auto-évaluation n'est pas faite : le point
+ * de la carte le dit (ADR-0226).
  */
-export function statutPourLeN2(a: AgentACommenter): Statut {
+export function statutPourLeN2(a: AgentACommenter): Statut | null {
   switch (a.commentaires) {
     case 'transmis':
       return { libelle: 'Commentaires transmis', ton: 'vert' };
@@ -269,8 +270,7 @@ export function statutPourLeN2(a: AgentACommenter): Statut {
     case 'a_commenter':
       return { libelle: 'À commenter', ton: 'orange' };
     case 'en_attente':
-      if (a.auto.etat !== 'transmise')
-        return { libelle: 'Auto-évaluation en attente', ton: 'gris' };
+      if (a.auto.etat !== 'transmise') return null;
       return a.evaluation === 'transmise'
         ? { libelle: 'Chez l’agent', ton: 'teal' }
         : { libelle: 'Chez le N+1', ton: 'bleu' };

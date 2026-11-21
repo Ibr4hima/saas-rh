@@ -888,11 +888,12 @@ describe('la transmission à la DCH (ADR-0221)', () => {
     // L'habilitation « Tableau de bord », confiée par la DCH, ou l'administration.
     const dch = { ...session('fatou'), capacites: ['pilotage'] } as SessionUser;
     const suivi = await campagne.suiviDeLaDCH(dch);
+    // Le brouillon de Fatou Sall ne compte pas : son auto-évaluation n'est pas faite.
     expect(suivi.fiches.map((f) => [f.nom, f.etape])).toEqual([
-      ['Diop', 'auto_a_faire'],
+      ['Diop', 'auto_non_faite'],
       ['Fall', 'transmise'],
       ['Ndiaye', 'transmise'],
-      ['Sall', 'auto_en_cours'],
+      ['Sall', 'auto_non_faite'],
       ['Sarr', 'transmise'],
     ]);
     expect(suivi.fiches[2]).toMatchObject({

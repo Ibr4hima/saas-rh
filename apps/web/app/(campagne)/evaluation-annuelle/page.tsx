@@ -13,7 +13,6 @@ import {
   BoutonValiderMonEvaluation,
   CarteDEtape,
   IdentiteDeLaCampagne,
-  statutDeLAgent,
   statutDeLEvaluation,
   statutPourLeN2,
   type Statut,
@@ -44,7 +43,9 @@ import {
    Ensuite, si la personne évalue des agents, son équipe : une carte par
    agent, en deux groupes. Une auto-évaluation faite rend la carte
    cliquable : le N+1 ouvre alors l'évaluation de l'agent, et la carte dit
-   où elle en est (ADR-0216). Enfin, si la personne est le N+2 d'agents,
+   où elle en est (ADR-0216). En haut à droite de chaque carte, un point
+   dit l'auto-évaluation : vert, faite ; rouge, non faite (ADR-0226).
+   Enfin, si la personne est le N+2 d'agents,
    les équipes de ses N+1 : une fiche validée par l'agent s'ouvre pour ses
    commentaires (ADR-0218).
    Avec l'habilitation « Tableau de bord », une carte de plus, sous la
@@ -143,7 +144,10 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
     const faite = a.auto.etat === 'transmise';
     return {
       agent: a,
-      statut: faite ? statutDeLEvaluation(a) : statutDeLAgent(a.auto),
+      // L'auto-évaluation est faite ou ne l'est pas : le point le dit. Le
+      // badge, une fois faite, suit l'évaluation du N+1 (ADR-0226).
+      autoFaite: faite,
+      statut: faite ? statutDeLEvaluation(a) : null,
       href: faite ? `${ACCUEIL_DE_LA_CAMPAGNE}/equipe/${a.employeeId}` : undefined,
     };
   };
@@ -157,7 +161,7 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
           cartes: equipe.filter((a) => a.auto.etat === 'transmise').map(carte),
         },
         {
-          titre: 'Auto-évaluation en attente',
+          titre: 'Auto-évaluation non faite',
           cartes: equipe.filter((a) => a.auto.etat !== 'transmise').map(carte),
         },
       ]}
@@ -175,6 +179,7 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
 function ACommenter({ agents }: { agents: AgentACommenter[] }) {
   const carte = (a: AgentACommenter): CarteDUnAgent => ({
     agent: a,
+    autoFaite: a.auto.etat === 'transmise',
     statut: statutPourLeN2(a),
     precision: `N+1 : ${a.n1.prenom} ${a.n1.nom}`,
     href:
@@ -210,7 +215,10 @@ function periodeEnBref(periode: PeriodeDeLaCampagne | null): string {
 /** Un agent sur sa carte : où en est sa fiche, et la page qu'elle ouvre s'il y a lieu. */
 interface CarteDUnAgent {
   agent: Pick<AgentDeLEquipe, 'employeeId' | 'prenom' | 'nom' | 'poste'>;
-  statut: Statut;
+  /** L'auto-évaluation de l'agent : faite, ou pas. */
+  autoFaite: boolean;
+  /** Où en est la suite de sa fiche ; `null` tant que l'auto-évaluation n'est pas faite. */
+  statut: Statut | null;
   /** Une ligne de plus, sous le poste : son N+1. */
   precision?: string;
   href?: string;
@@ -272,17 +280,35 @@ function Grille({ children }: { children: React.ReactNode }) {
 
 /**
  * Un agent, en une carte : son nom, son poste, la précision s'il y en a
- * une, et où en est sa fiche. Avec `href`, la carte s'ouvre.
+ * une, et où en est sa fiche ; en haut à droite, le point de son
+ * auto-évaluation. Avec `href`, la carte s'ouvre.
  */
-function CarteAgent({ carte: { agent: a, statut, precision, href } }: { carte: CarteDUnAgent }) {
+function CarteAgent({
+  carte: { agent: a, autoFaite, statut, precision, href },
+}: {
+  carte: CarteDUnAgent;
+}) {
+  const auto = autoFaite ? 'Auto-évaluation faite' : 'Auto-évaluation non faite';
   const contenu = (
     <>
+      {/* L'auto-évaluation en un point, en haut à droite, à hauteur du nom :
+          vert, faite ; rouge, non faite. */}
+      <span
+        role="img"
+        aria-label={auto}
+        title={auto}
+        className={cn(
+          'absolute top-4.5 right-4 size-2.5 rounded-full',
+          autoFaite ? 'bg-success' : 'bg-danger',
+        )}
+      />
       <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12.5px] font-bold text-primary uppercase">
         {a.prenom.charAt(0)}
         {a.nom.charAt(0)}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[14px] leading-tight font-bold text-ink-strong">
+        {/* Le nom s'arrête avant le point. */}
+        <span className="block truncate pr-4 text-[14px] leading-tight font-bold text-ink-strong">
           {a.prenom} {a.nom}
         </span>
         {/* Le poste seul, sans le matricule, sur deux lignes au plus (ADR-0225). */}
@@ -294,21 +320,24 @@ function CarteAgent({ carte: { agent: a, statut, precision, href } }: { carte: C
         {precision ? (
           <span className="mt-1 block truncate text-[12px] text-ink-muted">{precision}</span>
         ) : null}
-        <Badge tone={statut.ton} size="sm" className="mt-2.5">
-          {statut.libelle}
-        </Badge>
+        {statut ? (
+          <Badge tone={statut.ton} size="sm" className="mt-2.5">
+            {statut.libelle}
+          </Badge>
+        ) : null}
       </span>
+      {/* La flèche descend au milieu : le coin haut appartient au point. */}
       {href ? (
         <Icon
           name="chevron_right"
           size={16}
-          className="mt-0.5 shrink-0 text-ink-muted/50 transition-transform duration-200 group-hover:translate-x-0.5"
+          className="shrink-0 self-center text-ink-muted/50 transition-transform duration-200 group-hover:translate-x-0.5"
         />
       ) : null}
     </>
   );
   const forme =
-    'flex w-full items-start gap-3 rounded-bloc border border-card-line bg-surface px-4 py-3.5 text-left';
+    'relative flex w-full items-start gap-3 rounded-bloc border border-card-line bg-surface px-4 py-3.5 text-left';
   return href ? (
     <Link
       href={href}

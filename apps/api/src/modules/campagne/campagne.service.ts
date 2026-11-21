@@ -1338,7 +1338,6 @@ async function suiviDans(tx: Tx, user: SessionUser): Promise<SuiviDeLaDCH> {
     matricule: string;
     poste: string | null;
     direction: string | null;
-    commencee: boolean;
     auto_transmise: boolean;
     evaluation_commencee: boolean;
     evaluation_transmise: boolean;
@@ -1355,7 +1354,7 @@ async function suiviDans(tx: Tx, user: SessionUser): Promise<SuiviDeLaDCH> {
     SELECT e.id, p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
            a.position_title AS poste,
            ${directionDeLUnite(sql`a.org_unit_id`, 'short_name')} AS direction,
-           f.auto IS NOT NULL AS commencee, f.auto_transmise_le IS NOT NULL AS auto_transmise,
+           f.auto_transmise_le IS NOT NULL AS auto_transmise,
            f.evaluation IS NOT NULL AS evaluation_commencee,
            f.evaluation_transmise_le IS NOT NULL AS evaluation_transmise,
            f.validee_le IS NOT NULL AS evaluation_validee,
@@ -1394,9 +1393,11 @@ async function suiviDans(tx: Tx, user: SessionUser): Promise<SuiviDeLaDCH> {
   };
 }
 
-/** L'étape d'une fiche, pour le suivi de la DCH. */
+/**
+ * L'étape d'une fiche, pour le suivi de la DCH. L'auto-évaluation est faite
+ * ou ne l'est pas : un brouillon ne compte pas (ADR-0226).
+ */
 function etapeDe(r: {
-  commencee: boolean;
   auto_transmise: boolean;
   evaluation_commencee: boolean;
   evaluation_transmise: boolean;
@@ -1408,7 +1409,7 @@ function etapeDe(r: {
   transmise_le: string | null;
 }): EtapeDeLaFiche {
   if (r.transmise_le) return 'transmise';
-  if (!r.auto_transmise) return r.commencee ? 'auto_en_cours' : 'auto_a_faire';
+  if (!r.auto_transmise) return 'auto_non_faite';
   const evaluation = etatDeLEvaluation({
     commencee: r.evaluation_commencee,
     transmise: r.evaluation_transmise,
