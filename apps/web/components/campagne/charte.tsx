@@ -301,7 +301,8 @@ function TempsDuBandeau({
  * connexion. À côté, s'il y a lieu, le nombre de ce qu'elle réunit ; devant,
  * une icône (le cadenas de la partie réservée). À droite, ce qui la
  * complète : qui la remplit, une recherche, un filtre. Dessous, une phrase
- * qui l'introduit.
+ * qui l'introduit. À 22 px, 20 sur un téléphone, sous le titre de la barre
+ * (ADR-0240).
  */
 export function TitreDeSection({
   id,
@@ -324,9 +325,9 @@ export function TitreDeSection({
     <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-x-6">
       <h2
         id={id}
-        className="flex flex-wrap items-center gap-x-3 gap-y-1 font-titre text-[22px] leading-[1.15] tracking-[0.015em] text-primary uppercase sm:col-start-1 sm:row-start-1 sm:text-[25px]"
+        className="flex flex-wrap items-center gap-x-3 gap-y-1 font-titre text-[20px] leading-[1.15] tracking-[0.015em] text-primary uppercase sm:col-start-1 sm:row-start-1 sm:text-[22px]"
       >
-        {icone ? <Icon name={icone} size={22} className="-mr-1 self-center" /> : null}
+        {icone ? <Icon name={icone} size={20} className="-mr-1 self-center" /> : null}
         <span>{children}</span>
         {nombre !== undefined ? (
           <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary-soft px-2 font-sans text-[12px] font-bold tracking-normal text-primary tabular-nums">
