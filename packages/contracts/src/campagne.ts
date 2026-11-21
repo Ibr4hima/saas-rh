@@ -10,6 +10,7 @@ import {
   type PartieReservee,
   type PersonnelDeLaFiche,
 } from './entretien-annuel';
+import type { Gender } from './employees';
 
 /* ────────────────────────────────────────────────────────────────
    La campagne d'évaluation annuelle (ADR-0211) : ce que l'accueil montre
@@ -120,6 +121,8 @@ export interface PersonneDeLaCampagne {
   prenom: string;
   nom: string;
   poste: string | null;
+  /** Le sexe inscrit au dossier, qui accorde le libellé du repère ; `null` : non renseigné (ADR-0224). */
+  genre?: Gender | null;
 }
 
 /** La personne connectée, telle que la fiche de son dossier la présente. */
@@ -136,6 +139,8 @@ export interface AgentDeLaCampagne {
   directionAbregee: string | null;
   departement: string | null;
   service: string | null;
+  /** L'adresse professionnelle (ADR-0224). */
+  email: string | null;
   /** L'évaluateur de la campagne : le N+1. */
   evaluateur: PersonneDeLaCampagne | null;
   /** `null` : cette personne n'est pas évaluée (le sommet de l'organigramme, un stage). */

@@ -74,6 +74,7 @@ import {
   type Devenir,
 } from './devenir-de-l-ancien';
 import { libelleResponsable, n1DOffice, useResponsablesPossibles } from '../lib/responsables';
+import { Courriel } from './courriel';
 import { LoadFailure } from './load-failure';
 import { Page } from './gabarit';
 import { RetourDeLEcran } from './entete';
@@ -161,27 +162,6 @@ const dateLongue = (iso: string) =>
       year: 'numeric',
     }),
   );
-
-/** Une adresse qui ne tient pas sur la ligne se coupe après l'arobase, pas au milieu d'un mot. */
-function Courriel({ adresse }: { adresse: string }) {
-  const arobase = adresse.indexOf('@');
-  return (
-    <a
-      href={`mailto:${adresse}`}
-      className="break-words transition-colors hover:text-primary hover:underline"
-    >
-      {arobase < 0 ? (
-        adresse
-      ) : (
-        <>
-          {adresse.slice(0, arobase + 1)}
-          <wbr />
-          {adresse.slice(arobase + 1)}
-        </>
-      )}
-    </a>
-  );
-}
 
 /**
  * La fiche d'un agent. `soi` : l'agent la lit dans son espace personnel —

@@ -877,6 +877,7 @@ async function ficheDe(tx: Tx, id: string, annee: number): Promise<AgentDeLaCamp
     nom: string;
     matricule: string;
     personnel: PersonnelDeLaFiche | null;
+    email: string | null;
     poste: string | null;
     unite_id: string | null;
     direction_abregee: string | null;
@@ -886,13 +887,16 @@ async function ficheDe(tx: Tx, id: string, annee: number): Promise<AgentDeLaCamp
     ev_prenom: string | null;
     ev_nom: string | null;
     ev_poste: string | null;
+    ev_genre: string | null;
   }>(sql`
     SELECT p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
-           e.personnel, a.position_title AS poste, a.org_unit_id AS unite_id,
+           e.personnel, e.work_email AS email, a.position_title AS poste,
+           a.org_unit_id AS unite_id,
            ${directionDeLUnite(sql`a.org_unit_id`, 'short_name')} AS direction_abregee,
            ${evaluable(sql`e`)} AS evalue,
            f.auto IS NOT NULL AS commencee, f.auto_transmise_le::date::text AS transmise_le,
-           pv.given_name AS ev_prenom, pv.family_name AS ev_nom, av.position_title AS ev_poste
+           pv.given_name AS ev_prenom, pv.family_name AS ev_nom, av.position_title AS ev_poste,
+           pv.gender AS ev_genre
       FROM employees e
       JOIN persons p ON p.id = e.person_id
       LEFT JOIN assignments a ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
@@ -912,7 +916,15 @@ async function ficheDe(tx: Tx, id: string, annee: number): Promise<AgentDeLaCamp
     personnel: r.personnel,
     ...(await unitesDe(tx, r.unite_id)),
     directionAbregee: r.direction_abregee,
-    evaluateur: r.ev_nom ? { prenom: r.ev_prenom!, nom: r.ev_nom, poste: r.ev_poste } : null,
+    email: r.email,
+    evaluateur: r.ev_nom
+      ? {
+          prenom: r.ev_prenom!,
+          nom: r.ev_nom,
+          poste: r.ev_poste,
+          genre: r.ev_genre === 'female' || r.ev_genre === 'male' ? r.ev_genre : null,
+        }
+      : null,
     auto: r.evalue ? autoDe(r.commencee, r.transmise_le) : null,
   };
 }

@@ -18,7 +18,12 @@ import {
   BarreDeTransmission,
   useEnregistrementAuto,
 } from '../../../../components/campagne/enregistrement';
-import { AutoFaite, periodeDeLAuto, RetourALAccueil } from '../../../../components/campagne/fiche';
+import {
+  AutoFaite,
+  periodeDeLAuto,
+  RetourALAccueil,
+  superieurHierarchique,
+} from '../../../../components/campagne/fiche';
 import { EnTete, Repere } from '../../../../components/fiche';
 import { Confirmation, messageDe } from '../../../../components/grille-evaluation';
 import { Icon } from '../../../../components/icons';
@@ -128,9 +133,10 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
         // téléphone, où trois serraient la date limite jusqu'à la couper.
         reperes={
           <>
-            <Repere label="N+1" valeur={n1 ? `${n1.prenom} ${n1.nom}` : null}>
-              {n1?.poste}
-            </Repere>
+            <Repere
+              label={superieurHierarchique(n1)}
+              valeur={n1 ? `${n1.prenom} ${n1.nom}` : null}
+            />
             <Repere label="Date limite" valeur={fin ? dateEnLettres(fin) : null} />
             <Repere label="Objectifs" valeur={String(vue.objectifs.length)} />
             {transmise ? (

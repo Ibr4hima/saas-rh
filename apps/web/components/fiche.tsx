@@ -152,6 +152,7 @@ export function Repere({
   valeur,
   titre,
   ton,
+  entier = false,
   children,
 }: {
   label: string;
@@ -161,6 +162,8 @@ export function Repere({
   titre?: string;
   /** La valeur qui attend un geste se dit en orange — la couleur de l'attente. */
   ton?: 'attente' | 'danger';
+  /** La valeur entière, sur autant de lignes qu'il faut : un nom donné complet à dessein. */
+  entier?: boolean;
   /** Une seconde ligne, plus discrète — la date d'embauche sous l'ancienneté. */
   children?: React.ReactNode;
 }) {
@@ -170,7 +173,8 @@ export function Repere({
       <dt className="text-[9.5px] font-bold tracking-[0.11em] text-ink-muted uppercase">{label}</dt>
       <dd
         className={cn(
-          'mt-1.5 line-clamp-2 text-[13.5px] leading-snug font-semibold break-words',
+          'mt-1.5 text-[13.5px] leading-snug font-semibold break-words',
+          !entier && 'line-clamp-2',
           vide
             ? 'text-ink-muted/45'
             : ton === 'attente'

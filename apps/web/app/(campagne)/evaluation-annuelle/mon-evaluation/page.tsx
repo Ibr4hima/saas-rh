@@ -15,6 +15,7 @@ import {
   EvaluationValidee,
   MotDeRenvoi,
   RetourALAccueil,
+  superieurHierarchique,
 } from '../../../../components/campagne/fiche';
 import { EnTete, Repere } from '../../../../components/fiche';
 import { Confirmation, messageDe, ZoneDeTexte } from '../../../../components/grille-evaluation';
@@ -115,9 +116,7 @@ function Evaluation({ vue: v }: { vue: MonEvaluation }) {
         sousTitre={`${TITRE_DE_LA_FICHE} ${v.annee}`}
         reperes={
           <>
-            <Repere label="N+1" valeur={nomDuN1}>
-              {n1?.poste}
-            </Repere>
+            <Repere label={superieurHierarchique(n1)} valeur={nomDuN1} />
             <Repere label="Reçue le" valeur={v.transmiseLe ? dateEnLettres(v.transmiseLe) : null} />
             <Repere label="Objectifs" valeur={String(v.objectifs.length)} />
             {v.etat === 'renvoyee' ? (

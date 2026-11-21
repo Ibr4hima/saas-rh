@@ -218,6 +218,14 @@ afterAll(async () => {
 
 describe('la fiche de qui se connecte', () => {
   it('comme son dossier : poste, direction, département, service, N+1, statut', async () => {
+    // L'adresse professionnelle de l'agent, et le sexe inscrit au dossier du N+1 (ADR-0224).
+    await raw(`UPDATE employees SET work_email = 'moussa.sarr@camp.test' WHERE id = $1`, [
+      agents.moussa,
+    ]);
+    await raw(
+      `UPDATE persons SET gender = 'female' WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [agents.awa],
+    );
     const { annee, moi, equipe } = await campagne.accueil(session('moussa'));
     expect(annee).toBe(ANNEE);
     expect(moi).toEqual({
@@ -231,7 +239,13 @@ describe('la fiche de qui se connecte', () => {
       directionAbregee: 'DCH',
       departement: 'Département Développement du personnel',
       service: 'Service Administration du personnel',
-      evaluateur: { prenom: 'Awa', nom: 'Diop', poste: 'Responsable du département' },
+      email: 'moussa.sarr@camp.test',
+      evaluateur: {
+        prenom: 'Awa',
+        nom: 'Diop',
+        poste: 'Responsable du département',
+        genre: 'female',
+      },
       auto: { etat: 'transmise', transmiseLe: AUJOURD_HUI },
     });
     expect(equipe).toEqual([]);
@@ -282,6 +296,7 @@ describe('l’équipe d’un N+1', () => {
       prenom: 'Awa',
       nom: 'Diop',
       poste: 'Responsable du département',
+      genre: 'female',
     });
     const dg = await campagne.accueil(session('dg'));
     expect(dg.equipe.map((a) => a.nom)).toEqual(['Diop', 'Fall']);

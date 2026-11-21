@@ -6,6 +6,7 @@ import {
   type AgentDeLaCampagne,
   type AgentACommenter,
   type AutoDeLAgent,
+  type PersonneDeLaCampagne,
   type EtatDeLaTransmission,
   type EtatDeLEvaluation,
   type EtatDesCommentaires,
@@ -14,6 +15,7 @@ import {
 } from '@teranga/contracts';
 import { Card, CardInteractive, classesDeBouton, cn, type BadgeTone } from '@teranga/ui';
 import { ACCUEIL_DE_LA_CAMPAGNE, AUTO_EVALUATION, MON_EVALUATION } from '../../lib/campagne';
+import { Courriel } from '../courriel';
 import { EnTete, Repere } from '../fiche';
 import { Icon, type IconName } from '../icons';
 import { Sceau } from '../sceau';
@@ -41,21 +43,37 @@ export function IdentiteDeLaCampagne({
   action?: React.ReactNode;
 }) {
   const n1 = a.evaluateur;
+  // Avec un département ou un service, la direction s'abrège, comme sur la
+  // fiche du dossier : « DSID » tient sur une ligne où le nom complet en
+  // prenait trois, et reste en infobulle. Sans eux, elle s'écrit en entier,
+  // sur autant de lignes qu'il faut (ADR-0224).
+  const abregee = Boolean(a.departement || a.service);
   const reperes = [
-    // L'abrégé, comme sur la fiche du dossier : « DSID » tient sur une ligne
-    // où le nom complet en prenait trois. Le nom complet reste en infobulle.
     <Repere
       key="direction"
       label="Direction"
-      valeur={a.directionAbregee ?? a.direction}
-      titre={a.direction ?? undefined}
+      valeur={abregee ? (a.directionAbregee ?? a.direction) : (a.direction ?? a.directionAbregee)}
+      titre={abregee ? (a.direction ?? undefined) : undefined}
+      entier={!abregee}
     />,
     a.departement ? <Repere key="departement" label="Département" valeur={a.departement} /> : null,
     a.service ? <Repere key="service" label="Service" valeur={a.service} /> : null,
+    // Sans département ni service, l'adresse professionnelle prend leur place.
+    abregee ? null : (
+      <Repere
+        key="email"
+        label="Email professionnel"
+        titre={a.email ?? undefined}
+        valeur={a.email ? <Courriel adresse={a.email} /> : null}
+      />
+    ),
+    // Le N+1, nommé « Supérieur hiérarchique », sans son poste (ADR-0224).
     n1 || a.auto ? (
-      <Repere key="n1" label="N+1" valeur={n1 ? `${n1.prenom} ${n1.nom}` : null}>
-        {n1?.poste}
-      </Repere>
+      <Repere
+        key="n1"
+        label={superieurHierarchique(n1)}
+        valeur={n1 ? `${n1.prenom} ${n1.nom}` : null}
+      />
     ) : null,
     // En toutes lettres, comme sur la fiche : « Cadre » ou « Non-cadre » (ADR-0223).
     <Repere
@@ -124,6 +142,19 @@ export function AutoFaite({ le }: { le: string | null }) {
 /** La coche bleue d'une évaluation validée par l'agent (ADR-0217). */
 export function EvaluationValidee({ le }: { le: string | null }) {
   return <Coche texte={le ? `Évaluation validée le ${dateEnLettres(le)}` : 'Évaluation validée'} />;
+}
+
+/**
+ * « Supérieur hiérarchique », accordé au sexe inscrit au dossier du N+1 ;
+ * sans sexe inscrit, à l'écriture inclusive, comme les libellés de la
+ * situation familiale du dossier (« Veuf·ve »). Le prénom n'en dit rien.
+ */
+export function superieurHierarchique(n1: Pick<PersonneDeLaCampagne, 'genre'> | null): string {
+  return n1?.genre === 'female'
+    ? 'Supérieure hiérarchique'
+    : n1?.genre === 'male'
+      ? 'Supérieur hiérarchique'
+      : 'Supérieur·e hiérarchique';
 }
 
 /** Où en est une étape, en un badge. */
