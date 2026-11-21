@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import {
   dateEnLettres,
+  LIBELLES_DU_PERSONNEL,
   periodeDEvaluationEnLettres,
   type AgentDeLaCampagne,
   type AgentACommenter,
@@ -9,7 +10,6 @@ import {
   type EtatDeLEvaluation,
   type EtatDesCommentaires,
   type PeriodeDeLaCampagne,
-  type PersonnelDeLaFiche,
   type RenvoiDeLEvaluation,
 } from '@teranga/contracts';
 import { Card, CardInteractive, classesDeBouton, cn, type BadgeTone } from '@teranga/ui';
@@ -26,9 +26,6 @@ import { Sceau } from '../sceau';
    l'auto-évaluation ou l'évaluation du N+1, avec ce qui dit où elle en est ;
    le retour à l'accueil.
    ──────────────────────────────────────────────────────────────── */
-
-/** Le statut, en un mot. */
-const STATUTS: Record<PersonnelDeLaFiche, string> = { cadre: 'Cadre', non_cadre: 'NC' };
 
 /**
  * L'en-tête d'un agent, comme celui de son dossier : le nom, puis le
@@ -60,7 +57,12 @@ export function IdentiteDeLaCampagne({
         {n1?.poste}
       </Repere>
     ) : null,
-    <Repere key="statut" label="Statut" valeur={a.personnel ? STATUTS[a.personnel] : null} />,
+    // En toutes lettres, comme sur la fiche : « Cadre » ou « Non-cadre » (ADR-0223).
+    <Repere
+      key="statut"
+      label="Statut"
+      valeur={a.personnel ? LIBELLES_DU_PERSONNEL[a.personnel] : null}
+    />,
   ].filter(Boolean);
   return (
     <EnTete
