@@ -4,12 +4,7 @@ import { Card } from '@teranga/ui';
 import { AUTO_EVALUATION, MON_EVALUATION } from '../../lib/campagne';
 import { Icon } from '../icons';
 import { TitreDeSection } from './accueil';
-import {
-  AutoFaite,
-  EvaluationValidee,
-  periodeDeLAuto,
-  periodeDeLEvaluationDuN1,
-} from './fiche';
+import { AutoFaite, EvaluationValidee, periodeDeLAuto, periodeDeLEvaluationDuN1 } from './fiche';
 
 /* ────────────────────────────────────────────────────────────────
    La période d'évaluation annuelle, sur l'accueil de l'agent (ADR-0220) :
@@ -62,7 +57,9 @@ export function CarteDeLaPeriode({
               'Évaluez chacun de vos objectifs de l’année en cours.',
               'Exprimez vos souhaits conformément à votre projet professionnel.',
             ]}
-            lien={autoFaite ? { href: AUTO_EVALUATION, libelle: 'Relire mon auto-évaluation' } : null}
+            lien={
+              autoFaite ? { href: AUTO_EVALUATION, libelle: 'Relire mon auto-évaluation' } : null
+            }
           />
           <Temps
             numero={2}

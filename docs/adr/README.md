@@ -192,8 +192,8 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0184](0184-niveaux-de-langue-facultatifs.md)         | Les niveaux de langue d'une offre : sans « Notions », et facultatifs                    | acceptée                                    |
 | [0185](0185-certificat-a-la-charte.md)                | Le certificat d'APIX Academy à la charte de l'APIX                                      | acceptée                                    |
 | [0186](0186-courriels-a-la-charte.md)                 | Les courriels à la charte de l'APIX                                                     | acceptée                                    |
-| [0187](0187-connexion-a-la-charte.md)                 | Les écrans de connexion à la charte de l'APIX, toujours en clair                        | acceptée                                    |
-| [0188](0188-verification-a-la-charte.md)              | La vérification d'un certificat à la charte de l'APIX                                   | acceptée                                    |
+| [0187](0187-connexion-a-la-charte.md)                 | Les écrans de connexion à la charte de l'APIX, toujours en clair                        | acceptée, révisée par 0229                  |
+| [0188](0188-verification-a-la-charte.md)              | La vérification d'un certificat à la charte de l'APIX                                   | acceptée, révisée par 0229                  |
 | [0189](0189-lettre-de-demande.md)                     | La lettre de demande, jointe par l'agent, lue et reprise par qui traite la demande      | acceptée, précisée par 0190, 0191, 0193     |
 | [0190](0190-demande-figee.md)                         | Au titre d'une demande, l'identité de l'agent et la date de la demande sont figées      | acceptée, précisée par 0197                 |
 | [0191](0191-une-demande-a-la-fois.md)                 | Une demande de document se traite seule, en un écran                                    | acceptée, précisée par 0192                 |
@@ -209,7 +209,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0201](0201-cni-seule-piece-du-dossier.md)            | La pièce d'identité d'un dossier est la CNI, et seulement elle                          | acceptée, précisée par 0202                 |
 | [0202](0202-cni-rib-et-domiciliation-sur-la-fiche.md) | La fiche d'un agent : CNI et RIB en chiffres groupés, domiciliation par oui ou par non  | acceptée                                    |
 | [0203](0203-documents-en-noir-ancien-pied.md)         | Les documents de la DCH en noir, l'ancien pied de page de l'APIX remis au propre        | acceptée                                    |
-| [0204](0204-connexion-par-code.md)                    | La connexion par code : nom de famille, adresse professionnelle, code reçu par email    | acceptée, complétée par 0210                |
+| [0204](0204-connexion-par-code.md)                    | La connexion par code : nom de famille, adresse professionnelle, code reçu par email    | acceptée, complétée (0210), révisée (0229)  |
 | [0205](0205-fiche-d-entretien-annuel.md)              | La fiche d'entretien annuel d'évaluation S1/EN05 : son texte corrigé et son PDF         | acceptée, révisée : 0206, 0208, 0209        |
 | [0206](0206-fiche-a-l-en-tete-du-modele.md)           | La fiche d'entretien à l'en-tête du modèle, avec le bleu et l'orange de l'APIX          | acceptée, couleurs retouchées : 0207        |
 | [0207](0207-fiche-titre-noir-sections-en-bleu.md)     | La fiche d'entretien : titre en noir, numéros de section en bleu, sans barres en pied   | acceptée                                    |
@@ -233,4 +233,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0225](0225-en-tete-sans-matricule.md)                | L'en-tête et les cartes des agents sans le matricule, le poste seul sous le nom         | acceptée                                    |
 | [0226](0226-auto-evaluation-faite-ou-non.md)          | L'auto-évaluation faite ou non faite, un point vert ou rouge sur les cartes             | acceptée                                    |
 | [0227](0227-accueil-a-la-charte.md)                   | L'accueil de la campagne à la charte de l'APIX : bandeau, titres en Anton, tuiles       | acceptée, révisée par 0228                  |
-| [0228](0228-bandeau-droit.md)                         | Le bandeau de l'accueil, droit, souligné d'un filet orange                              | acceptée                                    |
+| [0228](0228-bandeau-droit.md)                         | Le bandeau de l'accueil, droit, souligné d'un filet orange                              | acceptée, révisée par 0229                  |
+| [0229](0229-pied-droit-et-nom-en-capitales.md)        | Le pied droit des écrans de la charte, et le nom de famille en capitales sans accents   | acceptée                                    |

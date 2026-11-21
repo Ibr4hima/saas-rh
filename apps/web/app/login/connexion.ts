@@ -17,6 +17,21 @@ export const memoire: {
 } = { nom: '', email: '', attente: null, erreur: null };
 
 /**
+ * Le nom de famille tel qu'il s'écrit dans le champ : en capitales, sans
+ * accents, « Sène » donne SENE (ADR-0229). Le serveur le compare de la même
+ * façon, espaces et traits d'union en moins : la saisie ne change rien à la
+ * reconnaissance du compte. Sa longueur ne bouge pas, le curseur reste en
+ * place.
+ */
+export function nomEnCapitales(saisie: string): string {
+  return saisie
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .normalize('NFC')
+    .toUpperCase();
+}
+
+/**
  * La page d'où l'on venait (le lien d'un courriel), si c'en est une du
  * portail : un chemin, jamais une adresse d'un autre site.
  */

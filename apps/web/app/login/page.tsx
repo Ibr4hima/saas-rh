@@ -8,7 +8,7 @@ import { BoutonMarque } from '../../components/bouton-marque';
 import { ChampMarque, EcranMarque, SaisieMarque } from '../../components/ecran-marque';
 import { api, ApiError } from '../../lib/api';
 import { useAnneeDeLaCampagne } from '../../lib/campagne';
-import { memoire, useEcranDeConnexion, versLEcran } from './connexion';
+import { memoire, nomEnCapitales, useEcranDeConnexion, versLEcran } from './connexion';
 
 /* ────────────────────────────────────────────────────────────────
    Connexion par code (ADR-0204), comme celle du vote électronique.
@@ -31,6 +31,22 @@ function partieLocale(saisie: string): string {
   const arobase = saisie.indexOf('@');
   if (arobase === -1) return saisie;
   return saisie.slice(arobase).toLowerCase() === DOMAINE ? saisie.slice(0, arobase) : saisie;
+}
+
+/**
+ * La saisie du nom passée en capitales, sans accents, le curseur laissé où
+ * il était. Le champ est corrigé sur-le-champ, curseur compris : React, qui
+ * y trouve déjà la bonne valeur, ne la réécrit pas, ce qui renverrait le
+ * curseur au bout. Rien n'attend la frappe suivante.
+ */
+function enCapitales(champ: HTMLInputElement): string {
+  const valeur = nomEnCapitales(champ.value);
+  if (valeur !== champ.value) {
+    const { selectionStart, selectionEnd } = champ;
+    champ.value = valeur;
+    champ.setSelectionRange(selectionStart, selectionEnd);
+  }
+  return valeur;
 }
 
 export default function ConnexionPage() {
@@ -79,21 +95,31 @@ export default function ConnexionPage() {
       {/* En POST : envoyé avant que la page ne soit prête, le formulaire
           n'écrit ni le nom ni l'adresse dans l'URL. */}
       <form method="post" onSubmit={onSubmit} className="mt-6 flex flex-col gap-4" noValidate>
+        {/* Le nom s'écrit en capitales, sans accents, et le navigateur n'y
+            propose rien : ni les noms déjà saisis sur ce poste, ni ceux
+            de ses fiches (ADR-0229). */}
         <ChampMarque id="nom" label="Nom de famille" icone="person">
           <SaisieMarque
             id="nom"
             type="text"
-            autoComplete="family-name"
+            autoComplete="off"
+            autoCorrect="off"
             autoCapitalize="characters"
             spellCheck={false}
+            data-1p-ignore
+            data-lpignore="true"
             maxLength={80}
             autoFocus={!nom}
             placeholder="Votre nom de famille"
             value={nom}
             onChange={(e) => {
               setErreur(null);
-              setNom(e.target.value);
+              // Pendant la composition d'un accent (« ` » puis « e »), la
+              // saisie reste telle quelle : la changer romprait la touche morte.
+              const composition = (e.nativeEvent as InputEvent).isComposing;
+              setNom(composition ? e.target.value : enCapitales(e.currentTarget));
             }}
+            onCompositionEnd={(e) => setNom(enCapitales(e.currentTarget))}
           />
         </ChampMarque>
 
