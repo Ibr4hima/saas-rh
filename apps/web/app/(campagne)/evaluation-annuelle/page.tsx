@@ -2,11 +2,13 @@
 
 import Link from 'next/link';
 import {
+  LIBELLES_DU_PERSONNEL,
   periodeDEvaluationEnLettres,
   type AccueilDeLaCampagne,
   type AgentACommenter,
   type AgentDeLEquipe,
   type PeriodeDeLaCampagne,
+  type PersonnelDeLaFiche,
 } from '@teranga/contracts';
 import { Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import {
@@ -204,6 +206,7 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
       // fois faite, la carte suit la fiche (ADR-0226).
       autoFaite: faite,
       statut: faite ? statutDeLEvaluation(a) : null,
+      personnel: a.personnel,
       href: faite ? `${ACCUEIL_DE_LA_CAMPAGNE}/equipe/${a.employeeId}` : undefined,
     };
   };
@@ -279,6 +282,11 @@ interface CarteDUnAgent {
   statut: Statut | null;
   /** Une ligne de plus, sous le poste : son N+1. */
   precision?: string;
+  /**
+   * Son statut, cadre ou non cadre, à droite de l'adresse : sur les cartes de
+   * « Mon équipe » seulement, même inconnu (ADR-0235).
+   */
+  personnel?: PersonnelDeLaFiche | null;
   href?: string;
 }
 
@@ -346,21 +354,49 @@ function Grille({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Le libellé d'un repère de la carte, en petites capitales, et sa valeur dessous. */
-const LIBELLE =
-  'text-[10px] leading-none font-extrabold tracking-[0.12em] text-ink-muted uppercase';
-const VALEUR = 'mt-1.5 text-[12.5px] leading-snug font-bold text-ink-strong';
+/**
+ * Un repère de la carte : le libellé en petites capitales, la valeur en gras
+ * dessous, ou « Non renseigné ». `surUneLigne` : trop longue, la valeur
+ * s'arrête sur « … », et le survol la donne en entier.
+ */
+function RepereDeLaCarte({
+  libelle,
+  valeur,
+  surUneLigne = false,
+}: {
+  libelle: string;
+  valeur: string | null;
+  surUneLigne?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] leading-none font-extrabold tracking-[0.12em] text-ink-muted uppercase">
+        {libelle}
+      </dt>
+      <dd
+        title={surUneLigne ? (valeur ?? undefined) : undefined}
+        className={cn(
+          'mt-1.5 text-[12.5px] leading-snug font-bold text-ink-strong',
+          surUneLigne && 'truncate',
+          !valeur && 'font-medium text-ink-muted',
+        )}
+      >
+        {valeur ?? 'Non renseigné'}
+      </dd>
+    </div>
+  );
+}
 
 /**
  * Un agent, en une carte, comme celles des événements de la plateforme de
  * l'APIX (ADR-0234) : son nom en gras, son poste dessous, la précision s'il y
  * en a une ; à hauteur du nom, le point de son auto-évaluation. Sous un
- * filet, ses repères : son email professionnel et, l'auto-évaluation faite,
- * où en est sa fiche, côte à côte quand la carte est assez large. Avec
- * `href`, toute la carte s'ouvre et se soulève au survol.
+ * filet, ses repères : son email professionnel, son statut à droite dans
+ * « Mon équipe » (ADR-0235) et, l'auto-évaluation faite, où en est sa fiche.
+ * Avec `href`, toute la carte s'ouvre et se soulève au survol.
  */
 function CarteAgent({
-  carte: { agent: a, autoFaite, statut, precision, href },
+  carte: { agent: a, autoFaite, statut, precision, personnel, href },
 }: {
   carte: CarteDUnAgent;
 }) {
@@ -393,28 +429,25 @@ function CarteAgent({
           )}
         />
       </div>
+      {/* Dans « Mon équipe », l'adresse et le statut côte à côte, comme la date
+          et le lieu d'un événement, la fiche dessous (ADR-0235). Ailleurs,
+          l'adresse et la fiche, côte à côte quand la carte est assez large. */}
       <dl
         className={cn(
           'mt-auto grid gap-x-5 gap-y-3 border-t border-line-soft pt-3.5',
-          statut && '@[20rem]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]',
+          personnel !== undefined
+            ? 'grid-cols-2'
+            : statut && '@[20rem]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]',
         )}
       >
-        <div className="min-w-0">
-          <dt className={LIBELLE}>Email professionnel</dt>
-          {/* Trop longue, l'adresse s'arrête sur « … » ; le survol la donne en entier. */}
-          <dd
-            title={a.email ?? undefined}
-            className={cn(VALEUR, 'truncate', !a.email && 'font-medium text-ink-muted')}
-          >
-            {a.email ?? 'Non renseigné'}
-          </dd>
-        </div>
-        {statut ? (
-          <div className="min-w-0">
-            <dt className={LIBELLE}>Fiche</dt>
-            <dd className={VALEUR}>{statut.libelle}</dd>
-          </div>
+        <RepereDeLaCarte libelle="Email professionnel" valeur={a.email} surUneLigne />
+        {personnel !== undefined ? (
+          <RepereDeLaCarte
+            libelle="Statut"
+            valeur={personnel ? LIBELLES_DU_PERSONNEL[personnel] : null}
+          />
         ) : null}
+        {statut ? <RepereDeLaCarte libelle="Fiche" valeur={statut.libelle} /> : null}
       </dl>
     </>
   );

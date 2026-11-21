@@ -156,6 +156,8 @@ export interface AgentDeLEquipe {
   poste: string | null;
   /** L'adresse professionnelle, sur la carte de l'agent (ADR-0234). */
   email: string | null;
+  /** Le statut : cadre ou non cadre, à droite de l'adresse sur la carte (ADR-0235). */
+  personnel: PersonnelDeLaFiche | null;
   auto: AutoDeLAgent;
   /** Où en est son évaluation par la personne connectée (ADR-0216). */
   evaluation: EtatDeLEvaluation;

@@ -292,6 +292,8 @@ describe('l’équipe d’un N+1', () => {
     });
     // Sans adresse professionnelle au dossier, la carte n'en a pas (ADR-0234).
     expect(equipe[0]!.email).toBeNull();
+    // Le statut de chaque agent, à droite de l'adresse ; inconnu, il reste vide (ADR-0235).
+    expect(equipe.map((a) => a.personnel)).toEqual([null, 'non_cadre', 'cadre']);
   });
 
   it('l’évaluateur choisi pour la campagne remplace le N+1, sans toucher à l’organigramme', async () => {

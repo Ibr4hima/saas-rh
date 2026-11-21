@@ -960,6 +960,7 @@ async function equipeDe(
     matricule: string;
     poste: string | null;
     email: string | null;
+    personnel: PersonnelDeLaFiche | null;
     commencee: boolean;
     transmise_le: string | null;
     evaluation_commencee: boolean;
@@ -972,7 +973,7 @@ async function equipeDe(
     transmise_dch: boolean;
   }>(sql`
     SELECT e.id, p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
-           a.position_title AS poste, e.work_email AS email,
+           a.position_title AS poste, e.work_email AS email, e.personnel,
            f.commentaires_n2 IS NOT NULL AS commentaires_commences,
            f.commentaires_n2_transmis_le IS NOT NULL AS commentaires_transmis,
            f.reprise_n2_le IS NOT NULL AS reprise,
@@ -995,6 +996,7 @@ async function equipeDe(
     matricule: r.matricule,
     poste: r.poste,
     email: r.email,
+    personnel: r.personnel,
     auto: autoDe(r.commencee, r.transmise_le),
     evaluation: etatDeLEvaluation({
       commencee: r.evaluation_commencee,

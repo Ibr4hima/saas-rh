@@ -228,7 +228,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223 et 0227          |
 | [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | acceptée, révisée par 0226, 0227, 0233      |
 | [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | acceptée, révisée par 0227 et 0233          |
-| [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée                                    |
+| [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée, révisée par 0236                  |
 | [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée                                    |
 | [0225](0225-en-tete-sans-matricule.md)                | L'en-tête et les cartes des agents sans le matricule, le poste seul sous le nom         | acceptée                                    |
 | [0226](0226-auto-evaluation-faite-ou-non.md)          | L'auto-évaluation faite ou non faite, un point vert ou rouge sur les cartes             | acceptée, révisée par 0234                  |
@@ -239,4 +239,6 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0231](0231-titre-de-la-barre-en-anton.md)            | Le titre de la barre de la campagne en Anton, en capitales                              | acceptée, révisée par 0232                  |
 | [0232](0232-titre-de-la-barre-plus-petit.md)          | Le titre de la barre de la campagne, un peu plus petit                                  | acceptée                                    |
 | [0233](0233-pages-de-la-campagne-a-la-charte.md)      | Les pages de la campagne à la charte de l'APIX : bandeau, étapes numérotées, titres     | acceptée                                    |
-| [0234](0234-cartes-des-agents.md)                     | Les cartes des agents comme celles des événements de la plateforme, avec l'email pro    | acceptée                                    |
+| [0234](0234-cartes-des-agents.md)                     | Les cartes des agents comme celles des événements de la plateforme, avec l'email pro    | acceptée, révisée par 0235                  |
+| [0235](0235-statut-sur-les-cartes-de-l-equipe.md)     | Le statut à droite de l'email, sur les cartes de Mon équipe                             | acceptée                                    |
+| [0236](0236-puces-de-la-periode-reformulees.md)       | Deux puces de la période reformulées par l'APIX                                         | acceptée                                    |

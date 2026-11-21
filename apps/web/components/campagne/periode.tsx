@@ -51,11 +51,11 @@ export function CarteDeLaPeriode({
             titre="Auto-évaluation"
             marque={autoFaite ? <AutoFaite le={auto.transmiseLe} /> : null}
             periode={periodeDeLAuto(periode)}
-            // Les textes de l'APIX (ADR-0223).
+            // Les textes de l'APIX (ADR-0223, ADR-0236).
             puces={[
               'Faites le bilan de votre année ainsi que des difficultés rencontrées.',
               'Évaluez chacun de vos objectifs de l’année en cours.',
-              'Exprimez vos souhaits conformément à votre projet professionnel.',
+              'Exprimez vos souhaits conformément à vos projets personnel et professionnel.',
             ]}
             lien={
               autoFaite ? { href: AUTO_EVALUATION, libelle: 'Relire mon auto-évaluation' } : null
@@ -69,7 +69,7 @@ export function CarteDeLaPeriode({
             puces={[
               'Rencontrez votre supérieur hiérarchique et discutez autour de votre auto-évaluation.',
               'Fixez ensemble vos objectifs de l’année à venir conformément à ceux de votre unité.',
-              'Prenez connaissance de votre évaluation, puis validez-la ou renvoyez-la à votre N+1.',
+              'Prenez connaissance de votre évaluation, puis validez-la.',
             ]}
             lien={
               recue && recue.etat !== 'en_attente'
