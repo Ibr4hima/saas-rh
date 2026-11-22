@@ -7,7 +7,6 @@ import {
   type AgentACommenter,
   type AutoDeLAgent,
   type PersonneDeLaCampagne,
-  type EtatDeLaTransmission,
   type EtatDeLEvaluation,
   type EtatDesCommentaires,
   type PeriodeDeLaCampagne,
@@ -180,33 +179,6 @@ export function statutDeLAgent(auto: AutoDeLAgent): Statut {
   };
 }
 
-/**
- * L'évaluation d'un agent par son N+1, sur sa carte d'équipe, une fois
- * l'auto-évaluation faite : en orange, ce qui attend le N+1, jusqu'à la
- * transmission de la fiche à la DCH ; en vert, la fin du parcours, la fiche
- * transmise (ADR-0221).
- */
-export function statutDeLEvaluation(a: {
-  evaluation: EtatDeLEvaluation;
-  dch: EtatDeLaTransmission;
-}): Statut {
-  if (a.dch === 'transmise') return { libelle: 'Transmise à la DCH', ton: 'vert' };
-  if (a.dch === 'a_transmettre') return { libelle: 'À transmettre à la DCH', ton: 'orange' };
-  switch (a.evaluation) {
-    case 'validee':
-      // Validée par l'agent, la fiche n'attend plus que les commentaires du N+2.
-      return { libelle: 'Chez le N+2', ton: 'teal' };
-    case 'transmise':
-      return { libelle: 'Transmise à l’agent', ton: 'teal' };
-    case 'renvoyee':
-      return { libelle: 'Renvoyée par l’agent', ton: 'orange' };
-    case 'en_cours':
-      return { libelle: 'Évaluation en cours', ton: 'bleu' };
-    case 'a_faire':
-      return { libelle: 'À évaluer', ton: 'orange' };
-  }
-}
-
 /** L'évaluation du N+1, sur sa carte, à la page de l'agent : rien tant qu'elle n'est pas commencée. */
 export function statutDeMonEvaluation(
   v: { etatDeLEvaluation: EtatDeLEvaluation } & {
@@ -260,8 +232,7 @@ export function statutDesCommentaires(
 /**
  * Un agent dont la personne connectée est le N+2, sur sa carte : une fois
  * sa fiche validée, ce qui attend le N+2, en orange ; avant, l'étape où en
- * est sa fiche. Rien tant que l'auto-évaluation n'est pas faite : le point
- * de la carte le dit (ADR-0226).
+ * est sa fiche. Rien tant que l'auto-évaluation n'est pas faite.
  */
 export function statutPourLeN2(a: AgentACommenter): Statut | null {
   switch (a.commentaires) {

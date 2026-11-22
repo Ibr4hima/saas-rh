@@ -20,7 +20,6 @@ import {
 import {
   BoutonMAutoEvaluer,
   BoutonValiderMonEvaluation,
-  statutDeLEvaluation,
   statutPourLeN2,
   type Statut,
 } from '../../../components/campagne/fiche';
@@ -55,11 +54,10 @@ import {
    agents, son équipe, en deux groupes, une carte par agent, comme celles
    des événements de la plateforme de l'APIX (ADR-0234). Une
    auto-évaluation faite rend la carte cliquable : le N+1 ouvre alors
-   l'évaluation de l'agent, et la carte dit où en est sa fiche (ADR-0216).
-   À hauteur du nom, un point dit l'auto-évaluation : vert, faite ; rouge,
-   non faite (ADR-0226). Enfin, si la personne est le N+2 d'agents, les
-   équipes de ses N+1 : une fiche validée par l'agent s'ouvre pour ses
-   commentaires (ADR-0218).
+   l'évaluation de l'agent (ADR-0216). Ni point ni fiche sur ces cartes :
+   le groupe dit si l'auto-évaluation est faite (ADR-0250). Enfin, si la
+   personne est le N+2 d'agents, les équipes de ses N+1 : une fiche validée
+   par l'agent s'ouvre pour ses commentaires (ADR-0218).
    Les blocs montent l'un après l'autre à l'arrivée sur la page.
    ──────────────────────────────────────────────────────────────── */
 
@@ -198,18 +196,15 @@ function Pilotage({ accueil: v }: { accueil: AccueilDeLaCampagne }) {
  * un grand écran. Un seul groupe quand tous les agents sont dans le même cas.
  */
 function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
-  const carte = (a: AgentDeLEquipe): CarteDUnAgent => {
-    const faite = a.auto.etat === 'transmise';
-    return {
-      agent: a,
-      // L'auto-évaluation est faite ou ne l'est pas : le point le dit. Une
-      // fois faite, la carte suit la fiche (ADR-0226).
-      autoFaite: faite,
-      statut: faite ? statutDeLEvaluation(a) : null,
-      personnel: a.personnel,
-      href: faite ? `${ACCUEIL_DE_LA_CAMPAGNE}/equipe/${a.employeeId}` : undefined,
-    };
-  };
+  // L'auto-évaluation faite, la carte ouvre l'évaluation de l'agent. Ni point
+  // ni fiche : le groupe dit où en est l'auto-évaluation (ADR-0250).
+  const carte = (a: AgentDeLEquipe): CarteDUnAgent => ({
+    agent: a,
+    statut: null,
+    personnel: a.personnel,
+    href:
+      a.auto.etat === 'transmise' ? `${ACCUEIL_DE_LA_CAMPAGNE}/equipe/${a.employeeId}` : undefined,
+  });
   return (
     <SectionDAgents
       id="mon-equipe"
@@ -217,12 +212,10 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
       groupes={[
         {
           titre: 'Auto-évaluation faite',
-          point: 'faite',
           cartes: equipe.filter((a) => a.auto.etat === 'transmise').map(carte),
         },
         {
           titre: 'Auto-évaluation non faite',
-          point: 'non_faite',
           cartes: equipe.filter((a) => a.auto.etat !== 'transmise').map(carte),
         },
       ]}
@@ -240,7 +233,6 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
 function ACommenter({ agents }: { agents: AgentACommenter[] }) {
   const carte = (a: AgentACommenter): CarteDUnAgent => ({
     agent: a,
-    autoFaite: a.auto.etat === 'transmise',
     statut: statutPourLeN2(a),
     precision: `N+1 : ${a.n1.prenom} ${a.n1.nom}`,
     href:
@@ -276,9 +268,7 @@ function periodeEnBref(periode: PeriodeDeLaCampagne | null): string {
 /** Un agent sur sa carte : où en est sa fiche, et la page qu'elle ouvre s'il y a lieu. */
 interface CarteDUnAgent {
   agent: Pick<AgentDeLEquipe, 'employeeId' | 'prenom' | 'nom' | 'poste' | 'email'>;
-  /** L'auto-évaluation de l'agent : faite, ou pas. */
-  autoFaite: boolean;
-  /** Où en est la suite de sa fiche ; `null` tant que l'auto-évaluation n'est pas faite. */
+  /** Où en est sa fiche, pour le N+2 ; `null` : rien à dire, ou une carte de « Mon équipe ». */
   statut: Statut | null;
   /** Une ligne de plus, sous le poste : son N+1. */
   precision?: string;
@@ -293,8 +283,6 @@ interface CarteDUnAgent {
 /**
  * Une section d'agents, sous son titre en Anton et leur nombre, en groupes
  * l'un sous l'autre, séparés d'un filet. Un groupe vide ne s'affiche pas.
- * Le titre d'un groupe de « Mon équipe » porte la couleur de son point : il
- * sert de légende aux points des cartes.
  */
 function SectionDAgents({
   id,
@@ -305,7 +293,6 @@ function SectionDAgents({
   titre: string;
   groupes: readonly {
     titre: string;
-    point?: 'faite' | 'non_faite';
     cartes: CarteDUnAgent[];
   }[];
 }) {
@@ -322,15 +309,6 @@ function SectionDAgents({
           className={cn('flex flex-col gap-3', i > 0 && 'border-t border-line-soft pt-5')}
         >
           <h3 className="flex items-center gap-2 text-[11px] font-bold tracking-[0.12em] text-ink-muted uppercase">
-            {g.point ? (
-              <span
-                aria-hidden
-                className={cn(
-                  'size-2 shrink-0 rounded-full',
-                  g.point === 'faite' ? 'bg-success' : 'bg-danger',
-                )}
-              />
-            ) : null}
             {g.titre}
             <span className="tabular-nums">{g.cartes.length}</span>
           </h3>
@@ -390,48 +368,33 @@ function RepereDeLaCarte({
 /**
  * Un agent, en une carte, comme celles des événements de la plateforme de
  * l'APIX (ADR-0234) : son nom en gras, son poste dessous, la précision s'il y
- * en a une ; à hauteur du nom, le point de son auto-évaluation. Sous un
- * filet, ses repères : son email professionnel, son statut à droite dans
- * « Mon équipe » (ADR-0235) et, l'auto-évaluation faite, où en est sa fiche.
- * Avec `href`, toute la carte s'ouvre et se soulève au survol.
+ * en a une. Sous un filet, ses repères : son email professionnel, son statut
+ * à droite dans « Mon équipe » (ADR-0235) et, pour le N+2, où en est sa
+ * fiche. Sans point de couleur (ADR-0250). Avec `href`, toute la carte
+ * s'ouvre et se soulève au survol.
  */
 function CarteAgent({
-  carte: { agent: a, autoFaite, statut, precision, personnel, href },
+  carte: { agent: a, statut, precision, personnel, href },
 }: {
   carte: CarteDUnAgent;
 }) {
-  const auto = autoFaite ? 'Auto-évaluation faite' : 'Auto-évaluation non faite';
   const contenu = (
     <>
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[15.5px] leading-[1.35] font-extrabold tracking-[-0.01em] text-ink-strong">
-            {a.prenom} {a.nom}
-          </p>
-          {/* Le poste seul, sans le matricule, sur deux lignes au plus (ADR-0225). */}
-          {a.poste ? (
-            <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-ink-muted">
-              {a.poste}
-            </p>
-          ) : null}
-          {precision ? (
-            <p className="mt-0.5 truncate text-[12.5px] leading-snug text-ink-muted">{precision}</p>
-          ) : null}
-        </div>
-        {/* L'auto-évaluation en un point, à hauteur du nom : vert, faite ; rouge, non faite. */}
-        <span
-          role="img"
-          aria-label={auto}
-          title={auto}
-          className={cn(
-            'mt-[5.5px] size-2.5 shrink-0 rounded-full',
-            autoFaite ? 'bg-success' : 'bg-danger',
-          )}
-        />
+      <div className="min-w-0">
+        <p className="truncate text-[15.5px] leading-[1.35] font-extrabold tracking-[-0.01em] text-ink-strong">
+          {a.prenom} {a.nom}
+        </p>
+        {/* Le poste seul, sans le matricule, sur deux lignes au plus (ADR-0225). */}
+        {a.poste ? (
+          <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-ink-muted">{a.poste}</p>
+        ) : null}
+        {precision ? (
+          <p className="mt-0.5 truncate text-[12.5px] leading-snug text-ink-muted">{precision}</p>
+        ) : null}
       </div>
       {/* Dans « Mon équipe », l'adresse et le statut côte à côte, comme la date
-          et le lieu d'un événement, la fiche dessous (ADR-0235). Ailleurs,
-          l'adresse et la fiche, côte à côte quand la carte est assez large. */}
+          et le lieu d'un événement (ADR-0235). Pour le N+2, l'adresse et la
+          fiche, côte à côte quand la carte est assez large. */}
       <dl
         className={cn(
           'mt-auto grid gap-x-5 gap-y-3 border-t border-line-soft pt-3.5',
