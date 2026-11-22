@@ -1,26 +1,24 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { nomDeLaFiche, personnelDeLaFiche, type FichePourLaDCH } from '@teranga/contracts';
-import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
+import { Card, EmptyState, Skeleton } from '@teranga/ui';
 import {
   CommentairesDuN2Lus,
   FicheDuN1,
 } from '../../../../../components/campagne/evaluation-du-n1';
 import {
-  BOUTON_DU_BANDEAU,
   CarteDEtape,
   Etapes,
   jourCourt,
   RetourALAccueil,
 } from '../../../../../components/campagne/fiche';
 import { BandeauDeLAgent } from '../../../../../components/campagne/charte';
-import { messageDe } from '../../../../../components/grille-evaluation';
+import { TelechargerLaFiche } from '../../../../../components/campagne/telecharger';
 import { Icon } from '../../../../../components/icons';
 import { api, ApiError } from '../../../../../lib/api';
 import { CLE_CAMPAGNE, SUIVI_DE_LA_DCH } from '../../../../../lib/campagne';
-import { enregistrerFichier, lireFichier } from '../../../../../lib/fichiers';
 
 /* ────────────────────────────────────────────────────────────────
    La fiche d'un agent, transmise à la DCH (ADR-0221) : sa fiche, comme
@@ -77,7 +75,17 @@ function Fiche({ vue: v }: { vue: FichePourLaDCH }) {
 
   return (
     <>
-      <BandeauDeLAgent agent={v.agent} action={<TelechargerLePdf vue={v} />} />
+      <BandeauDeLAgent
+        agent={v.agent}
+        action={
+          // La fiche complète, partie réservée comprise, pour le dossier de l'agent.
+          <TelechargerLaFiche
+            chemin={`/campagne/dch/${v.agent.employeeId}/pdf`}
+            nom={nomDeLaFiche(v.annee, v.agent.matricule, true)}
+            libelle="Télécharger le PDF"
+          />
+        }
+      />
       {/* Les étapes, chacune avec son jour : qui l'a franchie, et quand. */}
       <Etapes nombre={v.n2 ? 4 : 3}>
         {etape('Auto-évaluation', `Faite${le(v.autoTransmiseLe)}`, nom(v.agent))}
@@ -107,32 +115,5 @@ function Fiche({ vue: v }: { vue: FichePourLaDCH }) {
         }
       />
     </>
-  );
-}
-
-/** Le PDF de la fiche complète, partie réservée comprise, pour le dossier de l'agent. */
-function TelechargerLePdf({ vue: v }: { vue: FichePourLaDCH }) {
-  const pdf = useMutation({
-    mutationFn: () => lireFichier(`/campagne/dch/${v.agent.employeeId}/pdf`),
-    onSuccess: (contenu) =>
-      enregistrerFichier(
-        new Blob([contenu], { type: 'application/pdf' }),
-        nomDeLaFiche(v.annee, v.agent.matricule, true),
-      ),
-  });
-  return (
-    // Dans le bandeau : le bouton blanc des gestes du bandeau, l'erreur en
-    // clair sur le bleu.
-    <div className="flex flex-col items-stretch gap-1.5 sm:items-end">
-      <Button className={BOUTON_DU_BANDEAU} loading={pdf.isPending} onClick={() => pdf.mutate()}>
-        <Icon name="download" size={17} />
-        Télécharger le PDF
-      </Button>
-      {pdf.error ? (
-        <p role="alert" className="text-[12px] font-semibold text-[#ffd0c9]">
-          {messageDe(pdf.error)}
-        </p>
-      ) : null}
-    </div>
   );
 }

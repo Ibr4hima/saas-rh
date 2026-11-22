@@ -367,6 +367,46 @@ export class CampagneService {
     });
   }
 
+  /**
+   * Son évaluation de l'année, en PDF, une fois transmise par le N+1, avant
+   * comme après sa validation : la version de l'agent, sans la partie
+   * réservée à la hiérarchie ni les commentaires du N+2, qui en font partie
+   * (ADR-0268).
+   */
+  async pdfDeMonEvaluation(user: SessionUser): Promise<{ filename: string; pdf: Buffer }> {
+    const d = await this.db.withTenant(
+      { tenantId: user.tenantId, userId: user.userId },
+      async (tx): Promise<DonneesDeLaFiche> => {
+        const annee = await anneeDeLaCampagne(tx);
+        const { id, fiche: agent } = await monDossierEvalue(tx, user, annee);
+        const annuelle = await ficheDeLAnnee(tx, id, annee);
+        if (!annuelle.evaluationTransmiseLe || !annuelle.evaluation) {
+          problem(
+            409,
+            'campagne.evaluation_non_transmise',
+            'L’évaluation de votre N+1 n’est pas encore transmise',
+          );
+        }
+        const { posteDepuis, aujourdhui } = await prisePoste(tx, id);
+        const n1 = agent.evaluateur;
+        return {
+          annee,
+          personnel: personnelDeLaFiche(agent.personnel),
+          agent: agentDuPdf(agent, posteDepuis, aujourdhui),
+          n1: n1 ? { prenom: n1.prenom, nom: n1.nom, fonction: n1.poste } : null,
+          dateDeLEntretien: annuelle.evaluation.dateDeLEntretien,
+          objectifs: annuelle.objectifs,
+          auto: annuelle.auto ?? autoEvaluationVide(),
+          evaluation: annuelle.evaluation,
+          reservee: null,
+          validations: { n1: annuelle.evaluationTransmiseLe, agent: annuelle.valideeLe },
+          n2: null,
+        };
+      },
+    );
+    return { filename: nomDeLaFiche(d.annee, d.agent.matricule), pdf: await ficheDEntretienPdf(d) };
+  }
+
   /** Son auto-évaluation, pour son formulaire. */
   async monAuto(user: SessionUser): Promise<MonAutoEvaluation> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
@@ -844,6 +884,7 @@ async function monEvaluationDans(tx: Tx, user: SessionUser): Promise<MonEvaluati
   const recue = evaluationRecue(annuelle);
   return {
     annee,
+    matricule: fiche.matricule,
     periode,
     phase,
     personnel: personnelDeLaFiche(fiche.personnel),

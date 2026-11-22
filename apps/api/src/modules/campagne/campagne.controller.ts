@@ -231,6 +231,16 @@ export class CampagneController {
     return this.campagne.validerMonEvaluation(req.sessionUser);
   }
 
+  /** Son évaluation en PDF, sans la partie réservée : ce qu'enregistre « Télécharger » (ADR-0268). */
+  @Get('mon-evaluation/pdf')
+  async pdfDeMonEvaluation(@Req() req: AuthenticatedRequest, @Res() res: Response) {
+    const { filename, pdf } = await this.campagne.pdfDeMonEvaluation(req.sessionUser);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', contentDisposition('attachment', filename));
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(pdf);
+  }
+
   /** Son auto-évaluation, pour son formulaire. */
   @Get('auto-evaluation')
   monAuto(@Req() req: AuthenticatedRequest) {

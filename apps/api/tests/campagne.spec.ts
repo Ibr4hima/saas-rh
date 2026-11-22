@@ -1081,6 +1081,50 @@ describe('la transmission à la DCH (ADR-0221)', () => {
   });
 });
 
+describe('le téléchargement de son évaluation (ADR-0268)', () => {
+  /** Les textes d'un PDF, les espaces insécables lus comme des espaces. */
+  const textesDuPdf = async (generer: () => Promise<unknown>): Promise<string> => {
+    const espion = vi.spyOn(PDFDocument.prototype, 'text');
+    try {
+      await generer();
+      return espion.mock.calls
+        .map((appel) => String(appel[0]).replace(/[\u00a0\u202f]/g, ' '))
+        .join('\n');
+    } finally {
+      espion.mockRestore();
+    }
+  };
+
+  it('donne à l’agent sa fiche en PDF, sans la partie réservée ni les commentaires du N+2', async () => {
+    const { filename, pdf } = await campagne.pdfDeMonEvaluation(session('ibou'));
+    expect(filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU.pdf`);
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect((await campagne.monEvaluation(session('ibou'))).matricule).toBe('CAMP-IBOU');
+
+    const dch = { ...session('fatou'), capacites: ['pilotage'] } as SessionUser;
+    const complete = await textesDuPdf(() => campagne.pdfDeLaDCH(dch, agents.ibou));
+    const agent = await textesDuPdf(() => campagne.pdfDeMonEvaluation(session('ibou')));
+    expect(agent).toContain('VALIDATION ET SUIVI');
+    for (const reserve of [
+      'PARTIE STRICTEMENT RÉSERVÉE À LA HIÉRARCHIE',
+      'Commentaires du N+2',
+      'à préparer à plus de responsabilités',
+    ]) {
+      expect(complete).toContain(reserve);
+      expect(agent).not.toContain(reserve);
+    }
+  });
+
+  it('attend la transmission par le N+1, et n’existe pas sans évaluation', async () => {
+    await expect(campagne.pdfDeMonEvaluation(session('fatou'))).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_non_transmise' },
+    });
+    await expect(campagne.pdfDeMonEvaluation(session('dg'))).rejects.toMatchObject({
+      problem: { status: 404, code: 'campagne.sans_auto_evaluation' },
+    });
+  });
+});
+
 describe('l’administration de la campagne (ADR-0222)', () => {
   it('est réservée aux comptes d’administration', async () => {
     for (const geste of [

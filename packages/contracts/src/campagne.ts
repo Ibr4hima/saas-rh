@@ -270,6 +270,8 @@ export type EcritureDeLAuto = z.infer<typeof ecritureDeLAutoSchema>;
 /** Son évaluation par le N+1, telle que l'agent la lit (ADR-0217) : jamais la partie réservée. */
 export interface MonEvaluation extends EvaluationRecue {
   annee: number;
+  /** Son matricule : le nom du PDF qu'enregistre « Télécharger » (ADR-0268). */
+  matricule: string;
   periode: PeriodeDeLaCampagne | null;
   phase: PhaseDeLaCampagne;
   /** Le personnel de sa fiche : le management n'y figure que pour le personnel cadre. */

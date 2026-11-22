@@ -3,7 +3,12 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { dateEnLettres, TITRE_DE_LA_FICHE, type MonEvaluation } from '@teranga/contracts';
+import {
+  dateEnLettres,
+  nomDeLaFiche,
+  TITRE_DE_LA_FICHE,
+  type MonEvaluation,
+} from '@teranga/contracts';
 import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
 import { FicheDuN1 } from '../../../../components/campagne/evaluation-du-n1';
 import {
@@ -13,6 +18,7 @@ import {
 } from '../../../../components/campagne/fiche';
 import { Repere } from '../../../../components/fiche';
 import { BandeauDePage } from '../../../../components/campagne/charte';
+import { TelechargerLaFiche } from '../../../../components/campagne/telecharger';
 import { Confirmation, messageDe } from '../../../../components/grille-evaluation';
 import { Icon } from '../../../../components/icons';
 import { api, ApiError } from '../../../../lib/api';
@@ -28,6 +34,8 @@ import { ACCUEIL_DE_LA_CAMPAGNE, CLE_CAMPAGNE } from '../../../../lib/campagne';
    page ne la reçoit pas. Une barre, collée au bas de l'écran, porte
    « Valider mon évaluation », le seul geste de l'agent : le renvoi au N+1
    n'existe plus (ADR-0267). Validée, la fiche se lit et ne change plus.
+   Une fois l'évaluation reçue, « Télécharger », dans le bandeau, enregistre
+   la fiche en PDF, sans la partie réservée à la hiérarchie (ADR-0268).
    ──────────────────────────────────────────────────────────────── */
 
 const CHEMIN = '/campagne/mon-evaluation';
@@ -100,6 +108,15 @@ function Evaluation({ vue: v }: { vue: MonEvaluation }) {
         titre="Mon évaluation"
         marque={v.etat === 'validee' ? <EvaluationValidee le={v.valideeLe} /> : null}
         sousTitre={`${TITRE_DE_LA_FICHE} ${v.annee}`}
+        action={
+          v.evaluation ? (
+            <TelechargerLaFiche
+              chemin={`${CHEMIN}/pdf`}
+              nom={nomDeLaFiche(v.annee, v.matricule)}
+              libelle="Télécharger"
+            />
+          ) : undefined
+        }
         reperes={[
           <Repere key="n1" label={superieurHierarchique(n1)} valeur={nomDuN1} />,
           <Repere
