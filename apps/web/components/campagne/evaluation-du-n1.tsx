@@ -39,6 +39,7 @@ import {
   PAR_L_AGENT,
   PAR_LE_N1,
   Question,
+  QuestionEnPuces,
   RecapitulatifEnLecture,
   Reponse,
   SouhaitsEnLecture,
@@ -379,9 +380,11 @@ function Synthese({
     <CarteDeLaFiche titre="Synthèse de l’évaluation et axes d’amélioration" qui={PAR_LE_N1}>
       <SousPartie titre="Bilan global">
         <DeuxParDeux className="pt-4">
+          {/* En puces, une par ligne, comme les réponses en puces de
+              l'auto-évaluation (ADR-0251). */}
           {bilan.map((q) =>
             onChange ? (
-              <Question
+              <QuestionEnPuces
                 key={q.cle}
                 question={q.question}
                 requise
@@ -389,7 +392,7 @@ function Synthese({
                 onChange={(v) => onChange((x) => ({ ...x, [q.cle]: v }))}
               />
             ) : (
-              <Reponse key={q.cle} question={q.question} texte={e[q.cle]} />
+              <Reponse key={q.cle} question={q.question} texte={e[q.cle]} enPuces />
             ),
           )}
         </DeuxParDeux>

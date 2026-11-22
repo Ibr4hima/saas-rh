@@ -1177,6 +1177,12 @@ function identification(f: Composition, d: DonneesDeLaFiche): void {
 type QuestionDeLAuto =
   (typeof QUESTIONS_DU_BILAN)[number] | (typeof QUESTIONS_DES_SOUHAITS)[number];
 
+/** Une réponse écrite en puces, une par ligne : chacune s'imprime en puce (ADR-0238). */
+const enPuces = (texte: string): string =>
+  pucesDe(texte)
+    .map((p) => `- ${p}`)
+    .join('\n');
+
 /**
  * La réponse imprimée d'une question de l'auto-évaluation (ADR-0238) : ses
  * puces, ou « Oui » et ses puces, ou « Non ». Sans choix, le texte tel qu'il
@@ -1184,17 +1190,13 @@ type QuestionDeLAuto =
  */
 function reponseDeLAuto(auto: AutoEvaluation, q: QuestionDeLAuto): string {
   const texte = auto[q.cle];
-  const enPuces = () =>
-    pucesDe(texte)
-      .map((p) => `- ${p}`)
-      .join('\n');
   if ('ouiNon' in q) {
     const oui = auto[q.ouiNon];
     if (oui === false) return 'Non';
-    if (oui === true) return ['Oui', enPuces()].filter(Boolean).join('\n');
+    if (oui === true) return ['Oui', enPuces(texte)].filter(Boolean).join('\n');
     return texte;
   }
-  return 'puces' in q ? enPuces() : texte;
+  return 'puces' in q ? enPuces(texte) : texte;
 }
 
 function bilan(f: Composition, d: DonneesDeLaFiche): void {
@@ -1494,8 +1496,9 @@ function synthese(f: Composition, d: DonneesDeLaFiche): void {
   const e = d.evaluation;
   f.nouvellePage('portrait');
   const bilanGlobal: [string, Cellule][] = [
-    ['Points forts', f.saisie(e.pointsForts, VIERGE.commentaire)],
-    ['Axes de développement', f.saisie(e.axesDeDeveloppement, VIERGE.commentaire)],
+    // En puces, comme le N+1 les écrit (ADR-0251).
+    ['Points forts', f.saisie(enPuces(e.pointsForts), VIERGE.commentaire)],
+    ['Axes de développement', f.saisie(enPuces(e.axesDeDeveloppement), VIERGE.commentaire)],
   ];
   const hBilan = f.hauteurDesCles(bilanGlobal) + 2;
   f.section(

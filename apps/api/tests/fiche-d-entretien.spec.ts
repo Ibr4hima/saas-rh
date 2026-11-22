@@ -86,6 +86,26 @@ describe('la fiche en PDF', () => {
     expect(vierge.textes).toContain('ÉCHELLE');
   });
 
+  it('imprime les points forts et les axes de développement en puces (ADR-0251)', async () => {
+    const base = ficheExemple();
+    /** Les puces dessinées : un rond bleu chacune. */
+    const puces = async (pointsForts: string, axesDeDeveloppement: string) => {
+      const espion = vi.spyOn(PDFDocument.prototype, 'circle');
+      try {
+        await ficheDEntretienPdf(
+          ficheExemple({ evaluation: { ...base.evaluation, pointsForts, axesDeDeveloppement } }),
+        );
+        return espion.mock.calls.length;
+      } finally {
+        espion.mockRestore();
+      }
+    };
+    // Une ligne, une puce, que le N+1 l'ait écrite avec un tiret ou non.
+    const sansTiret = await puces('Rigueur\nFiabilité', 'Déléguer');
+    expect(sansTiret).toBe(await puces('- Rigueur\n- Fiabilité', '- Déléguer'));
+    expect(sansTiret - (await puces('', ''))).toBe(3);
+  });
+
   it('imprime le texte de la grille, corrigé', async () => {
     const { tout } = await imprimer(ficheExemple());
     for (const juste of [

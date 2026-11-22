@@ -243,7 +243,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0235](0235-statut-sur-les-cartes-de-l-equipe.md)     | Le statut à droite de l'email, sur les cartes de Mon équipe                             | acceptée, révisée par 0250                  |
 | [0236](0236-puces-de-la-periode-reformulees.md)       | Deux puces de la période reformulées par l'APIX                                         | acceptée, révisée par 0237                  |
 | [0237](0237-puce-des-objectifs-raccourcie.md)         | La puce des objectifs de l'année à venir, raccourcie                                    | acceptée                                    |
-| [0238](0238-reponses-oui-non-et-puces.md)             | Les réponses par oui ou non et en puces de l'auto-évaluation, souhaits obligatoires     | acceptée                                    |
+| [0238](0238-reponses-oui-non-et-puces.md)             | Les réponses par oui ou non et en puces de l'auto-évaluation, souhaits obligatoires     | acceptée, complétée par 0251                |
 | [0239](0239-trois-a-cinq-objectifs-a-venir.md)        | De trois à cinq objectifs pour l'année à venir, fixés par le N+1                        | acceptée                                    |
 | [0240](0240-titres-de-section-plus-petits.md)         | Les titres de section de la campagne, un peu plus petits                                | acceptée                                    |
 | [0241](0241-valider-l-auto-evaluation.md)             | Valider son auto-évaluation, la fiche en PDF, et la barre au bas de la page             | acceptée, révisée par 0242                  |
@@ -256,3 +256,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0248](0248-civilite-du-n1-a-la-transmission.md)      | La confirmation de l'auto-évaluation nomme le N+1 avec sa civilité                      | acceptée                                    |
 | [0249](0249-titre-des-fenetres-a-la-ligne.md)         | Le titre d'une fenêtre passe à la ligne, il n'est plus coupé                            | acceptée                                    |
 | [0250](0250-cartes-sans-point-ni-fiche.md)            | Les cartes des agents sans point de couleur, et sans la fiche dans Mon équipe           | acceptée                                    |
+| [0251](0251-synthese-du-n1-en-puces.md)               | Les points forts et les axes de développement du N+1, en puces                          | acceptée                                    |
