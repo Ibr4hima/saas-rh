@@ -231,7 +231,10 @@ export class CampagneController {
     return this.campagne.validerMonEvaluation(req.sessionUser);
   }
 
-  /** Son évaluation en PDF, sans la partie réservée : ce qu'enregistre « Télécharger » (ADR-0268). */
+  /**
+   * Son évaluation validée, en PDF, sans la partie réservée à la hiérarchie :
+   * ce qu'enregistre « Télécharger » (ADR-0268, ADR-0269).
+   */
   @Get('mon-evaluation/pdf')
   async pdfDeMonEvaluation(@Req() req: AuthenticatedRequest, @Res() res: Response) {
     const { filename, pdf } = await this.campagne.pdfDeMonEvaluation(req.sessionUser);

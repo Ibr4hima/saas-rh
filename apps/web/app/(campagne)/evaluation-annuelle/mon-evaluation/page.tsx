@@ -34,8 +34,9 @@ import { ACCUEIL_DE_LA_CAMPAGNE, CLE_CAMPAGNE } from '../../../../lib/campagne';
    page ne la reçoit pas. Une barre, collée au bas de l'écran, porte
    « Valider mon évaluation », le seul geste de l'agent : le renvoi au N+1
    n'existe plus (ADR-0267). Validée, la fiche se lit et ne change plus.
-   Une fois l'évaluation reçue, « Télécharger », dans le bandeau, enregistre
-   la fiche en PDF, sans la partie réservée à la hiérarchie (ADR-0268).
+   Une fois l'évaluation validée, « Télécharger », dans le bandeau, enregistre
+   la fiche en PDF, sans la partie réservée à la hiérarchie (ADR-0268,
+   ADR-0269).
    ──────────────────────────────────────────────────────────────── */
 
 const CHEMIN = '/campagne/mon-evaluation';
@@ -109,7 +110,7 @@ function Evaluation({ vue: v }: { vue: MonEvaluation }) {
         marque={v.etat === 'validee' ? <EvaluationValidee le={v.valideeLe} /> : null}
         sousTitre={`${TITRE_DE_LA_FICHE} ${v.annee}`}
         action={
-          v.evaluation ? (
+          v.etat === 'validee' ? (
             <TelechargerLaFiche
               chemin={`${CHEMIN}/pdf`}
               nom={nomDeLaFiche(v.annee, v.matricule)}

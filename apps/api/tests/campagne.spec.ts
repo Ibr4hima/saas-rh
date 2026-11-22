@@ -785,6 +785,10 @@ describe('la validation par l’agent (ADR-0217)', () => {
       transmiseLe: AUJOURD_HUI,
       valideeLe: null,
     });
+    // Rien à télécharger avant la validation (ADR-0269).
+    await expect(campagne.pdfDeMonEvaluation(session('ibou'))).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_non_validee' },
+    });
   });
 
   it('ne se renvoie pas au N+1 ; un ancien renvoi se lit comme un brouillon du N+1 (ADR-0267)', async () => {
@@ -1095,7 +1099,7 @@ describe('le téléchargement de son évaluation (ADR-0268)', () => {
     }
   };
 
-  it('donne à l’agent sa fiche en PDF, sans la partie réservée ni les commentaires du N+2', async () => {
+  it('donne à l’agent sa fiche validée en PDF, sans la partie réservée ni les commentaires du N+2', async () => {
     const { filename, pdf } = await campagne.pdfDeMonEvaluation(session('ibou'));
     expect(filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU.pdf`);
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
@@ -1115,9 +1119,10 @@ describe('le téléchargement de son évaluation (ADR-0268)', () => {
     }
   });
 
-  it('attend la transmission par le N+1, et n’existe pas sans évaluation', async () => {
+  it('attend la validation par l’agent, et n’existe pas sans évaluation (ADR-0269)', async () => {
+    // Fatou Sall attend encore l'évaluation de son N+1.
     await expect(campagne.pdfDeMonEvaluation(session('fatou'))).rejects.toMatchObject({
-      problem: { status: 409, code: 'campagne.evaluation_non_transmise' },
+      problem: { status: 409, code: 'campagne.evaluation_non_validee' },
     });
     await expect(campagne.pdfDeMonEvaluation(session('dg'))).rejects.toMatchObject({
       problem: { status: 404, code: 'campagne.sans_auto_evaluation' },

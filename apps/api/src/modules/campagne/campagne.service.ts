@@ -368,10 +368,9 @@ export class CampagneService {
   }
 
   /**
-   * Son évaluation de l'année, en PDF, une fois transmise par le N+1, avant
-   * comme après sa validation : la version de l'agent, sans la partie
-   * réservée à la hiérarchie ni les commentaires du N+2, qui en font partie
-   * (ADR-0268).
+   * Son évaluation de l'année, en PDF, une fois validée (ADR-0269) : la
+   * version de l'agent, sans la partie réservée à la hiérarchie ni les
+   * commentaires du N+2, qui en font partie (ADR-0268).
    */
   async pdfDeMonEvaluation(user: SessionUser): Promise<{ filename: string; pdf: Buffer }> {
     const d = await this.db.withTenant(
@@ -380,11 +379,12 @@ export class CampagneService {
         const annee = await anneeDeLaCampagne(tx);
         const { id, fiche: agent } = await monDossierEvalue(tx, user, annee);
         const annuelle = await ficheDeLAnnee(tx, id, annee);
-        if (!annuelle.evaluationTransmiseLe || !annuelle.evaluation) {
+        // Validée, elle est forcément transmise.
+        if (!annuelle.valideeLe || !annuelle.evaluationTransmiseLe || !annuelle.evaluation) {
           problem(
             409,
-            'campagne.evaluation_non_transmise',
-            'L’évaluation de votre N+1 n’est pas encore transmise',
+            'campagne.evaluation_non_validee',
+            'Votre évaluation n’est pas encore validée',
           );
         }
         const { posteDepuis, aujourdhui } = await prisePoste(tx, id);
