@@ -22,6 +22,7 @@ import {
 import {
   AutoFaite,
   BOUTON_DU_BANDEAU,
+  nomAvecCivilite,
   periodeDeLAuto,
   RetourALAccueil,
   superieurHierarchique,
@@ -233,17 +234,14 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
             transmettre.reset();
           }}
         >
+          {/* « Monsieur » ou « Madame » selon le dossier du N+1 (ADR-0248). */}
+          Votre auto-évaluation sera transmise à{' '}
           {n1 ? (
-            <>
-              Elle part à{' '}
-              <span className="font-semibold text-ink-strong">
-                {n1.prenom} {n1.nom}
-              </span>
-              , votre N+1, et ne pourra plus être modifiée.
-            </>
+            <span className="font-semibold text-ink-strong">{nomAvecCivilite(n1)}</span>
           ) : (
-            'Elle ne pourra plus être modifiée.'
+            'votre N+1'
           )}
+          . Vous ne pourrez plus la modifier après transmission.
         </Confirmation>
       ) : null}
     </div>

@@ -146,6 +146,17 @@ export function superieurHierarchique(n1: Pick<PersonneDeLaCampagne, 'genre'> | 
       : 'Supérieur·e hiérarchique';
 }
 
+/**
+ * « Monsieur Moussa Sarr » ou « Madame Awa Diop », selon le sexe inscrit au
+ * dossier ; sans sexe inscrit, le nom seul (ADR-0248). Le prénom n'en dit
+ * rien. La civilité ne reste pas seule en bout de ligne.
+ */
+export function nomAvecCivilite(p: Pick<PersonneDeLaCampagne, 'genre' | 'prenom' | 'nom'>): string {
+  const civilite = p.genre === 'female' ? 'Madame' : p.genre === 'male' ? 'Monsieur' : null;
+  const nom = `${p.prenom} ${p.nom}`.trim();
+  return civilite ? `${civilite} ${nom}` : nom;
+}
+
 /** Où en est une étape, en un badge. */
 export interface Statut {
   libelle: string;
