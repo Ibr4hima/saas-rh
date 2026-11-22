@@ -41,7 +41,7 @@ export default function FicheDeLaDCHPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <RetourALAccueil libelle="Suivi de la DCH" href={SUIVI_DE_LA_DCH} />
+      <RetourALAccueil libelle="Suivi des évaluations" href={SUIVI_DE_LA_DCH} />
       {vue.error ? (
         <Card>
           <EmptyState
@@ -81,7 +81,7 @@ function Fiche({ vue: v }: { vue: FichePourLaDCH }) {
       {/* Les étapes, chacune avec son jour : qui l'a franchie, et quand. */}
       <Etapes nombre={v.n2 ? 4 : 3}>
         {etape('Auto-évaluation', `Faite${le(v.autoTransmiseLe)}`, nom(v.agent))}
-        {etape('Évaluation du N+1', `Validée${le(v.valideeLe)}`, nom(n1))}
+        {etape('Évaluation par le N+1', `Validée${le(v.valideeLe)}`, nom(n1))}
         {v.n2
           ? recus
             ? etape('Commentaires du N+2', `Reçus${le(recus.le)}`, nom(recus.par ?? v.n2))

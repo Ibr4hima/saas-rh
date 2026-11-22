@@ -1,11 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { premierDuMois } from '@teranga/contracts';
 import { cn, Skeleton } from '@teranga/ui';
-import { ACCUEIL_DE_LA_CAMPAGNE, useAccueilDeLaCampagne } from '../../lib/campagne';
+import {
+  ACCUEIL_DE_LA_CAMPAGNE,
+  SUIVI_DE_LA_DCH,
+  useAccueilDeLaCampagne,
+} from '../../lib/campagne';
 import { useMe } from '../../lib/hooks';
 import { majuscule } from '../../lib/mots';
 import { BrandMark } from '../brand-mark';
@@ -18,10 +22,11 @@ import { MenuCompte } from '../menu-compte';
    Ni menu ni espace : la plateforme ne montre que l'évaluation. En haut,
    posée sur le fond comme celle de la plateforme, une barre avec le logo,
    « Évaluation annuelle 2026 » en grand, en Anton et en capitales,
-   la date du jour et le menu du compte (le thème, la sortie). Sur
-   téléphone, le titre descend en tête de la page. Dessous, la page,
-   plafonnée à la largeur des pages de la plateforme, la barre alignée sur
-   elle.
+   le bouton « Suivi des évaluations » pour qui suit les fiches de l'année
+   (ADR-0256), la date du jour et le menu du compte (le thème, la sortie).
+   Sur téléphone, le titre descend en tête de la page ; sous un grand
+   écran, le bouton du suivi aussi, à droite. Dessous, la page, plafonnée à
+   la largeur des pages de la plateforme, la barre alignée sur elle.
    ──────────────────────────────────────────────────────────────── */
 
 /**
@@ -55,6 +60,8 @@ export function CoqueDeLaCampagne({ children }: { children: React.ReactNode }) {
 
   const annee = accueil.data?.annee ?? me.data?.campagne ?? null;
   const titre = `Évaluation annuelle${annee ? ` ${annee}` : ''}`;
+  // Le suivi des évaluations, pour qui a l'habilitation « Tableau de bord ».
+  const suivi = Boolean(me.data && accueil.data?.dch);
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg">
@@ -77,6 +84,7 @@ export function CoqueDeLaCampagne({ children }: { children: React.ReactNode }) {
           </Link>
           {me.data ? (
             <div className="ml-auto flex shrink-0 items-center gap-4">
+              {suivi ? <SuiviDesEvaluations className="hidden lg:flex" /> : null}
               <DateDuJour />
               <MenuCompte variante="entete" certificats={false} notifications={false} />
             </div>
@@ -85,10 +93,44 @@ export function CoqueDeLaCampagne({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="mx-auto flex w-full max-w-page flex-1 flex-col px-4 pt-2 pb-16 sm:px-6 sm:pt-4 sm:pb-12">
-        <p className={cn(TITRE, 'mb-4 text-[23px] sm:hidden')}>{titre}</p>
+        {/* Ce que la barre n'a pas la place de porter : sur téléphone, le
+            titre ; sous un grand écran, le suivi des évaluations, à droite,
+            sous la ligne du titre s'il ne tient pas à côté. */}
+        <div
+          className={cn(
+            'mb-4 flex flex-wrap items-center gap-x-4 gap-y-3',
+            suivi ? 'lg:hidden' : 'sm:hidden',
+          )}
+        >
+          <p className={cn(TITRE, 'text-[23px] sm:hidden')}>{titre}</p>
+          {suivi ? <SuiviDesEvaluations className="ml-auto flex" /> : null}
+        </div>
         {me.data ? children : <Skeleton className="h-64 w-full rounded-bloc" />}
       </main>
     </div>
+  );
+}
+
+/**
+ * « Suivi des évaluations », à gauche de la date, pour qui a l'habilitation
+ * « Tableau de bord » : il ouvre le suivi des fiches de l'année (ADR-0256).
+ * Le bleu de la charte le jour, le blanc la nuit, sans icône, à la hauteur
+ * de la date. Sous un grand écran, la barre n'a pas la place de son libellé :
+ * il descend en tête de la page.
+ */
+function SuiviDesEvaluations({ className }: { className: string }) {
+  const ici = usePathname() === SUIVI_DE_LA_DCH;
+  return (
+    <Link
+      href={SUIVI_DE_LA_DCH}
+      aria-current={ici ? 'page' : undefined}
+      className={cn(
+        'h-9 shrink-0 items-center rounded-controle bg-bouton-de-barre px-3.5 text-[12.5px] font-semibold whitespace-nowrap text-bouton-de-barre-ink shadow-bouton-borde transition-colors duration-150 hover:bg-bouton-de-barre-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+        className,
+      )}
+    >
+      Suivi des évaluations
+    </Link>
   );
 }
 

@@ -40,9 +40,11 @@ import { CLE_CAMPAGNE } from '../../../../../lib/campagne';
 
 /* ────────────────────────────────────────────────────────────────
    Un agent de l'équipe, ouvert depuis sa carte (ADR-0211) : sa fiche,
-   comme sur l'accueil ; ses deux étapes, l'auto-évaluation et l'évaluation
-   du N+1, côte à côte sur un grand écran ; puis, l'auto-évaluation
-   transmise, la fiche S1/EN05 entière, que le N+1 remplit (ADR-0216).
+   comme sur l'accueil ; ses étapes, l'auto-évaluation, l'évaluation par le
+   N+1 et la transmission à la DCH, côte à côte sur un grand écran ; puis,
+   l'auto-évaluation transmise, la fiche S1/EN05 entière, que le N+1 remplit
+   (ADR-0216). Avant, la page s'arrête aux étapes : toute carte de l'équipe
+   s'ouvre, l'auto-évaluation faite ou non (ADR-0257).
    Chaque modification s'enregistre seule ; la barre au bas de la page dit
    ce qui manque et porte « Transmettre à l'agent » (ADR-0241).
    Transmise, l'évaluation se lit ; l'agent la valide, ou la renvoie avec un
@@ -107,23 +109,24 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
   return (
     <>
       <BandeauDeLAgent agent={v.agent} />
+      {/* Les étapes côte à côte : l'auto-évaluation, l'évaluation par le N+1,
+          la DCH. Les commentaires du N+2 se lisent sur la fiche (ADR-0252). */}
+      <Etapes nombre={3}>
+        {carteDeLAuto}
+        <CarteDEtape
+          titre="Évaluation par le N+1"
+          etat={evaluation?.libelle}
+          periode={periodeDeLEvaluation(v.periode)}
+        />
+        <CarteDEtape
+          titre="Transmission à la DCH"
+          etat={dch?.libelle}
+          periode="Direction du Capital Humain"
+        />
+      </Etapes>
+      {/* Sans auto-évaluation transmise, la page s'arrête aux étapes (ADR-0257). */}
       {v.autoEvaluation ? (
         <>
-          {/* Les étapes côte à côte : l'auto-évaluation faite, celle du N+1, la
-              DCH. Les commentaires du N+2 se lisent sur la fiche (ADR-0252). */}
-          <Etapes nombre={3}>
-            {carteDeLAuto}
-            <CarteDEtape
-              titre="Évaluation du N+1"
-              etat={evaluation?.libelle}
-              periode={periodeDeLEvaluation(v.periode)}
-            />
-            <CarteDEtape
-              titre="Transmission à la DCH"
-              etat={dch?.libelle}
-              periode="Direction du Capital Humain"
-            />
-          </Etapes>
           {v.renvoi ? (
             <MotDeRenvoi
               titre={`Renvoyée par ${v.agent.prenom} ${v.agent.nom}`}
@@ -149,10 +152,7 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
             </>
           )}
         </>
-      ) : (
-        // Sans auto-évaluation transmise, la première étape seule.
-        <Etapes nombre={1}>{carteDeLAuto}</Etapes>
-      )}
+      ) : null}
     </>
   );
 }

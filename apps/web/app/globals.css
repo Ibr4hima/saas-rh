@@ -97,6 +97,9 @@
   --color-chart-track: var(--tg-chart-track);
   --color-bandeau: var(--tg-bandeau);
   --color-bandeau-fin: var(--tg-bandeau-fin);
+  --color-bouton-de-barre: var(--tg-bouton-de-barre);
+  --color-bouton-de-barre-ink: var(--tg-bouton-de-barre-ink);
+  --color-bouton-de-barre-hover: var(--tg-bouton-de-barre-hover);
   --font-sans: var(--tg-font-sans);
   --font-mono: var(--tg-font-mono);
   --font-titre: var(--tg-font-titre);

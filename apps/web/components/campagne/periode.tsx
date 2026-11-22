@@ -8,10 +8,11 @@ import { AutoFaite, EvaluationValidee, periodeDeLAuto, periodeDeLEvaluationDuN1 
 
 /* ────────────────────────────────────────────────────────────────
    La période d'évaluation annuelle, sur l'accueil de l'agent (ADR-0220) :
-   ses deux temps, l'auto-évaluation puis l'évaluation, côte à côte sur un
-   grand écran, l'un sous l'autre ailleurs. Chacun dit sa période, telle que
-   l'administration l'a réglée, et en trois puces ce qu'il demande. La coche
-   bleue dit ce qui est fait ; un lien rouvre ce qui se relit.
+   ses deux temps, l'auto-évaluation puis l'évaluation par le N+1
+   (ADR-0258), côte à côte sur un grand écran, l'un sous l'autre ailleurs.
+   Chacun dit sa période, telle que l'administration l'a réglée, et en trois
+   puces ce qu'il demande. La coche bleue dit ce qui est fait ; un lien
+   rouvre ce qui se relit.
    À la charte de l'APIX (ADR-0227) : le titre en Anton au-dessus de la
    carte, et chaque temps numéroté en orange, « 01 » puis « 02 ».
    ──────────────────────────────────────────────────────────────── */
@@ -63,7 +64,7 @@ export function CarteDeLaPeriode({
           />
           <Temps
             numero={2}
-            titre="Évaluation"
+            titre="Évaluation par le N+1"
             marque={recue?.etat === 'validee' ? <EvaluationValidee le={recue.valideeLe} /> : null}
             periode={periodeDeLEvaluationDuN1(periode)}
             puces={[

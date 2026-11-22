@@ -4,11 +4,9 @@ import Link from 'next/link';
 import {
   LIBELLES_DU_PERSONNEL,
   periodeDEvaluationEnLettres,
-  type AccueilDeLaCampagne,
   type AgentACommenter,
   type AgentDeLEquipe,
   type PeriodeDeLaCampagne,
-  type PersonnelDeLaFiche,
 } from '@teranga/contracts';
 import { Card, cn, EmptyState, Skeleton } from '@teranga/ui';
 import {
@@ -20,8 +18,8 @@ import {
 import {
   BoutonMAutoEvaluer,
   BoutonValiderMonEvaluation,
+  statutDeLAgent,
   statutPourLeN2,
-  type Statut,
 } from '../../../components/campagne/fiche';
 import { CarteDeLaPeriode } from '../../../components/campagne/periode';
 import { Icon } from '../../../components/icons';
@@ -30,7 +28,6 @@ import {
   ACCUEIL_DE_LA_CAMPAGNE,
   ADMINISTRATION_DE_LA_CAMPAGNE,
   ficheDuN2,
-  SUIVI_DE_LA_DCH,
   useAccueilDeLaCampagne,
 } from '../../../lib/campagne';
 
@@ -45,19 +42,22 @@ import {
    droit, le ferme (ADR-0228) ; dessous, ses repères, comme sur la fiche de
    son dossier : direction, département, service, supérieur hiérarchique,
    statut (ADR-0224).
-   Pour qui pilote la campagne, des tuiles juste dessous : le suivi de la
-   DCH, avec l'habilitation « Tableau de bord » (ADR-0221), et
-   l'administration, pour un compte d'administration (ADR-0222).
+   Pour un compte d'administration, la tuile de l'administration juste
+   dessous (ADR-0222) ; le suivi des évaluations, lui, s'ouvre depuis la
+   barre du haut (ADR-0256).
    Puis des sections titrées en Anton : la période d'évaluation annuelle et
    ses deux temps, numérotés, chacun avec sa période, ce qu'il demande, et
    la coche bleue une fois fait (ADR-0220) ; si la personne évalue des
    agents, son équipe, en deux groupes, une carte par agent, comme celles
-   des événements de la plateforme de l'APIX (ADR-0234). Une
-   auto-évaluation faite rend la carte cliquable : le N+1 ouvre alors
-   l'évaluation de l'agent (ADR-0216). Ni point ni fiche sur ces cartes :
-   le groupe dit si l'auto-évaluation est faite (ADR-0250). Enfin, si la
-   personne est le N+2 d'agents, les équipes de ses N+1 : une fiche validée
-   par l'agent s'ouvre pour ses commentaires (ADR-0218).
+   des événements de la plateforme de l'APIX (ADR-0234). Chaque carte
+   ouvre la page de l'agent : son évaluation par le N+1 une fois
+   l'auto-évaluation faite (ADR-0216), son en-tête et ses étapes seulement
+   avant (ADR-0257). Ni point ni fiche sur ces cartes : le groupe dit si
+   l'auto-évaluation est faite (ADR-0250), et la carte, sa date, à la place
+   du statut (ADR-0257). Enfin, pour le
+   N+2 d'agents, « Fiches d'évaluation à commenter » : les fiches validées
+   par l'agent, qui s'ouvrent pour ses commentaires (ADR-0218). Tant
+   qu'aucune n'est arrivée chez le N+2, pas de section (ADR-0255).
    Les blocs montent l'un après l'autre à l'arrivée sur la page.
    ──────────────────────────────────────────────────────────────── */
 
@@ -82,18 +82,20 @@ export default function AccueilDeLaCampagnePage() {
   }
   if (!v) return <Squelette />;
 
-  const pilotage = v.administration || v.dch;
   if (!v.moi) {
-    // Un compte sans dossier d'agent, l'administration : la campagne, ses pages.
-    if (pilotage) {
+    // Un compte sans dossier d'agent, l'administration : la campagne, ses
+    // pages ; le suivi des évaluations s'ouvre depuis la barre (ADR-0256).
+    if (v.administration || v.dch) {
       return (
         <div className="flex flex-col gap-8 sm:gap-10">
           <Bloc rang={0}>
             <BandeauDeLaCampagne titre={`Évaluation annuelle ${v.annee}`} periode={v.periode} />
           </Bloc>
-          <Bloc rang={1}>
-            <Pilotage accueil={v} />
-          </Bloc>
+          {v.administration ? (
+            <Bloc rang={1}>
+              <Administration periode={v.periode} />
+            </Bloc>
+          ) : null}
         </div>
       );
     }
@@ -124,9 +126,9 @@ export default function AccueilDeLaCampagnePage() {
       <Bloc rang={rang++}>
         <BandeauDeLAgent agent={v.moi} action={action} />
       </Bloc>
-      {pilotage ? (
+      {v.administration ? (
         <Bloc rang={rang++}>
-          <Pilotage accueil={v} />
+          <Administration periode={v.periode} />
         </Bloc>
       ) : null}
       {auto ? (
@@ -158,33 +160,19 @@ function Bloc({ rang, children }: { rang: number; children: React.ReactNode }) {
 }
 
 /**
- * Les tuiles de qui pilote la campagne : l'administration, avec ses dates,
- * et le suivi de la DCH, avec la jauge des fiches transmises. Elles se
- * partagent la largeur : seule, une tuile la prend toute.
+ * La tuile de l'administration de la campagne, avec ses dates, pour un
+ * compte d'administration (ADR-0222). Le suivi des évaluations, lui, n'a
+ * plus de tuile : il s'ouvre depuis la barre du haut (ADR-0256).
  */
-function Pilotage({ accueil: v }: { accueil: AccueilDeLaCampagne }) {
+function Administration({ periode }: { periode: PeriodeDeLaCampagne | null }) {
   return (
-    <nav
-      aria-label="Pilotage de la campagne"
-      className="grid grid-cols-[repeat(auto-fit,minmax(min(19rem,100%),1fr))] gap-4"
-    >
-      {v.administration ? (
-        <TuileDePilotage
-          href={ADMINISTRATION_DE_LA_CAMPAGNE}
-          icone="settings"
-          titre="Administration de la campagne"
-          texte={periodeEnBref(v.periode)}
-        />
-      ) : null}
-      {v.dch ? (
-        <TuileDePilotage
-          href={SUIVI_DE_LA_DCH}
-          icone="folder_managed"
-          titre="Suivi de la DCH"
-          texte={`Fiches transmises : ${v.dch.transmises} sur ${v.dch.fiches}`}
-          jauge={{ fait: v.dch.transmises, total: v.dch.fiches }}
-        />
-      ) : null}
+    <nav aria-label="Pilotage de la campagne">
+      <TuileDePilotage
+        href={ADMINISTRATION_DE_LA_CAMPAGNE}
+        icone="settings"
+        titre="Administration de la campagne"
+        texte={periodeEnBref(periode)}
+      />
     </nav>
   );
 }
@@ -196,15 +184,21 @@ function Pilotage({ accueil: v }: { accueil: AccueilDeLaCampagne }) {
  * un grand écran. Un seul groupe quand tous les agents sont dans le même cas.
  */
 function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
-  // L'auto-évaluation faite, la carte ouvre l'évaluation de l'agent. Ni point
-  // ni fiche sur la carte (ADR-0250) : le titre du groupe dit où en est
-  // l'auto-évaluation, son point de couleur devant (ADR-0253).
+  // Chaque carte ouvre la page de l'agent, l'auto-évaluation faite ou non
+  // (ADR-0257). Ni point ni fiche sur la carte (ADR-0250) : le titre du
+  // groupe dit où en est l'auto-évaluation, son point de couleur devant
+  // (ADR-0253). Faite, la carte en dit la date, à la place du statut.
   const carte = (a: AgentDeLEquipe): CarteDUnAgent => ({
     agent: a,
-    statut: null,
-    personnel: a.personnel,
-    href:
-      a.auto.etat === 'transmise' ? `${ACCUEIL_DE_LA_CAMPAGNE}/equipe/${a.employeeId}` : undefined,
+    reperes: [
+      a.auto.etat === 'transmise'
+        ? { libelle: 'Auto-évaluation', valeur: statutDeLAgent(a.auto).libelle }
+        : {
+            libelle: 'Statut',
+            valeur: a.personnel ? LIBELLES_DU_PERSONNEL[a.personnel] : null,
+          },
+    ],
+    href: `${ACCUEIL_DE_LA_CAMPAGNE}/equipe/${a.employeeId}`,
   });
   return (
     <SectionDAgents
@@ -227,36 +221,33 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
 }
 
 /**
- * Les agents dont la personne est le N+2, rangés par N+1, en deux groupes :
- * d'abord les fiches validées par l'agent, qui s'ouvrent pour les
- * commentaires du N+2, puis celles qui n'y sont pas encore, avec l'étape où
- * elles en sont. Chaque carte dit le N+1 de l'agent (ADR-0218). Une fiche
- * reprise par le N+1 ne s'ouvre plus (ADR-0221).
+ * Les fiches arrivées chez le N+2 : celles que l'agent a validées, rangées
+ * par N+1, sans groupe. Une fiche encore chez le N+1 ou chez l'agent n'y est
+ * pas (ADR-0255). Le titre suit leur nombre : « Fiche d'évaluation à
+ * commenter », puis « Fiches… ». Chaque carte dit le N+1 de l'agent
+ * (ADR-0218), dans un repère comme l'adresse, puis où en est la fiche. Une
+ * fiche reprise par le N+1 ne s'ouvre plus (ADR-0221).
  */
 function ACommenter({ agents }: { agents: AgentACommenter[] }) {
-  const carte = (a: AgentACommenter): CarteDUnAgent => ({
-    agent: a,
-    statut: statutPourLeN2(a),
-    precision: `N+1 : ${a.n1.prenom} ${a.n1.nom}`,
-    href:
-      a.commentaires === 'en_attente' || a.commentaires === 'reprise'
-        ? undefined
-        : ficheDuN2(a.employeeId),
-  });
+  const carte = (a: AgentACommenter): CarteDUnAgent => {
+    const statut = statutPourLeN2(a);
+    return {
+      agent: a,
+      reperes: [
+        { libelle: 'N+1', valeur: `${a.n1.prenom} ${a.n1.nom}` },
+        ...(statut ? [{ libelle: 'Fiche', valeur: statut.libelle }] : []),
+      ],
+      href:
+        a.commentaires === 'en_attente' || a.commentaires === 'reprise'
+          ? undefined
+          : ficheDuN2(a.employeeId),
+    };
+  };
   return (
     <SectionDAgents
-      id="commentaires-du-n2"
-      titre="Commentaires du N+2"
-      groupes={[
-        {
-          titre: 'Évaluation validée par l’agent',
-          cartes: agents.filter((a) => a.commentaires !== 'en_attente').map(carte),
-        },
-        {
-          titre: 'Évaluation en cours',
-          cartes: agents.filter((a) => a.commentaires === 'en_attente').map(carte),
-        },
-      ]}
+      id="fiches-a-commenter"
+      titre={`${agents.length > 1 ? 'Fiches' : 'Fiche'} d’évaluation à commenter`}
+      groupes={[{ cartes: agents.map(carte) }]}
     />
   );
 }
@@ -268,24 +259,23 @@ function periodeEnBref(periode: PeriodeDeLaCampagne | null): string {
   return texte.charAt(0).toLocaleUpperCase('fr') + texte.slice(1);
 }
 
-/** Un agent sur sa carte : où en est sa fiche, et la page qu'elle ouvre s'il y a lieu. */
+/** Un agent sur sa carte : ses repères, et la page qu'elle ouvre s'il y a lieu. */
 interface CarteDUnAgent {
   agent: Pick<AgentDeLEquipe, 'employeeId' | 'prenom' | 'nom' | 'poste' | 'email'>;
-  /** Où en est sa fiche, pour le N+2 ; `null` : rien à dire, ou une carte de « Mon équipe ». */
-  statut: Statut | null;
-  /** Une ligne de plus, sous le poste : son N+1. */
-  precision?: string;
   /**
-   * Son statut, cadre ou non cadre, à droite de l'adresse : sur les cartes de
-   * « Mon équipe » seulement, même inconnu (ADR-0235).
+   * Les repères qui suivent l'adresse, deux par ligne. Dans « Mon équipe »,
+   * l'auto-évaluation faite et sa date, sinon le statut, cadre ou non cadre,
+   * même inconnu (ADR-0235, ADR-0257). Pour le N+2, le N+1 de l'agent, puis
+   * où en est la fiche (ADR-0255).
    */
-  personnel?: PersonnelDeLaFiche | null;
+  reperes: { libelle: string; valeur: string | null }[];
   href?: string;
 }
 
 /**
  * Une section d'agents, sous son titre en Anton et leur nombre, en groupes
- * l'un sous l'autre, séparés d'un filet. Un groupe vide ne s'affiche pas.
+ * l'un sous l'autre, séparés d'un filet. Un groupe vide ne s'affiche pas ;
+ * un groupe sans titre, ses cartes seules.
  * Dans « Mon équipe », le titre d'un groupe porte un point devant lui : vert,
  * auto-évaluation faite ; rouge, non faite (ADR-0253). Les cartes, elles,
  * n'en ont pas (ADR-0250).
@@ -298,7 +288,7 @@ function SectionDAgents({
   id: string;
   titre: string;
   groupes: readonly {
-    titre: string;
+    titre?: string;
     point?: 'faite' | 'non_faite';
     cartes: CarteDUnAgent[];
   }[];
@@ -312,22 +302,24 @@ function SectionDAgents({
       </TitreDeSection>
       {pleins.map((g, i) => (
         <div
-          key={g.titre}
+          key={g.titre ?? i}
           className={cn('flex flex-col gap-3', i > 0 && 'border-t border-line-soft pt-5')}
         >
-          <h3 className="flex items-center gap-2 text-[11px] font-bold tracking-[0.12em] text-ink-muted uppercase">
-            {g.point ? (
-              <span
-                aria-hidden
-                className={cn(
-                  'size-2 shrink-0 rounded-full',
-                  g.point === 'faite' ? 'bg-success' : 'bg-danger',
-                )}
-              />
-            ) : null}
-            {g.titre}
-            <span className="tabular-nums">{g.cartes.length}</span>
-          </h3>
+          {g.titre ? (
+            <h3 className="flex items-center gap-2 text-[11px] font-bold tracking-[0.12em] text-ink-muted uppercase">
+              {g.point ? (
+                <span
+                  aria-hidden
+                  className={cn(
+                    'size-2 shrink-0 rounded-full',
+                    g.point === 'faite' ? 'bg-success' : 'bg-danger',
+                  )}
+                />
+              ) : null}
+              {g.titre}
+              <span className="tabular-nums">{g.cartes.length}</span>
+            </h3>
+          ) : null}
           <Grille>
             {g.cartes.map((c) => (
               <CarteAgent key={c.agent.employeeId} carte={c} />
@@ -389,11 +381,7 @@ function RepereDeLaCarte({
  * fiche. Sans point de couleur (ADR-0250). Avec `href`, toute la carte
  * s'ouvre et se soulève au survol.
  */
-function CarteAgent({
-  carte: { agent: a, statut, precision, personnel, href },
-}: {
-  carte: CarteDUnAgent;
-}) {
+function CarteAgent({ carte: { agent: a, reperes, href } }: { carte: CarteDUnAgent }) {
   const contenu = (
     <>
       <div className="min-w-0">
@@ -404,29 +392,21 @@ function CarteAgent({
         {a.poste ? (
           <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-ink-muted">{a.poste}</p>
         ) : null}
-        {precision ? (
-          <p className="mt-0.5 truncate text-[12.5px] leading-snug text-ink-muted">{precision}</p>
-        ) : null}
       </div>
-      {/* Dans « Mon équipe », l'adresse et le statut côte à côte, comme la date
-          et le lieu d'un événement (ADR-0235). Pour le N+2, l'adresse et la
-          fiche, côte à côte quand la carte est assez large. */}
+      {/* L'adresse, puis les autres repères, deux par ligne, comme la date et
+          le lieu d'un événement (ADR-0235) : dans « Mon équipe »,
+          l'auto-évaluation faite ou le statut (ADR-0257) ; pour le N+2, le
+          N+1, puis la fiche (ADR-0255). */}
       <dl
         className={cn(
           'mt-auto grid gap-x-5 gap-y-3 border-t border-line-soft pt-3.5',
-          personnel !== undefined
-            ? 'grid-cols-2'
-            : statut && '@[20rem]:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]',
+          reperes.length > 0 && 'grid-cols-2',
         )}
       >
         <RepereDeLaCarte libelle="Email professionnel" valeur={a.email} surUneLigne />
-        {personnel !== undefined ? (
-          <RepereDeLaCarte
-            libelle="Statut"
-            valeur={personnel ? LIBELLES_DU_PERSONNEL[personnel] : null}
-          />
-        ) : null}
-        {statut ? <RepereDeLaCarte libelle="Fiche" valeur={statut.libelle} /> : null}
+        {reperes.map((r) => (
+          <RepereDeLaCarte key={r.libelle} libelle={r.libelle} valeur={r.valeur} />
+        ))}
       </dl>
     </>
   );

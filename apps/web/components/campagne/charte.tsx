@@ -152,7 +152,7 @@ function MarqueSurLeBleu({ children }: { children: React.ReactNode }) {
 
 /**
  * Le bandeau d'une page de la campagne qui ne porte pas sur un agent : son
- * auto-évaluation, son évaluation, le suivi de la DCH, l'administration.
+ * auto-évaluation, son évaluation, le suivi des évaluations, l'administration.
  * L'icône de la page dans le rond des initiales, s'il y en a une (aucune pour
  * l'auto-évaluation, ADR-0242), le titre et la coche s'il y a lieu, la
  * précision dessous, le geste de la page à droite ; puis le filet orange et
@@ -247,7 +247,7 @@ export function BandeauDeLaCampagne({
             <TempsDuBandeau numero={1} titre="Auto-évaluation" periode={periodeDeLAuto(periode)} />
             <TempsDuBandeau
               numero={2}
-              titre="Évaluation"
+              titre="Évaluation par le N+1"
               periode={periodeDeLEvaluationDuN1(periode)}
             />
           </ol>
@@ -357,8 +357,8 @@ export function TitreDeSection({
 }
 
 /**
- * Une tuile de pilotage : l'icône en orange, le titre, une ligne dessous,
- * et la jauge s'il y a un avancement à montrer. Toute la tuile s'ouvre.
+ * Une tuile de pilotage : l'icône en orange, le titre, une ligne dessous.
+ * Toute la tuile s'ouvre.
  * Étroite, elle s'empile, la flèche en haut à droite ; large (seule sur sa
  * ligne, ou deux sur un grand écran), elle tient sur une ligne, la flèche
  * au bout. Le seuil suit la largeur de la tuile, pas celle de l'écran.
@@ -368,16 +368,12 @@ export function TuileDePilotage({
   icone,
   titre,
   texte,
-  jauge,
 }: {
   href: string;
   icone: IconName;
   titre: string;
   texte: string;
-  /** L'avancement : tant sur tant. */
-  jauge?: { fait: number; total: number };
 }) {
-  const part = jauge && jauge.total > 0 ? Math.round((jauge.fait / jauge.total) * 100) : 0;
   return (
     <Link
       href={href}
@@ -402,21 +398,6 @@ export function TuileDePilotage({
           <span className="text-[15px] leading-tight font-bold text-ink-strong">{titre}</span>
           <span className="text-[12.5px] leading-snug text-ink-muted">{texte}</span>
         </span>
-        {jauge ? (
-          <span
-            role="progressbar"
-            aria-label={titre}
-            aria-valuemin={0}
-            aria-valuemax={jauge.total}
-            aria-valuenow={jauge.fait}
-            className="block h-1.5 overflow-hidden rounded-full bg-line-soft @[34rem]:order-3 @[34rem]:w-44 @[34rem]:shrink-0"
-          >
-            <span
-              className="block h-full rounded-full bg-primary transition-[width] duration-500"
-              style={{ width: `${part}%` }}
-            />
-          </span>
-        ) : null}
       </span>
     </Link>
   );

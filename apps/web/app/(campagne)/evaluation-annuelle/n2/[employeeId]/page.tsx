@@ -107,7 +107,7 @@ function Fiche({ vue: v }: { vue: FichePourLeN2 }) {
           periode={periodeDeLAuto(v.periode)}
         />
         <CarteDEtape
-          titre="Évaluation du N+1"
+          titre="Évaluation par le N+1"
           etat={evaluation?.libelle}
           periode={
             v.agent.evaluateur

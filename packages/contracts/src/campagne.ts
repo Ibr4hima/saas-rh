@@ -169,7 +169,8 @@ export interface AgentDeLEquipe {
 
 /**
  * Un agent dont la personne connectée est le N+2, tel que sa carte le
- * présente : l'agent, son N+1, et où en est sa fiche (ADR-0218).
+ * présente : l'agent, son N+1, et où en sont les commentaires sur sa fiche,
+ * validée par l'agent (ADR-0218, ADR-0255).
  */
 export interface AgentACommenter {
   employeeId: string;
@@ -196,11 +197,15 @@ export interface AccueilDeLaCampagne {
   equipe: AgentDeLEquipe[];
   /** Son évaluation par le N+1 ; `null` : cette personne n'est pas évaluée (ADR-0217). */
   monEvaluation: EvaluationRecue | null;
-  /** Les agents dont la personne connectée est le N+2 ; vide s'il n'y en a pas (ADR-0218). */
+  /**
+   * Les fiches arrivées chez la personne connectée, N+2 de leurs agents :
+   * validées par l'agent (ADR-0218, ADR-0255) ; vide s'il n'y en a pas.
+   */
   aCommenter: AgentACommenter[];
   /**
-   * Le suivi de la DCH, en deux nombres, pour qui a l'habilitation « Tableau
-   * de bord » ; `null` sinon (ADR-0221).
+   * Le suivi des évaluations, en deux nombres, pour qui a l'habilitation
+   * « Tableau de bord » ; `null` sinon (ADR-0221). Non nul, la barre porte
+   * le bouton « Suivi des évaluations » (ADR-0256).
    */
   dch: { fiches: number; transmises: number } | null;
   /** Un compte d'administration : l'accueil ouvre l'administration de la campagne (ADR-0222). */

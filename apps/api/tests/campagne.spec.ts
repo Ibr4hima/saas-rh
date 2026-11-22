@@ -792,16 +792,16 @@ describe('la validation par l’agent (ADR-0217)', () => {
 });
 
 describe('les commentaires du N+2 (ADR-0218)', () => {
-  it('le N+2 voit les équipes de ses N+1, où qu’en soient les fiches', async () => {
+  it('le N+2 ne voit que les fiches validées par l’agent (ADR-0255)', async () => {
     // Cheikh Mbaye évalue Awa Diop, qui évalue Ibou Ndiaye, Fatou Sall et Moussa Sarr.
+    // L'évaluation de Fatou Sall n'est pas validée : sa fiche n'est pas chez le N+2.
     const { aCommenter, equipe } = await campagne.accueil(session('dg'));
     expect(aCommenter.map((a) => [a.employeeId, a.commentaires])).toEqual([
       [agents.ibou, 'a_commenter'],
-      [agents.fatou, 'en_attente'],
       [agents.moussa, 'a_commenter'],
     ]);
     expect(aCommenter[0]!.n1).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
-    expect(aCommenter.map((a) => a.email)).toEqual([null, null, 'moussa.sarr@camp.test']);
+    expect(aCommenter.map((a) => a.email)).toEqual([null, 'moussa.sarr@camp.test']);
     // Au sommet de l'organigramme, son équipe n'a pas de N+2.
     expect(equipe.every((a) => a.commentaires === null)).toBe(true);
     const awa = await campagne.accueil(session('awa'));

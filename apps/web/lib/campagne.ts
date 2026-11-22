@@ -16,7 +16,7 @@ export const MON_EVALUATION = `${ACCUEIL_DE_LA_CAMPAGNE}/mon-evaluation`;
 /** La fiche d'un agent dont on est le N+2, à commenter (ADR-0218). */
 export const ficheDuN2 = (employeeId: string) => `${ACCUEIL_DE_LA_CAMPAGNE}/n2/${employeeId}`;
 
-/** Le suivi de la DCH : toutes les fiches de l'année (ADR-0221). */
+/** Le suivi des évaluations : toutes les fiches de l'année (ADR-0221, ADR-0256). */
 export const SUIVI_DE_LA_DCH = `${ACCUEIL_DE_LA_CAMPAGNE}/dch`;
 
 /** La fiche d'un agent, transmise à la DCH. */

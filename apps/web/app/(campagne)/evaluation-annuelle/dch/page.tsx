@@ -32,11 +32,13 @@ import { api, ApiError } from '../../../../lib/api';
 import { CLE_CAMPAGNE, ficheDeLaDCH } from '../../../../lib/campagne';
 
 /* ────────────────────────────────────────────────────────────────
-   Le suivi de la DCH (ADR-0221) : chaque agent à évaluer cette année, et où
-   en est sa fiche, de l'auto-évaluation à sa transmission à la DCH. En
-   tête, les grands nombres ; dessous, la liste, qu'on cherche par nom ou
-   matricule et qu'on filtre par étape. Une fiche transmise s'ouvre en
-   entier. La page demande l'habilitation « Tableau de bord ».
+   Le suivi des évaluations (ADR-0221, ADR-0256) : chaque agent à évaluer
+   cette année, et où en est sa fiche, de l'auto-évaluation à sa
+   transmission à la DCH. En tête, les grands nombres ; dessous, la liste,
+   qu'on cherche par nom ou matricule et qu'on filtre par étape. Une fiche
+   transmise s'ouvre en entier. La page demande l'habilitation « Tableau de
+   bord » ; elle s'ouvre depuis le bouton « Suivi des évaluations » de la
+   barre du haut.
    ──────────────────────────────────────────────────────────────── */
 
 /** L'auto-évaluation n'a que deux états : faite, ou non faite, en rouge (ADR-0226). */
@@ -75,7 +77,7 @@ export default function SuiviDeLaDCHPage() {
             title={
               suivi.error instanceof ApiError
                 ? suivi.error.problem.title
-                : 'Impossible d’afficher le suivi de la DCH'
+                : 'Impossible d’afficher le suivi des évaluations'
             }
           />
         </Card>
@@ -100,7 +102,7 @@ export default function SuiviDeLaDCHPage() {
       <RetourALAccueil libelle="Accueil" />
       <BandeauDePage
         icone="folder_managed"
-        titre="Suivi de la DCH"
+        titre="Suivi des évaluations"
         sousTitre={v ? `${TITRE_DE_LA_FICHE} ${v.annee}` : TITRE_DE_LA_FICHE}
         reperes={
           v

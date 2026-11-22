@@ -221,18 +221,18 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0213](0213-fond-clair-fafafa.md)                     | Le fond clair de l'application revient à #FAFAFA                                        | acceptée                                    |
 | [0214](0214-bouton-m-auto-evaluer.md)                 | Le bouton M'auto-évaluer et la coche bleue de l'auto-évaluation faite                   | complétée 0217, révisée 0220, 0226, 0227    |
 | [0215](0215-formulaire-d-auto-evaluation.md)          | Le formulaire d'auto-évaluation de la campagne, sur la fiche S1/EN05                    | complétée 0216, révisée 0233, 0238, 0241    |
-| [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | complétée 0217, révisée 0226, 0233, 0239    |
+| [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | compl. 0217, révisée 0226, 0233, 0239, 0257 |
 | [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | complétée 0218, révisée 0220, 0233          |
-| [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | complétée 0221, révisée 0226, 0233, 0252    |
+| [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | compl. 0221, révisée 0226, 0233, 0252, 0255 |
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée, révisée par 0243                  |
-| [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223 et 0227          |
-| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | acceptée, révisée par 0226, 0227, 0233      |
+| [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223, 0227 et 0258    |
+| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | révisée par 0226, 0227, 0233 et 0256        |
 | [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | acceptée, révisée par 0227 et 0233          |
 | [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée, révisée par 0236, 0237 et 0245    |
 | [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée, complétée par 0248                |
 | [0225](0225-en-tete-sans-matricule.md)                | L'en-tête et les cartes des agents sans le matricule, le poste seul sous le nom         | acceptée                                    |
 | [0226](0226-auto-evaluation-faite-ou-non.md)          | L'auto-évaluation faite ou non faite, un point vert ou rouge sur les cartes             | acceptée, révisée par 0234, 0250 et 0252    |
-| [0227](0227-accueil-a-la-charte.md)                   | L'accueil de la campagne à la charte de l'APIX : bandeau, titres en Anton, tuiles       | révisée par 0228, 0233, 0234, 0240 et 0250  |
+| [0227](0227-accueil-a-la-charte.md)                   | L'accueil de la campagne à la charte de l'APIX : bandeau, titres en Anton, tuiles       | révisée 0228, 0233, 0234, 0240, 0250, 0256  |
 | [0228](0228-bandeau-droit.md)                         | Le bandeau de l'accueil, droit, souligné d'un filet orange                              | acceptée, révisée par 0229                  |
 | [0229](0229-pied-droit-et-nom-en-capitales.md)        | Le pied droit des écrans de la charte, et le nom de famille en capitales sans accents   | acceptée, révisée par 0230                  |
 | [0230](0230-email-sans-propositions.md)               | L'adresse professionnelle de la connexion, sans les propositions du navigateur          | acceptée                                    |
@@ -240,7 +240,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0232](0232-titre-de-la-barre-plus-petit.md)          | Le titre de la barre de la campagne, un peu plus petit                                  | acceptée                                    |
 | [0233](0233-pages-de-la-campagne-a-la-charte.md)      | Les pages de la campagne à la charte de l'APIX : bandeau, étapes numérotées, titres     | acceptée, révisée par 0240 et 0242          |
 | [0234](0234-cartes-des-agents.md)                     | Les cartes des agents comme celles des événements de la plateforme, avec l'email pro    | acceptée, révisée par 0235 et 0250          |
-| [0235](0235-statut-sur-les-cartes-de-l-equipe.md)     | Le statut à droite de l'email, sur les cartes de Mon équipe                             | acceptée, révisée par 0250                  |
+| [0235](0235-statut-sur-les-cartes-de-l-equipe.md)     | Le statut à droite de l'email, sur les cartes de Mon équipe                             | acceptée, révisée par 0250 et 0257          |
 | [0236](0236-puces-de-la-periode-reformulees.md)       | Deux puces de la période reformulées par l'APIX                                         | acceptée, révisée par 0237                  |
 | [0237](0237-puce-des-objectifs-raccourcie.md)         | La puce des objectifs de l'année à venir, raccourcie                                    | acceptée                                    |
 | [0238](0238-reponses-oui-non-et-puces.md)             | Les réponses par oui ou non et en puces de l'auto-évaluation, souhaits obligatoires     | acceptée, complétée par 0251                |
@@ -257,6 +257,10 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0249](0249-titre-des-fenetres-a-la-ligne.md)         | Le titre d'une fenêtre passe à la ligne, il n'est plus coupé                            | acceptée                                    |
 | [0250](0250-cartes-sans-point-ni-fiche.md)            | Les cartes des agents sans point de couleur, et sans la fiche dans Mon équipe           | acceptée, révisée par 0253                  |
 | [0251](0251-synthese-du-n1-en-puces.md)               | Les points forts et les axes de développement du N+1, en puces                          | acceptée                                    |
-| [0252](0252-etapes-sans-n2-etat-en-bleu.md)           | La bande des étapes : sans les commentaires du N+2 chez le N+1, l'état en bleu          | acceptée                                    |
+| [0252](0252-etapes-sans-n2-etat-en-bleu.md)           | La bande des étapes : sans les commentaires du N+2 chez le N+1, l'état en bleu          | acceptée, révisée par 0258                  |
 | [0253](0253-point-des-groupes-de-l-equipe.md)         | Le point de couleur revient devant les titres de groupe de Mon équipe                   | acceptée                                    |
 | [0254](0254-barre-sans-ce-qui-manque.md)              | La barre au bas de la fiche ne dresse plus la liste de ce qui manque                    | acceptée                                    |
+| [0255](0255-fiches-a-commenter.md)                    | Fiches d'évaluation à commenter : sur l'accueil du N+2, les fiches validées par l'agent | acceptée                                    |
+| [0256](0256-suivi-des-evaluations-dans-la-barre.md)   | Le suivi des évaluations s'ouvre d'un bouton de la barre, à gauche de la date           | acceptée                                    |
+| [0257](0257-cartes-de-l-equipe-ouvertes.md)           | Mon équipe : toutes les cartes s'ouvrent, et l'auto-évaluation faite y dit sa date      | acceptée                                    |
+| [0258](0258-evaluation-par-le-n1.md)                  | Évaluation par le N+1, dans la période et dans la bande des étapes                      | acceptée                                    |

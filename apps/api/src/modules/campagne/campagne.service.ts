@@ -1122,8 +1122,10 @@ async function n2De(
 }
 
 /**
- * Les agents dont la personne connectée est le N+2, rangés par N+1, puis
- * par ordre alphabétique : chacune de leurs fiches, où qu'elle en soit.
+ * Les fiches arrivées chez le N+2 qu'est la personne connectée : celles des
+ * agents de ses N+1 que l'agent a validées, rangées par N+1, puis par ordre
+ * alphabétique. Une fiche encore chez le N+1 ou chez l'agent n'y est pas
+ * (ADR-0255).
  */
 async function aCommenterDe(tx: Tx, id: string, annee: number): Promise<AgentACommenter[]> {
   const { rows } = await tx.execute<{
@@ -1166,6 +1168,7 @@ async function aCommenterDe(tx: Tx, id: string, annee: number): Promise<AgentACo
       LEFT JOIN assignments a1 ON a1.employee_id = n1.id AND a1.validity @> CURRENT_DATE
       LEFT JOIN fiches_entretien f1 ON f1.employee_id = n1.id AND f1.annee = ${annee}
      WHERE ${evaluable(sql`e`)} AND ${N2} = ${id} AND e.id <> ${id}
+       AND f.validee_le IS NOT NULL
      ORDER BY p1.family_name, p1.given_name, p.family_name, p.given_name`);
   return rows.map((r) => ({
     employeeId: r.id,

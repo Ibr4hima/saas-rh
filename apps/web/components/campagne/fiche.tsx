@@ -230,9 +230,9 @@ export function statutDesCommentaires(
 }
 
 /**
- * Un agent dont la personne connectée est le N+2, sur sa carte : une fois
- * sa fiche validée, ce qui attend le N+2, en orange ; avant, l'étape où en
- * est sa fiche. Rien tant que l'auto-évaluation n'est pas faite.
+ * Un agent dont la personne connectée est le N+2, sur sa carte : où en sont
+ * les commentaires sur sa fiche, validée par l'agent ; « À commenter » en
+ * orange. Une fiche pas encore validée n'arrive pas chez le N+2 (ADR-0255).
  */
 export function statutPourLeN2(a: AgentACommenter): Statut | null {
   switch (a.commentaires) {
@@ -245,10 +245,8 @@ export function statutPourLeN2(a: AgentACommenter): Statut | null {
     case 'a_commenter':
       return { libelle: 'À commenter', ton: 'orange' };
     case 'en_attente':
-      if (a.auto.etat !== 'transmise') return null;
-      return a.evaluation === 'transmise'
-        ? { libelle: 'Chez l’agent', ton: 'teal' }
-        : { libelle: 'Chez le N+1', ton: 'bleu' };
+      // Pas encore validée par l'agent : la fiche n'est pas chez le N+2 (ADR-0255).
+      return null;
   }
 }
 
