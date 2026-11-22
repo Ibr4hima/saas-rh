@@ -389,6 +389,13 @@ export const evaluationDuN1Schema = z.object({
   plan: z.array(actionSchema).max(MAXIMUMS_DE_LA_FICHE.actions),
   objectifsAVenir: z.array(objectifAVenirSchema).max(MAXIMUMS_DE_LA_FICHE.objectifsAVenir),
   formations: z.array(formationSouhaiteeSchema).max(MAXIMUMS_DE_LA_FICHE.formations),
+  /** Le N+1 confirme avoir reçu l'agent en entretien (ADR-0265). */
+  entretienConfirme: z.boolean().default(false),
+  /**
+   * AAAA-MM-JJ : le jour de l'entretien, entre la transmission de
+   * l'auto-évaluation et le jour où l'évaluation part à l'agent (ADR-0265).
+   */
+  dateDeLEntretien: z.iso.date().nullable().default(null),
 });
 export type EvaluationDuN1 = z.infer<typeof evaluationDuN1Schema>;
 
@@ -493,15 +500,18 @@ export function autoEvaluationTransmise(auto: AutoEvaluation): AutoEvaluation {
  * l'ordre de la fiche : l'appréciation de chaque objectif, chaque compétence
  * (le management, pour le personnel cadre, seulement s'il y a lieu), les
  * points forts et les axes de développement, les objectifs de l'année à
- * venir, de trois à cinq, chacun avec son intitulé (ADR-0239), puis la
- * synthèse générale de la partie réservée. Le plan d'action, les formations
- * et les observations se remplissent s'il y a lieu.
+ * venir, de trois à cinq, chacun avec son intitulé (ADR-0239), la synthèse
+ * générale de la partie réservée, puis l'entretien : sa confirmation et sa
+ * date (ADR-0265). Avec `entretien`, la date doit tomber entre la
+ * transmission de l'auto-évaluation (`du`) et le jour même (`au`). Le plan
+ * d'action, les formations et les observations se remplissent s'il y a lieu.
  */
 export function ceQuiManqueALEvaluationDuN1(
   evaluation: EvaluationDuN1,
   reservee: PartieReservee,
   objectifs: readonly ObjectifEvalue[],
   personnel: PersonnelDeLaFiche,
+  entretien?: { du: string | null; au: string },
 ): string[] {
   const manque: string[] = [];
   objectifs.forEach((o, i) => {
@@ -527,6 +537,15 @@ export function ceQuiManqueALEvaluationDuN1(
   }
   for (const c of SYNTHESE_GENERALE) {
     if (!reservee[c.cle]) manque.push(`la ${c.intitule.toLocaleLowerCase('fr')}`);
+  }
+  const le = evaluation.dateDeLEntretien;
+  if (!evaluation.entretienConfirme) {
+    manque.push('la confirmation de l’entretien');
+  } else if (
+    !le ||
+    (entretien && ((entretien.du !== null && le < entretien.du) || le > entretien.au))
+  ) {
+    manque.push('la date de l’entretien');
   }
   return manque;
 }
@@ -569,6 +588,8 @@ export const evaluationDuN1Vide = (): EvaluationDuN1 => ({
   plan: [],
   objectifsAVenir: [],
   formations: [],
+  entretienConfirme: false,
+  dateDeLEntretien: null,
 });
 
 export const partieReserveeVide = (): PartieReservee => ({

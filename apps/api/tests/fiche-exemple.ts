@@ -145,6 +145,8 @@ export function ficheExemple(o: Partial<DonneesDeLaFiche> = {}): DonneesDeLaFich
           justification: 'Renforcer les modèles du tableau de bord.',
         },
       ],
+      entretienConfirme: true,
+      dateDeLEntretien: '2026-12-22',
     },
     reservee: {
       comprehension: 'A',

@@ -226,7 +226,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | compl. 0221, révisée 0226, 0233, 0252, 0255 |
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée, révisée par 0243                  |
 | [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223, 0227 et 0258    |
-| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | révisée par 0226, 0227, 0233 et 0256        |
+| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | révisée par 0226, 0227, 0233, 0256, 0265    |
 | [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | acceptée, révisée par 0227 et 0233          |
 | [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée, révisée par 0236, 0237 et 0245    |
 | [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée, complétée par 0248 et 0264        |
@@ -270,3 +270,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0262](0262-aide-a-la-redaction-des-objectifs.md)     | Comment définir des objectifs : une fiche d'aide à côté du titre des objectifs          | acceptée, révisée par 0263                  |
 | [0263](0263-fiche-des-objectifs-resserree.md)         | La fiche Comment définir des objectifs, resserrée : son titre, cinq parties             | acceptée                                    |
 | [0264](0264-reperes-sans-le-type-de-l-unite.md)       | Sous Département et Service, le nom de l'unité sans ce mot                              | acceptée                                    |
+| [0265](0265-entretien-confirme-et-date.md)            | Le N+1 confirme l'entretien avec l'agent et en donne la date                            | acceptée                                    |

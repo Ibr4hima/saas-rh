@@ -24,7 +24,7 @@ import {
   type PersonneDeLaCampagne,
   type PersonnelDeLaFiche,
 } from '@teranga/contracts';
-import { cn, DateInput, Input } from '@teranga/ui';
+import { Card, Checkbox, cn, DateInput, Field, Input } from '@teranga/ui';
 import { BoutonAjouter } from '../bouton-ajouter';
 import { ChoixDeNiveau, NiveauDonne, ZoneDeTexte } from '../grille-evaluation';
 import { Icon } from '../icons';
@@ -80,6 +80,7 @@ export function FicheDuN1({
   evaluation: ecrite,
   reservee,
   commentairesDuN2,
+  entretien,
   onChange,
 }: {
   annee: number;
@@ -89,6 +90,12 @@ export function FicheDuN1({
   evaluation: EvaluationDuN1;
   reservee: PartieReservee | null;
   commentairesDuN2?: ReactNode;
+  /**
+   * Pendant la saisie : l'agent reçu en entretien, et les bornes de la date
+   * de l'entretien, de la transmission de l'auto-évaluation à aujourd'hui
+   * (ADR-0265).
+   */
+  entretien?: { agent: string; du: string | null; au: string };
   onChange?: Changement<EcritureDeLEvaluation>;
 }) {
   // En lecture, les lignes laissées vides d'un tableau ne se montrent pas.
@@ -118,7 +125,74 @@ export function FicheDuN1({
       {reservee ? (
         <Reservee reservee={reservee} commentairesDuN2={commentairesDuN2} onChange={reserver} />
       ) : null}
+      <Entretien evaluation={evaluation} saisie={entretien} onChange={changer} />
     </>
+  );
+}
+
+/**
+ * L'entretien avec l'agent, au bout de la fiche (ADR-0265). Pendant la
+ * saisie, le N+1 confirme l'avoir tenu, puis en donne la date, entre la
+ * transmission de l'auto-évaluation et le jour même : sans les deux, ni
+ * « Valider » ni « Transmettre ». En lecture, la date seule, s'il y en a une.
+ */
+function Entretien({
+  evaluation: e,
+  saisie,
+  onChange,
+}: {
+  evaluation: EvaluationDuN1;
+  saisie?: { agent: string; du: string | null; au: string };
+  onChange?: MiseAJour;
+}) {
+  const id = useId();
+  if (!onChange || !saisie) {
+    return e.dateDeLEntretien ? (
+      <Card className="mt-5 px-5 py-4">
+        <LibelleLu>Date de l’entretien</LibelleLu>
+        <p className="text-[13.5px] font-semibold text-ink-strong">
+          {dateEnLettres(e.dateDeLEntretien)}
+        </p>
+      </Card>
+    ) : null;
+  }
+  return (
+    <Card className="mt-5 flex flex-col gap-4 px-5 py-5">
+      <label className="flex cursor-pointer items-start gap-3">
+        <Checkbox
+          className="mt-[3px]"
+          checked={e.entretienConfirme}
+          onChange={(ev) => {
+            const coche = ev.target.checked;
+            // Décochée, la case emporte la date avec elle.
+            onChange((x) => ({
+              ...x,
+              entretienConfirme: coche,
+              dateDeLEntretien: coche ? x.dateDeLEntretien : null,
+            }));
+          }}
+        />
+        <span className="text-sm leading-relaxed font-medium text-ink-strong">
+          Je confirme avoir eu un entretien avec {saisie.agent} pour échanger sur son
+          auto-évaluation et ses objectifs.
+          <span className="text-danger"> *</span>
+        </span>
+      </label>
+      {e.entretienConfirme ? (
+        <Field label="Date de l’entretien" htmlFor={id} required className="max-w-xs">
+          <DateInput
+            id={id}
+            value={e.dateDeLEntretien ?? ''}
+            min={saisie.du ?? undefined}
+            max={saisie.au}
+            onChange={(ev) => {
+              const le = ev.target.value || null;
+              onChange((x) => ({ ...x, dateDeLEntretien: le }));
+            }}
+          />
+        </Field>
+      ) : null}
+    </Card>
   );
 }
 

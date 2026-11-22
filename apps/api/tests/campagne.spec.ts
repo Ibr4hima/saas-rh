@@ -9,13 +9,15 @@
  * l'organigramme ni un stage ne sont évalués.
  */
 import { randomUUID } from 'node:crypto';
+import PDFDocument from 'pdfkit';
 import { Pool } from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   autoEvaluationRelue,
   autoEvaluationVide,
   ceQuiManqueALEvaluationDuN1,
   competencesDe,
+  dateEnLettres,
   datesDeLaCampagneSchema,
   evaluationDuN1Vide,
   partieReserveeVide,
@@ -595,12 +597,72 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
     ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.auto_non_transmise' } });
   });
 
+  it('ne part qu’avec l’entretien confirmé et daté, entre l’auto-évaluation et le jour même (ADR-0265)', async () => {
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const ecriture = (entretien: Partial<EvaluationDuN1>): EcritureDeLEvaluation => ({
+      evaluation: {
+        ...v.evaluation,
+        objectifs: Object.fromEntries(
+          v.objectifs.map((o) => [o.id, { niveau: 'B' as const, commentaire: '' }]),
+        ),
+        competences: competencesB('non_cadre'),
+        pointsForts: 'Rigueur.',
+        axesDeDeveloppement: 'Déléguer.',
+        objectifsAVenir: objectifsAVenir(),
+        ...entretien,
+      },
+      reservee: { comprehension: 'B', tenue: 'A', observations: '' },
+    });
+    const refus = (entretien: Partial<EvaluationDuN1>) =>
+      campagne.transmettreEvaluation(session('awa'), agents.ibou, ecriture(entretien)).then(
+        () => null,
+        (e: { problem: { status: number; detail: string } }) => e.problem,
+      );
+    expect(await refus({ entretienConfirme: false, dateDeLEntretien: null })).toMatchObject({
+      status: 422,
+      detail: 'À compléter : la confirmation de l’entretien.',
+    });
+    // L'auto-évaluation d'Ibou Ndiaye est partie aujourd'hui : ni la veille, ni demain.
+    for (const dateDeLEntretien of [null, jour(-1), jour(1)]) {
+      expect(await refus({ entretienConfirme: true, dateDeLEntretien })).toMatchObject({
+        status: 422,
+        detail: 'À compléter : la date de l’entretien.',
+      });
+    }
+    // Sans la confirmation, le brouillon ne garde pas de date.
+    const brouillon = await campagne.enregistrerEvaluation(
+      session('awa'),
+      agents.ibou,
+      ecriture({ entretienConfirme: false, dateDeLEntretien: AUJOURD_HUI }),
+    );
+    expect(brouillon.evaluation.dateDeLEntretien).toBeNull();
+    // Le PDF de « Valider » imprime la date confirmée, au lieu de « À fixer ».
+    const textes = async (entretien: Partial<EvaluationDuN1>) => {
+      const espion = vi.spyOn(PDFDocument.prototype, 'text');
+      try {
+        await campagne.apercuDeLEvaluation(session('awa'), agents.ibou, ecriture(entretien));
+        // Les espaces insécables du PDF lus comme des espaces.
+        return espion.mock.calls
+          .map((appel) => String(appel[0]).replace(/[\u00a0\u202f]/g, ' '))
+          .join('\n');
+      } finally {
+        espion.mockRestore();
+      }
+    };
+    const date = await textes({ entretienConfirme: true, dateDeLEntretien: AUJOURD_HUI });
+    expect(date).toContain(dateEnLettres(AUJOURD_HUI));
+    expect(date).not.toContain('À fixer');
+    expect(await textes({ entretienConfirme: false, dateDeLEntretien: null })).toContain('À fixer');
+  });
+
   it('fixe de trois à cinq objectifs pour l’année à venir, chacun avec son intitulé (ADR-0239)', () => {
     const base = {
       ...evaluationDuN1Vide(),
       competences: competencesB('non_cadre'),
       pointsForts: 'Rigueur.',
       axesDeDeveloppement: 'Déléguer.',
+      entretienConfirme: true,
+      dateDeLEntretien: AUJOURD_HUI,
     };
     const reservee = { comprehension: 'B' as const, tenue: 'A' as const, observations: '' };
     const manque = (objectifsAVenir: EvaluationDuN1['objectifsAVenir']) =>
@@ -638,6 +700,9 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
         ],
         // Les trois objectifs de l'année à venir, et une ligne laissée vide qui ne part pas.
         objectifsAVenir: [...objectifsAVenir(), { objectif: '', indicateur: '', echeance: null }],
+        // L'entretien, confirmé le jour même de l'auto-évaluation (ADR-0265).
+        entretienConfirme: true,
+        dateDeLEntretien: AUJOURD_HUI,
       },
       reservee: { comprehension: 'B', tenue: 'A', observations: '' },
     };
@@ -666,6 +731,8 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
         pointsForts: 'Autonomie.',
         axesDeDeveloppement: 'Prise de parole.',
         objectifsAVenir: objectifsAVenir(),
+        entretienConfirme: true,
+        dateDeLEntretien: AUJOURD_HUI,
       },
       reservee: { comprehension: 'A', tenue: 'B', observations: '' },
     });
@@ -1032,9 +1099,16 @@ describe('la transmission à la DCH (ADR-0221)', () => {
     expect(f.transmisePar).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
     expect(f.n2).toMatchObject({ prenom: 'Cheikh', nom: 'Mbaye' });
 
-    const { filename, pdf } = await campagne.pdfDeLaDCH(dch, agents.ibou);
-    expect(filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU-complete.pdf`);
-    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    const espion = vi.spyOn(PDFDocument.prototype, 'text');
+    try {
+      const { filename, pdf } = await campagne.pdfDeLaDCH(dch, agents.ibou);
+      expect(filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU-complete.pdf`);
+      expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+      // La date de l'entretien confirmée par le N+1, plus « À fixer » (ADR-0265).
+      expect(espion.mock.calls.map((appel) => String(appel[0]))).not.toContain('À fixer');
+    } finally {
+      espion.mockRestore();
+    }
   });
 });
 

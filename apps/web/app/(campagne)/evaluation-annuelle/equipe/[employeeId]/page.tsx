@@ -38,6 +38,7 @@ import { Confirmation, messageDe } from '../../../../../components/grille-evalua
 import { Icon } from '../../../../../components/icons';
 import { api, ApiError } from '../../../../../lib/api';
 import { CLE_CAMPAGNE } from '../../../../../lib/campagne';
+import { aujourdhui } from '../../../../../lib/temps';
 
 /* ────────────────────────────────────────────────────────────────
    Un agent de l'équipe, ouvert depuis sa carte (ADR-0211) : sa fiche,
@@ -181,11 +182,15 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   const personnel = personnelDeLaFiche(v.agent.personnel);
+  // L'entretien se tient entre la transmission de l'auto-évaluation et
+  // aujourd'hui (ADR-0265).
+  const entretien = { du: v.agent.auto?.transmiseLe ?? null, au: aujourdhui() };
   const manque = ceQuiManqueALEvaluationDuN1(
     valeur.evaluation,
     valeur.reservee,
     v.objectifs,
     personnel,
+    entretien,
   );
 
   const transmettre = useMutation({
@@ -222,6 +227,7 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
           auto={auto}
           evaluation={valeur.evaluation}
           reservee={valeur.reservee}
+          entretien={{ agent: `${v.agent.prenom} ${v.agent.nom}`, ...entretien }}
           onChange={changer}
         />
       )}

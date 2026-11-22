@@ -194,7 +194,7 @@ export class CampagneService {
           personnel,
           agent: agentDuPdf(agent, posteDepuis, aujourdhui),
           n1: n1 ? { prenom: n1.prenom, nom: n1.nom, fonction: n1.poste } : null,
-          dateDeLEntretien: null,
+          dateDeLEntretien: evaluation.entretienConfirme ? evaluation.dateDeLEntretien : null,
           objectifs: annuelle.objectifs,
           auto: annuelle.auto,
           // Telle qu'elle partirait : sans les lignes de ses tableaux restées vides.
@@ -538,7 +538,13 @@ async function ecrireEvaluation(
   // Transmise, l'évaluation part sans les lignes de ses tableaux restées vides.
   const propre = transmettre ? sansLignesVides(surLaFiche) : surLaFiche;
   if (transmettre) {
-    const manque = ceQuiManqueALEvaluationDuN1(propre, reservee, annuelle.objectifs, personnel);
+    // L'entretien a lieu entre la transmission de l'auto-évaluation et le
+    // jour où l'évaluation part à l'agent (ADR-0265).
+    const { aujourdhui } = await prisePoste(tx, employeeId);
+    const manque = ceQuiManqueALEvaluationDuN1(propre, reservee, annuelle.objectifs, personnel, {
+      du: agent.auto.transmiseLe,
+      au: aujourdhui,
+    });
     if (manque.length > 0) {
       problem(
         422,
@@ -575,6 +581,8 @@ function evaluationSurLaFiche(
     competences: Object.fromEntries(
       Object.entries(e.competences).filter(([cle]) => cles.has(cle)),
     ) as EvaluationDuN1['competences'],
+    // Sans la confirmation de l'entretien, pas de date d'entretien (ADR-0265).
+    dateDeLEntretien: e.entretienConfirme ? e.dateDeLEntretien : null,
   };
 }
 
@@ -1616,7 +1624,8 @@ function agentDuPdf(
 /**
  * Ce que le PDF imprime d'une fiche transmise : la version complète, partie
  * réservée comprise, avec les validations en ligne. La date de l'entretien
- * ne se saisit pas pendant la campagne : le PDF la laisse à fixer.
+ * est celle que le N+1 a confirmée (ADR-0265) ; sur une fiche transmise
+ * avant, le PDF la laisse à fixer.
  */
 function donneesDuPdf({ fiche: f, posteDepuis, aujourdhui }: FicheLueParLaDCH): DonneesDeLaFiche {
   const a = f.agent;
@@ -1628,7 +1637,7 @@ function donneesDuPdf({ fiche: f, posteDepuis, aujourdhui }: FicheLueParLaDCH): 
     personnel: personnelDeLaFiche(a.personnel),
     agent: agentDuPdf(a, posteDepuis, aujourdhui),
     n1: n1 ? { prenom: n1.prenom, nom: n1.nom, fonction: n1.poste } : null,
-    dateDeLEntretien: null,
+    dateDeLEntretien: f.fiche.evaluation.dateDeLEntretien,
     objectifs: f.objectifs,
     auto: f.fiche.auto,
     evaluation: f.fiche.evaluation,
