@@ -73,6 +73,19 @@ describe('la fiche en PDF', () => {
     expect(pagesDe(agent.pdf)).toBeLessThan(pagesDe(complete.pdf));
   });
 
+  it('sans objectif, la mention seule, sans l’échelle (ADR-0244)', async () => {
+    const sans = await imprimer(ficheExemple({ objectifs: [] }));
+    expect(sans.tout).toContain('Aucun objectif n’a été fixé pour cette année.');
+    expect(sans.textes).not.toContain('ÉCHELLE');
+    const avec = await imprimer(ficheExemple());
+    expect(avec.textes).toContain('ÉCHELLE');
+    const agent = await capter(() => ficheDeLAgentPdf(ficheExemple({ objectifs: [] })));
+    expect(agent.textes).not.toContain('ÉCHELLE');
+    // La fiche vierge a ses blocs d'objectifs à remplir : elle garde son échelle.
+    const vierge = await imprimerLaVierge();
+    expect(vierge.textes).toContain('ÉCHELLE');
+  });
+
   it('imprime le texte de la grille, corrigé', async () => {
     const { tout } = await imprimer(ficheExemple());
     for (const juste of [

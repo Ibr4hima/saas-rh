@@ -1228,9 +1228,13 @@ function bilan(f: Composition, d: DonneesDeLaFiche): void {
     premier,
     f.agentSeul ? 'Rempli par l’agent' : 'Auto-évaluation, puis appréciation du N+1',
   );
-  if (objectifs.length === 0) f.mention('Aucun objectif n’a été fixé pour cette année.', 0);
-  for (const o of objectifs) o.poser();
-  echelle(f);
+  // Sans objectif, la mention seule : l'échelle n'aurait rien à noter (ADR-0244).
+  if (objectifs.length === 0) {
+    f.mention('Aucun objectif n’a été fixé pour cette année.', 0);
+  } else {
+    for (const o of objectifs) o.poser();
+    echelle(f);
+  }
 
   // Sur la fiche vierge, les autres réalisations prennent les lignes qui
   // restent sur la page, avant la grille des compétences à l'italienne.
