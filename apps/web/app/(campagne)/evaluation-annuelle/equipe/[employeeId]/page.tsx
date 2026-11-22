@@ -267,12 +267,12 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
             transmettre.reset();
           }}
         >
-          Elle part à{' '}
+          {/* Le texte de l'APIX (ADR-0266). */}
+          Votre évaluation sera transmise à{' '}
           <span className="font-semibold text-ink-strong">
             {v.agent.prenom} {v.agent.nom}
           </span>
-          , sans la partie réservée à la hiérarchie. Elle ne pourra plus être modifiée, sauf si
-          l’agent vous la renvoie.
+          , sans la partie réservée à la hiérarchie. Elle ne pourra plus être modifiée.
         </Confirmation>
       ) : null}
     </>

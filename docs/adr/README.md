@@ -271,3 +271,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0263](0263-fiche-des-objectifs-resserree.md)         | La fiche Comment définir des objectifs, resserrée : son titre, cinq parties             | acceptée                                    |
 | [0264](0264-reperes-sans-le-type-de-l-unite.md)       | Sous Département et Service, le nom de l'unité sans ce mot                              | acceptée                                    |
 | [0265](0265-entretien-confirme-et-date.md)            | Le N+1 confirme l'entretien avec l'agent et en donne la date                            | acceptée                                    |
+| [0266](0266-confirmation-du-n1.md)                    | Votre évaluation sera transmise à … : la confirmation du N+1                            | acceptée                                    |
