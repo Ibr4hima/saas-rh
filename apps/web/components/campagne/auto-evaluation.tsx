@@ -15,6 +15,7 @@ import {
   type ObjectifEvalue,
 } from '@teranga/contracts';
 import { Card, cn, Field } from '@teranga/ui';
+import { insecables } from '../../lib/mots';
 import { ChoixDeNiveau, NiveauDonne, ZoneDeTexte } from '../grille-evaluation';
 import { type IconName } from '../icons';
 import { OuiNon } from '../saisie-de-fiche';
@@ -187,7 +188,7 @@ export function Question({
   const id = useId();
   return (
     <Field
-      label={question}
+      label={insecables(question)}
       htmlFor={id}
       required={requise}
       className={cn(large && 'lg:col-span-2')}
@@ -211,7 +212,7 @@ export function QuestionEnPuces({
 }) {
   const id = useId();
   return (
-    <Field label={question} htmlFor={id} required={requise}>
+    <Field label={insecables(question)} htmlFor={id} required={requise}>
       <ListeAPuces id={id} libelle={question} valeur={valeur} onChange={onChange} max={MAX} />
     </Field>
   );
@@ -239,7 +240,7 @@ export function QuestionOuiNon({
   // Ouverte d'un clic sur « Oui » : le curseur y va ; rouverte avec la page, non.
   const [ouverteALInstant, setOuverteALInstant] = useState(false);
   return (
-    <Field label={question} htmlFor={oui ? id : undefined} required>
+    <Field label={insecables(question)} htmlFor={oui ? id : undefined} required>
       <div className="flex flex-col gap-3">
         <div className="w-full max-w-56">
           <OuiNon
@@ -413,11 +414,15 @@ export function SaisieDeLAuto({
   );
 }
 
-const TEXTE_LU = 'mt-1.5 text-[13.5px] leading-relaxed break-words text-ink-strong';
+const TEXTE_LU = 'text-[13.5px] leading-relaxed break-words text-ink-strong';
 
 /**
  * Une réponse en lecture : la question, petite et grise, puis le texte, ses
  * puces, ou le oui ou le non d'une question à choix et ses puces (ADR-0238).
+ * Dans une grille deux par deux, la question et la réponse tiennent chacune
+ * leur rangée, que la voisine partage (`subgrid`) : la réponse forme un seul
+ * bloc, le oui et ses puces ensemble, sans quoi les puces tomberaient sous
+ * la réponse d'à côté (ADR-0259).
  */
 export function Reponse({
   question,
@@ -442,7 +447,7 @@ export function Reponse({
     reponse = (
       <>
         <p className={TEXTE_LU}>Oui</p>
-        {puces.length > 0 ? <Puces puces={puces} /> : null}
+        {puces.length > 0 ? <Puces puces={puces} className="mt-1" /> : null}
       </>
     );
   } else if (enPuces && puces.length > 0) {
@@ -450,22 +455,28 @@ export function Reponse({
   } else if (texte.trim()) {
     reponse = <p className={cn(TEXTE_LU, 'whitespace-pre-line')}>{texte.trim()}</p>;
   } else {
-    reponse = <p className="mt-1.5 text-[13px] text-ink-muted/70">Non renseigné</p>;
+    reponse = <p className="text-[13px] text-ink-muted/70">Non renseigné</p>;
   }
   return (
     <div className={cn(large && 'lg:col-span-2')}>
-      <p className="text-[12.5px] font-semibold text-ink-muted">{question}</p>
-      {reponse}
+      <p className="text-[12.5px] font-semibold text-ink-muted">{insecables(question)}</p>
+      <div className="mt-1.5">{reponse}</div>
     </div>
   );
 }
 
-/** Les puces d'une réponse, en lecture. */
-function Puces({ puces }: { puces: readonly string[] }) {
+/**
+ * Les puces d'une réponse, en lecture : le point au bord gauche de la
+ * réponse, comme les puces de la période (ADR-0259).
+ */
+function Puces({ puces, className }: { puces: readonly string[]; className?: string }) {
   return (
-    <ul className={cn(TEXTE_LU, 'flex list-disc flex-col gap-1 pl-5 marker:text-ink-muted')}>
+    <ul className={cn('flex flex-col gap-1', className)}>
       {puces.map((p, i) => (
-        <li key={i}>{p}</li>
+        <li key={i} className={cn(TEXTE_LU, 'flex gap-2.5')}>
+          <span aria-hidden className="mt-[9px] size-1.5 shrink-0 rounded-full bg-ink-muted/60" />
+          <span className="min-w-0">{p}</span>
+        </li>
       ))}
     </ul>
   );

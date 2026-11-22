@@ -243,7 +243,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0235](0235-statut-sur-les-cartes-de-l-equipe.md)     | Le statut à droite de l'email, sur les cartes de Mon équipe                             | acceptée, révisée par 0250 et 0257          |
 | [0236](0236-puces-de-la-periode-reformulees.md)       | Deux puces de la période reformulées par l'APIX                                         | acceptée, révisée par 0237                  |
 | [0237](0237-puce-des-objectifs-raccourcie.md)         | La puce des objectifs de l'année à venir, raccourcie                                    | acceptée                                    |
-| [0238](0238-reponses-oui-non-et-puces.md)             | Les réponses par oui ou non et en puces de l'auto-évaluation, souhaits obligatoires     | acceptée, complétée par 0251                |
+| [0238](0238-reponses-oui-non-et-puces.md)             | Les réponses par oui ou non et en puces de l'auto-évaluation, souhaits obligatoires     | acceptée, complétée par 0251 et 0259        |
 | [0239](0239-trois-a-cinq-objectifs-a-venir.md)        | De trois à cinq objectifs pour l'année à venir, fixés par le N+1                        | acceptée                                    |
 | [0240](0240-titres-de-section-plus-petits.md)         | Les titres de section de la campagne, un peu plus petits                                | acceptée                                    |
 | [0241](0241-valider-l-auto-evaluation.md)             | Valider son auto-évaluation, la fiche en PDF, et la barre au bas de la page             | acceptée, révisée par 0242 et 0254          |
@@ -264,3 +264,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0256](0256-suivi-des-evaluations-dans-la-barre.md)   | Le suivi des évaluations s'ouvre d'un bouton de la barre, à gauche de la date           | acceptée                                    |
 | [0257](0257-cartes-de-l-equipe-ouvertes.md)           | Mon équipe : toutes les cartes s'ouvrent, et l'auto-évaluation faite y dit sa date      | acceptée                                    |
 | [0258](0258-evaluation-par-le-n1.md)                  | Évaluation par le N+1, dans la période et dans la bande des étapes                      | acceptée                                    |
+| [0259](0259-lecture-des-reponses.md)                  | La lecture des réponses : le oui et ses puces ensemble, les puces au bord               | acceptée                                    |
