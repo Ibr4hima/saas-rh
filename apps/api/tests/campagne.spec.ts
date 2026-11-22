@@ -775,12 +775,7 @@ describe('la validation par l’agent (ADR-0217)', () => {
     });
 
     const v = await campagne.monEvaluation(session('ibou'));
-    expect([v.etat, v.transmiseLe, v.validable, v.renvoyable]).toEqual([
-      'a_valider',
-      AUJOURD_HUI,
-      true,
-      true,
-    ]);
+    expect([v.etat, v.transmiseLe, v.validable]).toEqual(['a_valider', AUJOURD_HUI, true]);
     expect(v.personnel).toBe('non_cadre');
     expect(v.evaluation?.pointsForts).toBe('Rigueur et disponibilité.');
     expect(v.evaluateur).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
@@ -789,64 +784,42 @@ describe('la validation par l’agent (ADR-0217)', () => {
       etat: 'a_valider',
       transmiseLe: AUJOURD_HUI,
       valideeLe: null,
-      renvoyeeLe: null,
     });
   });
 
-  it('en désaccord, repart au N+1 avec un mot ; le N+1 la reprend et la transmet', async () => {
-    const mot = 'Le niveau de l’objectif 2 ne tient pas compte du retard des données.';
-    const r = await campagne.renvoyerMonEvaluation(session('ibou'), mot);
-    expect([r.etat, r.evaluation, r.validable, r.renvoyeeLe]).toEqual([
-      'renvoyee',
-      null,
-      false,
-      AUJOURD_HUI,
-    ]);
-    expect(r.renvoi).toEqual({ mot, le: AUJOURD_HUI });
-
+  it('ne se renvoie pas au N+1 ; un ancien renvoi se lit comme un brouillon du N+1 (ADR-0267)', async () => {
+    const v = await campagne.monEvaluation(session('ibou'));
+    expect(v).not.toHaveProperty('renvoyable');
+    expect(v).not.toHaveProperty('renvoi');
+    // Un renvoi d'avant l'ADR-0267, resté en base : le N+1 retrouve son
+    // brouillon, et le mot de l'agent ne s'affiche plus nulle part.
+    await raw(
+      `UPDATE fiches_entretien
+          SET evaluation_transmise_le = NULL, renvoyee_le = now(), renvoi_mot = 'À revoir.'
+        WHERE employee_id = $1`,
+      [agents.ibou],
+    );
+    expect((await campagne.monEvaluation(session('ibou'))).etat).toBe('en_attente');
     const n1 = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
-    expect([n1.etatDeLEvaluation, n1.modifiable, n1.evaluationTransmiseLe]).toEqual([
-      'renvoyee',
-      true,
-      null,
-    ]);
-    expect(n1.renvoi?.mot).toBe(mot);
+    expect([n1.etatDeLEvaluation, n1.modifiable]).toEqual(['en_cours', true]);
+    expect(JSON.stringify(n1)).not.toContain('À revoir.');
     const { equipe } = await campagne.accueil(session('awa'));
-    expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('renvoyee');
-    await expect(campagne.validerMonEvaluation(session('ibou'))).rejects.toMatchObject({
-      problem: { status: 409, code: 'campagne.evaluation_non_transmise' },
-    });
-
-    const t = await campagne.transmettreEvaluation(session('awa'), agents.ibou, {
-      evaluation: {
-        ...n1.evaluation,
-        objectifs: Object.fromEntries(
-          n1.objectifs.map((o) => [o.id, { niveau: 'B' as const, commentaire: 'Revu.' }]),
-        ),
-      },
-      reservee: n1.reservee,
-    });
-    expect([t.etatDeLEvaluation, t.renvoi]).toEqual(['transmise', null]);
-    expect((await campagne.monEvaluation(session('ibou'))).etat).toBe('a_valider');
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('en_cours');
+    await raw(
+      `UPDATE fiches_entretien
+          SET evaluation_transmise_le = now(), renvoyee_le = NULL, renvoi_mot = NULL
+        WHERE employee_id = $1`,
+      [agents.ibou],
+    );
   });
 
-  it('validée, elle ne change plus : ni renvoi, ni écriture du N+1', async () => {
+  it('validée, elle ne change plus : ni nouvelle validation, ni écriture du N+1', async () => {
     const v = await campagne.validerMonEvaluation(session('ibou'));
-    expect([v.etat, v.valideeLe, v.validable, v.renvoyable]).toEqual([
-      'validee',
-      AUJOURD_HUI,
-      false,
-      false,
-    ]);
+    expect([v.etat, v.valideeLe, v.validable]).toEqual(['validee', AUJOURD_HUI, false]);
     expect(v.evaluation?.pointsForts).toBe('Rigueur et disponibilité.');
-    for (const geste of [
-      () => campagne.validerMonEvaluation(session('ibou')),
-      () => campagne.renvoyerMonEvaluation(session('ibou'), 'Trop tard.'),
-    ]) {
-      await expect(geste()).rejects.toMatchObject({
-        problem: { status: 409, code: 'campagne.evaluation_validee' },
-      });
-    }
+    await expect(campagne.validerMonEvaluation(session('ibou'))).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_validee' },
+    });
     await expect(
       campagne.enregistrerEvaluation(session('awa'), agents.ibou, {
         evaluation: evaluationDuN1Vide(),
@@ -863,12 +836,8 @@ describe('la validation par l’agent (ADR-0217)', () => {
     expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('validee');
   });
 
-  it('après la période, le renvoi se ferme ; la validation, non', async () => {
+  it('se valide encore après la période', async () => {
     await periode(-20, -15, -1);
-    expect((await campagne.monEvaluation(session('moussa'))).renvoyable).toBe(false);
-    await expect(
-      campagne.renvoyerMonEvaluation(session('moussa'), 'À revoir.'),
-    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.evaluation_fermee' } });
     expect((await campagne.validerMonEvaluation(session('moussa'))).etat).toBe('validee');
     await periode(-2, 3, 10);
   });

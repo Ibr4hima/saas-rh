@@ -48,7 +48,6 @@ import {
   type PersonneDesignee,
   type PersonnelDeLaFiche,
   type PhaseDeLaCampagne,
-  type RenvoiDeLEvaluation,
   type SessionUser,
   type SuiviDeLaDCH,
 } from '@teranga/contracts';
@@ -84,9 +83,7 @@ import { directionDeLUnite } from '../people/chaine';
    garde à part : l'agent ne la lit jamais.
 
    L'agent lit l'évaluation transmise, puis la valide : elle ne change
-   plus. En désaccord, l'agent la renvoie au N+1 avec un mot, tant que le
-   N+1 peut encore la reprendre ; le N+1 la corrige et la transmet de
-   nouveau (ADR-0217).
+   plus (ADR-0217). Le renvoi au N+1 n'existe plus (ADR-0267).
 
    Validée par l'agent, la fiche arrive chez le N+2, l'évaluateur du N+1 :
    le N+2 la lit en entier, partie réservée comprise, la commente s'il y a
@@ -355,7 +352,7 @@ export class CampagneService {
     });
   }
 
-  /** Son évaluation par le N+1, pour la lire, puis la valider ou la renvoyer (ADR-0217). */
+  /** Son évaluation par le N+1, pour la lire, puis la valider (ADR-0217). */
   async monEvaluation(user: SessionUser): Promise<MonEvaluation> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
       monEvaluationDans(tx, user),
@@ -366,14 +363,6 @@ export class CampagneService {
   async validerMonEvaluation(user: SessionUser): Promise<MonEvaluation> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await validerMonEvaluationDans(tx, user);
-      return monEvaluationDans(tx, user);
-    });
-  }
-
-  /** En désaccord, l'agent renvoie son évaluation au N+1, avec un mot. */
-  async renvoyerMonEvaluation(user: SessionUser, mot: string): Promise<MonEvaluation> {
-    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
-      await renvoyerMonEvaluationDans(tx, user, mot);
       return monEvaluationDans(tx, user);
     });
   }
@@ -481,7 +470,6 @@ async function agentDans(
     etatDeLEvaluation,
     evaluationTransmiseLe: annuelle.evaluationTransmiseLe,
     valideeLe: annuelle.valideeLe,
-    renvoi: etatDeLEvaluation === 'renvoyee' ? annuelle.renvoi : null,
     n2: n2?.personne ?? null,
     etatDesCommentaires: n2 ? etatDesCommentaires(annuelle) : null,
     // Le brouillon du N+2 reste au N+2 : le N+1 ne lit que ce qui est transmis.
@@ -689,8 +677,6 @@ interface FicheDeLAnnee {
   evaluationTransmiseLe: string | null;
   /** AAAA-MM-JJ : la validation par l'agent. */
   valideeLe: string | null;
-  /** Le dernier renvoi de l'agent au N+1, s'il y en a eu un. */
-  renvoi: RenvoiDeLEvaluation | null;
   /** Le brouillon des commentaires du N+2 ; `null` tant que rien n'est écrit. */
   commentairesN2: string | null;
   /** Les commentaires du N+2, une fois transmis au N+1. */
@@ -716,8 +702,6 @@ async function ficheDeLAnnee(tx: Tx, employeeId: string, annee: number): Promise
     reservee: unknown;
     evaluation_transmise_le: string | null;
     validee_le: string | null;
-    renvoyee_le: string | null;
-    renvoi_mot: string | null;
     commentaires_n2: string | null;
     commentaires_n2_le: string | null;
     n2_prenom: string | null;
@@ -731,8 +715,7 @@ async function ficheDeLAnnee(tx: Tx, employeeId: string, annee: number): Promise
   }>(sql`
     SELECT f.objectifs, f.auto, f.evaluation, f.reservee,
            f.evaluation_transmise_le::date::text AS evaluation_transmise_le,
-           f.validee_le::date::text AS validee_le, f.renvoyee_le::date::text AS renvoyee_le,
-           f.renvoi_mot, f.commentaires_n2,
+           f.validee_le::date::text AS validee_le, f.commentaires_n2,
            f.commentaires_n2_transmis_le::date::text AS commentaires_n2_le,
            pc.given_name AS n2_prenom, pc.family_name AS n2_nom, ac.position_title AS n2_poste,
            f.reprise_n2_le::date::text AS reprise_n2_le,
@@ -758,7 +741,6 @@ async function ficheDeLAnnee(tx: Tx, employeeId: string, annee: number): Promise
     reservee: reservee?.success ? { ...partieReserveeVide(), ...reservee.data } : null,
     evaluationTransmiseLe: r?.evaluation_transmise_le ?? null,
     valideeLe: r?.validee_le ?? null,
-    renvoi: r?.renvoyee_le ? { mot: r.renvoi_mot ?? '', le: r.renvoyee_le } : null,
     commentairesN2: r?.commentaires_n2 ?? null,
     commentairesDuN2: r?.commentaires_n2_le
       ? {
@@ -812,18 +794,16 @@ const etatDeLaTransmission = (f: FicheDeLAnnee, avecN2: boolean) =>
 
 /**
  * L'état de l'évaluation, sur ce que garde la fiche de l'année : validée,
- * transmise, renvoyée par l'agent, commencée, ou encore à faire. Une
- * évaluation transmise de nouveau après un renvoi est transmise.
+ * transmise, commencée, ou encore à faire. Une évaluation renvoyée par
+ * l'agent avant l'ADR-0267 se lit comme un brouillon du N+1 : commencée.
  */
 function etatDeLEvaluation(f: {
   commencee: boolean;
   transmise: boolean;
   validee: boolean;
-  renvoyee: boolean;
 }): EtatDeLEvaluation {
   if (f.validee) return 'validee';
   if (f.transmise) return 'transmise';
-  if (f.renvoyee) return 'renvoyee';
   return f.commencee ? 'en_cours' : 'a_faire';
 }
 
@@ -832,14 +812,12 @@ const etatSurLaFiche = (f: FicheDeLAnnee) =>
     commencee: f.evaluation !== null,
     transmise: f.evaluationTransmiseLe !== null,
     validee: f.valideeLe !== null,
-    renvoyee: f.renvoi !== null,
   });
 
 /** Ce que l'agent sait de son évaluation : rien du brouillon du N+1. */
 const POUR_L_AGENT: Record<EtatDeLEvaluation, EtatDeMonEvaluation> = {
   a_faire: 'en_attente',
   en_cours: 'en_attente',
-  renvoyee: 'renvoyee',
   transmise: 'a_valider',
   validee: 'validee',
 };
@@ -851,7 +829,6 @@ function evaluationRecue(f: FicheDeLAnnee): EvaluationRecue {
     etat,
     transmiseLe: f.evaluationTransmiseLe,
     valideeLe: f.valideeLe,
-    renvoyeeLe: etat === 'renvoyee' ? (f.renvoi?.le ?? null) : null,
   };
 }
 
@@ -878,17 +855,12 @@ async function monEvaluationDans(tx: Tx, user: SessionUser): Promise<MonEvaluati
         : null,
     evaluateur: fiche.evaluateur,
     ...recue,
-    renvoi: recue.etat === 'renvoyee' ? annuelle.renvoi : null,
     validable: recue.etat === 'a_valider',
-    renvoyable: recue.etat === 'a_valider' && evaluationOuverte(phase),
   };
 }
 
 /** Son évaluation, transmise et pas encore validée ; sinon, 409. */
-async function aValider(
-  tx: Tx,
-  user: SessionUser,
-): Promise<{ id: string; annee: number; phase: PhaseDeLaCampagne }> {
+async function aValider(tx: Tx, user: SessionUser): Promise<{ id: string; annee: number }> {
   const annee = await anneeDeLaCampagne(tx);
   const { id } = await monDossierEvalue(tx, user, annee);
   const annuelle = await ficheDeLAnnee(tx, id, annee);
@@ -902,8 +874,7 @@ async function aValider(
       'L’évaluation de votre N+1 n’est pas encore transmise',
     );
   }
-  const { phase } = await periodeDe(tx, annee);
-  return { id, annee, phase };
+  return { id, annee };
 }
 
 /**
@@ -915,28 +886,6 @@ async function validerMonEvaluationDans(tx: Tx, user: SessionUser): Promise<void
   const { id, annee } = await aValider(tx, user);
   await tx.execute(sql`
     UPDATE fiches_entretien SET validee_le = now(), updated_at = now()
-     WHERE employee_id = ${id} AND annee = ${annee}
-       AND evaluation_transmise_le IS NOT NULL AND validee_le IS NULL`);
-}
-
-/**
- * L'agent renvoie son évaluation au N+1, avec son mot : elle redevient un
- * brouillon du N+1. Seulement pendant la période de l'année, où le N+1 peut
- * encore la reprendre.
- */
-async function renvoyerMonEvaluationDans(tx: Tx, user: SessionUser, mot: string): Promise<void> {
-  const { id, annee, phase } = await aValider(tx, user);
-  if (!evaluationOuverte(phase)) {
-    problem(
-      409,
-      'campagne.evaluation_fermee',
-      'La période de l’évaluation est terminée : votre N+1 ne peut plus la reprendre',
-    );
-  }
-  await tx.execute(sql`
-    UPDATE fiches_entretien
-       SET evaluation_transmise_le = NULL, renvoyee_le = now(), renvoi_mot = ${mot},
-           updated_at = now()
      WHERE employee_id = ${id} AND annee = ${annee}
        AND evaluation_transmise_le IS NOT NULL AND validee_le IS NULL`);
 }
@@ -1078,7 +1027,6 @@ async function equipeDe(
     evaluation_commencee: boolean;
     evaluation_transmise: boolean;
     evaluation_validee: boolean;
-    evaluation_renvoyee: boolean;
     commentaires_commences: boolean;
     commentaires_transmis: boolean;
     reprise: boolean;
@@ -1093,8 +1041,7 @@ async function equipeDe(
            f.auto IS NOT NULL AS commencee, f.auto_transmise_le::date::text AS transmise_le,
            f.evaluation IS NOT NULL AS evaluation_commencee,
            f.evaluation_transmise_le IS NOT NULL AS evaluation_transmise,
-           f.validee_le IS NOT NULL AS evaluation_validee,
-           f.renvoyee_le IS NOT NULL AS evaluation_renvoyee
+           f.validee_le IS NOT NULL AS evaluation_validee
       FROM employees e
       JOIN persons p ON p.id = e.person_id
       LEFT JOIN assignments a ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
@@ -1114,7 +1061,6 @@ async function equipeDe(
       commencee: r.evaluation_commencee,
       transmise: r.evaluation_transmise,
       validee: r.evaluation_validee,
-      renvoyee: r.evaluation_renvoyee,
     }),
     commentaires: avecN2
       ? etatDesCommentairesDe({
@@ -1202,7 +1148,6 @@ async function aCommenterDe(tx: Tx, id: string, annee: number): Promise<AgentACo
     evaluation_commencee: boolean;
     evaluation_transmise: boolean;
     evaluation_validee: boolean;
-    evaluation_renvoyee: boolean;
     commentaires_commences: boolean;
     commentaires_transmis: boolean;
     reprise: boolean;
@@ -1216,7 +1161,6 @@ async function aCommenterDe(tx: Tx, id: string, annee: number): Promise<AgentACo
            f.evaluation IS NOT NULL AS evaluation_commencee,
            f.evaluation_transmise_le IS NOT NULL AS evaluation_transmise,
            f.validee_le IS NOT NULL AS evaluation_validee,
-           f.renvoyee_le IS NOT NULL AS evaluation_renvoyee,
            f.commentaires_n2 IS NOT NULL AS commentaires_commences,
            f.commentaires_n2_transmis_le IS NOT NULL AS commentaires_transmis,
            f.reprise_n2_le IS NOT NULL AS reprise,
@@ -1245,7 +1189,6 @@ async function aCommenterDe(tx: Tx, id: string, annee: number): Promise<AgentACo
       commencee: r.evaluation_commencee,
       transmise: r.evaluation_transmise,
       validee: r.evaluation_validee,
-      renvoyee: r.evaluation_renvoyee,
     }),
     commentaires: etatDesCommentairesDe({
       validee: r.evaluation_validee,
@@ -1463,7 +1406,6 @@ async function suiviDans(tx: Tx, user: SessionUser): Promise<SuiviDeLaDCH> {
     evaluation_commencee: boolean;
     evaluation_transmise: boolean;
     evaluation_validee: boolean;
-    evaluation_renvoyee: boolean;
     commentaires_transmis: boolean;
     reprise: boolean;
     avec_n2: boolean;
@@ -1479,7 +1421,6 @@ async function suiviDans(tx: Tx, user: SessionUser): Promise<SuiviDeLaDCH> {
            f.evaluation IS NOT NULL AS evaluation_commencee,
            f.evaluation_transmise_le IS NOT NULL AS evaluation_transmise,
            f.validee_le IS NOT NULL AS evaluation_validee,
-           f.renvoyee_le IS NOT NULL AS evaluation_renvoyee,
            f.commentaires_n2_transmis_le IS NOT NULL AS commentaires_transmis,
            f.reprise_n2_le IS NOT NULL AS reprise,
            n2.id IS NOT NULL AS avec_n2,
@@ -1523,7 +1464,6 @@ function etapeDe(r: {
   evaluation_commencee: boolean;
   evaluation_transmise: boolean;
   evaluation_validee: boolean;
-  evaluation_renvoyee: boolean;
   commentaires_transmis: boolean;
   reprise: boolean;
   avec_n2: boolean;
@@ -1535,7 +1475,6 @@ function etapeDe(r: {
     commencee: r.evaluation_commencee,
     transmise: r.evaluation_transmise,
     validee: r.evaluation_validee,
-    renvoyee: r.evaluation_renvoyee,
   });
   if (evaluation === 'transmise') return 'chez_l_agent';
   if (evaluation !== 'validee') return 'chez_le_n1';

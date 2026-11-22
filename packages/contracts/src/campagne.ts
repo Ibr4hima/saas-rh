@@ -35,13 +35,11 @@ export type PhaseDeLaCampagne =
 /** L'auto-évaluation d'un agent. */
 export type EtatDeLAuto = 'a_faire' | 'en_cours' | 'transmise';
 
-/** L'évaluation d'un agent par son N+1 (ADR-0216, ADR-0217). */
+/** L'évaluation d'un agent par son N+1 (ADR-0216, ADR-0217, ADR-0267). */
 export type EtatDeLEvaluation =
   | 'a_faire'
   | 'en_cours'
-  /** Renvoyée par l'agent, avec un mot : le N+1 la reprend. */
-  | 'renvoyee'
-  /** Transmise à l'agent, qui la lit, puis la valide ou la renvoie. */
+  /** Transmise à l'agent, qui la lit, puis la valide. */
   | 'transmise'
   /** Validée par l'agent : elle ne change plus. */
   | 'validee';
@@ -50,14 +48,7 @@ export type EtatDeLEvaluation =
  * Son évaluation par le N+1, vue par l'agent (ADR-0217) : tant que le N+1
  * ne l'a pas transmise, l'agent n'en sait rien de plus.
  */
-export type EtatDeMonEvaluation = 'en_attente' | 'a_valider' | 'renvoyee' | 'validee';
-
-/** Le mot de l'agent qui renvoie son évaluation au N+1. */
-export interface RenvoiDeLEvaluation {
-  mot: string;
-  /** AAAA-MM-JJ. */
-  le: string;
-}
+export type EtatDeMonEvaluation = 'en_attente' | 'a_valider' | 'validee';
 
 /** Les commentaires du N+2 sur la fiche d'un agent (ADR-0218). */
 export type EtatDesCommentaires =
@@ -98,8 +89,6 @@ export interface EvaluationRecue {
   transmiseLe: string | null;
   /** AAAA-MM-JJ : le jour où l'agent l'a validée. */
   valideeLe: string | null;
-  /** AAAA-MM-JJ : le jour du renvoi au N+1, tant qu'elle n'est pas revenue. */
-  renvoyeeLe: string | null;
 }
 
 export interface AutoDeLAgent {
@@ -231,8 +220,6 @@ export interface EvaluationDeLAgent {
   evaluationTransmiseLe: string | null;
   /** AAAA-MM-JJ : le jour où l'agent l'a validée (ADR-0217). */
   valideeLe: string | null;
-  /** Le mot de l'agent qui l'a renvoyée, tant que le N+1 ne l'a pas transmise à nouveau. */
-  renvoi: RenvoiDeLEvaluation | null;
   /** Le N+2 de l'agent : l'évaluateur du N+1 ; `null` s'il n'y en a pas (ADR-0218). */
   n2: PersonneDeLaCampagne | null;
   etatDesCommentaires: EtatDesCommentaires | null;
@@ -246,8 +233,7 @@ export interface EvaluationDeLAgent {
   transmiseALaDCHLe: string | null;
   /**
    * Ouverte à l'écriture du N+1 : l'auto-évaluation transmise, pendant la
-   * période de l'année, tant que l'évaluation n'est pas transmise, ou une
-   * fois renvoyée par l'agent.
+   * période de l'année, tant que l'évaluation n'est pas transmise.
    */
   modifiable: boolean;
 }
@@ -295,19 +281,9 @@ export interface MonEvaluation extends EvaluationRecue {
   evaluation: EvaluationDuN1 | null;
   /** Le N+1 qui l'évalue. */
   evaluateur: PersonneDeLaCampagne | null;
-  /** Le mot de son renvoi, tant que l'évaluation n'est pas revenue. */
-  renvoi: RenvoiDeLEvaluation | null;
   /** À valider : transmise, pas encore validée. */
   validable: boolean;
-  /** À renvoyer, s'il y a lieu : tant que le N+1 peut encore la reprendre. */
-  renvoyable: boolean;
 }
-
-/** Le renvoi de son évaluation au N+1 : son mot, obligatoire. */
-export const renvoiSchema = z.object({
-  mot: z.string().trim().min(1).max(LONGUEURS_DE_LA_FICHE.texte),
-});
-export type Renvoi = z.infer<typeof renvoiSchema>;
 
 /** La fiche complète d'un agent : son auto-évaluation, l'évaluation du N+1, la partie réservée. */
 export interface FicheComplete {
@@ -349,9 +325,9 @@ export type EcritureDesCommentaires = z.infer<typeof ecritureDesCommentairesSche
 export type EtapeDeLaFiche =
   /** L'auto-évaluation n'est pas faite : pas encore transmise au N+1, brouillon ou pas (ADR-0226). */
   | 'auto_non_faite'
-  /** Le N+1 l'évalue, ou la reprend après un renvoi de l'agent. */
+  /** Le N+1 l'évalue. */
   | 'chez_le_n1'
-  /** Transmise à l'agent, qui la valide ou la renvoie. */
+  /** Transmise à l'agent, qui la valide. */
   | 'chez_l_agent'
   /** Validée par l'agent : le N+2 la commente. */
   | 'chez_le_n2'

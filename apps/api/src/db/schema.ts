@@ -1023,6 +1023,7 @@ export const fichesEntretien = pgTable('fiches_entretien', {
   evaluationTransmiseLe: timestamp('evaluation_transmise_le', { withTimezone: true }),
   /** La validation par l'agent, ou son dernier renvoi au N+1, avec son mot (0140, ADR-0217). */
   valideeLe: timestamp('validee_le', { withTimezone: true }),
+  /** Le renvoi n'existe plus (ADR-0267) : ces deux colonnes ne s'écrivent ni ne se lisent. */
   renvoyeeLe: timestamp('renvoyee_le', { withTimezone: true }),
   renvoiMot: text('renvoi_mot'),
   /** Les commentaires du N+2, qui les a écrits, leur transmission au N+1 (0141, ADR-0218). */

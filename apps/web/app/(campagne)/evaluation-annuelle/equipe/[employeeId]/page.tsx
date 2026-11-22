@@ -24,7 +24,6 @@ import {
   CarteDEtape,
   Etapes,
   jourCourt,
-  MotDeRenvoi,
   periodeDeLAuto,
   periodeDeLEvaluation,
   RetourALAccueil,
@@ -51,13 +50,12 @@ import { aujourdhui } from '../../../../../lib/temps';
    où en est l'enregistrement (ADR-0254) et porte « Valider », qui montre la
    fiche en PDF à la place de la saisie, puis « Modifier » (ADR-0260), et
    « Transmettre à l'agent » (ADR-0241).
-   Transmise, l'évaluation se lit ; l'agent la valide, ou la renvoie avec un
-   mot, qui s'affiche alors au-dessus de la fiche, de nouveau à remplir
-   (ADR-0217). Validée, la fiche passe au N+2 s'il y en a un : ses
-   commentaires ferment la partie réservée une fois transmis (ADR-0218), sans
-   étape propre dans la bande (ADR-0252). La dernière étape est la
-   transmission à la DCH : la barre du bas porte « Transmettre à la DCH » une
-   fois la fiche revenue du N+2, ou dès la validation sans N+2, et
+   Transmise, l'évaluation se lit ; l'agent la valide (ADR-0217), sans
+   pouvoir la renvoyer (ADR-0267). Validée, la fiche passe au N+2 s'il y en a
+   un : ses commentaires ferment la partie réservée une fois transmis
+   (ADR-0218), sans étape propre dans la bande (ADR-0252). La dernière étape
+   est la transmission à la DCH : la barre du bas porte « Transmettre à la
+   DCH » une fois la fiche revenue du N+2, ou dès la validation sans N+2, et
    « Reprendre au N+2 » tant que le N+2 la garde (ADR-0221). Cette page ne
    s'ouvre qu'à l'évaluateur de l'agent.
    ──────────────────────────────────────────────────────────────── */
@@ -131,12 +129,6 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
       {/* Sans auto-évaluation transmise, la page s'arrête aux étapes (ADR-0257). */}
       {v.autoEvaluation ? (
         <>
-          {v.renvoi ? (
-            <MotDeRenvoi
-              titre={`Renvoyée par ${v.agent.prenom} ${v.agent.nom}`}
-              renvoi={v.renvoi}
-            />
-          ) : null}
           {v.modifiable ? (
             <Saisie vue={v} auto={v.autoEvaluation} />
           ) : (

@@ -19,13 +19,11 @@ import {
   ecritureDeLAutoSchema,
   ecritureDeLEvaluationSchema,
   ecritureDesCommentairesSchema,
-  renvoiSchema,
   type ChoixDeLEvaluateur,
   type DatesDeLaCampagne,
   type EcritureDeLAuto,
   type EcritureDeLEvaluation,
   type EcritureDesCommentaires,
-  type Renvoi,
 } from '@teranga/contracts';
 import { contentDisposition } from '../../common/telechargement';
 import { ZodValidationPipe } from '../../common/zod.pipe';
@@ -231,16 +229,6 @@ export class CampagneController {
   @HttpCode(200)
   valider(@Req() req: AuthenticatedRequest) {
     return this.campagne.validerMonEvaluation(req.sessionUser);
-  }
-
-  /** Son renvoi au N+1, avec un mot. */
-  @Post('mon-evaluation/renvoi')
-  @HttpCode(200)
-  renvoyer(
-    @Req() req: AuthenticatedRequest,
-    @Body(new ZodValidationPipe(renvoiSchema)) body: Renvoi,
-  ) {
-    return this.campagne.renvoyerMonEvaluation(req.sessionUser, body.mot);
   }
 
   /** Son auto-évaluation, pour son formulaire. */

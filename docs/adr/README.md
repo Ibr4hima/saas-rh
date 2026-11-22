@@ -222,7 +222,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0214](0214-bouton-m-auto-evaluer.md)                 | Le bouton M'auto-évaluer et la coche bleue de l'auto-évaluation faite                   | complétée 0217, révisée 0220, 0226, 0227    |
 | [0215](0215-formulaire-d-auto-evaluation.md)          | Le formulaire d'auto-évaluation de la campagne, sur la fiche S1/EN05                    | complétée 0216, révisée 0233, 0238, 0241    |
 | [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | compl. 0217, révisée 0226, 0233, 0239, 0257 |
-| [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | complétée 0218, révisée 0220, 0233          |
+| [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | complétée 0218, révisée 0220, 0233, 0267    |
 | [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | compl. 0221, révisée 0226, 0233, 0252, 0255 |
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée, révisée par 0243                  |
 | [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223, 0227 et 0258    |
@@ -271,4 +271,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0263](0263-fiche-des-objectifs-resserree.md)         | La fiche Comment définir des objectifs, resserrée : son titre, cinq parties             | acceptée                                    |
 | [0264](0264-reperes-sans-le-type-de-l-unite.md)       | Sous Département et Service, le nom de l'unité sans ce mot                              | acceptée                                    |
 | [0265](0265-entretien-confirme-et-date.md)            | Le N+1 confirme l'entretien avec l'agent et en donne la date                            | acceptée                                    |
-| [0266](0266-confirmation-du-n1.md)                    | Votre évaluation sera transmise à … : la confirmation du N+1                            | acceptée                                    |
+| [0266](0266-confirmation-du-n1.md)                    | Votre évaluation sera transmise à … : la confirmation du N+1                            | acceptée, révisée par 0267                  |
+| [0267](0267-validation-sans-renvoi.md)                | L'agent valide son évaluation, sans pouvoir la renvoyer au N+1                          | acceptée                                    |

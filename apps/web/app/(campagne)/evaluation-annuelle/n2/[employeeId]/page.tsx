@@ -93,7 +93,6 @@ function Fiche({ vue: v }: { vue: FichePourLeN2 }) {
         etatDeLEvaluation: 'validee',
         evaluationTransmiseLe: v.evaluationTransmiseLe,
         valideeLe: v.valideeLe,
-        renvoi: null,
       })
     : null;
   const commentaires = statutDesCommentaires(v.etat, v.transmisLe, 'n2');

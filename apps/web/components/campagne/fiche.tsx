@@ -10,7 +10,6 @@ import {
   type EtatDeLEvaluation,
   type EtatDesCommentaires,
   type PeriodeDeLaCampagne,
-  type RenvoiDeLEvaluation,
 } from '@teranga/contracts';
 import { Card, cn, type BadgeTone } from '@teranga/ui';
 import { ACCUEIL_DE_LA_CAMPAGNE, AUTO_EVALUATION, MON_EVALUATION } from '../../lib/campagne';
@@ -195,7 +194,6 @@ export function statutDeMonEvaluation(
   v: { etatDeLEvaluation: EtatDeLEvaluation } & {
     evaluationTransmiseLe: string | null;
     valideeLe: string | null;
-    renvoi: { le: string } | null;
   },
 ): Statut | null {
   const le = (iso: string | null | undefined) => (iso ? ` le ${jourCourt(iso)}` : '');
@@ -204,8 +202,6 @@ export function statutDeMonEvaluation(
       return { libelle: `Validée${le(v.valideeLe)}`, ton: 'vert' };
     case 'transmise':
       return { libelle: `Transmise${le(v.evaluationTransmiseLe)}`, ton: 'teal' };
-    case 'renvoyee':
-      return { libelle: `Renvoyée${le(v.renvoi?.le)}`, ton: 'orange' };
     case 'en_cours':
       return { libelle: 'En cours', ton: 'bleu' };
     case 'a_faire':
@@ -322,35 +318,6 @@ export function CarteDEtape({
         <p className="mt-1.5 text-[12.5px] leading-tight text-ink-muted">{periode}</p>
       </div>
     </li>
-  );
-}
-
-/**
- * Le mot de l'agent qui renvoie son évaluation au N+1 (ADR-0217) : qui le
- * renvoie, à qui, le jour, puis le mot, tel qu'il est écrit.
- */
-export function MotDeRenvoi({
-  titre,
-  renvoi,
-}: {
-  titre: React.ReactNode;
-  renvoi: RenvoiDeLEvaluation;
-}) {
-  return (
-    <Card className="flex items-start gap-4 p-5">
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-bloc bg-accent-soft text-accent-text">
-        <Icon name="replay" size={22} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <h2 className="text-[15px] leading-tight font-bold text-ink-strong">{titre}</h2>
-        <p className="mt-1.5 text-[12.5px] leading-tight text-ink-muted">
-          Le {dateEnLettres(renvoi.le)}
-        </p>
-        <blockquote className="mt-3.5 border-l-2 border-accent/60 pl-3.5 text-[13.5px] leading-relaxed break-words whitespace-pre-line text-ink-strong">
-          {renvoi.mot}
-        </blockquote>
-      </div>
-    </Card>
   );
 }
 
