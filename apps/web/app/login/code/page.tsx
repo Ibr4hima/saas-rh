@@ -15,6 +15,7 @@ import { cn } from '@teranga/ui';
 import { BoutonMarque } from '../../../components/bouton-marque';
 import { ChampMarque, EcranMarque, SaisieMarque } from '../../../components/ecran-marque';
 import { api, ApiError } from '../../../lib/api';
+import { clesPossibles } from '../../../lib/cles-d-acces';
 import { ouvrirSession } from '../../../lib/session';
 import { memoire, pageDeRetour, useEcranDeConnexion, versLEcran } from '../connexion';
 
@@ -100,7 +101,8 @@ export default function CodePage() {
       Object.assign(memoire, { nom: '', email: '', attente: null, erreur: null });
       // Rien de ce qu'un autre compte a lu dans cet onglet ne lui survit.
       ouvrirSession(queryClient);
-      router.replace(pageDeRetour());
+      // Sur un appareil qui le permet, sa clé d'accès d'abord (ADR-0247).
+      router.replace(clesPossibles() ? versLEcran('/login/cle') : pageDeRetour());
     } catch (err) {
       signaler(err, 'Vérification impossible, réessayez.');
       setVerification(false);

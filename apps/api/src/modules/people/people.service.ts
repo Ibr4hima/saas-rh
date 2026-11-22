@@ -2872,6 +2872,7 @@ export class PeopleService {
         // références des dossiers d'autrui. On le vide de la personne, et ses
         // liens « mot de passe oublié » s'en vont avec.
         await tx.delete(t.passwordResets).where(eq(t.passwordResets.userId, userId));
+        await tx.delete(t.clesDAcces).where(eq(t.clesDAcces.userId, userId));
         await tx
           .update(t.users)
           .set({

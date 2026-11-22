@@ -209,7 +209,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0201](0201-cni-seule-piece-du-dossier.md)            | La pièce d'identité d'un dossier est la CNI, et seulement elle                          | acceptée, précisée par 0202                 |
 | [0202](0202-cni-rib-et-domiciliation-sur-la-fiche.md) | La fiche d'un agent : CNI et RIB en chiffres groupés, domiciliation par oui ou par non  | acceptée                                    |
 | [0203](0203-documents-en-noir-ancien-pied.md)         | Les documents de la DCH en noir, l'ancien pied de page de l'APIX remis au propre        | acceptée                                    |
-| [0204](0204-connexion-par-code.md)                    | La connexion par code : nom de famille, adresse professionnelle, code reçu par email    | acceptée, complétée (0210), révisée (0229)  |
+| [0204](0204-connexion-par-code.md)                    | La connexion par code : nom de famille, adresse professionnelle, code reçu par email    | complétée 0210, 0246, 0247, révisée 0229    |
 | [0205](0205-fiche-d-entretien-annuel.md)              | La fiche d'entretien annuel d'évaluation S1/EN05 : son texte corrigé et son PDF         | acceptée, révisée : 0206, 0208, 0209, 0244  |
 | [0206](0206-fiche-a-l-en-tete-du-modele.md)           | La fiche d'entretien à l'en-tête du modèle, avec le bleu et l'orange de l'APIX          | acceptée, couleurs retouchées : 0207        |
 | [0207](0207-fiche-titre-noir-sections-en-bleu.md)     | La fiche d'entretien : titre en noir, numéros de section en bleu, sans barres en pied   | acceptée                                    |
@@ -251,3 +251,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0243](0243-date-de-la-campagne-dans-un-cadre.md)     | La date de la barre de la campagne, dans un cadre                                       | acceptée                                    |
 | [0244](0244-fiche-sans-objectif-sans-echelle.md)      | La fiche sans objectif, la mention seule, sans l'échelle                                | acceptée                                    |
 | [0245](0245-puce-de-l-entretien-avec-le-n1.md)        | La puce de l'entretien : votre N+1, au lieu de votre supérieur hiérarchique             | acceptée                                    |
+| [0246](0246-code-au-dossier-en-campagne.md)           | En campagne, le code part à l'adresse du dossier, et le compte s'ouvre au premier code  | acceptée                                    |
+| [0247](0247-cles-d-acces.md)                          | Les clés d'accès : le code à la première connexion, puis Face ID ou l'empreinte         | acceptée                                    |

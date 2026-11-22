@@ -15,11 +15,13 @@ import {
 } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
 import { problem } from '../../common/problem';
+import { loadEnv } from '../../config/env';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
 import { ExpediteurCourriels } from '../courriels/expediteur';
-import { accesDuCompte } from '../people/en-activite';
-import { hashToken } from '../portal/invitation';
+import { accesDuCompte, enActivite } from '../people/en-activite';
+import { compteALAdresse, hashToken } from '../portal/invitation';
+import { reconcilierLeCircuit } from '../time/visas';
 import { AuthService, type IssuedSession, type RequestMeta } from './auth.service';
 
 /* ────────────────────────────────────────────────────────────────
@@ -41,6 +43,13 @@ import { AuthService, type IssuedSession, type RequestMeta } from './auth.servic
    lié à la personne, pas à la demande : des codes redemandés à sa place
    arrivent dans sa boîte et servent à sa propre connexion. Cinq essais par
    connexion en cours ; au-delà, on reprend depuis le début.
+
+   En campagne (ADR-0246), l'adresse se cherche aussi dans les dossiers :
+   un agent en activité dont le dossier porte cette adresse professionnelle
+   et ce nom reçoit son code à cette adresse, avec ou sans compte.
+   Sans compte, le compte s'ouvre au premier code juste, relié au dossier,
+   sans mot de passe. Un code qui ne part pas le dit dans le journal du
+   serveur, sans l'adresse : jamais à l'écran.
    ──────────────────────────────────────────────────────────────── */
 
 /** Une connexion en cours dure une heure : un courriel lent a le temps d'arriver. */
@@ -80,7 +89,40 @@ interface Compte {
   noms: string[];
 }
 
+/**
+ * En campagne, le dossier qu'un couple désigne : l'adresse professionnelle
+ * qu'il porte, et le compte qui s'y relie, s'il y en a un.
+ */
+interface Dossier {
+  tenantId: string;
+  employeeId: string;
+  userId: string | null;
+  email: string;
+  prenom: string;
+  organisation: string;
+  /** Les noms de famille qui le désignent : celui du dossier, celui du compte relié. */
+  noms: string[];
+}
+
+/** À qui part le code : l'adresse, et de quoi composer le courriel. */
+interface Destinataire {
+  tenantId: string;
+  /** `null` : pas encore de compte, il s'ouvrira au premier code juste. */
+  userId: string | null;
+  email: string;
+  prenom: string;
+  organisation: string;
+}
+
 type NouveauCode = { ok: true; id: string; code: string } | { ok: false; raison: InfoDuCode };
+
+/** Le code d'erreur de Postgres, s'il y en a un. */
+function pgCode(err: unknown): string | undefined {
+  return (
+    (err as { code?: string; cause?: { code?: string } } | null)?.code ??
+    (err as { cause?: { code?: string } } | null)?.cause?.code
+  );
+}
 
 export interface Demande {
   jeton: string;
@@ -117,6 +159,14 @@ function egales(a: string, b: string): boolean {
 @Injectable()
 export class ConnexionParCodeService {
   private readonly logger = new Logger('Connexion par code');
+
+  /** L'année de la campagne en cours, ou `null` : la plateforme complète (ADR-0211). */
+  campagne: () => number | null = () => loadEnv().CAMPAGNE_D_EVALUATION;
+
+  /** Ce qui empêche un code de partir, pour le journal du serveur : jamais l'adresse. */
+  private pasEnvoye(raison: string): void {
+    this.logger.log(`Code non envoyé : ${raison}`);
+  }
 
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
@@ -218,8 +268,9 @@ export class ConnexionParCodeService {
   }
 
   /**
-   * Après la réponse : le compte que le couple désigne. Juste, la connexion
-   * en cours le retient et le code part ; faux, rien ne se passe.
+   * Après la réponse : le compte que le couple désigne, ou en campagne son
+   * dossier. Juste, la connexion en cours le retient et le code part ; faux,
+   * rien ne se passe.
    */
   private async rattacher(
     attenteId: string,
@@ -228,12 +279,26 @@ export class ConnexionParCodeService {
     envoi: { id: string; code: string } | null,
   ): Promise<void> {
     const compte = await this.compteDuCouple(nom, email);
-    if (!compte) return;
+    if (compte) {
+      await this.db.global
+        .update(t.connexionsEnAttente)
+        .set({ userId: compte.userId, tenantId: compte.tenantId })
+        .where(eq(t.connexionsEnAttente.id, attenteId));
+      if (envoi) await this.envoyer(compte, envoi);
+      return;
+    }
+    if (this.campagne() === null) return;
+    const dossier = await this.dossierDuCouple(nom, email);
+    if (!dossier) return;
     await this.db.global
       .update(t.connexionsEnAttente)
-      .set({ userId: compte.userId, tenantId: compte.tenantId })
+      .set({
+        userId: dossier.userId,
+        tenantId: dossier.tenantId,
+        employeeId: dossier.employeeId,
+      })
       .where(eq(t.connexionsEnAttente.id, attenteId));
-    if (envoi) await this.envoyer(compte, envoi);
+    if (envoi) await this.envoyer(dossier, envoi);
   }
 
   /** Le compte à cette adresse, si le nom est le sien et qu'il se connecte encore. */
@@ -243,7 +308,11 @@ export class ConnexionParCodeService {
       .from(t.users)
       .where(sql`lower(${t.users.email}) = ${email}`)
       .limit(1);
-    if (!utilisateur) return null;
+    if (!utilisateur) {
+      // En campagne, le dossier prend le relais : il dira lui-même ce qui manque.
+      if (this.campagne() === null) this.pasEnvoye('aucun compte à cette adresse.');
+      return null;
+    }
     const organisations = await this.db.withUser(utilisateur.id, (tx) =>
       tx
         .select({ tenantId: t.userTenantMemberships.tenantId })
@@ -256,7 +325,187 @@ export class ConnexionParCodeService {
     for (const { tenantId } of organisations) {
       const compte = await this.compteOuvert(utilisateur.id, tenantId);
       if (!compte) continue;
-      return compte.noms.some((n) => nomCompare(n) === nom) ? compte : null;
+      if (compte.noms.some((n) => nomCompare(n) === nom)) return compte;
+      if (this.campagne() === null) {
+        this.pasEnvoye('le nom saisi n’est pas celui du compte de cette adresse.');
+      }
+      return null;
+    }
+    if (this.campagne() === null) {
+      this.pasEnvoye('le compte de cette adresse ne se connecte plus (inactif, coupé ou fermé).');
+    }
+    return null;
+  }
+
+  /**
+   * En campagne : le dossier en activité qui porte cette adresse
+   * professionnelle et ce nom. Relié à un compte, ce compte doit se
+   * connecter encore ; sans compte, l'adresse ne doit servir à aucun autre.
+   */
+  private async dossierDuCouple(nom: string, email: string): Promise<Dossier | null> {
+    const { rows } = await this.db.global.execute<{ tenant_id: string; employee_id: string }>(
+      sql`SELECT tenant_id, employee_id FROM dossiers_a_l_adresse(${email})`,
+    );
+    const actifs: Dossier[] = [];
+    for (const r of rows) {
+      const dossier = await this.dossier(r.tenant_id, r.employee_id);
+      if (dossier) actifs.push(dossier);
+    }
+    const retenus = actifs.filter((d) => d.noms.some((n) => nomCompare(n) === nom));
+    if (retenus.length !== 1) {
+      this.pasEnvoye(
+        actifs.length === 0
+          ? 'aucun compte ni dossier en activité à cette adresse.'
+          : retenus.length === 0
+            ? 'le nom saisi n’est pas celui du dossier de cette adresse.'
+            : 'plusieurs dossiers en activité portent cette adresse et ce nom.',
+      );
+      return null;
+    }
+    const dossier = retenus[0]!;
+    if (dossier.userId) {
+      const compte = await this.compteOuvert(dossier.userId, dossier.tenantId);
+      if (!compte) {
+        this.pasEnvoye('le compte relié au dossier ne se connecte plus (inactif, coupé ou fermé).');
+        return null;
+      }
+      return { ...dossier, prenom: compte.prenom };
+    }
+    const [autre] = await this.db.global
+      .select({ id: t.users.id })
+      .from(t.users)
+      .where(sql`lower(${t.users.email}) = ${email}`)
+      .limit(1);
+    if (autre) {
+      this.pasEnvoye('l’adresse du dossier sert déjà à un autre compte.');
+      return null;
+    }
+    return dossier;
+  }
+
+  /** Un dossier de l'organisation, s'il est en activité : son adresse, ses noms, son compte. */
+  private async dossier(tenantId: string, employeeId: string): Promise<Dossier | null> {
+    const { rows } = await this.db.withTenant({ tenantId }, (tx) =>
+      tx.execute<{
+        user_id: string | null;
+        prenom: string;
+        nom: string;
+        nom_du_compte: string | null;
+        email: string | null;
+        organisation: string;
+        en_activite: boolean | null;
+      }>(sql`
+        SELECT p.user_id, p.given_name AS prenom, p.family_name AS nom,
+               u.family_name AS nom_du_compte, e.work_email AS email, o.name AS organisation,
+               ${enActivite(sql`e.id`)} AS en_activite
+          FROM employees e
+          JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
+          JOIN tenants o ON o.id = e.tenant_id
+          LEFT JOIN users u ON u.id = p.user_id
+         WHERE e.id = ${employeeId}`),
+    );
+    const d = rows[0];
+    if (!d?.en_activite || !d.email) return null;
+    return {
+      tenantId,
+      employeeId,
+      userId: d.user_id,
+      email: d.email,
+      prenom: d.prenom,
+      organisation: d.organisation,
+      noms: [d.nom, ...(d.nom_du_compte ? [d.nom_du_compte] : [])],
+    };
+  }
+
+  /**
+   * Le compte d'un dossier, ouvert au premier code juste : sans mot de
+   * passe, aux noms du dossier, à son adresse professionnelle, relié au
+   * dossier, comme une invitation acceptée. Un compte relié entre-temps
+   * sert tel quel. `null` : le dossier n'est plus en activité, ou son
+   * adresse sert déjà à un autre compte.
+   */
+  private async ouvrirLeCompte(tenantId: string, employeeId: string): Promise<string | null> {
+    const userId = uuidv7();
+    try {
+      return await this.db.withTenant({ tenantId, userId }, async (tx) => {
+        const { rows } = await tx.execute<{
+          person_id: string;
+          user_id: string | null;
+          prenom: string;
+          nom: string;
+          email: string | null;
+          en_activite: boolean | null;
+        }>(sql`
+          SELECT p.id AS person_id, p.user_id, p.given_name AS prenom, p.family_name AS nom,
+                 e.work_email AS email, ${enActivite(sql`e.id`)} AS en_activite
+            FROM employees e
+            JOIN persons p ON p.id = e.person_id AND p.deleted_at IS NULL
+           WHERE e.id = ${employeeId}
+             FOR UPDATE OF p`);
+        const d = rows[0];
+        if (!d?.en_activite || !d.email) return null;
+        if (d.user_id) return d.user_id;
+        if (await compteALAdresse(tx, d.email)) return null;
+        await tx.insert(t.users).values({
+          id: userId,
+          email: d.email,
+          passwordHash: null,
+          givenName: d.prenom,
+          familyName: d.nom,
+        });
+        await tx.insert(t.userTenantMemberships).values({
+          id: uuidv7(),
+          tenantId,
+          userId,
+          role: 'employee',
+        });
+        await tx
+          .update(t.persons)
+          .set({ userId })
+          .where(and(eq(t.persons.id, d.person_id), isNull(t.persons.userId)));
+        // Ce que la DCH a délégué à l'agent l'attendait, comme à
+        // l'acceptation d'une invitation.
+        await reconcilierLeCircuit(tx, tenantId);
+        return userId;
+      });
+    } catch (e) {
+      // Un compte vient d'être créé à la même adresse : rien ne s'ouvre ici.
+      if (pgCode(e) === '23505') return null;
+      throw e;
+    }
+  }
+
+  /** Où repart un code redemandé : là où est parti le premier. */
+  private async destinataireDe(attente: {
+    userId: string | null;
+    tenantId: string | null;
+    employeeId: string | null;
+  }): Promise<Destinataire | null> {
+    const { tenantId, userId, employeeId } = attente;
+    if (!tenantId) return null;
+    if (employeeId) {
+      const dossier = await this.dossier(tenantId, employeeId);
+      if (!dossier) return null;
+      if (!dossier.userId) return dossier;
+      return (await this.compteOuvert(dossier.userId, tenantId)) ? dossier : null;
+    }
+    return userId ? this.compteOuvert(userId, tenantId) : null;
+  }
+
+  /**
+   * La première organisation où le compte se connecte encore : celle où
+   * s'ouvre une session par clé d'accès (ADR-0247).
+   */
+  async premierCompteOuvert(userId: string): Promise<{ tenantId: string } | null> {
+    const organisations = await this.db.withUser(userId, (tx) =>
+      tx
+        .select({ tenantId: t.userTenantMemberships.tenantId })
+        .from(t.userTenantMemberships)
+        .where(eq(t.userTenantMemberships.userId, userId))
+        .orderBy(asc(t.userTenantMemberships.createdAt)),
+    );
+    for (const { tenantId } of organisations) {
+      if (await this.compteOuvert(userId, tenantId)) return { tenantId };
     }
     return null;
   }
@@ -304,19 +553,22 @@ export class ConnexionParCodeService {
   }
 
   /** Le code part, en tête de la file des courriels. */
-  private async envoyer(compte: Compte, envoi: { id: string; code: string }): Promise<void> {
+  private async envoyer(a: Destinataire, envoi: { id: string; code: string }): Promise<void> {
     const expediteur = this.expediteur;
-    if (!expediteur?.actif) return;
-    await this.db.withTenant({ tenantId: compte.tenantId, userId: compte.userId }, (tx) =>
+    if (!expediteur?.actif) {
+      this.logger.warn('Code non envoyé : aucun serveur de courrier n’est configuré.');
+      return;
+    }
+    await this.db.withTenant({ tenantId: a.tenantId, userId: a.userId ?? undefined }, (tx) =>
       expediteur.mettreEnFile(tx, {
-        tenantId: compte.tenantId,
+        tenantId: a.tenantId,
         kind: 'code_connexion',
         subjectId: envoi.id,
-        to: compte.email,
+        to: a.email,
         gabarit: {
           nom: 'code_connexion',
-          prenom: compte.prenom,
-          organisation: compte.organisation,
+          prenom: a.prenom,
+          organisation: a.organisation,
           code: envoi.code,
         },
       }),
@@ -355,9 +607,8 @@ export class ConnexionParCodeService {
     const code = await this.nouveauCode(attente.compteur, attente.expiresAt);
     if (!code.ok) return { info: code.raison, enFond: Promise.resolve() };
     const enFond = (async () => {
-      if (!attente.userId || !attente.tenantId) return;
-      const compte = await this.compteOuvert(attente.userId, attente.tenantId);
-      if (compte) await this.envoyer(compte, code);
+      const destinataire = await this.destinataireDe(attente);
+      if (destinataire) await this.envoyer(destinataire, code);
     })().catch((e: Error) => this.logger.error(`Code redemandé : ${e.message}`));
     return { info: 'renvoye', enFond };
   }
@@ -400,11 +651,11 @@ export class ConnexionParCodeService {
     // ne dit rien.
     let bon: string | null = null;
     for (const c of actifs) if (egales(empreinte, c.codeHash) && forme) bon = c.id;
-    if (!bon || !attente.userId || !attente.tenantId) {
+    if (!bon || !attente.tenantId || (!attente.userId && !attente.employeeId)) {
       return essais >= ESSAIS_PAR_CONNEXION ? codeBloque() : codeIncorrect();
     }
     const codeId = bon;
-    const { userId, tenantId } = attente;
+    const { tenantId } = attente;
 
     // Le code sert une fois : de deux saisies simultanées, la première l'emporte.
     const pris = await this.db.global.transaction(async (tx) => {
@@ -430,8 +681,12 @@ export class ConnexionParCodeService {
       return true;
     });
     if (!pris) codeExpire();
+    // En campagne, le dossier sans compte ouvre le sien.
+    const userId =
+      attente.userId ??
+      (attente.employeeId ? await this.ouvrirLeCompte(tenantId, attente.employeeId) : null);
     // L'accès a pu être coupé depuis l'envoi du code.
-    if (!(await this.compteOuvert(userId, tenantId))) {
+    if (!userId || !(await this.compteOuvert(userId, tenantId))) {
       problem(
         403,
         'auth.acces_ferme',

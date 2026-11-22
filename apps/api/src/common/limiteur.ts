@@ -65,6 +65,12 @@ export const DEMANDES_DE_CODE: Regle = {
 export const ESSAIS_DE_CODE: Regle = { bucket: 'code_essai_ip', fenetreSecondes: 900, max: 600 };
 /** Les codes redemandés : trois cents par quart d'heure. */
 export const RENVOIS_DE_CODE: Regle = { bucket: 'code_renvoi_ip', fenetreSecondes: 900, max: 300 };
+/**
+ * Les connexions par clé d'accès (ADR-0247), d'une même adresse réseau :
+ * chacune demande un défi puis le rend signé, mille gestes par quart
+ * d'heure, comme les demandes de code.
+ */
+export const CONNEXIONS_PAR_CLE: Regle = { bucket: 'cle_ip', fenetreSecondes: 900, max: 1000 };
 
 /**
  * L'adresse du client, telle qu'Express la lit derrière les proxys de

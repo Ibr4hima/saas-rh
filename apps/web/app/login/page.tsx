@@ -1,14 +1,34 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { DOMAINE_COURRIEL_PRO, type AttenteDuCode } from '@teranga/contracts';
+import {
+  DOMAINE_COURRIEL_PRO,
+  type AttenteDuCode,
+  type OptionsDeConnexion,
+  type SessionUser,
+} from '@teranga/contracts';
 import { BoutonMarque } from '../../components/bouton-marque';
 import { ChampMarque, EcranMarque, SaisieMarque } from '../../components/ecran-marque';
 import { api, ApiError } from '../../lib/api';
 import { useAnneeDeLaCampagne } from '../../lib/campagne';
-import { memoire, nomEnCapitales, useEcranDeConnexion, versLEcran } from './connexion';
+import {
+  appareilAvecCle,
+  clesPossibles,
+  gesteAnnule,
+  presenterUneCle,
+  retenirLAppareil,
+} from '../../lib/cles-d-acces';
+import { ouvrirSession } from '../../lib/session';
+import {
+  memoire,
+  nomEnCapitales,
+  pageDeRetour,
+  useEcranDeConnexion,
+  versLEcran,
+} from './connexion';
 
 /* ────────────────────────────────────────────────────────────────
    Connexion par code (ADR-0204), comme celle du vote électronique.
@@ -17,7 +37,16 @@ import { memoire, nomEnCapitales, useEcranDeConnexion, versLEcran } from './conn
    un compte, un code part à cette adresse, et l'écran suivant le demande.
    L'écran suivant dit la même chose que le couple soit juste ou non : le
    serveur ne le dit pas non plus.
+
+   La clé d'accès (ADR-0247) : sur un appareil qui en a déjà servi une, la
+   connexion la propose d'abord, le code par email en second. Ailleurs, elle
+   reste à un geste, sous le bouton du code : la clé d'un téléphone, ou
+   synchronisée depuis un autre appareil.
    ──────────────────────────────────────────────────────────────── */
+
+/** Un lien discret sous le bouton, comme celui du mot de passe. */
+const LIEN_DISCRET =
+  'mx-auto -mt-1 text-[13px] font-semibold text-ink-muted underline-offset-4 hover:text-primary hover:underline disabled:opacity-60';
 
 const DOMAINE = `@${DOMAINE_COURRIEL_PRO}`;
 
@@ -51,17 +80,104 @@ function enCapitales(champ: HTMLInputElement): string {
 
 export default function ConnexionPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const ecran = useEcranDeConnexion();
   const annee = useAnneeDeLaCampagne();
   const [nom, setNom] = useState(memoire.nom);
   const [email, setEmail] = useState(memoire.email);
   const [erreur, setErreur] = useState<string | null>(memoire.erreur);
   const [envoi, setEnvoi] = useState(false);
+  /** Le navigateur sait se servir des clés d'accès. Lu après le premier rendu. */
+  const [cles, setCles] = useState(false);
+  /** Cet appareil a déjà servi une clé : elle passe avant le code. */
+  const [cleDAbord, setCleDAbord] = useState(false);
+  const [parCle, setParCle] = useState(false);
 
   // L'erreur rapportée de l'écran du code ne se montre qu'une fois.
   useEffect(() => {
     memoire.erreur = null;
+    const possibles = clesPossibles();
+    setCles(possibles);
+    // Revenu de l'écran du code (« Modifier mes informations »), le formulaire reste.
+    setCleDAbord(possibles && appareilAvecCle() && !memoire.nom && !memoire.email);
   }, []);
+
+  /** La clé de l'appareil, ou d'un téléphone à côté : le système demande laquelle. */
+  const seConnecterAvecUneCle = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setErreur(null);
+    setParCle(true);
+    try {
+      const options = await api<OptionsDeConnexion>('/auth/cles/connexion/options', {
+        method: 'POST',
+      });
+      const reponse = await presenterUneCle(options);
+      await api<{ user: SessionUser }>('/auth/cles/connexion', { method: 'POST', body: reponse });
+      retenirLAppareil(true);
+      Object.assign(memoire, { nom: '', email: '', attente: null, erreur: null });
+      // Rien de ce qu'un autre compte a lu dans cet onglet ne lui survit.
+      ouvrirSession(queryClient);
+      router.replace(pageDeRetour());
+    } catch (err) {
+      setParCle(false);
+      // Fenêtre du système fermée : rien à dire.
+      if (gesteAnnule(err)) return;
+      if (err instanceof ApiError && err.problem.code === 'auth.cle_inconnue') {
+        retenirLAppareil(false);
+        setCleDAbord(false);
+      }
+      setErreur(err instanceof ApiError ? err.message : 'Connexion impossible, réessayez.');
+    }
+  };
+
+  const messageDErreur = erreur ? (
+    <p
+      role="alert"
+      className="rounded-lg border border-danger/20 bg-danger-soft px-3.5 py-2.5 text-center text-[12.5px] font-medium text-danger"
+    >
+      {erreur}
+    </p>
+  ) : null;
+
+  const sousTitre = (
+    <>
+      Accédez à votre espace avec votre compte{' '}
+      <span className="font-semibold text-ink">{DOMAINE}</span>
+    </>
+  );
+
+  if (cleDAbord) {
+    return (
+      <EcranMarque
+        titre="Connexion"
+        sousTitre={sousTitre}
+        pied="Contactez la DCH en cas de soucis."
+      >
+        <form
+          method="post"
+          onSubmit={seConnecterAvecUneCle}
+          className="mt-6 flex flex-col gap-4"
+          noValidate
+        >
+          {messageDErreur}
+          <BoutonMarque enCours={parCle} libelleEnCours="Connexion…">
+            Se connecter avec ma clé d’accès
+          </BoutonMarque>
+          <button
+            type="button"
+            disabled={parCle}
+            onClick={() => {
+              setErreur(null);
+              setCleDAbord(false);
+            }}
+            className={LIEN_DISCRET}
+          >
+            Recevoir un code par email
+          </button>
+        </form>
+      </EcranMarque>
+    );
+  }
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,16 +198,7 @@ export default function ConnexionPage() {
   };
 
   return (
-    <EcranMarque
-      titre="Connexion"
-      sousTitre={
-        <>
-          Accédez à votre espace avec votre compte{' '}
-          <span className="font-semibold text-ink">{DOMAINE}</span>
-        </>
-      }
-      pied="Contactez la DCH en cas de soucis."
-    >
+    <EcranMarque titre="Connexion" sousTitre={sousTitre} pied="Contactez la DCH en cas de soucis.">
       {/* En POST : envoyé avant que la page ne soit prête, le formulaire
           n'écrit ni le nom ni l'adresse dans l'URL. */}
       <form method="post" onSubmit={onSubmit} className="mt-6 flex flex-col gap-4" noValidate>
@@ -153,18 +260,22 @@ export default function ConnexionPage() {
           </span>
         </ChampMarque>
 
-        {erreur ? (
-          <p
-            role="alert"
-            className="rounded-lg border border-danger/20 bg-danger-soft px-3.5 py-2.5 text-center text-[12.5px] font-medium text-danger"
-          >
-            {erreur}
-          </p>
-        ) : null}
+        {messageDErreur}
 
-        <BoutonMarque enCours={envoi} libelleEnCours="Envoi du code…">
+        <BoutonMarque enCours={envoi} disabled={parCle} libelleEnCours="Envoi du code…">
           Recevoir mon code
         </BoutonMarque>
+
+        {cles ? (
+          <button
+            type="button"
+            disabled={parCle || envoi}
+            onClick={() => void seConnecterAvecUneCle()}
+            className={LIEN_DISCRET}
+          >
+            {parCle ? 'Connexion…' : 'Se connecter avec une clé d’accès'}
+          </button>
+        ) : null}
 
         {/* En campagne (ADR-0212), les agents entrent par leur code, et
             seulement par lui. Le lien attend de savoir s'il y a une campagne

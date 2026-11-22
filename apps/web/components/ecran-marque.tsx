@@ -93,7 +93,7 @@ export function EcranMarque({
         {note ? (
           <span>{note.texte}</span>
         ) : (
-          <>Accès réservé aux agents de l&apos;APIX disposant d&apos;un compte professionnel</>
+          <>Accès réservé aux agents de l’APIX disposant d’un compte professionnel</>
         )}
       </p>
     </SceneDeLaCharte>

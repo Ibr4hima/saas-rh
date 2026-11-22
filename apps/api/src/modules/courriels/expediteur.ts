@@ -391,7 +391,7 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
 
   private async consigner(
     tx: Tx,
-    c: { id: string; attempts: number },
+    c: { id: string; kind: string; attempts: number },
     issue: { ok: true } | { ok: false; erreur: string; definitif: boolean },
   ): Promise<void> {
     if (issue.ok) {
@@ -410,10 +410,16 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
          WHERE id = ${c.id}`);
       return;
     }
+    // Un envoi manqué se dit tout de suite dans le journal, avec la réponse
+    // du serveur de courrier : un code qui n'arrive pas s'explique là.
+    const delai = delaiAvantEssai(c.attempts);
+    this.logger.warn(
+      `Courriel ${c.id} (${c.kind}) : essai ${c.attempts} manqué, nouvel essai dans ${delai} s : ${erreur}`,
+    );
     await tx.execute(sql`
       UPDATE outbound_emails
          SET last_error = ${erreur},
-             next_attempt_at = now() + make_interval(secs => ${delaiAvantEssai(c.attempts)}::double precision)
+             next_attempt_at = now() + make_interval(secs => ${delai}::double precision)
        WHERE id = ${c.id}`);
   }
 }

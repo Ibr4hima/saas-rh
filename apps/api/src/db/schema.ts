@@ -5,6 +5,7 @@
  */
 import type { NiveauxLangue } from '@teranga/contracts';
 import {
+  bigint,
   boolean,
   char,
   customType,
@@ -75,6 +76,8 @@ export const connexionsEnAttente = pgTable('connexions_en_attente', {
   emailMasque: text('email_masque').notNull(),
   userId: uuid('user_id'),
   tenantId: uuid('tenant_id'),
+  /** En campagne, le dossier dont le compte s'ouvrira au premier code juste (migration 0143). */
+  employeeId: uuid('employee_id'),
   essais: integer('essais').notNull().default(0),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1079,4 +1082,29 @@ export const outboundEmails = pgTable('outbound_emails', {
   lastError: text('last_error'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp('sent_at', { withTimezone: true }),
+});
+
+/** Les clés d'accès : globales, comme les sessions (migration 0144, ADR-0247). */
+export const clesDAcces = pgTable('cles_d_acces', {
+  id: uuid('id').primaryKey(),
+  userId: uuid('user_id').notNull(),
+  identifiant: text('identifiant').notNull(),
+  clePublique: bytea('cle_publique').notNull(),
+  algorithme: integer('algorithme').notNull(),
+  compteur: bigint('compteur', { mode: 'number' }).notNull().default(0),
+  transports: text('transports').array().notNull().default([]),
+  sauvegardee: boolean('sauvegardee').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  derniereUtilisation: timestamp('derniere_utilisation', { withTimezone: true }),
+});
+
+/** Le défi d'une création ou d'une connexion par clé d'accès (migration 0144). */
+export const defisDeCle = pgTable('defis_de_cle', {
+  id: uuid('id').primaryKey(),
+  jetonHash: text('jeton_hash').notNull(),
+  defi: text('defi').notNull(),
+  usage: text('usage').$type<'creation' | 'connexion'>().notNull(),
+  userId: uuid('user_id'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

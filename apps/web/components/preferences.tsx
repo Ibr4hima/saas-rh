@@ -42,8 +42,9 @@ export const CLE_THEME = 'teranga-theme';
 /** Le script inline du <head>. Écrit en une ligne, sans dépendance, et
     tolérant à l'échec : en navigation privée, `localStorage` peut lever.
     Les pages toujours en clair (cf. useThemeClair) le sont dès le premier
-    pixel : les pages publiques, et les écrans d'avant le compte. */
-export const SCRIPT_AMORCAGE = `try{document.documentElement.dataset.theme=/^\\/(postuler|verifier|invitation|reinitialisation)\\/|^\\/(login|register|mot-de-passe-oublie)\\/?$/.test(location.pathname)||localStorage.getItem('${CLE_THEME}')!=='sombre'?'light':'dark'}catch(e){}`;
+    pixel : les pages publiques, et les écrans de la connexion, le code et la
+    clé d'accès compris. */
+export const SCRIPT_AMORCAGE = `try{document.documentElement.dataset.theme=/^\\/(postuler|verifier|invitation|reinitialisation)\\/|^\\/(login|register|mot-de-passe-oublie)(\\/|$)/.test(location.pathname)||localStorage.getItem('${CLE_THEME}')!=='sombre'?'light':'dark'}catch(e){}`;
 
 /** Le thème gardé dans ce navigateur, le clair à défaut. */
 function themeGarde(): Theme {

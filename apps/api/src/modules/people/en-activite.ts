@@ -209,9 +209,9 @@ export async function accesDuCompte(
 
 /**
  * Parti depuis plus de trente jours, quel qu'en soit le motif : son mot de
- * passe s'efface, et ses sessions se ferment. Sauf si le compte sert aussi
- * dans une autre organisation : son mot de passe vaut pour elle aussi.
- * Tous les dossiers de l'organisation, ou celui qu'on nomme.
+ * passe et ses clés d'accès s'effacent, et ses sessions se ferment. Sauf si
+ * le compte sert aussi dans une autre organisation : son mot de passe vaut
+ * pour elle aussi. Tous les dossiers de l'organisation, ou celui qu'on nomme.
  */
 export async function effacerLesMotsDePasseEchus(tx: Tx, employeeId?: string): Promise<number> {
   const { rows } = await tx.execute<{ id: string }>(sql`
@@ -222,6 +222,14 @@ export async function effacerLesMotsDePasseEchus(tx: Tx, employeeId?: string): P
        AND ${finDActivite(sql`e`)} + ${DELAI_D_ACCES_JOURS}::int < CURRENT_DATE
        AND NOT compte_d_une_autre_organisation(u.id)
     RETURNING u.id`);
+  // Ses clés d'accès s'en vont aussi, mot de passe ou non (ADR-0247).
+  await tx.execute(sql`
+    DELETE FROM cles_d_acces c
+     USING employees e JOIN persons p ON p.id = e.person_id
+     WHERE p.user_id = c.user_id
+       AND ${employeeId ? sql`e.id = ${employeeId}` : sql`TRUE`}
+       AND ${finDActivite(sql`e`)} + ${DELAI_D_ACCES_JOURS}::int < CURRENT_DATE
+       AND NOT compte_d_une_autre_organisation(c.user_id)`);
   if (rows.length === 0) return 0;
   await tx.execute(sql`
     UPDATE sessions SET revoked_at = now()

@@ -109,7 +109,7 @@ async function creerCompte(
 /** La connexion en cours derrière un jeton, telle que la base la garde. */
 async function attente(jeton: string) {
   const { rows } = await raw(
-    `SELECT id, compteur, email_masque, user_id, tenant_id, essais
+    `SELECT id, compteur, email_masque, user_id, tenant_id, employee_id, essais
        FROM connexions_en_attente WHERE jeton_hash = $1`,
     [hashToken(jeton)],
   );
@@ -119,9 +119,46 @@ async function attente(jeton: string) {
         email_masque: string;
         user_id: string | null;
         tenant_id: string | null;
+        employee_id: string | null;
         essais: number;
       }
     | undefined;
+}
+
+/**
+ * Un dossier de l'organisation et son adresse professionnelle, relié à un
+ * compte ou non ; parti, si on le dit.
+ */
+async function creerDossier(
+  prenom: string,
+  nom: string,
+  o: { userId?: string; parti?: boolean; locale?: string } = {},
+): Promise<{ email: string; locale: string; personId: string; employeeId: string }> {
+  const locale = o.locale ?? `${prenom.toLowerCase()}.dossier-${marque}`;
+  const email = `${locale}@apix.sn`;
+  const personId = randomUUID();
+  const employeeId = randomUUID();
+  await raw(
+    `INSERT INTO persons (id, tenant_id, given_name, family_name, user_id) VALUES ($1,$2,$3,$4,$5)`,
+    [personId, tenantId, prenom, nom, o.userId ?? null],
+  );
+  await raw(
+    `INSERT INTO employees (id, tenant_id, person_id, employee_number, hired_on, work_email,
+                            status, inactivite_motif, archived_at, fin_activite)
+     VALUES ($1,$2,$3,$4, CURRENT_DATE - 400, $5, $6, $7, $8, $9)`,
+    [
+      employeeId,
+      tenantId,
+      personId,
+      `D-${employeeId.slice(0, 8)}-${marque}`,
+      email,
+      o.parti ? 'archived' : 'active',
+      o.parti ? 'demission' : null,
+      o.parti ? new Date() : null,
+      o.parti ? new Date(Date.now() - 40 * 86_400_000).toISOString().slice(0, 10) : null,
+    ],
+  );
+  return { email, locale, personId, employeeId };
 }
 
 /** Demande un code, et attend que le travail d'après la réponse soit fait. */
@@ -548,5 +585,111 @@ describe('les routes', () => {
     expect(user.userId).toBe(awa.userId);
     expect(saisie.poses[SESSION_COOKIE]).toBeTruthy();
     expect(saisie.effaces).toEqual([ATTENTE_COOKIE]);
+  });
+});
+
+describe('en campagne, le dossier reçoit son code (ADR-0246)', () => {
+  beforeEach(() => {
+    service.campagne = () => 2026;
+  });
+
+  it('un agent sans compte reçoit son code, et son compte s’ouvre au premier code juste', async () => {
+    const ibou = await creerDossier('Ibou', 'Ndiaye');
+    const d = await demander('NDIAYE', ibou.locale);
+    expect(await attente(d.jeton)).toMatchObject({
+      user_id: null,
+      tenant_id: tenantId,
+      employee_id: ibou.employeeId,
+    });
+    const code = await recevoir();
+    expect(transport.envoyes.at(-1)!.to).toBe(ibou.email);
+    expect(transport.envoyes.at(-1)!.text).toContain('Bonjour Ibou,');
+
+    const session = await service.verifier(d.jeton, code, meta);
+    expect(session.user.email).toBe(ibou.email);
+    const { rows } = await raw(
+      `SELECT p.user_id, u.password_hash, u.given_name, u.family_name, u.status, m.role
+         FROM persons p
+         JOIN users u ON u.id = p.user_id
+         JOIN user_tenant_memberships m ON m.user_id = u.id AND m.tenant_id = p.tenant_id
+        WHERE p.id = $1`,
+      [ibou.personId],
+    );
+    expect(rows).toEqual([
+      {
+        user_id: session.user.userId,
+        password_hash: null,
+        given_name: 'Ibou',
+        family_name: 'Ndiaye',
+        status: 'active',
+        role: 'employee',
+      },
+    ]);
+
+    // La fois suivante, le compte existe : il reçoit son code comme tout compte.
+    const encore = await demander('Ndiaye', ibou.locale);
+    expect(await attente(encore.jeton)).toMatchObject({
+      user_id: session.user.userId,
+      employee_id: null,
+    });
+  });
+
+  it('un compte à une autre adresse : le code part à celle du dossier, et ce compte s’ouvre', async () => {
+    const awa = await creerCompte('Awa', 'Diop');
+    const dossier = await creerDossier('Awa', 'Diop', { userId: awa.userId });
+    const d = await demander('Diop', dossier.locale);
+    expect(await attente(d.jeton)).toMatchObject({
+      user_id: awa.userId,
+      employee_id: dossier.employeeId,
+    });
+    const code = await recevoir();
+    expect(transport.envoyes.at(-1)!.to).toBe(dossier.email);
+
+    // Redemandé, le code repart à la même adresse.
+    await reculer(d.jeton, 60);
+    const renvoi = await service.renvoyer(d.jeton);
+    await renvoi.enFond;
+    expect((await enFile()).map((c) => c.recipient)).toEqual([dossier.email, dossier.email]);
+
+    const session = await service.verifier(d.jeton, code, meta);
+    expect(session.user.userId).toBe(awa.userId);
+  });
+
+  it('hors campagne, un dossier sans compte ne reçoit rien', async () => {
+    service.campagne = () => null;
+    const ibou = await creerDossier('Ibou', 'Ndiaye');
+    const d = await demander('Ndiaye', ibou.locale);
+    expect(await attente(d.jeton)).toMatchObject({
+      user_id: null,
+      tenant_id: null,
+      employee_id: null,
+    });
+    expect(await enFile()).toHaveLength(0);
+  });
+
+  it('un autre nom, un dossier parti, deux dossiers au même nom, une adresse prise : rien', async () => {
+    const ibou = await creerDossier('Ibou', 'Ndiaye');
+    await demander('Sarr', ibou.locale);
+    const lamine = await creerDossier('Lamine', 'Ba', { parti: true });
+    await demander('Ba', lamine.locale);
+    const fatou = await creerDossier('Fatou', 'Sall');
+    await creerDossier('Fatou', 'Sall', { locale: fatou.locale });
+    await demander('Sall', fatou.locale);
+    // L'adresse du dossier est celle du compte d'une autre personne.
+    const cheikh = await creerCompte('Cheikh', 'Mbaye');
+    await creerDossier('Ousmane', 'Fall', { locale: cheikh.locale });
+    await demander('Fall', cheikh.locale);
+    expect(await enFile()).toHaveLength(0);
+  });
+
+  it('un code juste ouvre la session même si le dossier a été relié entre-temps', async () => {
+    const ibou = await creerDossier('Ibou', 'Ndiaye');
+    const d = await demander('Ndiaye', ibou.locale);
+    const code = await recevoir();
+    // Une invitation acceptée pendant ce temps relie le dossier à un compte.
+    const compte = await creerCompte('Ibou', 'Ndiaye');
+    await raw(`UPDATE persons SET user_id = $1 WHERE id = $2`, [compte.userId, ibou.personId]);
+    const session = await service.verifier(d.jeton, code, meta);
+    expect(session.user.userId).toBe(compte.userId);
   });
 });

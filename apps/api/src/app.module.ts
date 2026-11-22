@@ -26,6 +26,8 @@ import { transportDepuisEnv } from './modules/courriels/transports';
 import { NotificationsReglagesService } from './modules/notifications/reglages.service';
 import { AuthController } from './modules/auth/auth.controller';
 import { ConnexionParCodeController } from './modules/auth/connexion-par-code.controller';
+import { ClesDAccesController } from './modules/auth/cles-d-acces.controller';
+import { ClesDAccesService } from './modules/auth/cles-d-acces.service';
 import { ConnexionParCodeService } from './modules/auth/connexion-par-code.service';
 import { DocumentRequestsController } from './modules/docs/document-requests.controller';
 import { ProfileChangesController } from './modules/profile/profile-changes.controller';
@@ -71,6 +73,7 @@ import { AbsencesService } from './modules/time/absences.service';
     AccesController,
     AuthController,
     ConnexionParCodeController,
+    ClesDAccesController,
     PeopleController,
     AbsencesController,
     DashboardController,
@@ -105,6 +108,7 @@ import { AbsencesService } from './modules/time/absences.service';
     AuthService,
     ReinitialisationService,
     ConnexionParCodeService,
+    ClesDAccesService,
     HabilitationsService,
     SessionGuard,
     AccesGuard,

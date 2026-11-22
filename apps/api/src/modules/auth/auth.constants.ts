@@ -14,6 +14,12 @@ export const SESSION_COOKIE = loadEnv().COOKIE_SECURE ? '__Host-tg_session' : 't
  */
 export const ATTENTE_COOKIE = loadEnv().COOKIE_SECURE ? '__Host-tg_attente' : 'tg_attente';
 
+/**
+ * Le défi d'une clé d'accès, le temps de répondre à l'appareil (ADR-0247) :
+ * mêmes attributs que la session, cinq minutes au plus.
+ */
+export const DEFI_COOKIE = loadEnv().COOKIE_SECURE ? '__Host-tg_defi' : 'tg_defi';
+
 /** L'en-tête des relevés automatiques de la page : ils ne prolongent pas la session. */
 export const EN_ARRIERE_PLAN = 'x-arriere-plan';
 
