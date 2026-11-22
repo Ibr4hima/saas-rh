@@ -14,6 +14,7 @@ import {
 } from '@teranga/contracts';
 import { Card, cn, type BadgeTone } from '@teranga/ui';
 import { ACCUEIL_DE_LA_CAMPAGNE, AUTO_EVALUATION, MON_EVALUATION } from '../../lib/campagne';
+import { sansLeType } from '../../lib/mots';
 import { Courriel } from '../courriel';
 import { Repere } from '../fiche';
 import { Icon } from '../icons';
@@ -49,8 +50,18 @@ export function reperesDeLAgent(a: AgentDeLaCampagne): React.ReactElement[] {
       titre={abregee ? (a.direction ?? undefined) : undefined}
       entier={!abregee}
     />,
-    a.departement ? <Repere key="departement" label="Département" valeur={a.departement} /> : null,
-    a.service ? <Repere key="service" label="Service" valeur={a.service} /> : null,
+    // L'intitulé dit déjà « Département » ou « Service » : le nom ne le
+    // répète pas (ADR-0264).
+    a.departement ? (
+      <Repere
+        key="departement"
+        label="Département"
+        valeur={sansLeType(a.departement, 'Département')}
+      />
+    ) : null,
+    a.service ? (
+      <Repere key="service" label="Service" valeur={sansLeType(a.service, 'Service')} />
+    ) : null,
     // Sans département ni service, l'adresse professionnelle prend leur place.
     abregee ? null : (
       <Repere

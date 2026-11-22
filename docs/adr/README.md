@@ -229,7 +229,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | révisée par 0226, 0227, 0233 et 0256        |
 | [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | acceptée, révisée par 0227 et 0233          |
 | [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée, révisée par 0236, 0237 et 0245    |
-| [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée, complétée par 0248                |
+| [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée, complétée par 0248 et 0264        |
 | [0225](0225-en-tete-sans-matricule.md)                | L'en-tête et les cartes des agents sans le matricule, le poste seul sous le nom         | acceptée                                    |
 | [0226](0226-auto-evaluation-faite-ou-non.md)          | L'auto-évaluation faite ou non faite, un point vert ou rouge sur les cartes             | acceptée, révisée par 0234, 0250 et 0252    |
 | [0227](0227-accueil-a-la-charte.md)                   | L'accueil de la campagne à la charte de l'APIX : bandeau, titres en Anton, tuiles       | révisée 0228, 0233, 0234, 0240, 0250, 0256  |
@@ -269,3 +269,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0261](0261-autres-realisations-en-puces.md)          | Autres réalisations en dehors des objectifs, en puces                                   | acceptée                                    |
 | [0262](0262-aide-a-la-redaction-des-objectifs.md)     | Comment définir des objectifs : une fiche d'aide à côté du titre des objectifs          | acceptée, révisée par 0263                  |
 | [0263](0263-fiche-des-objectifs-resserree.md)         | La fiche Comment définir des objectifs, resserrée : son titre, cinq parties             | acceptée                                    |
+| [0264](0264-reperes-sans-le-type-de-l-unite.md)       | Sous Département et Service, le nom de l'unité sans ce mot                              | acceptée                                    |

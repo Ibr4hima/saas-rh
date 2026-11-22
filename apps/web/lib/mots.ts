@@ -38,3 +38,18 @@ export const majuscule = (texte: string) => texte.charAt(0).toUpperCase() + text
  */
 export const insecables = (texte: string) =>
   texte.replace(/ ([?!:;%\u00bb])/g, '\u00a0$1').replace(/\u00ab /g, '\u00ab\u00a0');
+
+/**
+ * Le nom d'une unité sans son type, quand l'intitulé qui le précède le dit
+ * déjà : sous « Département », « Département Développement du personnel »
+ * se lit « Développement du personnel », et « Département des Études »,
+ * « Études » (ADR-0264). Un nom réduit à son type reste entier.
+ */
+export function sansLeType(nom: string, type: 'Département' | 'Service'): string {
+  const enTete = new RegExp(
+    `^\\s*${type}\\s+(?:de la\\s+|de l['’]|des\\s+|du\\s+|de\\s+|d['’])?`,
+    'iu',
+  );
+  const reste = nom.replace(enTete, '').trim();
+  return reste ? majuscule(reste) : nom;
+}
