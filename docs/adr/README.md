@@ -267,4 +267,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0259](0259-lecture-des-reponses.md)                  | La lecture des réponses : le oui et ses puces ensemble, les puces au bord               | acceptée                                    |
 | [0260](0260-valider-l-evaluation-du-n1.md)            | Valider chez le N+1 : la fiche en PDF avant de la transmettre à l'agent                 | acceptée                                    |
 | [0261](0261-autres-realisations-en-puces.md)          | Autres réalisations en dehors des objectifs, en puces                                   | acceptée                                    |
-| [0262](0262-aide-a-la-redaction-des-objectifs.md)     | Comment définir des objectifs : une fiche d'aide à côté du titre des objectifs          | acceptée                                    |
+| [0262](0262-aide-a-la-redaction-des-objectifs.md)     | Comment définir des objectifs : une fiche d'aide à côté du titre des objectifs          | acceptée, révisée par 0263                  |
+| [0263](0263-fiche-des-objectifs-resserree.md)         | La fiche Comment définir des objectifs, resserrée : son titre, cinq parties             | acceptée                                    |

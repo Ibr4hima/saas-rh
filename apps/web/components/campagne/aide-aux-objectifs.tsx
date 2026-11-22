@@ -2,7 +2,6 @@
 
 import { useState, type ReactNode } from 'react';
 import { insecables } from '../../lib/mots';
-import { Icon } from '../icons';
 import { Modal } from '../modal';
 import { Bleu, FiletDuBandeau } from './charte';
 
@@ -40,8 +39,8 @@ export function AideAuxObjectifs() {
       <Modal
         open={ouverte}
         onClose={() => setOuverte(false)}
-        title="Comment définir des objectifs ?"
-        subtitle="Fiche pratique · La méthode SMART"
+        title="Fiche pratique"
+        subtitle="La méthode SMART"
         maxWidth="max-w-4xl"
       >
         <FicheDesObjectifs />
@@ -67,7 +66,7 @@ const SMART: readonly { lettre: string; mot: string; texte: string }[] = [
     lettre: 'S',
     mot: 'Spécifique',
     texte:
-      'L’objectif porte sur un résultat précis, compris de la même façon par l’agent et par son N+1. Évitez les formules générales comme « améliorer » ou « renforcer », sans préciser ce qui doit changer ni dans quelle mesure.',
+      'L’objectif porte sur un résultat précis. Évitez les formules générales comme « améliorer » ou « renforcer », sans préciser ce qui doit changer ni dans quelle mesure.',
   },
   {
     lettre: 'M',
@@ -91,7 +90,7 @@ const SMART: readonly { lettre: string; mot: string; texte: string }[] = [
     lettre: 'T',
     mot: 'Temporellement défini',
     texte:
-      'L’objectif a une échéance : une date précise, la fin d’un trimestre ou la fin de l’année. Sans échéance, il n’y a pas de rendez-vous pour faire le point.',
+      'L’objectif a une échéance : une date précise, la fin d’un trimestre ou la fin de l’année.',
   },
 ];
 
@@ -207,14 +206,6 @@ const AVANT_APRES: readonly { flou: string; smart: string }[] = [
   },
 ];
 
-const QUESTIONS: readonly string[] = [
-  'Le résultat attendu est-il compris de la même façon par l’agent et par son N+1 ?',
-  'Pourra-t-on dire, le moment venu, si l’objectif est atteint ou non ?',
-  'L’objectif est-il à la portée de l’agent, avec un effort raisonnable ?',
-  'Les moyens nécessaires sont-ils réunis ?',
-  'L’échéance est-elle fixée ?',
-];
-
 // ──────────────────────────────────────────────── la fiche
 
 const TEXTE = 'text-[13.5px] leading-relaxed text-ink';
@@ -231,11 +222,11 @@ function FicheDesObjectifs() {
             Évaluation annuelle · Fixation des objectifs
           </p>
           <p className="mt-2 font-titre text-[24px] leading-[1.1] tracking-[0.015em] uppercase sm:text-[28px]">
-            Des objectifs clairs, mesurables et datés
+            {insecables('Comment définir des objectifs ?')}
           </p>
           <p className="mt-3 max-w-[62ch] text-[13.5px] leading-relaxed text-white/90">
             {insecables(
-              'Les objectifs fixés pendant l’entretien guident le travail de l’année à venir et servent de base à l’évaluation suivante. Cette fiche vous aide à les rédiger avec l’agent, pour que l’agent et son N+1 sachent ce qui est attendu et puissent constater, le moment venu, si le résultat est atteint.',
+              'Les objectifs fixés pendant l’entretien guident le travail de l’année à venir et servent de base à l’évaluation suivante.',
             )}
           </p>
         </Bleu>
@@ -248,9 +239,7 @@ function FicheDesObjectifs() {
             'Un objectif décrit un résultat à atteindre, pas une tâche à accomplir. « Traiter les demandes des investisseurs » fait partie du travail habituel du poste ; « répondre à chaque demande d’information sous cinq jours ouvrés » est un objectif, car le résultat attendu est précis et se vérifie.',
           )}
         </p>
-        <p className={TEXTE}>
-          {insecables('Pour chaque objectif, la fiche demande trois éléments :')}
-        </p>
+        <p className={TEXTE}>{insecables('Pour chaque objectif, trois éléments sont requis :')}</p>
         <dl className="grid gap-2.5 sm:grid-cols-3">
           {ELEMENTS.map(({ terme, definition }) => (
             <div key={terme} className="rounded-controle bg-primary-soft/60 px-4 py-3.5">
@@ -261,7 +250,7 @@ function FicheDesObjectifs() {
         </dl>
         <p className={TEXTE}>
           {insecables(
-            'La fiche compte de trois à cinq objectifs : assez pour couvrir l’essentiel du poste, pas trop pour rester réaliste.',
+            'Définissez trois à cinq objectifs, assez pour couvrir l’essentiel du poste.',
           )}
         </p>
       </Partie>
@@ -326,7 +315,7 @@ function FicheDesObjectifs() {
         </div>
       </Partie>
 
-      <Partie numero={4} titre="Des exemples à l’APIX">
+      <Partie numero={4} titre="Exemples d’objectifs">
         <p className={TEXTE}>
           {insecables(
             'Ces exemples montrent la forme attendue sur la fiche. Adaptez-les au poste de l’agent et aux priorités de sa direction.',
@@ -388,22 +377,6 @@ function FicheDesObjectifs() {
             </li>
           ))}
         </ul>
-      </Partie>
-
-      <Partie numero={6} titre="Avant de valider, cinq questions">
-        <ul className="flex flex-col gap-2">
-          {QUESTIONS.map((q) => (
-            <li key={q} className={`flex gap-2.5 ${TEXTE}`}>
-              <Icon name="check_circle" size={18} className="mt-[2px] shrink-0 text-primary" />
-              <span className="min-w-0">{insecables(q)}</span>
-            </li>
-          ))}
-        </ul>
-        <p className={TEXTE}>
-          {insecables(
-            'Cinq « oui » : l’objectif est prêt à être inscrit sur la fiche. Fixez-le avec l’agent pendant l’entretien : un objectif discuté et compris est plus facile à atteindre.',
-          )}
-        </p>
       </Partie>
     </article>
   );
