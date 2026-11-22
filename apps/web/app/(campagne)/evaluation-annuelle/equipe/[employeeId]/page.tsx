@@ -11,7 +11,7 @@ import {
   type EcritureDeLEvaluation,
   type EvaluationDeLAgent,
 } from '@teranga/contracts';
-import { Badge, Button, Card, EmptyState, Skeleton } from '@teranga/ui';
+import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
 import {
   BarreDeTransmission,
   useEnregistrementAuto,
@@ -30,7 +30,6 @@ import {
   RetourALAccueil,
   statutDeLAgent,
   statutDeMonEvaluation,
-  statutDesCommentaires,
   type Statut,
 } from '../../../../../components/campagne/fiche';
 import { BandeauDeLAgent } from '../../../../../components/campagne/charte';
@@ -48,13 +47,13 @@ import { CLE_CAMPAGNE } from '../../../../../lib/campagne';
    ce qui manque et porte « Transmettre à l'agent » (ADR-0241).
    Transmise, l'évaluation se lit ; l'agent la valide, ou la renvoie avec un
    mot, qui s'affiche alors au-dessus de la fiche, de nouveau à remplir
-   (ADR-0217). Validée, la fiche passe au N+2 s'il y en a un : une troisième
-   étape le dit, et ses commentaires ferment la partie réservée une fois
-   transmis (ADR-0218). La dernière étape est la transmission à la DCH : la
-   barre du bas porte « Transmettre à la DCH » une fois la fiche revenue du
-   N+2, ou dès la validation sans N+2, et « Reprendre au N+2 » tant que le
-   N+2 la garde (ADR-0221). Cette page ne s'ouvre qu'à l'évaluateur de
-   l'agent.
+   (ADR-0217). Validée, la fiche passe au N+2 s'il y en a un : ses
+   commentaires ferment la partie réservée une fois transmis (ADR-0218), sans
+   étape propre dans la bande (ADR-0252). La dernière étape est la
+   transmission à la DCH : la barre du bas porte « Transmettre à la DCH » une
+   fois la fiche revenue du N+2, ou dès la validation sans N+2, et
+   « Reprendre au N+2 » tant que le N+2 la garde (ADR-0221). Cette page ne
+   s'ouvre qu'à l'évaluateur de l'agent.
    ──────────────────────────────────────────────────────────────── */
 
 export default function AgentDeLEquipePage() {
@@ -100,47 +99,28 @@ export default function AgentDeLEquipePage() {
 function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
   const auto = v.agent.auto ? statutDeLAgent(v.agent.auto) : null;
   const evaluation = statutDeMonEvaluation(v);
-  const commentaires = statutDesCommentaires(
-    v.etatDesCommentaires,
-    v.commentairesDuN2?.le ?? v.repriseAuN2Le,
-    'n1',
-  );
   const dch = statutDeLaTransmission(v);
   const n2 = v.commentairesDuN2;
   const carteDeLAuto = auto ? (
-    <CarteDEtape
-      titre="Auto-évaluation"
-      marque={<Badge tone={auto.ton}>{auto.libelle}</Badge>}
-      periode={periodeDeLAuto(v.periode)}
-    />
+    <CarteDEtape titre="Auto-évaluation" etat={auto.libelle} periode={periodeDeLAuto(v.periode)} />
   ) : null;
   return (
     <>
       <BandeauDeLAgent agent={v.agent} />
       {v.autoEvaluation ? (
         <>
-          {/* Les étapes côte à côte : l'auto-évaluation faite, celle du N+1, le N+2, la DCH. */}
-          <Etapes nombre={v.n2 ? 4 : 3}>
+          {/* Les étapes côte à côte : l'auto-évaluation faite, celle du N+1, la
+              DCH. Les commentaires du N+2 se lisent sur la fiche (ADR-0252). */}
+          <Etapes nombre={3}>
             {carteDeLAuto}
             <CarteDEtape
               titre="Évaluation du N+1"
-              marque={evaluation ? <Badge tone={evaluation.ton}>{evaluation.libelle}</Badge> : null}
+              etat={evaluation?.libelle}
               periode={periodeDeLEvaluation(v.periode)}
             />
-            {v.n2 ? (
-              <CarteDEtape
-                titre="Commentaires du N+2"
-                marque={
-                  commentaires ? (
-                    <Badge tone={commentaires.ton}>{commentaires.libelle}</Badge>
-                  ) : null
-                }
-                periode={`${v.n2.prenom} ${v.n2.nom}`}
-              />
-            ) : null}
             <CarteDEtape
               titre="Transmission à la DCH"
-              marque={dch ? <Badge tone={dch.ton}>{dch.libelle}</Badge> : null}
+              etat={dch?.libelle}
               periode="Direction du Capital Humain"
             />
           </Etapes>

@@ -223,7 +223,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0215](0215-formulaire-d-auto-evaluation.md)          | Le formulaire d'auto-évaluation de la campagne, sur la fiche S1/EN05                    | complétée 0216, révisée 0233, 0238, 0241    |
 | [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | complétée 0217, révisée 0226, 0233, 0239    |
 | [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | complétée 0218, révisée 0220, 0233          |
-| [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | complétée 0221, révisée 0226, 0233          |
+| [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | complétée 0221, révisée 0226, 0233, 0252    |
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée, révisée par 0243                  |
 | [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223 et 0227          |
 | [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | acceptée, révisée par 0226, 0227, 0233      |
@@ -231,7 +231,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée, révisée par 0236, 0237 et 0245    |
 | [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée, complétée par 0248                |
 | [0225](0225-en-tete-sans-matricule.md)                | L'en-tête et les cartes des agents sans le matricule, le poste seul sous le nom         | acceptée                                    |
-| [0226](0226-auto-evaluation-faite-ou-non.md)          | L'auto-évaluation faite ou non faite, un point vert ou rouge sur les cartes             | acceptée, révisée par 0234 et 0250          |
+| [0226](0226-auto-evaluation-faite-ou-non.md)          | L'auto-évaluation faite ou non faite, un point vert ou rouge sur les cartes             | acceptée, révisée par 0234, 0250 et 0252    |
 | [0227](0227-accueil-a-la-charte.md)                   | L'accueil de la campagne à la charte de l'APIX : bandeau, titres en Anton, tuiles       | révisée par 0228, 0233, 0234, 0240 et 0250  |
 | [0228](0228-bandeau-droit.md)                         | Le bandeau de l'accueil, droit, souligné d'un filet orange                              | acceptée, révisée par 0229                  |
 | [0229](0229-pied-droit-et-nom-en-capitales.md)        | Le pied droit des écrans de la charte, et le nom de famille en capitales sans accents   | acceptée, révisée par 0230                  |
@@ -257,3 +257,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0249](0249-titre-des-fenetres-a-la-ligne.md)         | Le titre d'une fenêtre passe à la ligne, il n'est plus coupé                            | acceptée                                    |
 | [0250](0250-cartes-sans-point-ni-fiche.md)            | Les cartes des agents sans point de couleur, et sans la fiche dans Mon équipe           | acceptée                                    |
 | [0251](0251-synthese-du-n1-en-puces.md)               | Les points forts et les axes de développement du N+1, en puces                          | acceptée                                    |
+| [0252](0252-etapes-sans-n2-etat-en-bleu.md)           | La bande des étapes : sans les commentaires du N+2 chez le N+1, l'état en bleu          | acceptée                                    |

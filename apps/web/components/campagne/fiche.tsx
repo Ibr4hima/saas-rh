@@ -285,16 +285,18 @@ export function periodeDeLEvaluation(periode: PeriodeDeLaCampagne | null): strin
 
 /**
  * Une étape de la fiche, dans la carte des étapes : son numéro en orange,
- * « 01 », « 02 »…, comme les temps de la période (ADR-0233) ; son titre, et
- * à côté ce qui dit où elle en est ; puis sa période, ou qui la tient.
+ * « 01 », « 02 »…, comme les temps de la période (ADR-0233) ; son titre ;
+ * dessous, où elle en est, en bleu, sans pastille (ADR-0252) ; puis sa
+ * période, ou qui la tient.
  */
 export function CarteDEtape({
   titre,
-  marque,
+  etat,
   periode,
 }: {
   titre: string;
-  marque?: React.ReactNode;
+  /** « Faite le 22 nov. », « En cours »… ; rien tant que l'étape n'a pas commencé. */
+  etat?: string | null;
   periode: string;
 }) {
   return (
@@ -304,10 +306,10 @@ export function CarteDEtape({
         className="w-11 shrink-0 font-titre text-[36px] leading-[0.9] text-accent before:content-[counter(etape,decimal-leading-zero)]"
       />
       <div className="min-w-0 pt-0.5">
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-          <h2 className="text-[15px] leading-tight font-bold text-ink-strong">{titre}</h2>
-          {marque}
-        </div>
+        <h2 className="text-[15px] leading-tight font-bold text-ink-strong">{titre}</h2>
+        {etat ? (
+          <p className="mt-1.5 text-[13px] leading-tight font-semibold text-primary">{etat}</p>
+        ) : null}
         <p className="mt-1.5 text-[12.5px] leading-tight text-ink-muted">{periode}</p>
       </div>
     </li>

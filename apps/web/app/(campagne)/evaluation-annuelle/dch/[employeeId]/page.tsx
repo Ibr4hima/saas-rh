@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { nomDeLaFiche, personnelDeLaFiche, type FichePourLaDCH } from '@teranga/contracts';
-import { Badge, Button, Card, EmptyState, Skeleton, type BadgeTone } from '@teranga/ui';
+import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
 import {
   CommentairesDuN2Lus,
   FicheDuN1,
@@ -69,8 +69,8 @@ export default function FicheDeLaDCHPage() {
 function Fiche({ vue: v }: { vue: FichePourLaDCH }) {
   const n1 = v.agent.evaluateur;
   const recus = v.commentairesDuN2;
-  const etape = (titre: string, libelle: string, ton: BadgeTone, qui: string) => (
-    <CarteDEtape titre={titre} marque={<Badge tone={ton}>{libelle}</Badge>} periode={qui} />
+  const etape = (titre: string, etat: string, qui: string) => (
+    <CarteDEtape titre={titre} etat={etat} periode={qui} />
   );
   const le = (iso: string | null) => (iso ? ` le ${jourCourt(iso)}` : '');
   const nom = (p: { prenom: string; nom: string } | null) => (p ? `${p.prenom} ${p.nom}` : '');
@@ -80,17 +80,16 @@ function Fiche({ vue: v }: { vue: FichePourLaDCH }) {
       <BandeauDeLAgent agent={v.agent} action={<TelechargerLePdf vue={v} />} />
       {/* Les étapes, chacune avec son jour : qui l'a franchie, et quand. */}
       <Etapes nombre={v.n2 ? 4 : 3}>
-        {etape('Auto-évaluation', `Faite${le(v.autoTransmiseLe)}`, 'vert', nom(v.agent))}
-        {etape('Évaluation du N+1', `Validée${le(v.valideeLe)}`, 'vert', nom(n1))}
+        {etape('Auto-évaluation', `Faite${le(v.autoTransmiseLe)}`, nom(v.agent))}
+        {etape('Évaluation du N+1', `Validée${le(v.valideeLe)}`, nom(n1))}
         {v.n2
           ? recus
-            ? etape('Commentaires du N+2', `Reçus${le(recus.le)}`, 'vert', nom(recus.par ?? v.n2))
-            : etape('Commentaires du N+2', `Fiche reprise${le(v.repriseAuN2Le)}`, 'gris', nom(v.n2))
+            ? etape('Commentaires du N+2', `Reçus${le(recus.le)}`, nom(recus.par ?? v.n2))
+            : etape('Commentaires du N+2', `Fiche reprise${le(v.repriseAuN2Le)}`, nom(v.n2))
           : null}
         {etape(
           'Transmission à la DCH',
           `Transmise${le(v.transmiseLe)}`,
-          'vert',
           v.transmisePar ? `Par ${nom(v.transmisePar)}` : 'Direction du Capital Humain',
         )}
       </Etapes>

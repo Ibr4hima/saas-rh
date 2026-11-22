@@ -10,7 +10,7 @@ import {
   type FicheComplete,
   type FichePourLeN2,
 } from '@teranga/contracts';
-import { Badge, Card, EmptyState, Skeleton } from '@teranga/ui';
+import { Card, EmptyState, Skeleton } from '@teranga/ui';
 import {
   BarreDeTransmission,
   useEnregistrementAuto,
@@ -103,12 +103,12 @@ function Fiche({ vue: v }: { vue: FichePourLeN2 }) {
       <Etapes nombre={3}>
         <CarteDEtape
           titre="Auto-évaluation"
-          marque={auto ? <Badge tone={auto.ton}>{auto.libelle}</Badge> : null}
+          etat={auto?.libelle}
           periode={periodeDeLAuto(v.periode)}
         />
         <CarteDEtape
           titre="Évaluation du N+1"
-          marque={evaluation ? <Badge tone={evaluation.ton}>{evaluation.libelle}</Badge> : null}
+          etat={evaluation?.libelle}
           periode={
             v.agent.evaluateur
               ? `${v.agent.evaluateur.prenom} ${v.agent.evaluateur.nom}`
@@ -117,9 +117,7 @@ function Fiche({ vue: v }: { vue: FichePourLeN2 }) {
         />
         <CarteDEtape
           titre="Commentaires du N+2"
-          marque={
-            commentaires ? <Badge tone={commentaires.ton}>{commentaires.libelle}</Badge> : null
-          }
+          etat={commentaires?.libelle}
           periode={
             v.valideeLe
               ? `Fiche reçue le ${dateEnLettres(v.valideeLe)}`
