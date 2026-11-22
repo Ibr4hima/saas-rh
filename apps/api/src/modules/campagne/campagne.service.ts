@@ -159,6 +159,60 @@ export class CampagneService {
     );
   }
 
+  /**
+   * La fiche d'un agent de son équipe, en PDF, telle que l'évaluation en
+   * cours la remplit, enregistrée ou non : ce que « Valider » affiche avant
+   * la transmission à l'agent (ADR-0260). Rien ne s'enregistre.
+   */
+  async apercuDeLEvaluation(
+    user: SessionUser,
+    employeeId: string,
+    { evaluation, reservee }: EcritureDeLEvaluation,
+  ): Promise<{ filename: string; pdf: Buffer }> {
+    const d = await this.db.withTenant(
+      { tenantId: user.tenantId, userId: user.userId },
+      async (tx): Promise<DonneesDeLaFiche> => {
+        const annee = await anneeDeLaCampagne(tx);
+        const moi = await employeDuCompte(tx, user.userId);
+        if (!moi || !(await dansLEquipe(tx, employeeId, moi, annee))) {
+          problem(404, 'campagne.agent_hors_equipe', 'Agent introuvable dans votre équipe');
+        }
+        const agent = await ficheDe(tx, employeeId, annee);
+        const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
+        if (agent.auto?.etat !== 'transmise' || !annuelle.auto) {
+          problem(
+            409,
+            'campagne.auto_non_transmise',
+            'L’auto-évaluation de l’agent n’est pas encore transmise',
+          );
+        }
+        const { posteDepuis, aujourdhui } = await prisePoste(tx, employeeId);
+        const personnel = personnelDeLaFiche(agent.personnel);
+        const n1 = agent.evaluateur;
+        return {
+          annee,
+          personnel,
+          agent: agentDuPdf(agent, posteDepuis, aujourdhui),
+          n1: n1 ? { prenom: n1.prenom, nom: n1.nom, fonction: n1.poste } : null,
+          dateDeLEntretien: null,
+          objectifs: annuelle.objectifs,
+          auto: annuelle.auto,
+          // Telle qu'elle partirait : sans les lignes de ses tableaux restées vides.
+          evaluation: sansLignesVides(
+            evaluationSurLaFiche(evaluation, annuelle.objectifs, personnel),
+          ),
+          reservee,
+          validations: { n1: null, agent: null },
+          n2: null,
+        };
+      },
+    );
+    return {
+      filename: nomDeLaFiche(d.annee, d.agent.matricule, true),
+      pdf: await ficheDEntretienPdf(d),
+    };
+  }
+
   /** Le brouillon de l'évaluation d'un agent de son équipe, gardé tel qu'il est. */
   async enregistrerEvaluation(
     user: SessionUser,
@@ -340,10 +394,6 @@ export class CampagneService {
   }
 
   /**
-   * Son auto-évaluation, complète, transmise au N+1 : elle ne change plus.
-   * Incomplète, elle reste en brouillon et la réponse dit ce qui manque.
-   */
-  /**
    * La partie de l'agent de sa fiche, en PDF, telle que son formulaire la
    * montre, enregistrée ou non : ce que « Valider » affiche avant la
    * transmission (ADR-0241).
@@ -385,6 +435,10 @@ export class CampagneService {
     return { filename: nomDeLaFiche(d.annee, d.agent.matricule), pdf: await ficheDeLAgentPdf(d) };
   }
 
+  /**
+   * Son auto-évaluation, complète, transmise au N+1 : elle ne change plus.
+   * Incomplète, elle reste en brouillon et la réponse dit ce qui manque.
+   */
   async transmettreMonAuto(user: SessionUser, auto: AutoEvaluation): Promise<MonAutoEvaluation> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await ecrireMonAuto(tx, user, auto, true);

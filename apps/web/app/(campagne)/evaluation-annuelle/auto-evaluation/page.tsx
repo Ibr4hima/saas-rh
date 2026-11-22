@@ -28,13 +28,12 @@ import {
   superieurHierarchique,
 } from '../../../../components/campagne/fiche';
 import { Repere } from '../../../../components/fiche';
+import { ApercuEnPdf } from '../../../../components/campagne/apercu';
 import { BandeauDePage } from '../../../../components/campagne/charte';
 import { Confirmation, messageDe } from '../../../../components/grille-evaluation';
 import { Icon } from '../../../../components/icons';
-import { PdfEnLargeur } from '../../../../components/pdf-viewer';
 import { api, ApiError } from '../../../../lib/api';
 import { ACCUEIL_DE_LA_CAMPAGNE, CLE_CAMPAGNE } from '../../../../lib/campagne';
-import { lireFichier } from '../../../../lib/fichiers';
 
 /* ────────────────────────────────────────────────────────────────
    L'auto-évaluation de la personne connectée (ADR-0214, ADR-0215), ouverte
@@ -184,7 +183,14 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
       {vue.modifiable ? (
         <>
           {validee ? (
-            <ApercuDeLaFiche auto={auto} titre={`Mon auto-évaluation ${vue.annee}`} />
+            // La partie de l'agent, en PDF ; « Modifier » se tient sur le
+            // bandeau et dans la barre (ADR-0242).
+            <ApercuEnPdf
+              chemin={`${CHEMIN}/apercu`}
+              corps={{ auto }}
+              cle={CLE_AUTO}
+              titre={`Mon auto-évaluation ${vue.annee}`}
+            />
           ) : (
             <SaisieDeLAuto
               annee={vue.annee}
@@ -245,45 +251,5 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
         </Confirmation>
       ) : null}
     </div>
-  );
-}
-
-/**
- * La fiche de l'agent, telle que « Valider » la montre (ADR-0241) : la
- * partie remplie par l'agent, en PDF, à la largeur de la page, comme un
- * document généré ; « Modifier » se tient sur le bandeau et dans la barre
- * (ADR-0242). Le PDF suit ce que montre la saisie, enregistré ou non.
- */
-function ApercuDeLaFiche({ auto, titre }: { auto: AutoEvaluation; titre: string }) {
-  const pdf = useQuery({
-    queryKey: [...CLE_AUTO, 'apercu', auto],
-    queryFn: ({ signal }) => lireFichier(`${CHEMIN}/apercu`, { signal, corps: { auto } }),
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-  return (
-    <>
-      {pdf.isError ? (
-        <Card>
-          <EmptyState
-            className="py-12"
-            icon={<Icon name="error" size={22} />}
-            title={messageDe(pdf.error, 'Impossible d’afficher la fiche')}
-            action={
-              <Button size="sm" variant="secondary" onClick={() => void pdf.refetch()}>
-                Réessayer
-              </Button>
-            }
-          />
-        </Card>
-      ) : pdf.data ? (
-        <PdfEnLargeur data={pdf.data} titre={titre} />
-      ) : (
-        // Une feuille blanche, le temps que le PDF arrive : rien ne saute à son arrivée.
-        <div className="grid aspect-[595/842] place-items-center rounded-bloc bg-white shadow-xs ring-1 ring-card-line">
-          <span className="size-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-        </div>
-      )}
-    </>
   );
 }

@@ -32,6 +32,7 @@ import {
   statutDeMonEvaluation,
   type Statut,
 } from '../../../../../components/campagne/fiche';
+import { ApercuEnPdf } from '../../../../../components/campagne/apercu';
 import { BandeauDeLAgent } from '../../../../../components/campagne/charte';
 import { Confirmation, messageDe } from '../../../../../components/grille-evaluation';
 import { Icon } from '../../../../../components/icons';
@@ -46,7 +47,9 @@ import { CLE_CAMPAGNE } from '../../../../../lib/campagne';
    (ADR-0216). Avant, la page s'arrête aux étapes : toute carte de l'équipe
    s'ouvre, l'auto-évaluation faite ou non (ADR-0257).
    Chaque modification s'enregistre seule ; la barre au bas de la page dit
-   ce qui manque et porte « Transmettre à l'agent » (ADR-0241).
+   où en est l'enregistrement (ADR-0254) et porte « Valider », qui montre la
+   fiche en PDF à la place de la saisie, puis « Modifier » (ADR-0260), et
+   « Transmettre à l'agent » (ADR-0241).
    Transmise, l'évaluation se lit ; l'agent la valide, ou la renvoie avec un
    mot, qui s'affiche alors au-dessus de la fiche, de nouveau à remplir
    (ADR-0217). Validée, la fiche passe au N+2 s'il y en a un : ses
@@ -170,6 +173,13 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
     corpsDeLEvaluation,
   );
   const [confirmer, setConfirmer] = useState(false);
+  // Validée, la saisie se replie : la fiche s'affiche en PDF (ADR-0260).
+  const [validee, setValidee] = useState(false);
+  /** Valider, ou revenir à la saisie : la page repart de son haut. */
+  const basculer = (valider: boolean) => {
+    setValidee(valider);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const personnel = personnelDeLaFiche(v.agent.personnel);
   const manque = ceQuiManqueALEvaluationDuN1(
     valeur.evaluation,
@@ -195,21 +205,49 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
 
   return (
     <>
-      <FicheDuN1
-        annee={v.annee}
-        objectifs={v.objectifs}
-        personnel={personnel}
-        auto={auto}
-        evaluation={valeur.evaluation}
-        reservee={valeur.reservee}
-        onChange={changer}
-      />
+      {validee ? (
+        // La fiche entière, partie réservée comprise, telle que la saisie la
+        // remplit, enregistrée ou non.
+        <ApercuEnPdf
+          chemin={`/campagne/equipe/${v.agent.employeeId}/apercu`}
+          corps={valeur}
+          cle={[...CLE_CAMPAGNE, 'equipe', v.agent.employeeId]}
+          titre={`Fiche d’entretien ${v.annee} de ${v.agent.prenom} ${v.agent.nom}`}
+        />
+      ) : (
+        <FicheDuN1
+          annee={v.annee}
+          objectifs={v.objectifs}
+          personnel={personnel}
+          auto={auto}
+          evaluation={valeur.evaluation}
+          reservee={valeur.reservee}
+          onChange={changer}
+        />
+      )}
       <BarreDeTransmission
         etat={etat}
         manque={manque}
         libelle="Transmettre à l’agent"
         enCours={transmettre.isPending}
         onTransmettre={() => setConfirmer(true)}
+        avant={
+          validee ? (
+            <Button variant="secondary" className="h-9 px-5" onClick={() => basculer(false)}>
+              <Icon name="edit" size={15} />
+              Modifier
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              className="h-9 px-5"
+              disabled={manque.length > 0 || transmettre.isPending}
+              onClick={() => basculer(true)}
+            >
+              Valider
+            </Button>
+          )
+        }
       />
       {confirmer ? (
         <Confirmation

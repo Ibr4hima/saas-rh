@@ -83,6 +83,29 @@ export class CampagneController {
     return this.campagne.transmettreEvaluation(req.sessionUser, employeeId, body);
   }
 
+  /**
+   * La fiche de l'agent, en PDF, telle que l'évaluation en cours la remplit :
+   * ce que « Valider » affiche (ADR-0260). En POST, comme l'aperçu de
+   * l'auto-évaluation : les réponses restent hors de l'adresse.
+   */
+  @Post('equipe/:employeeId/apercu')
+  async apercuDeLEvaluation(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Body(new ZodValidationPipe(ecritureDeLEvaluationSchema)) body: EcritureDeLEvaluation,
+    @Res() res: Response,
+  ) {
+    const { filename, pdf } = await this.campagne.apercuDeLEvaluation(
+      req.sessionUser,
+      employeeId,
+      body,
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', contentDisposition('inline', filename));
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(pdf);
+  }
+
   /** La fiche, transmise à la DCH par le N+1 : elle ne change plus. */
   @Post('equipe/:employeeId/dch')
   @HttpCode(200)

@@ -569,6 +569,32 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
     expect(erreur?.detail).not.toContain('Management');
   });
 
+  it('« Valider » montre la fiche en PDF, telle que l’évaluation la remplit, sans l’enregistrer (ADR-0260)', async () => {
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const ecriture: EcritureDeLEvaluation = {
+      evaluation: { ...v.evaluation, pointsForts: 'Rigueur.' },
+      reservee: v.reservee,
+    };
+    const { filename, pdf } = await campagne.apercuDeLEvaluation(
+      session('awa'),
+      agents.ibou,
+      ecriture,
+    );
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU-complete.pdf`);
+    // Rien ne s'enregistre : le brouillon reste celui d'avant.
+    const apres = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect(apres.evaluation.pointsForts).toBe(v.evaluation.pointsForts);
+    expect(apres.etatDeLEvaluation).toBe('en_cours');
+    // Hors de son équipe, l'agent est introuvable ; sans auto-évaluation transmise, pas de fiche.
+    await expect(
+      campagne.apercuDeLEvaluation(session('fatou'), agents.ibou, ecriture),
+    ).rejects.toMatchObject({ problem: { status: 404, code: 'campagne.agent_hors_equipe' } });
+    await expect(
+      campagne.apercuDeLEvaluation(session('awa'), agents.fatou, ecriture),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.auto_non_transmise' } });
+  });
+
   it('fixe de trois à cinq objectifs pour l’année à venir, chacun avec son intitulé (ADR-0239)', () => {
     const base = {
       ...evaluationDuN1Vide(),

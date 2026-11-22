@@ -246,7 +246,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0238](0238-reponses-oui-non-et-puces.md)             | Les réponses par oui ou non et en puces de l'auto-évaluation, souhaits obligatoires     | acceptée, complétée par 0251 et 0259        |
 | [0239](0239-trois-a-cinq-objectifs-a-venir.md)        | De trois à cinq objectifs pour l'année à venir, fixés par le N+1                        | acceptée                                    |
 | [0240](0240-titres-de-section-plus-petits.md)         | Les titres de section de la campagne, un peu plus petits                                | acceptée                                    |
-| [0241](0241-valider-l-auto-evaluation.md)             | Valider son auto-évaluation, la fiche en PDF, et la barre au bas de la page             | acceptée, révisée par 0242 et 0254          |
+| [0241](0241-valider-l-auto-evaluation.md)             | Valider son auto-évaluation, la fiche en PDF, et la barre au bas de la page             | révisée par 0242 et 0254, complétée 0260    |
 | [0242](0242-bandeau-de-l-auto-evaluation.md)          | Le bandeau de l'auto-évaluation, sans icône, Modifier à droite                          | acceptée                                    |
 | [0243](0243-date-de-la-campagne-dans-un-cadre.md)     | La date de la barre de la campagne, dans un cadre                                       | acceptée                                    |
 | [0244](0244-fiche-sans-objectif-sans-echelle.md)      | La fiche sans objectif, la mention seule, sans l'échelle                                | acceptée                                    |
@@ -265,3 +265,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0257](0257-cartes-de-l-equipe-ouvertes.md)           | Mon équipe : toutes les cartes s'ouvrent, et l'auto-évaluation faite y dit sa date      | acceptée                                    |
 | [0258](0258-evaluation-par-le-n1.md)                  | Évaluation par le N+1, dans la période et dans la bande des étapes                      | acceptée                                    |
 | [0259](0259-lecture-des-reponses.md)                  | La lecture des réponses : le oui et ses puces ensemble, les puces au bord               | acceptée                                    |
+| [0260](0260-valider-l-evaluation-du-n1.md)            | Valider chez le N+1 : la fiche en PDF avant de la transmettre à l'agent                 | acceptée                                    |
