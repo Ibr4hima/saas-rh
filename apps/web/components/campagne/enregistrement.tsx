@@ -11,8 +11,8 @@ import { Icon } from '../icons';
    L'enregistrement automatique des saisies de la campagne : l'auto-
    évaluation de l'agent (ADR-0215), l'évaluation du N+1 (ADR-0216).
    Chaque modification part un peu après la dernière frappe, un envoi à la
-   fois. Une barre, au bas de la page, dit où en est l'enregistrement, ce
-   qui manque encore, et porte la transmission (ADR-0241).
+   fois. Une barre, au bas de la page, dit où en est l'enregistrement et
+   porte la transmission (ADR-0241, ADR-0254).
    ──────────────────────────────────────────────────────────────── */
 
 /** Le temps, après la dernière frappe, avant d'enregistrer. */
@@ -110,20 +110,12 @@ export function useEnregistrementAuto<T>(
   return { valeur, etat, changer, vider, contenu: () => dernier.current };
 }
 
-/** « À compléter : le vécu de l'année, les difficultés rencontrées, le niveau de l'objectif 1 et 3 autres. » */
-function ceQuiManqueEnBref(manque: readonly string[]): string {
-  const vus = manque.slice(0, 3);
-  const reste = manque.length - vus.length;
-  const liste =
-    reste > 0 ? `${vus.join(', ')} et ${reste} autre${reste > 1 ? 's' : ''}` : vus.join(', ');
-  return `À compléter : ${liste}.`;
-}
-
 /**
  * La barre au bas de la page, après la saisie : elle ne se voit qu'au bout
- * du défilement (ADR-0241). Où en est l'enregistrement, ce qui manque, et le
- * bouton qui transmet, actif une fois tout l'obligatoire rempli ; à sa
- * gauche, s'il y a lieu, un autre geste (`avant`) : « Valider », « Modifier ».
+ * du défilement (ADR-0241). Où en est l'enregistrement, et le bouton qui
+ * transmet, actif une fois tout l'obligatoire rempli ; elle ne dresse pas la
+ * liste de ce qui manque (ADR-0254). À sa gauche, s'il y a lieu, un autre
+ * geste (`avant`) : « Valider », « Modifier ».
  */
 export function BarreDeTransmission({
   etat,
@@ -144,7 +136,6 @@ export function BarreDeTransmission({
     <Card className="flex flex-col gap-3 px-5 py-3.5 sm:flex-row sm:items-center sm:gap-5">
       <div className="min-w-0 flex-1 text-[12px] leading-relaxed">
         <EtatEcrit etat={etat} />
-        {manque.length > 0 ? <p className="text-ink-muted">{ceQuiManqueEnBref(manque)}</p> : null}
       </div>
       {/* Sur un téléphone, les gestes l'un sous l'autre, sur toute la largeur. */}
       <div className="flex flex-col gap-2 *:w-full sm:flex-row sm:items-center sm:*:w-auto">
