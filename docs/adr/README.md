@@ -255,6 +255,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0247](0247-cles-d-acces.md)                          | Les clés d'accès : le code à la première connexion, puis Face ID ou l'empreinte         | acceptée                                    |
 | [0248](0248-civilite-du-n1-a-la-transmission.md)      | La confirmation de l'auto-évaluation nomme le N+1 avec sa civilité                      | acceptée                                    |
 | [0249](0249-titre-des-fenetres-a-la-ligne.md)         | Le titre d'une fenêtre passe à la ligne, il n'est plus coupé                            | acceptée                                    |
-| [0250](0250-cartes-sans-point-ni-fiche.md)            | Les cartes des agents sans point de couleur, et sans la fiche dans Mon équipe           | acceptée                                    |
+| [0250](0250-cartes-sans-point-ni-fiche.md)            | Les cartes des agents sans point de couleur, et sans la fiche dans Mon équipe           | acceptée, révisée par 0253                  |
 | [0251](0251-synthese-du-n1-en-puces.md)               | Les points forts et les axes de développement du N+1, en puces                          | acceptée                                    |
 | [0252](0252-etapes-sans-n2-etat-en-bleu.md)           | La bande des étapes : sans les commentaires du N+2 chez le N+1, l'état en bleu          | acceptée                                    |
+| [0253](0253-point-des-groupes-de-l-equipe.md)         | Le point de couleur revient devant les titres de groupe de Mon équipe                   | acceptée                                    |

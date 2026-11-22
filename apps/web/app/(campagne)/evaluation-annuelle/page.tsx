@@ -197,7 +197,8 @@ function Pilotage({ accueil: v }: { accueil: AccueilDeLaCampagne }) {
  */
 function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
   // L'auto-évaluation faite, la carte ouvre l'évaluation de l'agent. Ni point
-  // ni fiche : le groupe dit où en est l'auto-évaluation (ADR-0250).
+  // ni fiche sur la carte (ADR-0250) : le titre du groupe dit où en est
+  // l'auto-évaluation, son point de couleur devant (ADR-0253).
   const carte = (a: AgentDeLEquipe): CarteDUnAgent => ({
     agent: a,
     statut: null,
@@ -212,10 +213,12 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
       groupes={[
         {
           titre: 'Auto-évaluation faite',
+          point: 'faite',
           cartes: equipe.filter((a) => a.auto.etat === 'transmise').map(carte),
         },
         {
           titre: 'Auto-évaluation non faite',
+          point: 'non_faite',
           cartes: equipe.filter((a) => a.auto.etat !== 'transmise').map(carte),
         },
       ]}
@@ -283,6 +286,9 @@ interface CarteDUnAgent {
 /**
  * Une section d'agents, sous son titre en Anton et leur nombre, en groupes
  * l'un sous l'autre, séparés d'un filet. Un groupe vide ne s'affiche pas.
+ * Dans « Mon équipe », le titre d'un groupe porte un point devant lui : vert,
+ * auto-évaluation faite ; rouge, non faite (ADR-0253). Les cartes, elles,
+ * n'en ont pas (ADR-0250).
  */
 function SectionDAgents({
   id,
@@ -293,6 +299,7 @@ function SectionDAgents({
   titre: string;
   groupes: readonly {
     titre: string;
+    point?: 'faite' | 'non_faite';
     cartes: CarteDUnAgent[];
   }[];
 }) {
@@ -309,6 +316,15 @@ function SectionDAgents({
           className={cn('flex flex-col gap-3', i > 0 && 'border-t border-line-soft pt-5')}
         >
           <h3 className="flex items-center gap-2 text-[11px] font-bold tracking-[0.12em] text-ink-muted uppercase">
+            {g.point ? (
+              <span
+                aria-hidden
+                className={cn(
+                  'size-2 shrink-0 rounded-full',
+                  g.point === 'faite' ? 'bg-success' : 'bg-danger',
+                )}
+              />
+            ) : null}
             {g.titre}
             <span className="tabular-nums">{g.cartes.length}</span>
           </h3>
