@@ -106,6 +106,23 @@ describe('la fiche en PDF', () => {
     expect(sansTiret - (await puces('', ''))).toBe(3);
   });
 
+  it('imprime les autres réalisations en puces (ADR-0261)', async () => {
+    const base = ficheExemple();
+    const puces = async (autresRealisations: string) => {
+      const espion = vi.spyOn(PDFDocument.prototype, 'circle');
+      try {
+        await ficheDEntretienPdf(ficheExemple({ auto: { ...base.auto, autresRealisations } }));
+        return espion.mock.calls.length;
+      } finally {
+        espion.mockRestore();
+      }
+    };
+    // Une ligne, une puce, écrite avec un tiret ou non.
+    const sansTiret = await puces('Forum de juin\nDeux notes de conjoncture');
+    expect(sansTiret).toBe(await puces('- Forum de juin\n- Deux notes de conjoncture'));
+    expect(sansTiret - (await puces(''))).toBe(2);
+  });
+
   it('imprime le texte de la grille, corrigé', async () => {
     const { tout } = await imprimer(ficheExemple());
     for (const juste of [

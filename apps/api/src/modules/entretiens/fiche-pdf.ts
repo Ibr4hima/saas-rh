@@ -1245,8 +1245,10 @@ function bilan(f: Composition, d: DonneesDeLaFiche): void {
   const lignes = f.vierge
     ? lignesQuiRestent(f, f.hauteurDuSousTitre('2.2.2', titre, qui222))
     : VIERGE.commentaire;
-  f.sousSection('2.2.2', titre, hauteurDuParagraphe(f, d.auto.autresRealisations, lignes), qui222);
-  paragrapheLibre(f, d.auto.autresRealisations, lignes);
+  // Une puce par ligne, comme à l'écran (ADR-0261).
+  const realisations = enPuces(d.auto.autresRealisations);
+  f.sousSection('2.2.2', titre, hauteurDuParagraphe(f, realisations, lignes), qui222);
+  paragrapheLibre(f, realisations, lignes);
 }
 
 /**

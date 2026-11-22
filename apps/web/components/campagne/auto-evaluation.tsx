@@ -394,8 +394,9 @@ export function SaisieDeLAuto({
             })}
           </ol>
         )}
+        {/* En puces, comme les réponses en liste (ADR-0261). */}
         <div className="px-5 py-5">
-          <Question
+          <QuestionEnPuces
             question="Autres réalisations en dehors des objectifs"
             valeur={auto.autresRealisations}
             onChange={texte('autresRealisations')}
@@ -595,13 +596,17 @@ export function AucunObjectif() {
   );
 }
 
-/** Les autres réalisations de l'agent, en lecture, au bas de l'évaluation des résultats. */
+/**
+ * Les autres réalisations de l'agent, en lecture, au bas de l'évaluation des
+ * résultats : une puce par ligne (ADR-0261).
+ */
 export function AutresRealisationsEnLecture({ auto }: { auto: AutoEvaluation }) {
   return (
     <div className="px-5 py-5">
       <Reponse
         question="Autres réalisations en dehors des objectifs"
         texte={auto.autresRealisations}
+        enPuces
       />
     </div>
   );
