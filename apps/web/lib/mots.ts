@@ -32,9 +32,9 @@ export function accorde(n: number, participe: string, feminin = false): string {
 export const majuscule = (texte: string) => texte.charAt(0).toUpperCase() + texte.slice(1);
 
 /**
- * Les espaces devant « ? », « ! », « : » et « ; », et dans les guillemets,
- * deviennent insécables : la ponctuation ne part pas seule à la ligne, au
- * bout d'un intitulé qui se coupe (ADR-0259).
+ * Les espaces devant « ? », « ! », « : », « ; » et « % », et dans les
+ * guillemets, deviennent insécables : la ponctuation ne part pas seule à la
+ * ligne, au bout d'un intitulé qui se coupe (ADR-0259, ADR-0262).
  */
 export const insecables = (texte: string) =>
-  texte.replace(/ ([?!:;\u00bb])/g, '\u00a0$1').replace(/\u00ab /g, '\u00ab\u00a0');
+  texte.replace(/ ([?!:;%\u00bb])/g, '\u00a0$1').replace(/\u00ab /g, '\u00ab\u00a0');

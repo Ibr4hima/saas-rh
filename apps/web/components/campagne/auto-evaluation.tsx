@@ -97,6 +97,7 @@ const appreciationVide = (): AppreciationDeLAgent => ({
 export function CarteDeLaFiche({
   titre,
   icone,
+  aCote,
   qui,
   chapeau,
   children,
@@ -104,6 +105,8 @@ export function CarteDeLaFiche({
   titre: string;
   /** Une icône devant le titre : le cadenas de la partie réservée. */
   icone?: IconName;
+  /** Juste après le titre : une aide, comme celle des objectifs (ADR-0262). */
+  aCote?: ReactNode;
   /** « Rempli par l'agent », « Rempli par le N+1 ». */
   qui?: string;
   chapeau?: ReactNode;
@@ -115,6 +118,7 @@ export function CarteDeLaFiche({
       <TitreDeSection
         id={id}
         icone={icone}
+        aCote={aCote}
         chapeau={chapeau}
         droite={
           qui ? <span className="text-[12px] font-semibold text-ink-muted">{qui}</span> : undefined

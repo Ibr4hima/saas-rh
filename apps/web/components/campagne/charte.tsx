@@ -42,7 +42,7 @@ const ONDES = Array.from({ length: 34 }, (_, k) => {
  * et les ondulations à droite, d'un pixel, qui gardent leur trait quelle que
  * soit la taille.
  */
-function Bleu({ className, children }: { className?: string; children: React.ReactNode }) {
+export function Bleu({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
     <div
       className={cn(
@@ -72,7 +72,7 @@ function Bleu({ className, children }: { className?: string; children: React.Rea
 }
 
 /** Le bas du bandeau : un filet orange, bien droit, l'orange de la charte de jour comme de nuit. */
-function FiletDuBandeau() {
+export function FiletDuBandeau() {
   return <div aria-hidden className="h-[3px] bg-[#ca631f]" />;
 }
 
@@ -311,6 +311,7 @@ export function TitreDeSection({
   id,
   nombre,
   icone,
+  aCote,
   droite,
   chapeau,
   children,
@@ -318,14 +319,23 @@ export function TitreDeSection({
   id?: string;
   nombre?: number;
   icone?: IconName;
+  /** Juste après le titre, sur sa ligne : l'aide à la rédaction des objectifs (ADR-0262). */
+  aCote?: React.ReactNode;
   droite?: React.ReactNode;
   chapeau?: React.ReactNode;
   children: React.ReactNode;
 }) {
   // Sur un grand écran, ce qui complète le titre se range à sa hauteur, à
-  // droite ; ailleurs, sous le filet. Le chapeau prend toute la largeur.
+  // droite ; ailleurs, sous le filet. Ce qui se tient à côté du titre le
+  // suit sur sa ligne ; ailleurs, sous le filet aussi. Le chapeau prend
+  // toute la largeur.
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-x-6">
+    <div
+      className={cn(
+        'grid grid-cols-1 sm:items-center sm:gap-x-6',
+        aCote ? 'sm:grid-cols-[auto_minmax(0,1fr)_auto]' : 'sm:grid-cols-[minmax(0,1fr)_auto]',
+      )}
+    >
       <h2
         id={id}
         className="flex flex-wrap items-center gap-x-3 gap-y-1 font-titre text-[20px] leading-[1.15] tracking-[0.015em] text-primary uppercase sm:col-start-1 sm:row-start-1 sm:text-[22px]"
@@ -342,13 +352,26 @@ export function TitreDeSection({
         aria-hidden
         className="mt-2.5 block h-[3px] w-10 rounded-full bg-accent sm:col-start-1 sm:row-start-2"
       />
+      {aCote ? (
+        <div className="mt-3 flex sm:col-start-2 sm:row-start-1 sm:mt-0">{aCote}</div>
+      ) : null}
       {droite ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2 sm:col-start-2 sm:row-start-1 sm:mt-0 sm:justify-end">
+        <div
+          className={cn(
+            'mt-3 flex flex-wrap items-center gap-2 sm:row-start-1 sm:mt-0 sm:justify-end',
+            aCote ? 'sm:col-start-3' : 'sm:col-start-2',
+          )}
+        >
           {droite}
         </div>
       ) : null}
       {chapeau ? (
-        <div className="mt-3 text-[13px] leading-relaxed text-ink-muted sm:col-span-2 sm:row-start-3">
+        <div
+          className={cn(
+            'mt-3 text-[13px] leading-relaxed text-ink-muted sm:row-start-3',
+            aCote ? 'sm:col-span-3' : 'sm:col-span-2',
+          )}
+        >
           {chapeau}
         </div>
       ) : null}

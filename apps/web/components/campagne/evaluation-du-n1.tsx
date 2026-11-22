@@ -44,6 +44,7 @@ import {
   Reponse,
   SouhaitsEnLecture,
 } from './auto-evaluation';
+import { AideAuxObjectifs } from './aide-aux-objectifs';
 import type { Changement } from './enregistrement';
 
 /* ────────────────────────────────────────────────────────────────
@@ -459,7 +460,12 @@ function Perspectives({
 }) {
   const suivante = annee + 1;
   return (
-    <CarteDeLaFiche titre={`Objectifs et perspectives pour ${suivante}`} qui={PAR_LE_N1}>
+    <CarteDeLaFiche
+      titre={`Objectifs et perspectives pour ${suivante}`}
+      // Pendant la saisie, l'aide à la rédaction des objectifs (ADR-0262).
+      aCote={onChange ? <AideAuxObjectifs /> : undefined}
+      qui={PAR_LE_N1}
+    >
       {/* De trois à cinq objectifs (ADR-0239). */}
       <SousPartie titre={`Les objectifs de l’année ${suivante}`} requise={Boolean(onChange)}>
         <Tableau<ObjectifDeLAnneeAVenir>

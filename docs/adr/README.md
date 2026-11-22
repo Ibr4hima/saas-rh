@@ -244,7 +244,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0236](0236-puces-de-la-periode-reformulees.md)       | Deux puces de la période reformulées par l'APIX                                         | acceptée, révisée par 0237                  |
 | [0237](0237-puce-des-objectifs-raccourcie.md)         | La puce des objectifs de l'année à venir, raccourcie                                    | acceptée                                    |
 | [0238](0238-reponses-oui-non-et-puces.md)             | Les réponses par oui ou non et en puces de l'auto-évaluation, souhaits obligatoires     | acceptée, complétée par 0251, 0259, 0261    |
-| [0239](0239-trois-a-cinq-objectifs-a-venir.md)        | De trois à cinq objectifs pour l'année à venir, fixés par le N+1                        | acceptée                                    |
+| [0239](0239-trois-a-cinq-objectifs-a-venir.md)        | De trois à cinq objectifs pour l'année à venir, fixés par le N+1                        | acceptée, complétée par 0262                |
 | [0240](0240-titres-de-section-plus-petits.md)         | Les titres de section de la campagne, un peu plus petits                                | acceptée                                    |
 | [0241](0241-valider-l-auto-evaluation.md)             | Valider son auto-évaluation, la fiche en PDF, et la barre au bas de la page             | révisée par 0242 et 0254, complétée 0260    |
 | [0242](0242-bandeau-de-l-auto-evaluation.md)          | Le bandeau de l'auto-évaluation, sans icône, Modifier à droite                          | acceptée                                    |
@@ -267,3 +267,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0259](0259-lecture-des-reponses.md)                  | La lecture des réponses : le oui et ses puces ensemble, les puces au bord               | acceptée                                    |
 | [0260](0260-valider-l-evaluation-du-n1.md)            | Valider chez le N+1 : la fiche en PDF avant de la transmettre à l'agent                 | acceptée                                    |
 | [0261](0261-autres-realisations-en-puces.md)          | Autres réalisations en dehors des objectifs, en puces                                   | acceptée                                    |
+| [0262](0262-aide-a-la-redaction-des-objectifs.md)     | Comment définir des objectifs : une fiche d'aide à côté du titre des objectifs          | acceptée                                    |
