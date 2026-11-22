@@ -72,7 +72,7 @@ export default function CleDAccesPage() {
       titre="Créez votre clé d’accès"
       // « Face ID » ne se coupe pas en bout de ligne.
       sousTitre={
-        'La prochaine fois, connectez-vous avec Face\u00a0ID, votre empreinte ou le code de votre appareil, sans code par email.'
+        'Connectez-vous avec Face\u00a0ID, votre empreinte ou le code de votre appareil lors de vos prochaines connexions.'
       }
       pied="Contactez la DCH en cas de soucis."
     >
