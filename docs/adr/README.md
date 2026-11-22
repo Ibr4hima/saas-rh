@@ -254,3 +254,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0246](0246-code-au-dossier-en-campagne.md)           | En campagne, le code part à l'adresse du dossier, et le compte s'ouvre au premier code  | acceptée                                    |
 | [0247](0247-cles-d-acces.md)                          | Les clés d'accès : le code à la première connexion, puis Face ID ou l'empreinte         | acceptée                                    |
 | [0248](0248-civilite-du-n1-a-la-transmission.md)      | La confirmation de l'auto-évaluation nomme le N+1 avec sa civilité                      | acceptée                                    |
+| [0249](0249-titre-des-fenetres-a-la-ligne.md)         | Le titre d'une fenêtre passe à la ligne, il n'est plus coupé                            | acceptée                                    |

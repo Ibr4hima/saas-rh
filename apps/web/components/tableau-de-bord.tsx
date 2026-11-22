@@ -299,7 +299,6 @@ function FicheDirection({
       open
       onClose={onClose}
       title={x.name}
-      titreEntier
       subtitle={x.shortName ?? undefined}
       maxWidth="max-w-lg"
       footer={

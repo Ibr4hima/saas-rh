@@ -22,7 +22,6 @@ export function Modal({
   onClose,
   avatar,
   title,
-  titreEntier = false,
   subtitle,
   enTete,
   corpsFixe = false,
@@ -43,12 +42,12 @@ export function Modal({
    * famille. Elle dit DE QUI ou de quoi parle la fenêtre avant qu'on lise.
    */
   avatar?: React.ReactNode;
-  title: string;
   /**
-   * Le titre passe à la ligne au lieu de se couper : un nom long qui EST
-   * l'objet de la fenêtre (une direction) doit se lire en entier.
+   * Le titre passe à la ligne, il ne se coupe jamais (ADR-0249) : une
+   * question de confirmation, un nom long se lisent en entier, sur un
+   * téléphone aussi.
    */
-  titreEntier?: boolean;
+  title: string;
   subtitle?: React.ReactNode;
   /**
    * Commandes posées sur la MÊME ligne que le titre — navigation, légende.
@@ -153,12 +152,12 @@ export function Modal({
             <div className="min-w-0">
               <h2
                 id={titleId}
-                className={cn(
-                  'text-[17px] leading-tight font-bold text-ink-strong',
-                  titreEntier ? 'text-balance' : 'truncate',
-                )}
+                // Équilibré sur ses lignes ; un mot sans coupure possible (un
+                // nom de fichier) se coupe plutôt que de déborder.
+                className="text-[17px] leading-tight font-bold text-balance wrap-break-word text-ink-strong"
               >
-                {title}
+                {/* « ? », « ! », « : » et « ; » ne partent pas seuls à la ligne. */}
+                {title.replace(/ ([?!:;])/g, ' $1')}
               </h2>
               {/* Un sous-titre EN TEXTE se coupe proprement d'une ellipse ;
                   un sous-titre composé — des puces, des liens — a besoin de

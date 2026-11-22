@@ -263,7 +263,6 @@ function SupprimerModal({
       open
       onClose={onClose}
       title={'Supprimer définitivement\u00a0?'}
-      titreEntier
       maxWidth="max-w-lg"
       footer={
         <>
