@@ -82,8 +82,12 @@ export function moyenneDesNotes(notes: readonly (NoteDObjectif | null)[]): numbe
   return notes.reduce<number>((total, n) => total + (n ?? 0), 0) / notes.length;
 }
 
-/** « 2,33 » : une moyenne à deux décimales, à la française. */
-export const moyenneEnChiffres = (moyenne: number): string => moyenne.toFixed(2).replace('.', ',');
+/**
+ * Une moyenne à la française, au centième près et sans zéro inutile :
+ * « 3 », « 2,5 », « 1,67 » (ADR-0277).
+ */
+export const moyenneEnChiffres = (moyenne: number): string =>
+  String(Math.round(moyenne * 100) / 100).replace('.', ',');
 
 /** Les niveaux d'une compétence. */
 export const NIVEAUX_DE_COMPETENCE: Record<Niveau, string> = {

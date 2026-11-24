@@ -414,11 +414,21 @@ describe('les notes des objectifs, de 1 à 4 (ADR-0275, ADR-0276)', () => {
 
   it('la moyenne, sur 4, une fois chaque objectif noté', () => {
     expect(moyenneDesNotes([4, 3, 3])).toBeCloseTo(10 / 3);
-    expect(moyenneEnChiffres(10 / 3)).toBe('3,33');
-    expect(moyenneEnChiffres(2)).toBe('2,00');
     expect(moyenneDesNotes([1, 1])).toBe(1);
     expect(moyenneDesNotes([4, null])).toBeNull();
     expect(moyenneDesNotes([])).toBeNull();
+  });
+
+  it('la moyenne s’écrit au centième, sans zéro inutile (ADR-0277)', () => {
+    expect([3, 2, 2.5, 1.6, 2.25, 10 / 3, 5 / 3].map(moyenneEnChiffres)).toEqual([
+      '3',
+      '2',
+      '2,5',
+      '1,6',
+      '2,25',
+      '3,33',
+      '1,67',
+    ]);
   });
 
   it('le relevé : la note de chaque objectif, à l’auto-évaluation et chez le N+1', () => {
@@ -466,20 +476,20 @@ describe('les notes des objectifs, de 1 à 4 (ADR-0275, ADR-0276)', () => {
     expect(textes).toContain('RELEVÉ DES NOTES OBTENUES');
     expect(textes).toContain('AUTO-ÉVALUATION');
     expect(textes).toContain('Moyenne');
-    expect(textes.filter((t) => t === '3,00 / 4')).toHaveLength(2);
+    expect(textes.filter((t) => t === '3 / 4')).toHaveLength(2);
     expect(textes).toContain('Dépassé');
     expect(textes).not.toContain('Moyenne retenue');
     // Arrondie à 2 : la moyenne retenue, et pourquoi.
     const arrondie = await imprimer(noteeParLeN1([2, 2, 1], true, 'Six mois d’arrêt maladie.'));
     expect(arrondie.textes).toContain('1,67 / 4');
     expect(arrondie.textes).toContain('Moyenne retenue');
-    expect(arrondie.textes).toContain('2,00 / 4');
+    expect(arrondie.textes).toContain('2 / 4');
     expect(arrondie.tout).toContain('Six mois d’arrêt maladie.');
     // La partie de l'agent seule : sa note seule.
     const agent = await capter(() => ficheDeLAgentPdf(ficheExemple()));
     expect(agent.textes).toContain('RELEVÉ DES NOTES OBTENUES');
     expect(agent.textes).not.toContain('AUTO-ÉVALUATION');
-    expect(agent.textes.filter((t) => t === '3,00 / 4')).toHaveLength(1);
+    expect(agent.textes.filter((t) => t === '3 / 4')).toHaveLength(1);
     // La fiche vierge : les notes à cocher, les moyennes à écrire, l'arrondi à cocher.
     const vierge = await imprimerLaVierge();
     expect(vierge.textes).toContain('RELEVÉ DES NOTES OBTENUES');
