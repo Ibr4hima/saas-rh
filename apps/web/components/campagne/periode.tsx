@@ -69,7 +69,6 @@ export function CarteDeLaPeriode({
             periode={periodeDeLEvaluationDuN1(periode)}
             puces={[
               'Rencontrez votre N+1 et discutez autour de votre auto-évaluation.',
-              'Fixez ensemble vos objectifs de l’année à venir.',
               'Prenez connaissance de votre évaluation, puis validez-la.',
             ]}
             lien={

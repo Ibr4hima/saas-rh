@@ -19,6 +19,7 @@ import {
   competencesDe,
   dateEnLettres,
   datesDeLaCampagneSchema,
+  evaluationDuN1Schema,
   evaluationDuN1Vide,
   partieReserveeVide,
   type AutoEvaluation,
@@ -354,14 +355,6 @@ describe('la fiche d’un agent, ouverte depuis sa carte', () => {
   });
 });
 
-/** Des objectifs pour l'année à venir, écrits : trois, le minimum, par défaut (ADR-0239). */
-const objectifsAVenir = (n = 3) =>
-  Array.from({ length: n }, (_, i) => ({
-    objectif: `Objectif ${i + 1} de l’année à venir`,
-    indicateur: '',
-    echeance: null,
-  }));
-
 describe('l’auto-évaluation (ADR-0215)', () => {
   const OBJ1 = randomUUID();
   const OBJ2 = randomUUID();
@@ -567,7 +560,8 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
     expect(erreur?.detail).toContain('la compétence « Qualité du travail »');
     expect(erreur?.detail).toContain('les points forts');
     expect(erreur?.detail).toContain('la tenue du poste');
-    expect(erreur?.detail).toContain('les objectifs de l’année à venir (3 au moins)');
+    // L'évaluation ne fixe plus les objectifs de l'année à venir (ADR-0272).
+    expect(erreur?.detail).not.toContain('année à venir');
     expect(erreur?.detail).not.toContain('Management');
   });
 
@@ -608,7 +602,6 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
         competences: competencesB('non_cadre'),
         pointsForts: 'Rigueur.',
         axesDeDeveloppement: 'Déléguer.',
-        objectifsAVenir: objectifsAVenir(),
         ...entretien,
       },
       reservee: { comprehension: 'B', tenue: 'A', observations: '' },
@@ -655,8 +648,8 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
     expect(await textes({ entretienConfirme: false, dateDeLEntretien: null })).toContain('À fixer');
   });
 
-  it('fixe de trois à cinq objectifs pour l’année à venir, chacun avec son intitulé (ADR-0239)', () => {
-    const base = {
+  it('ne fixe plus les objectifs de l’année à venir (ADR-0272)', async () => {
+    const complete = {
       ...evaluationDuN1Vide(),
       competences: competencesB('non_cadre'),
       pointsForts: 'Rigueur.',
@@ -665,21 +658,28 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
       dateDeLEntretien: AUJOURD_HUI,
     };
     const reservee = { comprehension: 'B' as const, tenue: 'A' as const, observations: '' };
-    const manque = (objectifsAVenir: EvaluationDuN1['objectifsAVenir']) =>
-      ceQuiManqueALEvaluationDuN1({ ...base, objectifsAVenir }, reservee, [], 'non_cadre');
-    expect(manque(objectifsAVenir(2))).toEqual(['les objectifs de l’année à venir (3 au moins)']);
-    expect(manque(objectifsAVenir(3))).toEqual([]);
-    expect(manque(objectifsAVenir(5))).toEqual([]);
-    expect(manque(objectifsAVenir(6))).toEqual(['les objectifs de l’année à venir (5 au plus)']);
-    // Une ligne vide ne compte pas ; une ligne sans intitulé, si.
-    const sansIntitule = { objectif: ' ', indicateur: 'Délai tenu', echeance: null };
-    const vide = { objectif: '', indicateur: '', echeance: null };
-    expect(manque([...objectifsAVenir(2), vide])).toEqual([
-      'les objectifs de l’année à venir (3 au moins)',
-    ]);
-    expect(manque([...objectifsAVenir(2), sansIntitule])).toEqual([
-      'l’intitulé de l’objectif 3 de l’année à venir',
-    ]);
+    expect(ceQuiManqueALEvaluationDuN1(complete, reservee, [], 'non_cadre')).toEqual([]);
+    // Ceux d'une évaluation écrite avant restent en base, mais ne se relisent plus.
+    const avant = {
+      ...complete,
+      objectifsAVenir: [{ objectif: 'Un objectif', indicateur: '', echeance: null }],
+    };
+    expect(evaluationDuN1Schema.parse(avant)).not.toHaveProperty('objectifsAVenir');
+    // Le PDF de « Valider » : la partie 5 ne garde que les formations.
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const espion = vi.spyOn(PDFDocument.prototype, 'text');
+    try {
+      await campagne.apercuDeLEvaluation(session('awa'), agents.ibou, {
+        evaluation: v.evaluation,
+        reservee: v.reservee,
+      });
+      const textes = espion.mock.calls.map((appel) => String(appel[0])).join('\n');
+      expect(textes).toContain('BESOINS ET PROJETS DE FORMATION');
+      expect(textes).not.toContain('OBJECTIFS ET PERSPECTIVES');
+      expect(textes).not.toContain(String(ANNEE + 1));
+    } finally {
+      espion.mockRestore();
+    }
   });
 
   it('complète, part à l’agent ; elle ne change plus', async () => {
@@ -698,8 +698,6 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
           { action: 'Tutorat par un pair', delai: '3 mois', suivi: '' },
           { action: ' ', delai: '', suivi: '' },
         ],
-        // Les trois objectifs de l'année à venir, et une ligne laissée vide qui ne part pas.
-        objectifsAVenir: [...objectifsAVenir(), { objectif: '', indicateur: '', echeance: null }],
         // L'entretien, confirmé le jour même de l'auto-évaluation (ADR-0265).
         entretienConfirme: true,
         dateDeLEntretien: AUJOURD_HUI,
@@ -715,7 +713,6 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
     expect(t.evaluation.plan).toEqual([
       { action: 'Tutorat par un pair', delai: '3 mois', suivi: '' },
     ]);
-    expect(t.evaluation.objectifsAVenir).toEqual(objectifsAVenir());
     const { equipe } = await campagne.accueil(session('awa'));
     expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('transmise');
     await expect(
@@ -730,7 +727,6 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
         competences: competencesB('cadre'),
         pointsForts: 'Autonomie.',
         axesDeDeveloppement: 'Prise de parole.',
-        objectifsAVenir: objectifsAVenir(),
         entretienConfirme: true,
         dateDeLEntretien: AUJOURD_HUI,
       },

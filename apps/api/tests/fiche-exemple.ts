@@ -118,23 +118,6 @@ export function ficheExemple(o: Partial<DonneesDeLaFiche> = {}): DonneesDeLaFich
           suivi: 'Point mensuel',
         },
       ],
-      objectifsAVenir: [
-        {
-          objectif: 'Publier les quatre tableaux de bord trimestriels',
-          indicateur: 'Moins de 10 jours après la fin de chaque trimestre',
-          echeance: '2027-12-31',
-        },
-        {
-          objectif: 'Animer deux sessions de formation à l’outil de modélisation',
-          indicateur: 'Six collègues formés',
-          echeance: '2027-06-30',
-        },
-        {
-          objectif: 'Conduire l’étude sur les investissements dans l’agro-industrie',
-          indicateur: 'Rapport validé',
-          echeance: '2027-10-31',
-        },
-      ],
       formations: [
         {
           intitule: 'Prise de parole en public',

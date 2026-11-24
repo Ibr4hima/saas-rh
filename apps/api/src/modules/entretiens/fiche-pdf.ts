@@ -152,7 +152,6 @@ const PAS_D_ECRITURE = 22;
 const VIERGE = {
   objectifs: 3,
   plan: 3,
-  objectifsAVenir: 3,
   formations: 3,
   /** Les deux questions du récapitulatif de l'année : la place d'y revenir en détail. */
   recapitulatif: 8,
@@ -885,7 +884,7 @@ export async function ficheDEntretienPdf(d: DonneesDeLaFiche): Promise<Buffer> {
  * La partie de l'agent, avant sa transmission au N+1 (ADR-0241) :
  * l'identification, le bilan de l'année, chaque objectif avec son
  * auto-évaluation, et les souhaits. Rien du N+1 : ni son appréciation,
- * ni les compétences, ni les perspectives, ni les validations.
+ * ni les compétences, ni les formations, ni les validations.
  */
 export async function ficheDeLAgentPdf(d: DonneesDeLaFiche): Promise<Buffer> {
   return composer(d, false, true);
@@ -958,7 +957,7 @@ async function composer(d: DonneesDeLaFiche, vierge: boolean, agentSeul = false)
   } else {
     competences(f, d);
     synthese(f, d);
-    perspectives(f, d);
+    formations(f, d);
     souhaits(f, d);
     validation(f, d);
     if (d.reservee) partieReservee(f, d, d.reservee);
@@ -1531,60 +1530,39 @@ function synthese(f: Composition, d: DonneesDeLaFiche): void {
   );
 }
 
-// ──────────────────────────────────────────────── 5. Objectifs et perspectives
+// ──────────────────────────────────────────────── 5. Besoins et projets de formation
 
-function perspectives(f: Composition, d: DonneesDeLaFiche): void {
-  const e = d.evaluation;
-  const suivante = d.annee + 1;
-  const colonnesDesObjectifs = colonnes(
+/**
+ * Les besoins et projets de formation, que remplit le N+1. La fiche ne fixe
+ * plus les objectifs de l'année suivante : ils ont leur propre campagne, en
+ * début d'année (ADR-0272).
+ */
+function formations(f: Composition, d: DonneesDeLaFiche): void {
+  const numero = (i: number) => f.intitule(String(i + 1), { taille: 8.8 });
+  const colonnesDesFormations = colonnes(
     f,
     ['N°', 0.3],
-    ['Objectif', 2.25],
-    ['Indicateur de réussite (quantifiable ou qualifiable)', 2.05],
-    ['Échéance', 1.25],
+    ['Formation souhaitée', 2.35],
+    ['Justification (lien avec le poste et les objectifs)', 3.2],
   );
-  const numero = (i: number) => f.intitule(String(i + 1), { taille: 8.8 });
-  const objectifs = f.vierge
-    ? Array.from({ length: VIERGE.objectifsAVenir }, (_, i) => [
-        numero(i),
-        f.aEcrire(2),
-        f.aEcrire(2),
-        f.aEcrire(2),
-      ])
-    : e.objectifsAVenir
-        .filter((o) => o.objectif.trim())
-        .map((o, i) => [
-          numero(i),
-          f.texte(o.objectif),
-          f.texte(o.indicateur),
-          f.texte(o.echeance ? dateInsecable(o.echeance) : ''),
-        ]);
-  const titre51 = `Les objectifs de l’année ${suivante}`;
-  f.section(
-    5,
-    `Objectifs et perspectives pour ${suivante}`,
-    f.hauteurDuSousTitre('5.1', titre51) + debutDuTableauTitre(f, colonnesDesObjectifs, objectifs),
-    'Rempli par le N+1',
-  );
-  tableauTitre(f, ['5.1', titre51], null, colonnesDesObjectifs, objectifs);
-
-  const formations = f.vierge
+  const lignes = f.vierge
     ? Array.from({ length: VIERGE.formations }, (_, i) => [numero(i), f.aEcrire(2), f.aEcrire(2)])
-    : e.formations
+    : d.evaluation.formations
         .filter((x) => x.intitule.trim())
         .map((x, i) => [numero(i), f.texte(x.intitule), f.texte(x.justification)]);
-  tableauTitre(
-    f,
-    ['5.2', 'Besoins et projets de formation'],
-    `Les formations que le N+1 juge nécessaires pour atteindre les objectifs de ${suivante}.`,
-    colonnes(
-      f,
-      ['N°', 0.3],
-      ['Formation souhaitée', 2.35],
-      ['Justification (lien avec le poste et les objectifs)', 3.2],
-    ),
-    formations,
+  const chapeau = 'Les formations que le N+1 juge nécessaires.';
+  const sChapeau: Style = { coupe: 'italic', taille: 9 };
+  f.section(
+    5,
+    'Besoins et projets de formation',
+    f.hauteurDe(chapeau, f.largeur, sChapeau) +
+      14 +
+      debutDuTableauTitre(f, colonnesDesFormations, lignes),
+    'Rempli par le N+1',
   );
+  f.chapeau(chapeau);
+  if (lignes.length === 0) paragrapheLibre(f, '');
+  else f.tableau(colonnesDesFormations, lignes);
 }
 
 // ──────────────────────────────────────────────── 6. Souhaits de l'agent

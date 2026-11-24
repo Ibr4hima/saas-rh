@@ -387,7 +387,6 @@ export const evaluationDuN1Schema = z.object({
   pointsForts: texte,
   axesDeDeveloppement: texte,
   plan: z.array(actionSchema).max(MAXIMUMS_DE_LA_FICHE.actions),
-  objectifsAVenir: z.array(objectifAVenirSchema).max(MAXIMUMS_DE_LA_FICHE.objectifsAVenir),
   formations: z.array(formationSouhaiteeSchema).max(MAXIMUMS_DE_LA_FICHE.formations),
   /** Le N+1 confirme avoir reçu l'agent en entretien (ADR-0265). */
   entretienConfirme: z.boolean().default(false),
@@ -524,17 +523,6 @@ export function ceQuiManqueALEvaluationDuN1(
   }
   if (!evaluation.pointsForts.trim()) manque.push('les points forts');
   if (!evaluation.axesDeDeveloppement.trim()) manque.push('les axes de développement');
-  const aVenir = evaluation.objectifsAVenir.filter((o) =>
-    ecrite(o.objectif, o.indicateur, o.echeance),
-  );
-  aVenir.forEach((o, i) => {
-    if (!o.objectif.trim()) manque.push(`l’intitulé de l’objectif ${i + 1} de l’année à venir`);
-  });
-  if (aVenir.length < NOMBRE_D_OBJECTIFS_A_VENIR.min) {
-    manque.push(`les objectifs de l’année à venir (${NOMBRE_D_OBJECTIFS_A_VENIR.min} au moins)`);
-  } else if (aVenir.length > NOMBRE_D_OBJECTIFS_A_VENIR.max) {
-    manque.push(`les objectifs de l’année à venir (${NOMBRE_D_OBJECTIFS_A_VENIR.max} au plus)`);
-  }
   for (const c of SYNTHESE_GENERALE) {
     if (!reservee[c.cle]) manque.push(`la ${c.intitule.toLocaleLowerCase('fr')}`);
   }
@@ -561,7 +549,6 @@ export function sansLignesVides(e: EvaluationDuN1): EvaluationDuN1 {
   return {
     ...e,
     plan: e.plan.filter((a) => ecrite(a.action, a.delai, a.suivi)),
-    objectifsAVenir: e.objectifsAVenir.filter((o) => ecrite(o.objectif, o.indicateur, o.echeance)),
     formations: e.formations.filter((f) => ecrite(f.intitule, f.justification)),
   };
 }
@@ -586,7 +573,6 @@ export const evaluationDuN1Vide = (): EvaluationDuN1 => ({
   pointsForts: '',
   axesDeDeveloppement: '',
   plan: [],
-  objectifsAVenir: [],
   formations: [],
   entretienConfirme: false,
   dateDeLEntretien: null,

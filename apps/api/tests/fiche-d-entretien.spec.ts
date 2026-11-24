@@ -132,7 +132,7 @@ describe('la fiche en PDF', () => {
       'Connaît parfaitement le poste de travail.',
       'S1/EN05',
       '15/12/2018',
-      'Les objectifs de l’année 2027',
+      'BESOINS ET PROJETS DE FORMATION',
     ]) {
       expect(tout).toContain(juste);
     }
@@ -142,6 +142,8 @@ describe('la fiche en PDF', () => {
       'ÉVALUATION DES ET',
       'Connait ',
       'ponctuelle',
+      // L'évaluation ne fixe plus les objectifs de l'année suivante (ADR-0272).
+      'Les objectifs de l’année 2027',
     ]) {
       expect(tout).not.toContain(faute);
     }
@@ -274,11 +276,6 @@ describe('la fiche en PDF', () => {
           delai: long(LONGUEURS_DE_LA_FICHE.delai),
           suivi: long(LONGUEURS_DE_LA_FICHE.ligne),
         })),
-        objectifsAVenir: Array.from({ length: MAXIMUMS_DE_LA_FICHE.objectifsAVenir }, () => ({
-          objectif: long(LONGUEURS_DE_LA_FICHE.intitule),
-          indicateur: long(LONGUEURS_DE_LA_FICHE.indicateurs),
-          echeance: '2027-12-31',
-        })),
         formations: Array.from({ length: MAXIMUMS_DE_LA_FICHE.formations }, () => ({
           intitule: long(LONGUEURS_DE_LA_FICHE.ligne),
           justification: long(LONGUEURS_DE_LA_FICHE.ligne),
@@ -303,7 +300,7 @@ describe('la fiche vierge', () => {
       'BILAN DE L’ANNÉE 2026',
       'ÉVALUATION DES COMPÉTENCES ET DES PERFORMANCES',
       'SYNTHÈSE DE L’ÉVALUATION ET AXES D’AMÉLIORATION',
-      'OBJECTIFS ET PERSPECTIVES POUR 2027',
+      'BESOINS ET PROJETS DE FORMATION',
       'PRÉOCCUPATIONS ET SOUHAITS DE L’AGENT',
       'VALIDATION ET SUIVI',
       'PARTIE STRICTEMENT RÉSERVÉE À LA HIÉRARCHIE',
@@ -313,6 +310,8 @@ describe('la fiche vierge', () => {
     ]) {
       expect(tout).toContain(titre);
     }
+    // Rien sur l'année suivante : ses objectifs ont leur propre campagne (ADR-0272).
+    expect(tout).not.toContain('2027');
   });
 
   it('rien n’y est rempli : ni nom, ni niveau, ni « Néant »', async () => {

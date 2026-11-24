@@ -8,7 +8,6 @@ import {
   MAXIMUMS_DE_LA_FICHE,
   NIVEAUX,
   NIVEAUX_DE_COMPETENCE,
-  NOMBRE_D_OBJECTIFS_A_VENIR,
   sansLignesVides,
   SYNTHESE_GENERALE,
   type ActionDuPlan,
@@ -18,7 +17,6 @@ import {
   type EvaluationDuN1,
   type FormationSouhaitee,
   type Niveau,
-  type ObjectifDeLAnneeAVenir,
   type ObjectifEvalue,
   type PartieReservee,
   type PersonneDeLaCampagne,
@@ -44,7 +42,6 @@ import {
   Reponse,
   SouhaitsEnLecture,
 } from './auto-evaluation';
-import { AideAuxObjectifs } from './aide-aux-objectifs';
 import type { Changement } from './enregistrement';
 
 /* ────────────────────────────────────────────────────────────────
@@ -120,7 +117,7 @@ export function FicheDuN1({
       />
       <Competences personnel={personnel} evaluation={evaluation} onChange={changer} />
       <Synthese evaluation={evaluation} onChange={changer} />
-      <Perspectives annee={annee} evaluation={evaluation} onChange={changer} />
+      <Formations evaluation={evaluation} onChange={changer} />
       <SouhaitsEnLecture auto={auto} qui={PAR_L_AGENT} />
       {reservee ? (
         <Reservee reservee={reservee} commentairesDuN2={commentairesDuN2} onChange={reserver} />
@@ -521,76 +518,26 @@ function Synthese({
   );
 }
 
-// ──────────────────────────────────────────────── 5. les perspectives
+// ──────────────────────────────────────────────── 5. les besoins de formation
 
-function Perspectives({
-  annee,
+/**
+ * Les besoins et projets de formation, que remplit le N+1 (ADR-0272). Les
+ * objectifs de l'année suivante ne se fixent plus pendant l'évaluation.
+ */
+function Formations({
   evaluation: e,
   onChange,
 }: {
-  annee: number;
   evaluation: EvaluationDuN1;
   onChange?: MiseAJour;
 }) {
-  const suivante = annee + 1;
   return (
     <CarteDeLaFiche
-      titre={`Objectifs et perspectives pour ${suivante}`}
-      // Pendant la saisie, l'aide à la rédaction des objectifs (ADR-0262).
-      aCote={onChange ? <AideAuxObjectifs /> : undefined}
+      titre="Besoins et projets de formation"
+      chapeau="Les formations que le N+1 juge nécessaires."
       qui={PAR_LE_N1}
     >
-      {/* De trois à cinq objectifs (ADR-0239). */}
-      <SousPartie titre={`Les objectifs de l’année ${suivante}`} requise={Boolean(onChange)}>
-        <Tableau<ObjectifDeLAnneeAVenir>
-          nom="Objectif"
-          leNom="l’objectif"
-          colonnes={[
-            'Objectif',
-            'Indicateur de réussite (quantifiable ou qualifiable)',
-            'Échéance',
-          ]}
-          gabarit="@[46rem]:grid-cols-[1.75rem_minmax(0,2.25fr)_minmax(0,2.05fr)_10.5rem_1.75rem]"
-          lignes={e.objectifsAVenir}
-          min={NOMBRE_D_OBJECTIFS_A_VENIR.min}
-          max={NOMBRE_D_OBJECTIFS_A_VENIR.max}
-          ajouter="Ajouter un objectif"
-          vide={() => ({ objectif: '', indicateur: '', echeance: null })}
-          lecture={(o) => [o.objectif, o.indicateur, o.echeance ? dateEnLettres(o.echeance) : '']}
-          saisie={(o, changer, attrs) => [
-            <CelluleDeTexte
-              key="objectif"
-              {...attrs(0)}
-              max={LONGUEURS_DE_LA_FICHE.intitule}
-              valeur={o.objectif}
-              onChange={(objectif) => changer({ objectif })}
-            />,
-            <CelluleDeTexte
-              key="indicateur"
-              {...attrs(1)}
-              max={LONGUEURS_DE_LA_FICHE.indicateurs}
-              valeur={o.indicateur}
-              onChange={(indicateur) => changer({ indicateur })}
-            />,
-            <DateInput
-              key="echeance"
-              {...attrs(2)}
-              value={o.echeance ?? ''}
-              min={`${suivante}-01-01`}
-              max={`${suivante}-12-31`}
-              onChange={(ev) => changer({ echeance: ev.target.value || null })}
-              className="text-[12.5px]"
-            />,
-          ]}
-          onChange={
-            onChange ? (objectifsAVenir) => onChange((x) => ({ ...x, objectifsAVenir })) : undefined
-          }
-        />
-      </SousPartie>
-      <SousPartie
-        titre="Besoins et projets de formation"
-        chapeau={`Les formations que le N+1 juge nécessaires pour atteindre les objectifs de ${suivante}.`}
-      >
+      <div className="pt-2">
         <Tableau<FormationSouhaitee>
           nom="Formation"
           leNom="la formation"
@@ -619,7 +566,7 @@ function Perspectives({
           ]}
           onChange={onChange ? (formations) => onChange((x) => ({ ...x, formations })) : undefined}
         />
-      </SousPartie>
+      </div>
     </CarteDeLaFiche>
   );
 }

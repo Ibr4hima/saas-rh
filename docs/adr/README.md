@@ -210,10 +210,10 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0202](0202-cni-rib-et-domiciliation-sur-la-fiche.md) | La fiche d'un agent : CNI et RIB en chiffres groupés, domiciliation par oui ou par non  | acceptée                                    |
 | [0203](0203-documents-en-noir-ancien-pied.md)         | Les documents de la DCH en noir, l'ancien pied de page de l'APIX remis au propre        | acceptée                                    |
 | [0204](0204-connexion-par-code.md)                    | La connexion par code : nom de famille, adresse professionnelle, code reçu par email    | complétée 0210, 0246, 0247, révisée 0229    |
-| [0205](0205-fiche-d-entretien-annuel.md)              | La fiche d'entretien annuel d'évaluation S1/EN05 : son texte corrigé et son PDF         | acceptée, révisée : 0206, 0208, 0209, 0244  |
+| [0205](0205-fiche-d-entretien-annuel.md)              | La fiche d'entretien annuel d'évaluation S1/EN05 : son texte corrigé et son PDF         | révisée : 0206, 0208, 0209, 0244, 0272      |
 | [0206](0206-fiche-a-l-en-tete-du-modele.md)           | La fiche d'entretien à l'en-tête du modèle, avec le bleu et l'orange de l'APIX          | acceptée, couleurs retouchées : 0207        |
 | [0207](0207-fiche-titre-noir-sections-en-bleu.md)     | La fiche d'entretien : titre en noir, numéros de section en bleu, sans barres en pied   | acceptée                                    |
-| [0208](0208-fiche-d-entretien-vierge.md)              | La fiche d'entretien vierge, toutes ses sections à remplir à la main                    | acceptée, révisée : 0209                    |
+| [0208](0208-fiche-d-entretien-vierge.md)              | La fiche d'entretien vierge, toutes ses sections à remplir à la main                    | acceptée, révisée : 0209, 0272              |
 | [0209](0209-paraphes-sur-la-fiche-d-entretien.md)     | Les paraphes sur la fiche d'entretien, et les lignes de la section 8.4                  | acceptée                                    |
 | [0210](0210-connexion-de-l-administration.md)         | La page de connexion de l'administration, à l'adresse et au mot de passe                | acceptée, complétée par 0211 et 0222        |
 | [0211](0211-mode-campagne-et-accueil.md)              | Le mode campagne et l'accueil de l'évaluation annuelle, sans menu                       | révisée : 0212, 0214, 0216, 0222 à 0227     |
@@ -242,9 +242,9 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0234](0234-cartes-des-agents.md)                     | Les cartes des agents comme celles des événements de la plateforme, avec l'email pro    | acceptée, révisée par 0235 et 0250          |
 | [0235](0235-statut-sur-les-cartes-de-l-equipe.md)     | Le statut à droite de l'email, sur les cartes de Mon équipe                             | acceptée, révisée par 0250 et 0257          |
 | [0236](0236-puces-de-la-periode-reformulees.md)       | Deux puces de la période reformulées par l'APIX                                         | acceptée, révisée par 0237                  |
-| [0237](0237-puce-des-objectifs-raccourcie.md)         | La puce des objectifs de l'année à venir, raccourcie                                    | acceptée                                    |
+| [0237](0237-puce-des-objectifs-raccourcie.md)         | La puce des objectifs de l'année à venir, raccourcie                                    | acceptée, révisée par 0272                  |
 | [0238](0238-reponses-oui-non-et-puces.md)             | Les réponses par oui ou non et en puces de l'auto-évaluation, souhaits obligatoires     | acceptée, complétée par 0251, 0259, 0261    |
-| [0239](0239-trois-a-cinq-objectifs-a-venir.md)        | De trois à cinq objectifs pour l'année à venir, fixés par le N+1                        | acceptée, complétée par 0262                |
+| [0239](0239-trois-a-cinq-objectifs-a-venir.md)        | De trois à cinq objectifs pour l'année à venir, fixés par le N+1                        | complétée 0262, remplacée par 0272          |
 | [0240](0240-titres-de-section-plus-petits.md)         | Les titres de section de la campagne, un peu plus petits                                | acceptée                                    |
 | [0241](0241-valider-l-auto-evaluation.md)             | Valider son auto-évaluation, la fiche en PDF, et la barre au bas de la page             | révisée par 0242 et 0254, complétée 0260    |
 | [0242](0242-bandeau-de-l-auto-evaluation.md)          | Le bandeau de l'auto-évaluation, sans icône, Modifier à droite                          | acceptée                                    |
@@ -267,7 +267,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0259](0259-lecture-des-reponses.md)                  | La lecture des réponses : le oui et ses puces ensemble, les puces au bord               | acceptée                                    |
 | [0260](0260-valider-l-evaluation-du-n1.md)            | Valider chez le N+1 : la fiche en PDF avant de la transmettre à l'agent                 | acceptée                                    |
 | [0261](0261-autres-realisations-en-puces.md)          | Autres réalisations en dehors des objectifs, en puces                                   | acceptée                                    |
-| [0262](0262-aide-a-la-redaction-des-objectifs.md)     | Comment définir des objectifs : une fiche d'aide à côté du titre des objectifs          | acceptée, révisée par 0263                  |
+| [0262](0262-aide-a-la-redaction-des-objectifs.md)     | Comment définir des objectifs : une fiche d'aide à côté du titre des objectifs          | acceptée, révisée par 0263 et 0272          |
 | [0263](0263-fiche-des-objectifs-resserree.md)         | La fiche Comment définir des objectifs, resserrée : son titre, cinq parties             | acceptée                                    |
 | [0264](0264-reperes-sans-le-type-de-l-unite.md)       | Sous Département et Service, le nom de l'unité sans ce mot                              | acceptée                                    |
 | [0265](0265-entretien-confirme-et-date.md)            | Le N+1 confirme l'entretien avec l'agent et en donne la date                            | acceptée                                    |
@@ -277,3 +277,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0269](0269-telechargement-apres-validation.md)       | Télécharger n'apparaît qu'une fois l'évaluation validée                                 | acceptée                                    |
 | [0270](0270-remise-a-zero-de-la-campagne.md)          | Remettre à zéro les fiches de la campagne après des essais                              | acceptée, complétée par 0271                |
 | [0271](0271-remise-a-zero-dans-l-administration.md)   | Remettre à zéro : l'administration remet la fiche d'un agent à zéro                     | acceptée                                    |
+| [0272](0272-evaluation-sans-objectifs-a-venir.md)     | L'évaluation ne fixe plus les objectifs de l'année suivante                             | acceptée                                    |
