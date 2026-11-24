@@ -19,6 +19,7 @@ pnpm db:migrate && pnpm start # comme en production : web sur :3000, API sur :30
 # pnpm dev                    # pour développer : chaque page se compile à sa première visite
 # pnpm db:reset               # repart d'une base vierge (dev/CI — destructeur)
 # pnpm personnel:vider        # vide le personnel fictif avant le premier import (à blanc sans --confirmer)
+# pnpm campagne:reinitialiser # remet à zéro les fiches de la campagne après des essais (à blanc sans --confirmer)
 pnpm test                     # dont le test d'étanchéité RLS
 ```
 

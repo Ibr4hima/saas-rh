@@ -275,3 +275,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0267](0267-validation-sans-renvoi.md)                | L'agent valide son évaluation, sans pouvoir la renvoyer au N+1                          | acceptée                                    |
 | [0268](0268-telechargement-par-l-agent.md)            | Télécharger : l'agent enregistre son évaluation en PDF, sans la partie réservée         | acceptée, révisée par 0269                  |
 | [0269](0269-telechargement-apres-validation.md)       | Télécharger n'apparaît qu'une fois l'évaluation validée                                 | acceptée                                    |
+| [0270](0270-remise-a-zero-de-la-campagne.md)          | Remettre à zéro les fiches de la campagne après des essais                              | acceptée                                    |

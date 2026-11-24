@@ -17,6 +17,7 @@
     "db:migrate": "pnpm --filter @teranga/api db:migrate",
     "db:reset": "pnpm --filter @teranga/api db:reset",
     "personnel:vider": "pnpm --filter @teranga/api personnel:vider",
+    "campagne:reinitialiser": "pnpm --filter @teranga/api campagne:reinitialiser",
     "format": "prettier --write ."
   },
   "devDependencies": {
