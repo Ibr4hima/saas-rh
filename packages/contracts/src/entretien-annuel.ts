@@ -25,28 +25,39 @@ export const REFERENCE_DE_LA_FICHE = {
 
 export const TITRE_DE_LA_FICHE = 'Fiche d’entretien annuel d’évaluation';
 
-// ──────────────────────────────────────────────── les notes des objectifs (ADR-0275)
+// ──────────────────────────────────────────────── les notes des objectifs (ADR-0275, ADR-0276)
 
 /**
  * Les notes d'un objectif, de la meilleure à la plus basse : l'agent et le
- * N+1 notent chaque objectif de 0 à 3, à la place des lettres A à D.
+ * N+1 notent chaque objectif de 1 à 4 (ADR-0276), à la place des lettres A
+ * à D.
  */
-export const NOTES_D_OBJECTIF = [3, 2, 1, 0] as const;
+export const NOTES_D_OBJECTIF = [4, 3, 2, 1] as const;
 export type NoteDObjectif = (typeof NOTES_D_OBJECTIF)[number];
 
-/** La meilleure note : une moyenne se lit sur elle. */
-export const NOTE_MAXIMALE: NoteDObjectif = 3;
+/** La meilleure note, 4 : chaque moyenne se lit sur 4. */
+export const NOTE_MAXIMALE: NoteDObjectif = 4;
+
+/** La moyenne à partir de laquelle l'agent atteint ses objectifs de l'année : 2 sur 4. */
+export const MOYENNE_D_ATTEINTE = 2;
+
+/** À partir de cette moyenne, et en dessous de 2, le N+1 peut l'arrondir à 2. */
+export const SEUIL_DE_L_ARRONDI = 1.5;
 
 /** Ce que dit chaque note de l'atteinte de l'objectif, et des résultats. */
 export const NOTES_D_ATTEINTE: Record<NoteDObjectif, { libelle: string; resultats: string }> = {
-  3: { libelle: 'Dépassé', resultats: 'Résultats excellents' },
-  2: { libelle: 'Réalisé', resultats: 'Résultats satisfaisants' },
-  1: { libelle: 'Partiellement réalisé', resultats: 'Résultats à améliorer' },
-  0: { libelle: 'Non réalisé', resultats: 'Résultats non acceptables' },
+  4: { libelle: 'Dépassé', resultats: 'Résultats excellents' },
+  3: { libelle: 'Réalisé', resultats: 'Résultats satisfaisants' },
+  2: { libelle: 'Partiellement réalisé', resultats: 'Résultats à améliorer' },
+  1: { libelle: 'Non réalisé', resultats: 'Résultats non acceptables' },
 };
 
-/** La note de chaque lettre d'avant les notes : A vaut 3, B 2, C 1, D 0. */
-export const NOTE_DE_LA_LETTRE: Record<Niveau, NoteDObjectif> = { A: 3, B: 2, C: 1, D: 0 };
+/** La note de chaque lettre d'avant les notes : A vaut 4, B 3, C 2, D 1. */
+export const NOTE_DE_LA_LETTRE: Record<Niveau, NoteDObjectif> = { A: 4, B: 3, C: 2, D: 1 };
+
+/** Vrai si une moyenne peut s'arrondir à 2 : de 1,5 à moins de 2 (ADR-0276). */
+export const arrondiPossible = (moyenne: number | null): boolean =>
+  moyenne !== null && moyenne >= SEUIL_DE_L_ARRONDI && moyenne < MOYENNE_D_ATTEINTE;
 
 const noteDObjectifSchema = z.literal(NOTES_D_OBJECTIF);
 
@@ -63,7 +74,7 @@ function avecSaNote(appreciation: unknown): unknown {
 }
 
 /**
- * La moyenne de notes d'objectifs, sur 3 : `null` sans objectif, et tant
+ * La moyenne de notes d'objectifs, sur 4 : `null` sans objectif, et tant
  * qu'une note manque.
  */
 export function moyenneDesNotes(notes: readonly (NoteDObjectif | null)[]): number | null {
@@ -353,7 +364,7 @@ export const objectifEvalueSchema = z.object({
 });
 export type ObjectifEvalue = z.infer<typeof objectifEvalueSchema>;
 
-/** Ce que l'agent dit d'un objectif : sa note, de 0 à 3 (ADR-0275), ses résultats. */
+/** Ce que l'agent dit d'un objectif : sa note, de 1 à 4 (ADR-0276), ses résultats. */
 export const appreciationDeLAgentSchema = z.preprocess(
   avecSaNote,
   z.object({
@@ -364,7 +375,7 @@ export const appreciationDeLAgentSchema = z.preprocess(
 );
 export type AppreciationDeLAgent = z.infer<typeof appreciationDeLAgentSchema>;
 
-/** Ce que le N+1 retient d'un objectif, après l'entretien : sa note, de 0 à 3 (ADR-0275). */
+/** Ce que le N+1 retient d'un objectif, après l'entretien : sa note, de 1 à 4 (ADR-0276). */
 export const appreciationDuN1Schema = z.preprocess(
   avecSaNote,
   z.object({
@@ -483,6 +494,12 @@ export const evaluationDuN1Schema = z.object({
    * l'auto-évaluation et le jour où l'évaluation part à l'agent (ADR-0265).
    */
   dateDeLEntretien: z.iso.date().nullable().default(null),
+  /**
+   * La moyenne des objectifs arrondie à 2 par le N+1, quand elle va de 1,5
+   * à moins de 2, et pourquoi : la justification est obligatoire (ADR-0276).
+   */
+  arrondi: z.boolean().default(false),
+  justificationDeLArrondi: texte.default(''),
 });
 export type EvaluationDuN1 = z.infer<typeof evaluationDuN1Schema>;
 
@@ -515,7 +532,6 @@ export function ceQuiManqueALAutoEvaluation(
   choix(auto.aDesDifficultes, auto.difficultes, 'les difficultés rencontrées');
   objectifs.forEach((o, i) => {
     const a = auto.objectifs[o.id];
-    // Une note de 0 est une note.
     if ((a?.note ?? null) === null) manque.push(`la note de l’objectif ${i + 1}`);
     if (!a?.resultats.trim()) manque.push(`les résultats de l’objectif ${i + 1}`);
   });
@@ -585,9 +601,10 @@ export function autoEvaluationTransmise(auto: AutoEvaluation): AutoEvaluation {
 
 /**
  * Ce qui manque à l'évaluation du N+1 pour partir à l'agent (ADR-0216), dans
- * l'ordre de la fiche : la note de chaque objectif (ADR-0275), chaque
- * compétence (le management, pour le personnel cadre, seulement s'il y a
- * lieu), les points forts et les axes de développement, la synthèse
+ * l'ordre de la fiche : la note de chaque objectif (ADR-0275), la
+ * justification d'une moyenne arrondie à 2 (ADR-0276), chaque compétence
+ * (le management, pour le personnel cadre, seulement s'il y a lieu), les
+ * points forts et les axes de développement, la synthèse
  * générale de la partie réservée, puis l'entretien : sa confirmation et sa
  * date (ADR-0265). Avec `entretien`, la date doit tomber entre la
  * transmission de l'auto-évaluation (`du`) et le jour même (`au`). Le plan
@@ -606,6 +623,10 @@ export function ceQuiManqueALEvaluationDuN1(
       manque.push(`la note de l’objectif ${i + 1}`);
     }
   });
+  // Arrondie à 2, la moyenne demande pourquoi (ADR-0276).
+  if (arrondiDeLEvaluation(evaluation, objectifs) && !evaluation.justificationDeLArrondi.trim()) {
+    manque.push('la justification de l’arrondi');
+  }
   for (const c of competencesDe(personnel)) {
     if (!c.cadres && !evaluation.competences[c.cle]) {
       manque.push(`la compétence « ${c.intitule} »`);
@@ -666,6 +687,8 @@ export const evaluationDuN1Vide = (): EvaluationDuN1 => ({
   formations: [],
   entretienConfirme: false,
   dateDeLEntretien: null,
+  arrondi: false,
+  justificationDeLArrondi: '',
 });
 
 export const partieReserveeVide = (): PartieReservee => ({
@@ -683,6 +706,34 @@ export function nomDeLaFiche(annee: number, matricule: string | null, complete =
 
 // ──────────────────────────────────────────────── le relevé des notes (ADR-0275)
 
+/** La moyenne des notes du N+1, sur les objectifs de la fiche. */
+export const moyenneDuN1 = (
+  evaluation: EvaluationDuN1,
+  objectifs: readonly ObjectifEvalue[],
+): number | null => moyenneDesNotes(objectifs.map((o) => evaluation.objectifs[o.id]?.note ?? null));
+
+/**
+ * Vrai si la moyenne du N+1 est arrondie à 2 : le N+1 l'a demandé, et la
+ * moyenne va de 1,5 à moins de 2. Hors de là, la demande reste sans effet.
+ */
+export const arrondiDeLEvaluation = (
+  evaluation: EvaluationDuN1,
+  objectifs: readonly ObjectifEvalue[],
+): boolean => evaluation.arrondi && arrondiPossible(moyenneDuN1(evaluation, objectifs));
+
+/**
+ * L'évaluation telle qu'elle part à l'agent, pour l'arrondi (ADR-0276) : un
+ * arrondi que la moyenne ne permet plus tombe, avec sa justification.
+ */
+export function avecSonArrondi(
+  evaluation: EvaluationDuN1,
+  objectifs: readonly ObjectifEvalue[],
+): EvaluationDuN1 {
+  return arrondiDeLEvaluation(evaluation, objectifs)
+    ? evaluation
+    : { ...evaluation, arrondi: false, justificationDeLArrondi: '' };
+}
+
 /** Un objectif dans le relevé : sa note à l'auto-évaluation, et chez le N+1. */
 export interface LigneDuReleve {
   objectif: ObjectifEvalue;
@@ -693,14 +744,20 @@ export interface LigneDuReleve {
 /**
  * Le relevé des notes obtenues, comme celui de l'ancienne grille du
  * personnel non cadre : la note de chaque objectif, à l'auto-évaluation et
- * chez le N+1, puis la moyenne de chaque colonne, sur 3. Sans `evaluation`,
+ * chez le N+1, puis la moyenne de chaque colonne, sur 4. Celle du N+1,
+ * arrondie à 2, devient la moyenne retenue (ADR-0276). Sans `evaluation`,
  * la partie de l'agent seule.
  */
 export function releveDesObjectifs(
   objectifs: readonly ObjectifEvalue[],
   auto: AutoEvaluation,
   evaluation: EvaluationDuN1 | null,
-): { lignes: LigneDuReleve[]; moyennes: { agent: number | null; n1: number | null } } {
+): {
+  lignes: LigneDuReleve[];
+  moyennes: { agent: number | null; n1: number | null };
+  /** La moyenne du N+1 arrondie à 2 ; `false` sans arrondi. */
+  arrondi: boolean;
+} {
   const lignes = objectifs.map((objectif) => ({
     objectif,
     agent: auto.objectifs[objectif.id]?.note ?? null,
@@ -712,5 +769,6 @@ export function releveDesObjectifs(
       agent: moyenneDesNotes(lignes.map((l) => l.agent)),
       n1: evaluation ? moyenneDesNotes(lignes.map((l) => l.n1)) : null,
     },
+    arrondi: evaluation ? arrondiDeLEvaluation(evaluation, objectifs) : false,
   };
 }

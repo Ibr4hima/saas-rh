@@ -12,9 +12,11 @@ import PDFDocument from 'pdfkit';
 import { describe, expect, it, vi } from 'vitest';
 import {
   appreciationDuN1Schema,
+  arrondiPossible,
   autoEvaluationSchema,
   autoEvaluationVide,
-  ceQuiManqueALAutoEvaluation,
+  avecSonArrondi,
+  ceQuiManqueALEvaluationDuN1,
   evaluationDuN1Schema,
   LONGUEURS_DE_LA_FICHE,
   MAXIMUMS_DE_LA_FICHE,
@@ -269,13 +271,13 @@ describe('la fiche en PDF', () => {
         competencesInexploitees: texte,
         autresCommentaires: texte,
         objectifs: Object.fromEntries(
-          objectifs.map((o) => [o.id, { note: 2 as const, resultats: texte, commentaire: texte }]),
+          objectifs.map((o) => [o.id, { note: 3 as const, resultats: texte, commentaire: texte }]),
         ),
       },
       evaluation: {
         ...base.evaluation,
         objectifs: Object.fromEntries(
-          objectifs.map((o) => [o.id, { note: 1 as const, commentaire: texte }]),
+          objectifs.map((o) => [o.id, { note: 2 as const, commentaire: texte }]),
         ),
         pointsForts: texte,
         axesDeDeveloppement: texte,
@@ -369,19 +371,34 @@ describe('la typographie', () => {
   });
 });
 
-describe('les notes des objectifs, de 0 à 3 (ADR-0275)', () => {
+describe('les notes des objectifs, de 1 à 4 (ADR-0275, ADR-0276)', () => {
   const id = '0193a4c2-6f1e-7c3a-9b2d-4e5f6a7b8c9d';
+  /** La fiche d'exemple, notée par le N+1 ; arrondie à 2 s'il y a lieu. */
+  const noteeParLeN1 = (notes: readonly (1 | 2 | 3 | 4)[], arrondi = false, pourquoi = '') => {
+    const d = ficheExemple();
+    return {
+      ...d,
+      evaluation: {
+        ...d.evaluation,
+        objectifs: Object.fromEntries(
+          d.objectifs.map((o, i) => [o.id, { note: notes[i]!, commentaire: '' }]),
+        ),
+        arrondi,
+        justificationDeLArrondi: pourquoi,
+      },
+    };
+  };
 
-  it('les lettres d’avant se relisent en notes : A 3, B 2, C 1, D 0', () => {
+  it('les lettres d’avant se relisent en notes : A 4, B 3, C 2, D 1', () => {
     const auto = autoEvaluationSchema.parse({
       ...autoEvaluationVide(),
       objectifs: { [id]: { niveau: 'A', resultats: '', commentaire: '' } },
     });
-    expect(auto.objectifs[id]).toEqual({ note: 3, resultats: '', commentaire: '' });
+    expect(auto.objectifs[id]).toEqual({ note: 4, resultats: '', commentaire: '' });
     for (const [lettre, note] of [
-      ['B', 2],
-      ['C', 1],
-      ['D', 0],
+      ['B', 3],
+      ['C', 2],
+      ['D', 1],
     ] as const) {
       const lue = evaluationDuN1Schema
         .partial()
@@ -389,60 +406,85 @@ describe('les notes des objectifs, de 0 à 3 (ADR-0275)', () => {
       expect(lue.objectifs?.[id]?.note).toBe(note);
     }
     // Une note se garde telle quelle ; hors de l'échelle, elle est refusée.
-    expect(appreciationDuN1Schema.parse({ note: 0, commentaire: '' }).note).toBe(0);
-    expect(appreciationDuN1Schema.safeParse({ note: 4, commentaire: '' }).success).toBe(false);
+    expect(appreciationDuN1Schema.parse({ note: 1, commentaire: '' }).note).toBe(1);
+    for (const hors of [0, 5]) {
+      expect(appreciationDuN1Schema.safeParse({ note: hors, commentaire: '' }).success).toBe(false);
+    }
   });
 
-  it('la moyenne, sur 3, une fois chaque objectif noté', () => {
-    expect(moyenneDesNotes([3, 2, 2])).toBeCloseTo(7 / 3);
-    expect(moyenneEnChiffres(7 / 3)).toBe('2,33');
+  it('la moyenne, sur 4, une fois chaque objectif noté', () => {
+    expect(moyenneDesNotes([4, 3, 3])).toBeCloseTo(10 / 3);
+    expect(moyenneEnChiffres(10 / 3)).toBe('3,33');
     expect(moyenneEnChiffres(2)).toBe('2,00');
-    expect(moyenneDesNotes([0, 0])).toBe(0);
-    expect(moyenneDesNotes([3, null])).toBeNull();
+    expect(moyenneDesNotes([1, 1])).toBe(1);
+    expect(moyenneDesNotes([4, null])).toBeNull();
     expect(moyenneDesNotes([])).toBeNull();
   });
 
   it('le relevé : la note de chaque objectif, à l’auto-évaluation et chez le N+1', () => {
     const d = ficheExemple();
-    const { lignes, moyennes } = releveDesObjectifs(d.objectifs, d.auto, d.evaluation);
+    const { lignes, moyennes, arrondi } = releveDesObjectifs(d.objectifs, d.auto, d.evaluation);
     expect(lignes.map((l) => [l.agent, l.n1])).toEqual([
+      [4, 4],
       [3, 3],
       [2, 2],
-      [1, 1],
     ]);
-    expect(moyennes).toEqual({ agent: 2, n1: 2 });
+    expect([moyennes, arrondi]).toEqual([{ agent: 3, n1: 3 }, false]);
     // Sans le N+1, la partie de l'agent seule.
-    expect(releveDesObjectifs(d.objectifs, d.auto, null).moyennes).toEqual({ agent: 2, n1: null });
+    expect(releveDesObjectifs(d.objectifs, d.auto, null).moyennes).toEqual({ agent: 3, n1: null });
   });
 
-  it('une note de 0 est une note : rien ne manque à l’objectif', () => {
-    const d = ficheExemple();
-    const auto = {
-      ...d.auto,
-      objectifs: Object.fromEntries(
-        d.objectifs.map((o) => [o.id, { note: 0 as const, resultats: 'Rien.', commentaire: '' }]),
-      ),
-    };
-    expect(ceQuiManqueALAutoEvaluation(auto, d.objectifs).join()).not.toContain('objectif');
+  it('l’arrondi à 2 : de 1,5 à moins de 2, et justifié', () => {
+    expect([1.5, 1.99, 2, 1.49, null].map(arrondiPossible)).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+    ]);
+    const manque = (d: ReturnType<typeof noteeParLeN1>) =>
+      ceQuiManqueALEvaluationDuN1(d.evaluation, d.reservee!, d.objectifs, d.personnel).join();
+    // 2, 2 et 1 : 1,67. Arrondie, la moyenne demande pourquoi.
+    expect(manque(noteeParLeN1([2, 2, 1], true))).toContain('la justification de l’arrondi');
+    expect(manque(noteeParLeN1([2, 2, 1], true, 'Six mois d’arrêt.'))).not.toContain('arrondi');
+    expect(manque(noteeParLeN1([2, 2, 1]))).not.toContain('arrondi');
+    // 3, 3 et 3 : rien à arrondir ; la demande reste sans effet, et tombe au départ.
+    const sans = noteeParLeN1([3, 3, 3], true);
+    expect(manque(sans)).not.toContain('arrondi');
+    expect(avecSonArrondi(sans.evaluation, sans.objectifs)).toMatchObject({
+      arrondi: false,
+      justificationDeLArrondi: '',
+    });
+    const arrondie = noteeParLeN1([2, 2, 1], true, 'Six mois d’arrêt.');
+    expect(releveDesObjectifs(arrondie.objectifs, arrondie.auto, arrondie.evaluation).arrondi).toBe(
+      true,
+    );
   });
 
-  it('le PDF imprime la note de chaque objectif, l’échelle de 3 à 0, et le relevé', async () => {
+  it('le PDF imprime la note de chaque objectif, l’échelle de 4 à 1, et le relevé', async () => {
     const { textes } = await imprimer(ficheExemple());
     expect(textes).toContain('RELEVÉ DES NOTES OBTENUES');
     expect(textes).toContain('AUTO-ÉVALUATION');
     expect(textes).toContain('Moyenne');
-    expect(textes.filter((t) => t === '2,00 / 3')).toHaveLength(2);
+    expect(textes.filter((t) => t === '3,00 / 4')).toHaveLength(2);
     expect(textes).toContain('Dépassé');
-    expect(textes).not.toContain('Niveau');
+    expect(textes).not.toContain('Moyenne retenue');
+    // Arrondie à 2 : la moyenne retenue, et pourquoi.
+    const arrondie = await imprimer(noteeParLeN1([2, 2, 1], true, 'Six mois d’arrêt maladie.'));
+    expect(arrondie.textes).toContain('1,67 / 4');
+    expect(arrondie.textes).toContain('Moyenne retenue');
+    expect(arrondie.textes).toContain('2,00 / 4');
+    expect(arrondie.tout).toContain('Six mois d’arrêt maladie.');
     // La partie de l'agent seule : sa note seule.
     const agent = await capter(() => ficheDeLAgentPdf(ficheExemple()));
     expect(agent.textes).toContain('RELEVÉ DES NOTES OBTENUES');
     expect(agent.textes).not.toContain('AUTO-ÉVALUATION');
-    expect(agent.textes.filter((t) => t === '2,00 / 3')).toHaveLength(1);
-    // La fiche vierge : les notes à cocher, la moyenne à écrire.
+    expect(agent.textes.filter((t) => t === '3,00 / 4')).toHaveLength(1);
+    // La fiche vierge : les notes à cocher, les moyennes à écrire, l'arrondi à cocher.
     const vierge = await imprimerLaVierge();
     expect(vierge.textes).toContain('RELEVÉ DES NOTES OBTENUES');
-    expect(vierge.textes).toContain('/ 3');
+    expect(vierge.textes).toContain('/ 4');
+    expect(vierge.textes).toContain('Arrondi à 2');
     // Sans objectif, ni échelle ni relevé (ADR-0244).
     const sans = await imprimer(ficheExemple({ objectifs: [] }));
     expect(sans.textes).not.toContain('RELEVÉ DES NOTES OBTENUES');

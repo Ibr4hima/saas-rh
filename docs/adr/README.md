@@ -280,4 +280,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0272](0272-evaluation-sans-objectifs-a-venir.md)     | L'évaluation ne fixe plus les objectifs de l'année suivante                             | acceptée, complétée par 0274                |
 | [0273](0273-fiche-verrouillee-a-la-fin.md)            | À la fin de l'évaluation, la fiche est verrouillée                                      | acceptée                                    |
 | [0274](0274-campagne-des-objectifs.md)                | La fixation des objectifs, une campagne à part, en début d'année                        | acceptée                                    |
-| [0275](0275-notes-des-objectifs-de-0-a-3.md)          | Les objectifs se notent de 0 à 3, avec le relevé des notes et leur moyenne              | acceptée                                    |
+| [0275](0275-notes-des-objectifs-de-0-a-3.md)          | Les objectifs se notent de 0 à 3, avec le relevé des notes et leur moyenne              | acceptée, révisée par 0276                  |
+| [0276](0276-notes-de-1-a-4-et-arrondi-a-2.md)         | Les objectifs se notent de 1 à 4 ; le N+1 peut arrondir la moyenne à 2 en le justifiant | acceptée                                    |

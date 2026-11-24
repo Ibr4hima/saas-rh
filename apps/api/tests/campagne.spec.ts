@@ -363,9 +363,9 @@ describe('l’auto-évaluation (ADR-0215)', () => {
     ...autoEvaluationVide(),
     vecu: 'Une année chargée, avec la reprise des dossiers.',
     objectifs: {
-      [OBJ1]: { note: 2, resultats: '', commentaire: '' },
+      [OBJ1]: { note: 3, resultats: '', commentaire: '' },
       // Un objectif qui n'est pas sur la fiche : il ne s'enregistre pas.
-      [randomUUID()]: { note: 3, resultats: 'Hors fiche.', commentaire: '' },
+      [randomUUID()]: { note: 4, resultats: 'Hors fiche.', commentaire: '' },
     },
   };
   const complete: AutoEvaluation = {
@@ -374,9 +374,9 @@ describe('l’auto-évaluation (ADR-0215)', () => {
     aDesDifficultes: false,
     difficultes: 'Une liste écrite avant le non.',
     objectifs: {
-      [OBJ1]: { note: 2, resultats: 'Délai de 48 heures tenu.', commentaire: '' },
+      [OBJ1]: { note: 3, resultats: 'Délai de 48 heures tenu.', commentaire: '' },
       [OBJ2]: {
-        note: 1,
+        note: 2,
         resultats: 'Deux tiers des dossiers à jour.',
         commentaire: 'Archives.',
       },
@@ -472,7 +472,7 @@ describe('l’auto-évaluation (ADR-0215)', () => {
       aDesCompetencesInexploitees: true,
       competencesInexploitees: 'La rédaction',
     });
-    expect(vu.autoEvaluation?.objectifs[OBJ2]?.note).toBe(1);
+    expect(vu.autoEvaluation?.objectifs[OBJ2]?.note).toBe(2);
     const { equipe } = await campagne.accueil(session('awa'));
     expect(equipe.find((a) => a.employeeId === agents.ibou)?.auto.etat).toBe('transmise');
     await expect(campagne.enregistrerMonAuto(session('ibou'), complete)).rejects.toMatchObject({
@@ -529,8 +529,8 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
       evaluation: {
         ...evaluationDuN1Vide(),
         objectifs: {
-          [o1!.id]: { note: 2, commentaire: 'Délai tenu.' },
-          [randomUUID()]: { note: 3, commentaire: 'Hors fiche.' },
+          [o1!.id]: { note: 3, commentaire: 'Délai tenu.' },
+          [randomUUID()]: { note: 4, commentaire: 'Hors fiche.' },
         },
         // Ibou Ndiaye n'est pas cadre : le management ne s'enregistre pas.
         competences: { connaissances: 'B', management: 'A' },
@@ -598,7 +598,7 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
       evaluation: {
         ...v.evaluation,
         objectifs: Object.fromEntries(
-          v.objectifs.map((o) => [o.id, { note: 2 as const, commentaire: '' }]),
+          v.objectifs.map((o) => [o.id, { note: 3 as const, commentaire: '' }]),
         ),
         competences: competencesB('non_cadre'),
         pointsForts: 'Rigueur.',
@@ -683,13 +683,37 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
     }
   });
 
+  it('arrondie à 2, de 1,5 à moins de 2, la moyenne ne part pas sans sa justification (ADR-0276)', async () => {
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const [o1, o2] = v.objectifs;
+    const erreur = await campagne
+      .transmettreEvaluation(session('awa'), agents.ibou, {
+        evaluation: {
+          ...v.evaluation,
+          // 3 et 1 : une moyenne de 2, rien à arrondir ; 2 et 1 : 1,5.
+          objectifs: {
+            [o1!.id]: { note: 2, commentaire: '' },
+            [o2!.id]: { note: 1, commentaire: '' },
+          },
+          arrondi: true,
+          justificationDeLArrondi: ' ',
+        },
+        reservee: v.reservee,
+      })
+      .then(
+        () => null,
+        (e: { problem: { detail: string } }) => e.problem,
+      );
+    expect(erreur?.detail).toContain('la justification de l’arrondi');
+  });
+
   it('complète, part à l’agent ; elle ne change plus', async () => {
     const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
     const complete: EcritureDeLEvaluation = {
       evaluation: {
         ...v.evaluation,
         objectifs: Object.fromEntries(
-          v.objectifs.map((o) => [o.id, { note: 2 as const, commentaire: '' }]),
+          v.objectifs.map((o) => [o.id, { note: 3 as const, commentaire: '' }]),
         ),
         competences: competencesB('non_cadre'),
         pointsForts: 'Rigueur et disponibilité.',
@@ -702,10 +726,14 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
         // L'entretien, confirmé le jour même de l'auto-évaluation (ADR-0265).
         entretienConfirme: true,
         dateDeLEntretien: AUJOURD_HUI,
+        // Un arrondi à 2 demandé sur une moyenne de 3 : il ne part pas (ADR-0276).
+        arrondi: true,
+        justificationDeLArrondi: 'Sans objet.',
       },
       reservee: { comprehension: 'B', tenue: 'A', observations: '' },
     };
     const t = await campagne.transmettreEvaluation(session('awa'), agents.ibou, complete);
+    expect([t.evaluation.arrondi, t.evaluation.justificationDeLArrondi]).toEqual([false, '']);
     expect([t.etatDeLEvaluation, t.modifiable, t.evaluationTransmiseLe]).toEqual([
       'transmise',
       false,
@@ -1555,7 +1583,7 @@ describe('la fixation des objectifs (ADR-0274)', () => {
 });
 
 describe('les notes des objectifs (ADR-0275)', () => {
-  it('une fiche écrite avec les lettres d’avant se relit en notes : A 3, D 0', async () => {
+  it('une fiche écrite avec les lettres d’avant se relit en notes : A 4, D 1', async () => {
     const { rows } = await raw(
       `SELECT objectifs FROM fiches_entretien WHERE employee_id = $1 AND annee = $2`,
       [agents.ibou, ANNEE],
@@ -1576,7 +1604,7 @@ describe('les notes des objectifs (ADR-0275)', () => {
       ],
     );
     const { auto } = await campagne.monAuto(session('ibou'));
-    expect(auto.objectifs[o1!]).toEqual({ note: 3, resultats: 'Fait.', commentaire: '' });
-    expect(auto.objectifs[o2!]?.note).toBe(0);
+    expect(auto.objectifs[o1!]).toEqual({ note: 4, resultats: 'Fait.', commentaire: '' });
+    expect(auto.objectifs[o2!]?.note).toBe(1);
   });
 });

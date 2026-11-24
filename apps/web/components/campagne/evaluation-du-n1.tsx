@@ -62,9 +62,10 @@ const appreciationVide = (): AppreciationDuN1 => ({ note: null, commentaire: '' 
 
 /**
  * La fiche du N+1. Obligatoires, et marqués d'un astérisque : la note de
- * chaque objectif, de 0 à 3 (ADR-0275), chaque compétence (sauf le
- * management, s'il y a lieu), les points forts, les axes de développement,
- * puis la compréhension et la tenue du poste. Sans `onChange`, la fiche se lit ; sans `reservee`, c'est
+ * chaque objectif, de 1 à 4 (ADR-0276), la justification d'une moyenne
+ * arrondie à 2, chaque compétence (sauf le management, s'il y a lieu), les
+ * points forts, les axes de développement, puis la compréhension et la
+ * tenue du poste. Sans `onChange`, la fiche se lit ; sans `reservee`, c'est
  * celle de l'agent, qui s'arrête avant la partie réservée (ADR-0217). Les
  * commentaires du N+2, en lecture ou à écrire, ferment la partie réservée
  * (ADR-0218).
@@ -350,8 +351,13 @@ function Resultats({
           })}
         </ol>
       )}
-      {/* Les notes de l'agent et du N+1, et leurs moyennes, qui suivent la saisie (ADR-0275). */}
-      <ReleveDesNotes objectifs={objectifs} auto={auto} evaluation={e} />
+      {/* Les notes de l'agent et du N+1, leurs moyennes, et l'arrondi à 2 (ADR-0275, ADR-0276). */}
+      <ReleveDesNotes
+        objectifs={objectifs}
+        auto={auto}
+        evaluation={e}
+        onArrondi={onChange ? (maj) => onChange((x) => ({ ...x, ...maj })) : undefined}
+      />
       <AutresRealisationsEnLecture auto={auto} />
     </CarteDeLaFiche>
   );

@@ -53,17 +53,17 @@ export function ficheExemple(o: Partial<DonneesDeLaFiche> = {}): DonneesDeLaFich
         'Des données arrivées en retard de la part de deux partenaires.\nUn logiciel de modélisation installé seulement en avril.',
       objectifs: {
         [O1]: {
-          note: 3,
+          note: 4,
           resultats: 'Quatre tableaux publiés, en moyenne 9 jours après la fin du trimestre.',
           commentaire: 'Le nouveau circuit de collecte a fait gagner une semaine.',
         },
         [O2]: {
-          note: 2,
+          note: 3,
           resultats: 'Rapport remis le 25 septembre, validé le 10 octobre.',
           commentaire: 'La validation a pris plus de temps que prévu.',
         },
         [O3]: {
-          note: 1,
+          note: 2,
           resultats: 'Une session tenue sur deux.',
           commentaire: 'La seconde session a été reportée faute de salle disponible.',
         },
@@ -81,14 +81,14 @@ export function ficheExemple(o: Partial<DonneesDeLaFiche> = {}): DonneesDeLaFich
     evaluation: {
       objectifs: {
         [O1]: {
-          note: 3,
+          note: 4,
           commentaire: 'Résultat remarquable, salué par la Direction générale.',
         },
         [O2]: {
-          note: 2,
+          note: 3,
           commentaire: 'Objectif atteint ; la validation tardive ne dépendait pas de l’agent.',
         },
-        [O3]: { note: 1, commentaire: 'À reprendre au premier trimestre 2027.' },
+        [O3]: { note: 2, commentaire: 'À reprendre au premier trimestre 2027.' },
       },
       competences: {
         connaissances: 'A',
@@ -130,6 +130,8 @@ export function ficheExemple(o: Partial<DonneesDeLaFiche> = {}): DonneesDeLaFich
       ],
       entretienConfirme: true,
       dateDeLEntretien: '2026-12-22',
+      arrondi: false,
+      justificationDeLArrondi: '',
     },
     reservee: {
       comprehension: 'A',

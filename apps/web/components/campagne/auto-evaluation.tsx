@@ -311,7 +311,7 @@ function ChampDeLaQuestion({
 /**
  * Le formulaire de l'auto-évaluation. Obligatoires, et marqués d'un
  * astérisque : les deux questions du récapitulatif, pour chaque objectif sa
- * note, de 0 à 3 (ADR-0275), et ses résultats obtenus (ADR-0215), puis les
+ * note, de 1 à 4 (ADR-0276), et ses résultats obtenus (ADR-0215), puis les
  * questions des préoccupations et des souhaits, sauf « Autres commentaires »
  * (ADR-0238). Sous les objectifs, le relevé de ses notes et leur moyenne.
  */

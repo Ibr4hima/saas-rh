@@ -6,6 +6,7 @@ import {
   autoEvaluationRelue,
   autoEvaluationTransmise,
   autoEvaluationVide,
+  avecSonArrondi,
   ceQuiManqueALAutoEvaluation,
   ceQuiManqueALEvaluationDuN1,
   ceQuiManqueAuxObjectifs,
@@ -665,8 +666,11 @@ async function ecrireEvaluation(
   }
   const personnel = personnelDeLaFiche(agent.personnel);
   const surLaFiche = evaluationSurLaFiche(evaluation, annuelle.objectifs, personnel);
-  // Transmise, l'évaluation part sans les lignes de ses tableaux restées vides.
-  const propre = transmettre ? sansLignesVides(surLaFiche) : surLaFiche;
+  // Transmise, l'évaluation part sans les lignes de ses tableaux restées
+  // vides, ni un arrondi à 2 que la moyenne ne permet plus (ADR-0276).
+  const propre = transmettre
+    ? avecSonArrondi(sansLignesVides(surLaFiche), annuelle.objectifs)
+    : surLaFiche;
   if (transmettre) {
     // L'entretien a lieu entre la transmission de l'auto-évaluation et le
     // jour où l'évaluation part à l'agent (ADR-0265).

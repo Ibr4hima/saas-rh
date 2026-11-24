@@ -5,6 +5,7 @@ import {
   dateEnLettres,
   evaluationDuN1Vide,
   LIBELLES_DU_PERSONNEL,
+  MOYENNE_D_ATTEINTE,
   moyenneEnChiffres,
   NIVEAUX,
   NIVEAUX_DE_COMPETENCE,
@@ -753,8 +754,8 @@ class Composition {
   }
 
   /**
-   * La note donnée à un objectif (ADR-0275) : son chiffre, puis ce qu'elle
-   * veut dire ; aucune, « Non renseigné ». Une note de 0 est une note.
+   * La note donnée à un objectif, de 1 à 4 (ADR-0276) : son chiffre, puis ce
+   * qu'elle veut dire ; sans note, « Non renseigné ».
    */
   note(note: NoteDObjectif | null): Cellule {
     const vide = 'Non renseigné';
@@ -776,6 +777,15 @@ class Composition {
         this.pastille(note, x, y - 1.2, COTE);
         this.ecrire(NOTES_D_ATTEINTE[note].libelle, x + COTE + 7, y, l - COTE - 7, s);
       },
+    };
+  }
+
+  /** Une case à cocher, vide et seule : l'arrondi à 2 sur la fiche vierge (ADR-0276). */
+  caseSeule(): Cellule {
+    const COTE = 9;
+    return {
+      hauteur: () => COTE + 2,
+      dessiner: (x, y) => this.caseACocher(x, y + 1.2, false, COTE),
     };
   }
 
@@ -850,8 +860,8 @@ class Composition {
   }
 
   /**
-   * Les quatre notes d'un objectif, de 3 à 0, chacune sa case vide : sur une
-   * ligne si elles y tiennent, sinon deux par ligne (ADR-0275).
+   * Les quatre notes d'un objectif, de 4 à 1, chacune sa case vide : sur une
+   * ligne si elles y tiennent, sinon deux par ligne (ADR-0276).
    */
   notesACocher(): Cellule {
     const sChiffre: Style = { coupe: 'bold', taille: 9 };
@@ -1302,7 +1312,7 @@ function objectif(
 ): { hauteur: number; poser: () => void } {
   const agent = o ? d.auto.objectifs[o.id] : undefined;
   const n1 = o ? d.evaluation.objectifs[o.id] : undefined;
-  // De 0 à 3 (ADR-0275) ; sur la fiche vierge, les quatre notes à cocher.
+  // De 1 à 4 (ADR-0276) ; sur la fiche vierge, les quatre notes à cocher.
   const note = (donnee: NoteDObjectif | null) => (f.vierge ? f.notesACocher() : f.note(donnee));
   const intitule = o ? typographie(o.intitule) : '';
   const indicateurs = o?.indicateurs ? typographie(o.indicateurs) : '';
@@ -1368,7 +1378,7 @@ function objectif(
 }
 
 /**
- * L'échelle des notes des objectifs, de 3 à 0 (ADR-0275), comme la grille
+ * L'échelle des notes des objectifs, de 4 à 1 (ADR-0276), comme la grille
  * l'écrit : « Dépassé (résultats excellents) ».
  */
 function echelle(f: Composition): void {
@@ -1389,9 +1399,11 @@ function echelle(f: Composition): void {
 /**
  * Le relevé des notes obtenues (ADR-0275), sous l'échelle, comme celui de
  * l'ancienne grille du personnel non cadre : la note de chaque objectif, à
- * l'auto-évaluation et chez le N+1, puis leurs moyennes, sur 3, une fois
- * chaque objectif noté. Sur la partie de l'agent seule, sa note seule ; sur
- * la fiche vierge, les notes et les moyennes s'écrivent à la main.
+ * l'auto-évaluation et chez le N+1, puis leurs moyennes, sur 4, une fois
+ * chaque objectif noté. Arrondie à 2 par le N+1 (ADR-0276), la moyenne
+ * retenue ferme le tableau, et sa justification le suit. Sur la partie de
+ * l'agent seule, sa note seule ; sur la fiche vierge, les notes et les
+ * moyennes s'écrivent à la main, l'arrondi se coche.
  */
 function releve(f: Composition, d: DonneesDeLaFiche): void {
   const avecLeN1 = !f.agentSeul;
@@ -1402,18 +1414,18 @@ function releve(f: Composition, d: DonneesDeLaFiche): void {
       : colonnes(f, ['N°', 0.35], ['Objectif', 4.5], ['Note', 1.25])
   ).map((c, i) => (i >= 2 ? { ...c, centre: true } : c));
   const sNote: Style = { coupe: 'bold' };
-  const surTrois = `/ ${NOTE_MAXIMALE}`;
-  // Sur la fiche vierge, la place d'écrire la moyenne devant « / 3 ».
-  const aEcrireSurTrois: Cellule = {
-    hauteur: (l) => f.hauteurDe(surTrois, l, sNote),
-    dessiner: (x, y, l) => f.ecrire(surTrois, x, y, l - 12, sNote, 'right'),
+  const surQuatre = `/ ${NOTE_MAXIMALE}`;
+  // Sur la fiche vierge, la place d'écrire la moyenne devant « / 4 ».
+  const aEcrireSurQuatre: Cellule = {
+    hauteur: (l) => f.hauteurDe(surQuatre, l, sNote),
+    dessiner: (x, y, l) => f.ecrire(surQuatre, x, y, l - 12, sNote, 'right'),
   };
   const moyenne = (m: number | null) =>
     f.vierge
-      ? aEcrireSurTrois
-      : f.chiffre(`${m === null ? '…' : moyenneEnChiffres(m)} ${surTrois}`, sNote);
+      ? aEcrireSurQuatre
+      : f.chiffre(`${m === null ? '…' : moyenneEnChiffres(m)} ${surQuatre}`, sNote);
   const note = (n: NoteDObjectif | null) => f.chiffre(n === null ? '…' : String(n));
-  const { lignes, moyennes } = releveDesObjectifs(
+  const { lignes, moyennes, arrondi } = releveDesObjectifs(
     d.objectifs,
     d.auto,
     avecLeN1 ? d.evaluation : null,
@@ -1437,9 +1449,24 @@ function releve(f: Composition, d: DonneesDeLaFiche): void {
       moyenne(moyennes.agent),
       ...(avecLeN1 ? [moyenne(moyennes.n1)] : []),
     ],
+    // Arrondie à 2 par le N+1 : la moyenne qu'on retient (ADR-0276).
+    ...(arrondi
+      ? [[{ ...f.intitule('Moyenne retenue'), colonnes: 3 }, moyenne(MOYENNE_D_ATTEINTE)]]
+      : []),
   ];
   f.etiquette('Relevé des notes obtenues', ENCRE, f.debutDuTableau(cols, toutes), 24);
   f.tableau(cols, toutes);
+  if (!avecLeN1) return;
+  if (f.vierge) {
+    f.cles([
+      ['Arrondi à 2', f.caseSeule()],
+      ['Justification de l’arrondi', f.aEcrire(2)],
+    ]);
+  } else if (arrondi) {
+    f.cles([
+      ['Justification de l’arrondi', f.texte(typographie(d.evaluation.justificationDeLArrondi))],
+    ]);
+  }
 }
 
 /** Une colonne sur toute la largeur. */
