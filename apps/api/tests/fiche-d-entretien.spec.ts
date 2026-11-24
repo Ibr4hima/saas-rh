@@ -10,7 +10,18 @@
  */
 import PDFDocument from 'pdfkit';
 import { describe, expect, it, vi } from 'vitest';
-import { LONGUEURS_DE_LA_FICHE, MAXIMUMS_DE_LA_FICHE } from '@teranga/contracts';
+import {
+  appreciationDuN1Schema,
+  autoEvaluationSchema,
+  autoEvaluationVide,
+  ceQuiManqueALAutoEvaluation,
+  evaluationDuN1Schema,
+  LONGUEURS_DE_LA_FICHE,
+  MAXIMUMS_DE_LA_FICHE,
+  moyenneDesNotes,
+  moyenneEnChiffres,
+  releveDesObjectifs,
+} from '@teranga/contracts';
 import {
   ficheDEntretienPdf,
   ficheDeLAgentPdf,
@@ -258,16 +269,13 @@ describe('la fiche en PDF', () => {
         competencesInexploitees: texte,
         autresCommentaires: texte,
         objectifs: Object.fromEntries(
-          objectifs.map((o) => [
-            o.id,
-            { niveau: 'B' as const, resultats: texte, commentaire: texte },
-          ]),
+          objectifs.map((o) => [o.id, { note: 2 as const, resultats: texte, commentaire: texte }]),
         ),
       },
       evaluation: {
         ...base.evaluation,
         objectifs: Object.fromEntries(
-          objectifs.map((o) => [o.id, { niveau: 'C' as const, commentaire: texte }]),
+          objectifs.map((o) => [o.id, { note: 1 as const, commentaire: texte }]),
         ),
         pointsForts: texte,
         axesDeDeveloppement: texte,
@@ -358,5 +366,85 @@ describe('la typographie', () => {
     expect(typographie('Moins de 1 % en 48 heures, sur 312 dossiers en 2026.')).toBe(
       'Moins de 1\u00a0% en 48\u00a0heures, sur 312\u00a0dossiers en 2026.',
     );
+  });
+});
+
+describe('les notes des objectifs, de 0 à 3 (ADR-0275)', () => {
+  const id = '0193a4c2-6f1e-7c3a-9b2d-4e5f6a7b8c9d';
+
+  it('les lettres d’avant se relisent en notes : A 3, B 2, C 1, D 0', () => {
+    const auto = autoEvaluationSchema.parse({
+      ...autoEvaluationVide(),
+      objectifs: { [id]: { niveau: 'A', resultats: '', commentaire: '' } },
+    });
+    expect(auto.objectifs[id]).toEqual({ note: 3, resultats: '', commentaire: '' });
+    for (const [lettre, note] of [
+      ['B', 2],
+      ['C', 1],
+      ['D', 0],
+    ] as const) {
+      const lue = evaluationDuN1Schema
+        .partial()
+        .parse({ objectifs: { [id]: { niveau: lettre, commentaire: '' } } });
+      expect(lue.objectifs?.[id]?.note).toBe(note);
+    }
+    // Une note se garde telle quelle ; hors de l'échelle, elle est refusée.
+    expect(appreciationDuN1Schema.parse({ note: 0, commentaire: '' }).note).toBe(0);
+    expect(appreciationDuN1Schema.safeParse({ note: 4, commentaire: '' }).success).toBe(false);
+  });
+
+  it('la moyenne, sur 3, une fois chaque objectif noté', () => {
+    expect(moyenneDesNotes([3, 2, 2])).toBeCloseTo(7 / 3);
+    expect(moyenneEnChiffres(7 / 3)).toBe('2,33');
+    expect(moyenneEnChiffres(2)).toBe('2,00');
+    expect(moyenneDesNotes([0, 0])).toBe(0);
+    expect(moyenneDesNotes([3, null])).toBeNull();
+    expect(moyenneDesNotes([])).toBeNull();
+  });
+
+  it('le relevé : la note de chaque objectif, à l’auto-évaluation et chez le N+1', () => {
+    const d = ficheExemple();
+    const { lignes, moyennes } = releveDesObjectifs(d.objectifs, d.auto, d.evaluation);
+    expect(lignes.map((l) => [l.agent, l.n1])).toEqual([
+      [3, 3],
+      [2, 2],
+      [1, 1],
+    ]);
+    expect(moyennes).toEqual({ agent: 2, n1: 2 });
+    // Sans le N+1, la partie de l'agent seule.
+    expect(releveDesObjectifs(d.objectifs, d.auto, null).moyennes).toEqual({ agent: 2, n1: null });
+  });
+
+  it('une note de 0 est une note : rien ne manque à l’objectif', () => {
+    const d = ficheExemple();
+    const auto = {
+      ...d.auto,
+      objectifs: Object.fromEntries(
+        d.objectifs.map((o) => [o.id, { note: 0 as const, resultats: 'Rien.', commentaire: '' }]),
+      ),
+    };
+    expect(ceQuiManqueALAutoEvaluation(auto, d.objectifs).join()).not.toContain('objectif');
+  });
+
+  it('le PDF imprime la note de chaque objectif, l’échelle de 3 à 0, et le relevé', async () => {
+    const { textes } = await imprimer(ficheExemple());
+    expect(textes).toContain('RELEVÉ DES NOTES OBTENUES');
+    expect(textes).toContain('AUTO-ÉVALUATION');
+    expect(textes).toContain('Moyenne');
+    expect(textes.filter((t) => t === '2,00 / 3')).toHaveLength(2);
+    expect(textes).toContain('Dépassé');
+    expect(textes).not.toContain('Niveau');
+    // La partie de l'agent seule : sa note seule.
+    const agent = await capter(() => ficheDeLAgentPdf(ficheExemple()));
+    expect(agent.textes).toContain('RELEVÉ DES NOTES OBTENUES');
+    expect(agent.textes).not.toContain('AUTO-ÉVALUATION');
+    expect(agent.textes.filter((t) => t === '2,00 / 3')).toHaveLength(1);
+    // La fiche vierge : les notes à cocher, la moyenne à écrire.
+    const vierge = await imprimerLaVierge();
+    expect(vierge.textes).toContain('RELEVÉ DES NOTES OBTENUES');
+    expect(vierge.textes).toContain('/ 3');
+    // Sans objectif, ni échelle ni relevé (ADR-0244).
+    const sans = await imprimer(ficheExemple({ objectifs: [] }));
+    expect(sans.textes).not.toContain('RELEVÉ DES NOTES OBTENUES');
   });
 });

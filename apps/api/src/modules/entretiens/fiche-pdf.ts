@@ -5,20 +5,25 @@ import {
   dateEnLettres,
   evaluationDuN1Vide,
   LIBELLES_DU_PERSONNEL,
+  moyenneEnChiffres,
   NIVEAUX,
-  NIVEAUX_D_ATTEINTE,
   NIVEAUX_DE_COMPETENCE,
+  NOTE_MAXIMALE,
+  NOTES_D_ATTEINTE,
+  NOTES_D_OBJECTIF,
   partieReserveeVide,
   PERSONNELS_DE_LA_FICHE,
   pucesDe,
   QUESTIONS_DES_SOUHAITS,
   QUESTIONS_DU_BILAN,
   REFERENCE_DE_LA_FICHE,
+  releveDesObjectifs,
   SYNTHESE_GENERALE,
   TITRE_DE_LA_FICHE,
   type AutoEvaluation,
   type EvaluationDuN1,
   type Niveau,
+  type NoteDObjectif,
   type ObjectifEvalue,
   type PartieReservee,
   type PersonnelDeLaFiche,
@@ -227,6 +232,8 @@ const lignesDuDebut = (n: number) => (n <= PETIT_TABLEAU ? n : 2);
 interface Colonne {
   titre: string;
   largeur: number;
+  /** Le titre au milieu de la colonne, au-dessus de chiffres centrés. */
+  centre?: boolean;
 }
 
 /** Une cellule : sa hauteur à une largeur donnée, et comment la dessiner. */
@@ -625,6 +632,7 @@ class Composition {
           this.y + MARGE_Y,
           c.largeur - 2 * mx,
           sTitre,
+          c.centre ? 'center' : 'left',
         ),
       );
       this.y += hauteurDesTitres;
@@ -729,38 +737,54 @@ class Composition {
     this.doc.restore();
   }
 
-  /** La lettre d'un niveau, en blanc sur un carré bleu aux coins adoucis. */
-  lettre(niveau: Niveau, x: number, y: number, cote = 13): void {
+  /** La note d'un objectif, en blanc sur un carré bleu aux coins adoucis. */
+  pastille(note: NoteDObjectif, x: number, y: number, cote = 13): void {
     this.doc.roundedRect(x, y, cote, cote, cote * 0.18).fill(BLEU);
     const taille = cote * 0.66;
+    const chiffre = String(note);
     this.style({ coupe: 'bold', taille });
-    const largeur = this.doc.widthOfString(niveau);
+    const largeur = this.doc.widthOfString(chiffre);
     this.doc
       .fillColor(BLANC)
-      .text(niveau, x + (cote - largeur) / 2, y + cote / 2 + taille * 0.355, {
+      .text(chiffre, x + (cote - largeur) / 2, y + cote / 2 + taille * 0.355, {
         lineBreak: false,
         baseline: 'alphabetic',
       });
   }
 
-  /** Un niveau donné : sa lettre, puis son libellé ; aucun, « Non renseigné ». */
-  niveau(niveau: Niveau | null, libelle: (n: Niveau) => string): Cellule {
+  /**
+   * La note donnée à un objectif (ADR-0275) : son chiffre, puis ce qu'elle
+   * veut dire ; aucune, « Non renseigné ». Une note de 0 est une note.
+   */
+  note(note: NoteDObjectif | null): Cellule {
     const vide = 'Non renseigné';
     const COTE = 13;
     const s: Style = { coupe: 'bold', taille: 9.5 };
     return {
       hauteur: (l) =>
-        niveau
-          ? Math.max(COTE, this.hauteurDe(libelle(niveau), l - COTE - 7, s) - INTERLIGNE)
-          : this.hauteurDe(vide, l, { coupe: 'italic' }),
+        note === null
+          ? this.hauteurDe(vide, l, { coupe: 'italic' })
+          : Math.max(
+              COTE,
+              this.hauteurDe(NOTES_D_ATTEINTE[note].libelle, l - COTE - 7, s) - INTERLIGNE,
+            ),
       dessiner: (x, y, l) => {
-        if (!niveau) {
+        if (note === null) {
           this.ecrire(vide, x, y, l, { coupe: 'italic' });
           return;
         }
-        this.lettre(niveau, x, y - 1.2, COTE);
-        this.ecrire(libelle(niveau), x + COTE + 7, y, l - COTE - 7, s);
+        this.pastille(note, x, y - 1.2, COTE);
+        this.ecrire(NOTES_D_ATTEINTE[note].libelle, x + COTE + 7, y, l - COTE - 7, s);
       },
+    };
+  }
+
+  /** Un chiffre, au milieu de sa cellule, sur la ligne de base du texte d'à côté. */
+  chiffre(texte: string, s: Style = {}): Cellule {
+    const st: Style = { taille: 9.5, ...s };
+    return {
+      hauteur: (l) => this.hauteurDe(texte, l, st),
+      dessiner: (x, y, l) => this.ecrire(texte, x, y, l, st, 'center'),
     };
   }
 
@@ -826,33 +850,33 @@ class Composition {
   }
 
   /**
-   * Les quatre niveaux, chacun sa case vide : sur une ligne s'ils y tiennent,
-   * sinon deux par ligne.
+   * Les quatre notes d'un objectif, de 3 à 0, chacune sa case vide : sur une
+   * ligne si elles y tiennent, sinon deux par ligne (ADR-0275).
    */
-  niveauxACocher(libelle: (n: Niveau) => string): Cellule {
-    const sLettre: Style = { coupe: 'bold', taille: 9 };
+  notesACocher(): Cellule {
+    const sChiffre: Style = { coupe: 'bold', taille: 9 };
     const s: Style = { taille: 9 };
     /** La case et son air. */
     const CASE = 15;
-    /** L'air entre deux niveaux, sur une ligne. */
+    /** L'air entre deux notes, sur une ligne. */
     const ECART = 14;
     const PAS = 16;
-    const morceaux = (n: Niveau): [string, Style][] => [
-      [`${n}  `, sLettre],
-      [libelle(n), s],
+    const morceaux = (n: NoteDObjectif): [string, Style][] => [
+      [`${n}  `, sChiffre],
+      [NOTES_D_ATTEINTE[n].libelle, s],
     ];
-    const largeurs = NIVEAUX.map(
+    const largeurs = NOTES_D_OBJECTIF.map(
       (n) =>
         CASE + morceaux(n).reduce((w, [t, st]) => w + this.doc.widthOfString(t, this.style(st)), 0),
     );
     const surUneLigne = (l: number) =>
-      largeurs.reduce((t, w) => t + w, 0) + ECART * (NIVEAUX.length - 1) <= l;
+      largeurs.reduce((t, w) => t + w, 0) + ECART * (NOTES_D_OBJECTIF.length - 1) <= l;
     return {
-      hauteur: (l) => (surUneLigne(l) ? 0 : PAS) + this.hauteurDe('A', l, s),
+      hauteur: (l) => (surUneLigne(l) ? 0 : PAS) + this.hauteurDe('3', l, s),
       dessiner: (x, y, l) => {
         const uneLigne = surUneLigne(l);
         let suivant = x;
-        NIVEAUX.forEach((n, i) => {
+        NOTES_D_OBJECTIF.forEach((n, i) => {
           const xi = uneLigne ? suivant : x + (i % 2) * (l / 2);
           const yi = uneLigne ? y : y + Math.floor(i / 2) * PAS;
           this.caseACocher(xi, yi + 1.2, false, 9);
@@ -1235,6 +1259,7 @@ function bilan(f: Composition, d: DonneesDeLaFiche): void {
   } else {
     for (const o of objectifs) o.poser();
     echelle(f);
+    releve(f, d);
   }
 
   // Sur la fiche vierge, les autres réalisations prennent les lignes qui
@@ -1277,9 +1302,8 @@ function objectif(
 ): { hauteur: number; poser: () => void } {
   const agent = o ? d.auto.objectifs[o.id] : undefined;
   const n1 = o ? d.evaluation.objectifs[o.id] : undefined;
-  const libelle = (n: Niveau) => NIVEAUX_D_ATTEINTE[n].libelle;
-  const niveau = (choisi: Niveau | null) =>
-    f.vierge ? f.niveauxACocher(libelle) : f.niveau(choisi, libelle);
+  // De 0 à 3 (ADR-0275) ; sur la fiche vierge, les quatre notes à cocher.
+  const note = (donnee: NoteDObjectif | null) => (f.vierge ? f.notesACocher() : f.note(donnee));
   const intitule = o ? typographie(o.intitule) : '';
   const indicateurs = o?.indicateurs ? typographie(o.indicateurs) : '';
   const sIntitule: Style = { coupe: 'bold', taille: 10.6 };
@@ -1292,12 +1316,12 @@ function objectif(
     ['Indicateurs', f.aEcrire(2)],
   ];
   const deLAgent: [string, Cellule][] = [
-    ['Niveau', niveau(agent?.niveau ?? null)],
+    ['Note', note(agent?.note ?? null)],
     ['Résultats obtenus', f.saisie(agent?.resultats ?? '', VIERGE.objectif)],
     ['Commentaire', f.saisie(agent?.commentaire ?? '', VIERGE.objectif)],
   ];
   const duN1: [string, Cellule][] = [
-    ['Niveau', niveau(n1?.niveau ?? null)],
+    ['Note', note(n1?.note ?? null)],
     ['Commentaire', f.saisie(n1?.commentaire ?? '', VIERGE.objectif)],
   ];
   const etiquettes = {
@@ -1343,20 +1367,79 @@ function objectif(
   };
 }
 
-/** L'échelle des objectifs, comme la grille l'écrit : « Dépassé (résultats excellents) ». */
+/**
+ * L'échelle des notes des objectifs, de 3 à 0 (ADR-0275), comme la grille
+ * l'écrit : « Dépassé (résultats excellents) ».
+ */
 function echelle(f: Composition): void {
   const COTE = 11;
   const pas = 17;
-  f.etiquette('Échelle', ENCRE, NIVEAUX.length * pas, 30);
-  for (const n of NIVEAUX) {
-    const { libelle, resultats } = NIVEAUX_D_ATTEINTE[n];
-    f.lettre(n, f.gauche, f.y - 1, COTE);
+  f.etiquette('Échelle', ENCRE, NOTES_D_OBJECTIF.length * pas, 30);
+  for (const n of NOTES_D_OBJECTIF) {
+    const { libelle, resultats } = NOTES_D_ATTEINTE[n];
+    f.pastille(n, f.gauche, f.y - 1, COTE);
     f.ecrireEnLigne(f.gauche + COTE + 9, f.y, f.largeur - COTE - 9, [
       [libelle, { coupe: 'bold', taille: 8.8 }],
       [` (${resultats.toLocaleLowerCase('fr')})`, { taille: 8.8 }],
     ]);
     f.y += pas;
   }
+}
+
+/**
+ * Le relevé des notes obtenues (ADR-0275), sous l'échelle, comme celui de
+ * l'ancienne grille du personnel non cadre : la note de chaque objectif, à
+ * l'auto-évaluation et chez le N+1, puis leurs moyennes, sur 3, une fois
+ * chaque objectif noté. Sur la partie de l'agent seule, sa note seule ; sur
+ * la fiche vierge, les notes et les moyennes s'écrivent à la main.
+ */
+function releve(f: Composition, d: DonneesDeLaFiche): void {
+  const avecLeN1 = !f.agentSeul;
+  // Les notes au milieu de leur colonne, sous leur titre.
+  const cols = (
+    avecLeN1
+      ? colonnes(f, ['N°', 0.35], ['Objectif', 3.9], ['Auto-évaluation', 1.25], ['N+1', 1.25])
+      : colonnes(f, ['N°', 0.35], ['Objectif', 4.5], ['Note', 1.25])
+  ).map((c, i) => (i >= 2 ? { ...c, centre: true } : c));
+  const sNote: Style = { coupe: 'bold' };
+  const surTrois = `/ ${NOTE_MAXIMALE}`;
+  // Sur la fiche vierge, la place d'écrire la moyenne devant « / 3 ».
+  const aEcrireSurTrois: Cellule = {
+    hauteur: (l) => f.hauteurDe(surTrois, l, sNote),
+    dessiner: (x, y, l) => f.ecrire(surTrois, x, y, l - 12, sNote, 'right'),
+  };
+  const moyenne = (m: number | null) =>
+    f.vierge
+      ? aEcrireSurTrois
+      : f.chiffre(`${m === null ? '…' : moyenneEnChiffres(m)} ${surTrois}`, sNote);
+  const note = (n: NoteDObjectif | null) => f.chiffre(n === null ? '…' : String(n));
+  const { lignes, moyennes } = releveDesObjectifs(
+    d.objectifs,
+    d.auto,
+    avecLeN1 ? d.evaluation : null,
+  );
+  const corps: Cellule[][] = f.vierge
+    ? Array.from({ length: VIERGE.objectifs }, (_, i) => [
+        f.intitule(String(i + 1)),
+        f.blanc(1),
+        ...(avecLeN1 ? [f.blanc(1), f.blanc(1)] : [f.blanc(1)]),
+      ])
+    : lignes.map((l, i) => [
+        f.intitule(String(i + 1)),
+        f.texte(typographie(l.objectif.intitule)),
+        note(l.agent),
+        ...(avecLeN1 ? [note(l.n1)] : []),
+      ]);
+  const toutes: Cellule[][] = [
+    ...corps,
+    [
+      { ...f.intitule('Moyenne'), colonnes: 2 },
+      moyenne(moyennes.agent),
+      ...(avecLeN1 ? [moyenne(moyennes.n1)] : []),
+    ],
+  ];
+  f.etiquette('Relevé des notes obtenues', ENCRE, f.debutDuTableau(cols, toutes), 24);
+  f.tableau(cols, toutes);
 }
 
 /** Une colonne sur toute la largeur. */

@@ -3,25 +3,23 @@
 import { useId, useState, type ReactNode } from 'react';
 import {
   LONGUEURS_DE_LA_FICHE,
-  NIVEAUX_D_ATTEINTE,
-  NIVEAUX,
   pucesDe,
   QUESTIONS_DES_SOUHAITS,
   QUESTIONS_DU_BILAN,
   type AppreciationDeLAgent,
   type AutoEvaluation,
   type ChoixDeLAuto,
-  type Niveau,
   type ObjectifEvalue,
 } from '@teranga/contracts';
 import { Card, cn, Field } from '@teranga/ui';
 import { insecables } from '../../lib/mots';
-import { ChoixDeNiveau, NiveauDonne, ZoneDeTexte } from '../grille-evaluation';
+import { ZoneDeTexte } from '../grille-evaluation';
 import { type IconName } from '../icons';
 import { OuiNon } from '../saisie-de-fiche';
 import { TitreDeSection } from './charte';
 import type { Changement } from './enregistrement';
 import { ListeAPuces } from './liste-a-puces';
+import { ChoixDeLaNote, NoteDonnee, ReleveDesNotes } from './notes';
 
 /* ────────────────────────────────────────────────────────────────
    L'auto-évaluation sur la fiche S1/EN05 (ADR-0215) : ce que l'agent
@@ -31,11 +29,6 @@ import { ListeAPuces } from './liste-a-puces';
    réalisations), les préoccupations et les souhaits. La même forme se lit
    une fois transmise. Les pièces servent aussi la fiche du N+1 (ADR-0216).
    ──────────────────────────────────────────────────────────────── */
-
-/** Les niveaux d'atteinte d'un objectif, en un mot : « Dépassé », « Réalisé »… */
-export const LIBELLES_D_ATTEINTE = Object.fromEntries(
-  NIVEAUX.map((n) => [n, NIVEAUX_D_ATTEINTE[n].libelle]),
-) as Record<Niveau, string>;
 
 /** Qui remplit une partie de la fiche, comme le dit le PDF. */
 export const PAR_L_AGENT = 'Rempli par l’agent';
@@ -82,7 +75,7 @@ const SOUHAITS: readonly QuestionDeLaFiche[] = [
 ];
 
 const appreciationVide = (): AppreciationDeLAgent => ({
-  niveau: null,
+  note: null,
   resultats: '',
   commentaire: '',
 });
@@ -317,9 +310,10 @@ function ChampDeLaQuestion({
 
 /**
  * Le formulaire de l'auto-évaluation. Obligatoires, et marqués d'un
- * astérisque : les deux questions du récapitulatif, pour chaque objectif son
- * niveau et ses résultats obtenus (ADR-0215), et les questions des
- * préoccupations et des souhaits, sauf « Autres commentaires » (ADR-0238).
+ * astérisque : les deux questions du récapitulatif, pour chaque objectif sa
+ * note, de 0 à 3 (ADR-0275), et ses résultats obtenus (ADR-0215), puis les
+ * questions des préoccupations et des souhaits, sauf « Autres commentaires »
+ * (ADR-0238). Sous les objectifs, le relevé de ses notes et leur moyenne.
  */
 export function SaisieDeLAuto({
   annee,
@@ -370,14 +364,12 @@ export function SaisieDeLAuto({
                   <EnTeteDeLObjectif objectif={o} rang={i + 1} />
                   <div>
                     <p className="mb-1.5 text-sm font-medium text-ink-strong">
-                      Niveau<span className="text-danger"> *</span>
+                      Note<span className="text-danger"> *</span>
                     </p>
-                    <ChoixDeNiveau
-                      legende={`Niveau de l’objectif ${i + 1}`}
-                      valeur={a.niveau}
-                      libelles={LIBELLES_D_ATTEINTE}
-                      court
-                      onChange={(niveau) => changer({ niveau })}
+                    <ChoixDeLaNote
+                      legende={`Note de l’objectif ${i + 1}`}
+                      valeur={a.note}
+                      onChange={(note) => changer({ note })}
                     />
                   </div>
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -398,6 +390,8 @@ export function SaisieDeLAuto({
             })}
           </ol>
         )}
+        {/* La moyenne de ses notes, note après note (ADR-0275). */}
+        <ReleveDesNotes objectifs={objectifs} auto={auto} />
         {/* En puces, comme les réponses en liste (ADR-0261). */}
         <div className="px-5 py-5">
           <QuestionEnPuces
@@ -513,7 +507,7 @@ export function RecapitulatifEnLecture({ auto, qui }: { auto: AutoEvaluation; qu
   );
 }
 
-/** Ce que l'agent dit d'un objectif, en lecture : le niveau, les résultats obtenus, le commentaire. */
+/** Ce que l'agent dit d'un objectif, en lecture : la note, les résultats obtenus, le commentaire. */
 export function AppreciationDeLAgentEnLecture({
   appreciation,
   colonnes = true,
@@ -526,11 +520,8 @@ export function AppreciationDeLAgentEnLecture({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <p className="mb-1.5 text-[12.5px] font-semibold text-ink-muted">Niveau</p>
-        <NiveauDonne
-          niveau={a.niveau}
-          libelle={a.niveau ? LIBELLES_D_ATTEINTE[a.niveau] : undefined}
-        />
+        <p className="mb-1.5 text-[12.5px] font-semibold text-ink-muted">Note</p>
+        <NoteDonnee note={a.note} />
       </div>
       <div className={cn('grid grid-cols-1 gap-4', colonnes && 'lg:grid-cols-2')}>
         <Reponse question="Résultats obtenus" texte={a.resultats} />
@@ -583,6 +574,7 @@ export function AutoEvaluationEnLecture({
             ))}
           </ol>
         )}
+        <ReleveDesNotes objectifs={objectifs} auto={auto} />
         <AutresRealisationsEnLecture auto={auto} />
       </CarteDeLaFiche>
 

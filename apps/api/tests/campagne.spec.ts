@@ -363,9 +363,9 @@ describe('l’auto-évaluation (ADR-0215)', () => {
     ...autoEvaluationVide(),
     vecu: 'Une année chargée, avec la reprise des dossiers.',
     objectifs: {
-      [OBJ1]: { niveau: 'B', resultats: '', commentaire: '' },
+      [OBJ1]: { note: 2, resultats: '', commentaire: '' },
       // Un objectif qui n'est pas sur la fiche : il ne s'enregistre pas.
-      [randomUUID()]: { niveau: 'A', resultats: 'Hors fiche.', commentaire: '' },
+      [randomUUID()]: { note: 3, resultats: 'Hors fiche.', commentaire: '' },
     },
   };
   const complete: AutoEvaluation = {
@@ -374,9 +374,9 @@ describe('l’auto-évaluation (ADR-0215)', () => {
     aDesDifficultes: false,
     difficultes: 'Une liste écrite avant le non.',
     objectifs: {
-      [OBJ1]: { niveau: 'B', resultats: 'Délai de 48 heures tenu.', commentaire: '' },
+      [OBJ1]: { note: 2, resultats: 'Délai de 48 heures tenu.', commentaire: '' },
       [OBJ2]: {
-        niveau: 'C',
+        note: 1,
         resultats: 'Deux tiers des dossiers à jour.',
         commentaire: 'Archives.',
       },
@@ -424,7 +424,7 @@ describe('l’auto-évaluation (ADR-0215)', () => {
         code: 'campagne.auto_incomplete',
         detail:
           'À compléter : les difficultés rencontrées, les résultats de l’objectif 1, ' +
-          'le niveau de l’objectif 2, les résultats de l’objectif 2, l’avenir professionnel, ' +
+          'la note de l’objectif 2, les résultats de l’objectif 2, l’avenir professionnel, ' +
           'les missions, les contraintes du travail, les compétences peu exploitées.',
       },
     });
@@ -472,7 +472,7 @@ describe('l’auto-évaluation (ADR-0215)', () => {
       aDesCompetencesInexploitees: true,
       competencesInexploitees: 'La rédaction',
     });
-    expect(vu.autoEvaluation?.objectifs[OBJ2]?.niveau).toBe('C');
+    expect(vu.autoEvaluation?.objectifs[OBJ2]?.note).toBe(1);
     const { equipe } = await campagne.accueil(session('awa'));
     expect(equipe.find((a) => a.employeeId === agents.ibou)?.auto.etat).toBe('transmise');
     await expect(campagne.enregistrerMonAuto(session('ibou'), complete)).rejects.toMatchObject({
@@ -529,8 +529,8 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
       evaluation: {
         ...evaluationDuN1Vide(),
         objectifs: {
-          [o1!.id]: { niveau: 'B', commentaire: 'Délai tenu.' },
-          [randomUUID()]: { niveau: 'A', commentaire: 'Hors fiche.' },
+          [o1!.id]: { note: 2, commentaire: 'Délai tenu.' },
+          [randomUUID()]: { note: 3, commentaire: 'Hors fiche.' },
         },
         // Ibou Ndiaye n'est pas cadre : le management ne s'enregistre pas.
         competences: { connaissances: 'B', management: 'A' },
@@ -557,7 +557,7 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
         (e: { problem: { status: number; code: string; detail: string } }) => e.problem,
       );
     expect(erreur).toMatchObject({ status: 422, code: 'campagne.evaluation_incomplete' });
-    expect(erreur?.detail).toContain('l’appréciation de l’objectif 2');
+    expect(erreur?.detail).toContain('la note de l’objectif 2');
     expect(erreur?.detail).toContain('la compétence « Qualité du travail »');
     expect(erreur?.detail).toContain('les points forts');
     expect(erreur?.detail).toContain('la tenue du poste');
@@ -598,7 +598,7 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
       evaluation: {
         ...v.evaluation,
         objectifs: Object.fromEntries(
-          v.objectifs.map((o) => [o.id, { niveau: 'B' as const, commentaire: '' }]),
+          v.objectifs.map((o) => [o.id, { note: 2 as const, commentaire: '' }]),
         ),
         competences: competencesB('non_cadre'),
         pointsForts: 'Rigueur.',
@@ -689,7 +689,7 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
       evaluation: {
         ...v.evaluation,
         objectifs: Object.fromEntries(
-          v.objectifs.map((o) => [o.id, { niveau: 'B' as const, commentaire: '' }]),
+          v.objectifs.map((o) => [o.id, { note: 2 as const, commentaire: '' }]),
         ),
         competences: competencesB('non_cadre'),
         pointsForts: 'Rigueur et disponibilité.',
@@ -1551,5 +1551,32 @@ describe('la fixation des objectifs (ADR-0274)', () => {
     expect(moussa?.phase).toBe('terminee');
     expect(moussa?.miens?.transmis?.objectifs).toHaveLength(3);
     await raw(`DELETE FROM objectifs_periodes WHERE tenant_id = $1`, [tenantId]);
+  });
+});
+
+describe('les notes des objectifs (ADR-0275)', () => {
+  it('une fiche écrite avec les lettres d’avant se relit en notes : A 3, D 0', async () => {
+    const { rows } = await raw(
+      `SELECT objectifs FROM fiches_entretien WHERE employee_id = $1 AND annee = $2`,
+      [agents.ibou, ANNEE],
+    );
+    const [o1, o2] = (rows[0].objectifs as { id: string }[]).map((o) => o.id);
+    await raw(
+      `UPDATE fiches_entretien SET auto = $3::jsonb WHERE employee_id = $1 AND annee = $2`,
+      [
+        agents.ibou,
+        ANNEE,
+        JSON.stringify({
+          ...autoEvaluationVide(),
+          objectifs: {
+            [o1!]: { niveau: 'A', resultats: 'Fait.', commentaire: '' },
+            [o2!]: { niveau: 'D', resultats: 'Pas encore.', commentaire: '' },
+          },
+        }),
+      ],
+    );
+    const { auto } = await campagne.monAuto(session('ibou'));
+    expect(auto.objectifs[o1!]).toEqual({ note: 3, resultats: 'Fait.', commentaire: '' });
+    expect(auto.objectifs[o2!]?.note).toBe(0);
   });
 });

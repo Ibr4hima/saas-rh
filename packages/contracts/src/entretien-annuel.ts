@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { niveauSchema, type Niveau } from './evaluations';
+import { NIVEAUX, niveauSchema, type Niveau } from './evaluations';
 
 /* ────────────────────────────────────────────────────────────────
    La fiche d'entretien annuel d'évaluation de l'APIX (réf. S1/EN05),
@@ -25,13 +25,54 @@ export const REFERENCE_DE_LA_FICHE = {
 
 export const TITRE_DE_LA_FICHE = 'Fiche d’entretien annuel d’évaluation';
 
-/** Les niveaux d'atteinte d'un objectif, et ce qu'ils disent des résultats. */
-export const NIVEAUX_D_ATTEINTE: Record<Niveau, { libelle: string; resultats: string }> = {
-  A: { libelle: 'Dépassé', resultats: 'Résultats excellents' },
-  B: { libelle: 'Réalisé', resultats: 'Résultats satisfaisants' },
-  C: { libelle: 'Partiellement réalisé', resultats: 'Résultats à améliorer' },
-  D: { libelle: 'Non réalisé', resultats: 'Résultats non acceptables' },
+// ──────────────────────────────────────────────── les notes des objectifs (ADR-0275)
+
+/**
+ * Les notes d'un objectif, de la meilleure à la plus basse : l'agent et le
+ * N+1 notent chaque objectif de 0 à 3, à la place des lettres A à D.
+ */
+export const NOTES_D_OBJECTIF = [3, 2, 1, 0] as const;
+export type NoteDObjectif = (typeof NOTES_D_OBJECTIF)[number];
+
+/** La meilleure note : une moyenne se lit sur elle. */
+export const NOTE_MAXIMALE: NoteDObjectif = 3;
+
+/** Ce que dit chaque note de l'atteinte de l'objectif, et des résultats. */
+export const NOTES_D_ATTEINTE: Record<NoteDObjectif, { libelle: string; resultats: string }> = {
+  3: { libelle: 'Dépassé', resultats: 'Résultats excellents' },
+  2: { libelle: 'Réalisé', resultats: 'Résultats satisfaisants' },
+  1: { libelle: 'Partiellement réalisé', resultats: 'Résultats à améliorer' },
+  0: { libelle: 'Non réalisé', resultats: 'Résultats non acceptables' },
 };
+
+/** La note de chaque lettre d'avant les notes : A vaut 3, B 2, C 1, D 0. */
+export const NOTE_DE_LA_LETTRE: Record<Niveau, NoteDObjectif> = { A: 3, B: 2, C: 1, D: 0 };
+
+const noteDObjectifSchema = z.literal(NOTES_D_OBJECTIF);
+
+/**
+ * Une appréciation écrite avant les notes : son niveau, une lettre, se relit
+ * en note. La base garde la lettre jusqu'au prochain enregistrement.
+ */
+function avecSaNote(appreciation: unknown): unknown {
+  if (typeof appreciation !== 'object' || appreciation === null) return appreciation;
+  if ('note' in appreciation || !('niveau' in appreciation)) return appreciation;
+  const { niveau, ...reste } = appreciation as { niveau: unknown };
+  const lettre = NIVEAUX.find((n) => n === niveau);
+  return { ...reste, note: lettre ? NOTE_DE_LA_LETTRE[lettre] : null };
+}
+
+/**
+ * La moyenne de notes d'objectifs, sur 3 : `null` sans objectif, et tant
+ * qu'une note manque.
+ */
+export function moyenneDesNotes(notes: readonly (NoteDObjectif | null)[]): number | null {
+  if (notes.length === 0 || notes.some((n) => n === null)) return null;
+  return notes.reduce<number>((total, n) => total + (n ?? 0), 0) / notes.length;
+}
+
+/** « 2,33 » : une moyenne à deux décimales, à la française. */
+export const moyenneEnChiffres = (moyenne: number): string => moyenne.toFixed(2).replace('.', ',');
 
 /** Les niveaux d'une compétence. */
 export const NIVEAUX_DE_COMPETENCE: Record<Niveau, string> = {
@@ -312,19 +353,25 @@ export const objectifEvalueSchema = z.object({
 });
 export type ObjectifEvalue = z.infer<typeof objectifEvalueSchema>;
 
-/** Ce que l'agent dit d'un objectif. */
-export const appreciationDeLAgentSchema = z.object({
-  niveau: niveauSchema.nullable(),
-  resultats: texte,
-  commentaire: texte,
-});
+/** Ce que l'agent dit d'un objectif : sa note, de 0 à 3 (ADR-0275), ses résultats. */
+export const appreciationDeLAgentSchema = z.preprocess(
+  avecSaNote,
+  z.object({
+    note: noteDObjectifSchema.nullable(),
+    resultats: texte,
+    commentaire: texte,
+  }),
+);
 export type AppreciationDeLAgent = z.infer<typeof appreciationDeLAgentSchema>;
 
-/** Ce que le N+1 retient d'un objectif, après l'entretien. */
-export const appreciationDuN1Schema = z.object({
-  niveau: niveauSchema.nullable(),
-  commentaire: texte,
-});
+/** Ce que le N+1 retient d'un objectif, après l'entretien : sa note, de 0 à 3 (ADR-0275). */
+export const appreciationDuN1Schema = z.preprocess(
+  avecSaNote,
+  z.object({
+    note: noteDObjectifSchema.nullable(),
+    commentaire: texte,
+  }),
+);
 export type AppreciationDuN1 = z.infer<typeof appreciationDuN1Schema>;
 
 /**
@@ -450,7 +497,7 @@ export type PartieReservee = z.infer<typeof partieReserveeSchema>;
 /**
  * Ce qui manque à une auto-évaluation pour partir au N+1 (ADR-0215,
  * ADR-0238), dans l'ordre de la fiche : les deux questions du
- * récapitulatif, pour chaque objectif son niveau et ses résultats obtenus,
+ * récapitulatif, pour chaque objectif sa note et ses résultats obtenus,
  * puis les quatre questions des préoccupations et des souhaits. Une
  * question à choix demande oui ou non, et, si oui, une puce au moins. Les
  * commentaires, les autres réalisations et les autres commentaires se
@@ -468,7 +515,8 @@ export function ceQuiManqueALAutoEvaluation(
   choix(auto.aDesDifficultes, auto.difficultes, 'les difficultés rencontrées');
   objectifs.forEach((o, i) => {
     const a = auto.objectifs[o.id];
-    if (!a?.niveau) manque.push(`le niveau de l’objectif ${i + 1}`);
+    // Une note de 0 est une note.
+    if ((a?.note ?? null) === null) manque.push(`la note de l’objectif ${i + 1}`);
     if (!a?.resultats.trim()) manque.push(`les résultats de l’objectif ${i + 1}`);
   });
   if (!auto.avenir.trim()) manque.push('l’avenir professionnel');
@@ -537,10 +585,9 @@ export function autoEvaluationTransmise(auto: AutoEvaluation): AutoEvaluation {
 
 /**
  * Ce qui manque à l'évaluation du N+1 pour partir à l'agent (ADR-0216), dans
- * l'ordre de la fiche : l'appréciation de chaque objectif, chaque compétence
- * (le management, pour le personnel cadre, seulement s'il y a lieu), les
- * points forts et les axes de développement, les objectifs de l'année à
- * venir, de trois à cinq, chacun avec son intitulé (ADR-0239), la synthèse
+ * l'ordre de la fiche : la note de chaque objectif (ADR-0275), chaque
+ * compétence (le management, pour le personnel cadre, seulement s'il y a
+ * lieu), les points forts et les axes de développement, la synthèse
  * générale de la partie réservée, puis l'entretien : sa confirmation et sa
  * date (ADR-0265). Avec `entretien`, la date doit tomber entre la
  * transmission de l'auto-évaluation (`du`) et le jour même (`au`). Le plan
@@ -555,7 +602,9 @@ export function ceQuiManqueALEvaluationDuN1(
 ): string[] {
   const manque: string[] = [];
   objectifs.forEach((o, i) => {
-    if (!evaluation.objectifs[o.id]?.niveau) manque.push(`l’appréciation de l’objectif ${i + 1}`);
+    if ((evaluation.objectifs[o.id]?.note ?? null) === null) {
+      manque.push(`la note de l’objectif ${i + 1}`);
+    }
   });
   for (const c of competencesDe(personnel)) {
     if (!c.cadres && !evaluation.competences[c.cle]) {
@@ -630,4 +679,38 @@ export function nomDeLaFiche(annee: number, matricule: string | null, complete =
   const sans = (matricule ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');
   const net = sans.replace(/[^A-Za-z0-9-]/g, '_');
   return `fiche-entretien-${annee}${net ? `-${net}` : ''}${complete ? '-complete' : ''}.pdf`;
+}
+
+// ──────────────────────────────────────────────── le relevé des notes (ADR-0275)
+
+/** Un objectif dans le relevé : sa note à l'auto-évaluation, et chez le N+1. */
+export interface LigneDuReleve {
+  objectif: ObjectifEvalue;
+  agent: NoteDObjectif | null;
+  n1: NoteDObjectif | null;
+}
+
+/**
+ * Le relevé des notes obtenues, comme celui de l'ancienne grille du
+ * personnel non cadre : la note de chaque objectif, à l'auto-évaluation et
+ * chez le N+1, puis la moyenne de chaque colonne, sur 3. Sans `evaluation`,
+ * la partie de l'agent seule.
+ */
+export function releveDesObjectifs(
+  objectifs: readonly ObjectifEvalue[],
+  auto: AutoEvaluation,
+  evaluation: EvaluationDuN1 | null,
+): { lignes: LigneDuReleve[]; moyennes: { agent: number | null; n1: number | null } } {
+  const lignes = objectifs.map((objectif) => ({
+    objectif,
+    agent: auto.objectifs[objectif.id]?.note ?? null,
+    n1: evaluation?.objectifs[objectif.id]?.note ?? null,
+  }));
+  return {
+    lignes,
+    moyennes: {
+      agent: moyenneDesNotes(lignes.map((l) => l.agent)),
+      n1: evaluation ? moyenneDesNotes(lignes.map((l) => l.n1)) : null,
+    },
+  };
 }

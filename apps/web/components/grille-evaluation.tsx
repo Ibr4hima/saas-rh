@@ -252,17 +252,23 @@ function CaseDuNiveau({ niveau }: { niveau: Niveau | null }) {
   );
 }
 
-/** Les quatre niveaux, A à D, à cocher : chacun avec ce qu'il veut dire. */
+/**
+ * Les quatre niveaux, A à D, à cocher : chacun avec ce qu'il veut dire. Avec
+ * `marques`, la pastille porte autre chose que la lettre : la note d'un
+ * objectif de la campagne, de 3 à 0 (ADR-0275), aux couleurs de A à D.
+ */
 export const ChoixDeNiveau = memo(function ChoixDeNiveau({
   legende,
   valeur,
   libelles,
+  marques,
   onChange,
   court = false,
 }: {
   legende: string;
   valeur: Niveau | null;
   libelles: Record<Niveau, string>;
+  marques?: Record<Niveau, string>;
   /** Un nouveau clic sur le niveau coché le retire, mais pas le second d'un double-clic. */
   onChange: (n: Niveau | null) => void;
   /** Des libellés d'un ou deux mots : les quatre niveaux tiennent sur une ligne. */
@@ -322,7 +328,7 @@ export const ChoixDeNiveau = memo(function ChoixDeNiveau({
                   choisi ? COULEURS_DU_NIVEAU[n].pastille : 'bg-line-soft text-ink-strong',
                 )}
               >
-                {n}
+                {marques?.[n] ?? n}
               </span>
               <span
                 className={cn(
@@ -435,8 +441,19 @@ const ChoixDeNote = memo(function ChoixDeNote({
   );
 });
 
-/** Un niveau donné, en lecture : la lettre dans sa pastille, puis ce qu'elle veut dire. */
-export function NiveauDonne({ niveau, libelle }: { niveau: Niveau | null; libelle?: string }) {
+/**
+ * Un niveau donné, en lecture : la lettre dans sa pastille, puis ce qu'elle
+ * veut dire. Avec `marque`, la pastille porte la note d'un objectif (ADR-0275).
+ */
+export function NiveauDonne({
+  niveau,
+  libelle,
+  marque,
+}: {
+  niveau: Niveau | null;
+  libelle?: string;
+  marque?: string;
+}) {
   if (!niveau) return <NonRenseigne />;
   return (
     <span className="flex items-start gap-2.5">
@@ -446,7 +463,7 @@ export function NiveauDonne({ niveau, libelle }: { niveau: Niveau | null; libell
           COULEURS_DU_NIVEAU[niveau].pastille,
         )}
       >
-        {niveau}
+        {marque ?? niveau}
       </span>
       {libelle ? (
         <span className="min-w-0 pt-[3px] text-[12.5px] leading-snug font-semibold text-ink-strong">

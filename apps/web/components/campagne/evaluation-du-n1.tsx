@@ -33,7 +33,6 @@ import {
   CarteDeLaFiche,
   DeuxParDeux,
   EnTeteDeLObjectif,
-  LIBELLES_D_ATTEINTE,
   PAR_L_AGENT,
   PAR_LE_N1,
   Question,
@@ -43,6 +42,7 @@ import {
   SouhaitsEnLecture,
 } from './auto-evaluation';
 import type { Changement } from './enregistrement';
+import { ChoixDeLaNote, NoteDonnee, ReleveDesNotes } from './notes';
 
 /* ────────────────────────────────────────────────────────────────
    L'évaluation par le N+1, sur la fiche S1/EN05 (ADR-0216) : la fiche
@@ -58,13 +58,13 @@ import type { Changement } from './enregistrement';
 /** Une modification de l'évaluation, hors de la partie réservée. */
 type MiseAJour = (maj: (e: EvaluationDuN1) => EvaluationDuN1) => void;
 
-const appreciationVide = (): AppreciationDuN1 => ({ niveau: null, commentaire: '' });
+const appreciationVide = (): AppreciationDuN1 => ({ note: null, commentaire: '' });
 
 /**
- * La fiche du N+1. Obligatoires, et marqués d'un astérisque : l'appréciation
- * de chaque objectif, chaque compétence (sauf le management, s'il y a lieu),
- * les points forts, les axes de développement, puis la compréhension et la
- * tenue du poste. Sans `onChange`, la fiche se lit ; sans `reservee`, c'est
+ * La fiche du N+1. Obligatoires, et marqués d'un astérisque : la note de
+ * chaque objectif, de 0 à 3 (ADR-0275), chaque compétence (sauf le
+ * management, s'il y a lieu), les points forts, les axes de développement,
+ * puis la compréhension et la tenue du poste. Sans `onChange`, la fiche se lit ; sans `reservee`, c'est
  * celle de l'agent, qui s'arrête avant la partie réservée (ADR-0217). Les
  * commentaires du N+2, en lecture ou à écrire, ferment la partie réservée
  * (ADR-0218).
@@ -321,13 +321,11 @@ function Resultats({
                     {onChange ? (
                       <>
                         <div>
-                          <Libelle requise>Niveau</Libelle>
-                          <ChoixDeNiveau
-                            legende={`Appréciation de l’objectif ${i + 1}`}
-                            valeur={n1.niveau}
-                            libelles={LIBELLES_D_ATTEINTE}
-                            court
-                            onChange={(niveau) => changer(o.id, { niveau })}
+                          <Libelle requise>Note</Libelle>
+                          <ChoixDeLaNote
+                            legende={`Note de l’objectif ${i + 1}`}
+                            valeur={n1.note}
+                            onChange={(note) => changer(o.id, { note })}
                           />
                         </div>
                         <Question
@@ -339,11 +337,8 @@ function Resultats({
                     ) : (
                       <>
                         <div>
-                          <LibelleLu>Niveau</LibelleLu>
-                          <NiveauDonne
-                            niveau={n1.niveau}
-                            libelle={n1.niveau ? LIBELLES_D_ATTEINTE[n1.niveau] : undefined}
-                          />
+                          <LibelleLu>Note</LibelleLu>
+                          <NoteDonnee note={n1.note} />
                         </div>
                         <Reponse question="Commentaire" texte={n1.commentaire} />
                       </>
@@ -355,6 +350,8 @@ function Resultats({
           })}
         </ol>
       )}
+      {/* Les notes de l'agent et du N+1, et leurs moyennes, qui suivent la saisie (ADR-0275). */}
+      <ReleveDesNotes objectifs={objectifs} auto={auto} evaluation={e} />
       <AutresRealisationsEnLecture auto={auto} />
     </CarteDeLaFiche>
   );
