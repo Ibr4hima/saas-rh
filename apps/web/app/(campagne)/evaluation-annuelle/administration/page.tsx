@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type {
-  AdministrationDeLaCampagne,
-  EvaluateurDeLAgent,
-  PersonneDesignee,
+import {
+  LIBELLES_DE_L_AVANCEMENT,
+  type AdministrationDeLaCampagne,
+  type AvancementDeLaFiche,
+  type EvaluateurDeLAgent,
+  type PersonneDesignee,
 } from '@teranga/contracts';
 import {
   Badge,
@@ -14,6 +16,7 @@ import {
   DateInput,
   EmptyState,
   Field,
+  Input,
   Select,
   Table,
   TBody,
@@ -35,7 +38,7 @@ import { CartePleine, CorpsDefilant } from '../../../../components/gabarit';
 import { messageDe } from '../../../../components/grille-evaluation';
 import { Icon } from '../../../../components/icons';
 import { FenetreImportEmployes } from '../../../../components/import-employes';
-import { Modal } from '../../../../components/modal';
+import { Modal, ModalSection } from '../../../../components/modal';
 import { RechercheDuTableau, SqueletteTableau } from '../../../../components/tableau';
 import { api, ApiError } from '../../../../lib/api';
 import { CLE_CAMPAGNE } from '../../../../lib/campagne';
@@ -47,7 +50,8 @@ import { CLE_CAMPAGNE } from '../../../../lib/campagne';
    de l'évaluation : le début, la fin de l'auto-évaluation, la fin. Enfin,
    qui évalue qui : chaque agent à évaluer cette année, son N+1 dans
    l'organigramme, et son évaluateur pour la campagne, au choix de
-   l'administration, sans toucher à l'organigramme.
+   l'administration, sans toucher à l'organigramme. Une fiche commencée se
+   remet à zéro depuis sa ligne (ADR-0271).
    ──────────────────────────────────────────────────────────────── */
 
 const CLE = [...CLE_CAMPAGNE, 'administration'] as const;
@@ -59,6 +63,23 @@ const nomDe = (p: PersonneDesignee) => `${p.prenom} ${p.nom}`;
 
 /** L'évaluateur de la campagne : le choix de l'administration, sinon le N+1 de l'organigramme. */
 const evaluateurDe = (a: EvaluateurDeLAgent) => a.choisi ?? a.organigramme;
+
+/** Le mot à taper pour remettre une fiche à zéro. */
+const MOT_DE_LA_REMISE_A_ZERO = 'EFFACER';
+
+/** L'ordre des étapes d'une fiche : ce qu'une remise à zéro efface en dépend. */
+const RANG: Record<AvancementDeLaFiche, number> = {
+  auto_commencee: 1,
+  auto_transmise: 2,
+  evaluation_commencee: 3,
+  transmise_a_l_agent: 4,
+  validee: 5,
+  transmise_a_la_dch: 6,
+};
+
+/** Les boutons ronds au bout d'une ligne : remettre à zéro, modifier. */
+const BOUTON_DE_LIGNE =
+  'inline-flex size-8 items-center justify-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-primary/[0.08] hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40';
 
 /** Un nom ou un matricule, sans accents ni capitales, pour la recherche. */
 const plat = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -262,6 +283,7 @@ function QuiEvalueQui({ vue: v }: { vue: AdministrationDeLaCampagne | undefined 
   const [recherche, setRecherche] = useState('');
   const [filtre, setFiltre] = useState<Filtre>('tous');
   const [ouvert, setOuvert] = useState<EvaluateurDeLAgent | null>(null);
+  const [aRemettre, setARemettre] = useState<EvaluateurDeLAgent | null>(null);
   const agents = v?.agents ?? [];
   const cherche = plat(recherche.trim());
   const visibles = agents.filter(
@@ -322,19 +344,27 @@ function QuiEvalueQui({ vue: v }: { vue: AdministrationDeLaCampagne | undefined 
                 <Th className="max-lg:hidden">N+1 dans l’organigramme</Th>
                 <Th className="max-sm:hidden">Évaluateur de la campagne</Th>
                 <Th>
-                  <span className="sr-only">Modifier</span>
+                  <span className="sr-only">Actions</span>
                 </Th>
               </tr>
             </THead>
             <TBody>
               {visibles.map((a) => (
-                <Ligne key={a.employeeId} agent={a} onModifier={() => setOuvert(a)} />
+                <Ligne
+                  key={a.employeeId}
+                  agent={a}
+                  onModifier={() => setOuvert(a)}
+                  onRemettreAZero={() => setARemettre(a)}
+                />
               ))}
             </TBody>
           </Table>
         )}
       </CartePleine>
       {ouvert ? <FenetreEvaluateur agent={ouvert} onClose={() => setOuvert(null)} /> : null}
+      {aRemettre ? (
+        <FenetreRemiseAZero agent={aRemettre} onClose={() => setARemettre(null)} />
+      ) : null}
     </section>
   );
 }
@@ -351,7 +381,15 @@ function Evaluateur({ agent: a }: { agent: EvaluateurDeLAgent }) {
   );
 }
 
-function Ligne({ agent: a, onModifier }: { agent: EvaluateurDeLAgent; onModifier: () => void }) {
+function Ligne({
+  agent: a,
+  onModifier,
+  onRemettreAZero,
+}: {
+  agent: EvaluateurDeLAgent;
+  onModifier: () => void;
+  onRemettreAZero: () => void;
+}) {
   return (
     <Tr>
       <Td>
@@ -370,14 +408,26 @@ function Ligne({ agent: a, onModifier }: { agent: EvaluateurDeLAgent; onModifier
       <Td className="max-sm:hidden">
         <Evaluateur agent={a} />
       </Td>
-      <Td className="w-12 text-right">
+      <Td className="w-12 text-right whitespace-nowrap">
+        {/* Seule une fiche commencée se remet à zéro (ADR-0271). */}
+        {a.avancement ? (
+          <button
+            type="button"
+            onClick={onRemettreAZero}
+            aria-label={`Remettre à zéro la fiche de ${a.prenom} ${a.nom}`}
+            title="Remettre à zéro"
+            className={BOUTON_DE_LIGNE}
+          >
+            <Icon name="replay" size={17} />
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onModifier}
           disabled={a.transmise}
           aria-label={`Évaluateur de ${a.prenom} ${a.nom}`}
           title={a.transmise ? 'Fiche transmise à la DCH' : 'Modifier l’évaluateur'}
-          className="inline-flex size-8 items-center justify-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-primary/[0.08] hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
+          className={BOUTON_DE_LIGNE}
         >
           <Icon name="edit" size={17} />
         </button>
@@ -470,6 +520,134 @@ function FenetreEvaluateur({
           </p>
         ) : null}
       </div>
+    </Modal>
+  );
+}
+
+/**
+ * Remettre à zéro la fiche d'un agent (ADR-0271) : ce que la campagne y a
+ * écrit s'efface, et la fiche repart de l'auto-évaluation. Comme pour vider
+ * l'import, la fenêtre dit ce qui part et ce qui reste, et demande un mot à
+ * taper.
+ */
+function FenetreRemiseAZero({
+  agent: a,
+  onClose,
+}: {
+  agent: EvaluateurDeLAgent;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [saisie, setSaisie] = useState('');
+  const remettre = useMutation({
+    mutationFn: () =>
+      api<AdministrationDeLaCampagne>(
+        `/campagne/administration/fiches/${a.employeeId}/remise-a-zero`,
+        { method: 'POST' },
+      ),
+    onSuccess: (nouvelle) => {
+      qc.setQueryData(CLE, nouvelle);
+      // Les pages de la campagne relisent la fiche.
+      void qc.invalidateQueries({ queryKey: CLE_CAMPAGNE });
+      onClose();
+    },
+  });
+  const rang = a.avancement ? RANG[a.avancement] : 0;
+  const efface = [
+    'L’auto-évaluation',
+    rang >= RANG.evaluation_commencee
+      ? 'L’évaluation du N+1, avec la partie réservée à la hiérarchie'
+      : null,
+    rang >= RANG.validee ? 'La validation par l’agent, et les commentaires du N+2' : null,
+    rang >= RANG.transmise_a_la_dch ? 'La transmission à la DCH' : null,
+  ].filter((l): l is string => l !== null);
+  const reste = [
+    'Les objectifs de l’année',
+    'L’évaluateur de la campagne',
+    'Les dates de la campagne et le compte de l’agent',
+    'La trace de la remise à zéro, dans le journal d’audit',
+  ];
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Remettre à zéro la fiche de ${a.prenom} ${a.nom} ?`}
+      subtitle="Cette action ne peut pas être annulée."
+      maxWidth="max-w-lg"
+      footer={
+        <>
+          {remettre.error ? (
+            <p
+              role="alert"
+              className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+            >
+              {messageDe(remettre.error)}
+            </p>
+          ) : null}
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button
+            variant="danger"
+            disabled={saisie.trim().toUpperCase() !== MOT_DE_LA_REMISE_A_ZERO}
+            loading={remettre.isPending}
+            onClick={() => remettre.mutate()}
+          >
+            Remettre à zéro
+          </Button>
+        </>
+      }
+    >
+      <ModalSection title="La fiche">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[12.5px]">
+          <dt className="text-ink-muted">Matricule</dt>
+          <dd className="font-mono tracking-tight text-ink-strong">{a.matricule}</dd>
+          <dt className="text-ink-muted">Avancement</dt>
+          <dd className="font-semibold text-ink-strong">
+            {a.avancement ? LIBELLES_DE_L_AVANCEMENT[a.avancement] : null}
+          </dd>
+        </dl>
+      </ModalSection>
+
+      <ModalSection title="Ce qui sera effacé">
+        <ul className="flex flex-col gap-1.5 text-[12.5px] text-ink">
+          {efface.map((l) => (
+            <li key={l} className="flex items-start gap-2">
+              <Icon name="close" size={14} className="mt-0.5 shrink-0 text-danger" />
+              <span>{l}</span>
+            </li>
+          ))}
+        </ul>
+      </ModalSection>
+
+      <ModalSection title="Ce qui reste">
+        <ul className="flex flex-col gap-1.5 text-[12.5px] text-ink">
+          {reste.map((l) => (
+            <li key={l} className="flex items-start gap-2">
+              <Icon name="check" size={14} className="mt-0.5 shrink-0 text-ink-muted" />
+              <span>{l}</span>
+            </li>
+          ))}
+        </ul>
+      </ModalSection>
+
+      <ModalSection title="Confirmation">
+        <label
+          htmlFor="remise-a-zero"
+          className="mb-2 block text-[12.5px] font-medium text-ink-strong"
+        >
+          Tapez <span className="font-mono font-bold">{MOT_DE_LA_REMISE_A_ZERO}</span> pour
+          confirmer
+        </label>
+        <Input
+          id="remise-a-zero"
+          autoComplete="off"
+          value={saisie}
+          onChange={(e) => setSaisie(e.target.value)}
+          placeholder={MOT_DE_LA_REMISE_A_ZERO}
+        />
+      </ModalSection>
     </Modal>
   );
 }

@@ -14,33 +14,21 @@
  * Gardé : les objectifs de l'année, l'évaluateur choisi par
  * l'administration, les dates de la campagne, les comptes. Le journal
  * d'audit garde la trace de la remise à zéro, avec ce que la fiche
- * contenait.
+ * contenait. Le bouton « Remettre à zéro » de l'administration efface la
+ * même chose, une fiche à la fois (ADR-0271).
  *
  * Tout se joue dans UNE transaction : à blanc, elle s'annule à la fin, et le
  * bilan dit exactement ce que la remise à zéro ferait.
  */
 import { Client } from 'pg';
 import { parse } from 'pg-connection-string';
+import { LIBELLES_DE_L_AVANCEMENT, type AvancementDeLaFiche } from '@teranga/contracts';
 import { loadEnv } from '../config/env';
-
-/** Ce que la campagne écrit sur une fiche, de l'auto-évaluation à la DCH. */
-const COLONNES = [
-  'auto',
-  'auto_transmise_le',
-  'evaluation',
-  'reservee',
-  'evaluation_par_employee_id',
-  'evaluation_transmise_le',
-  'validee_le',
-  'renvoyee_le',
-  'renvoi_mot',
-  'commentaires_n2',
-  'commentaires_n2_par',
-  'commentaires_n2_transmis_le',
-  'reprise_n2_le',
-  'transmise_dch_le',
-  'transmise_dch_par',
-] as const;
+import {
+  avancementDeLaFiche,
+  ficheCommencee,
+  REMISE_A_ZERO,
+} from '../modules/campagne/remise-a-zero';
 
 export interface FicheRemiseAZero {
   matricule: string;
@@ -56,6 +44,9 @@ export interface BilanDeLaRemiseAZero {
   fiches: FicheRemiseAZero[];
   applique: boolean;
 }
+
+/** « Validée par l’agent » devient « validée par l’agent », dans une phrase. */
+const enMinuscule = (libelle: string) => libelle.charAt(0).toLowerCase() + libelle.slice(1);
 
 export async function reinitialiserLaCampagne(
   client: Client,
@@ -85,29 +76,28 @@ export async function reinitialiserLaCampagne(
       employeeIds = rows.map((r) => r.id);
     }
     // Seules les fiches où la campagne a écrit quelque chose.
-    const { rows } = await client.query<FicheRemiseAZero & { id: string }>(
+    const { rows } = await client.query<{
+      id: string;
+      matricule: string;
+      prenom: string;
+      nom: string;
+      avancement: AvancementDeLaFiche;
+    }>(
       `SELECT f.id, e.employee_number AS matricule, p.given_name AS prenom, p.family_name AS nom,
-              CASE
-                WHEN f.transmise_dch_le IS NOT NULL THEN 'transmise à la DCH'
-                WHEN f.validee_le IS NOT NULL THEN 'validée par l’agent'
-                WHEN f.evaluation_transmise_le IS NOT NULL THEN 'transmise à l’agent'
-                WHEN f.evaluation IS NOT NULL OR f.reservee IS NOT NULL THEN 'évaluation du N+1 commencée'
-                WHEN f.auto_transmise_le IS NOT NULL THEN 'auto-évaluation transmise'
-                ELSE 'auto-évaluation commencée'
-              END AS etape
+              ${avancementDeLaFiche('f')} AS avancement
          FROM fiches_entretien f
          JOIN employees e ON e.id = f.employee_id
          JOIN persons p ON p.id = e.person_id
         WHERE f.tenant_id = $1 AND f.annee = $2
           AND ($3::uuid[] IS NULL OR f.employee_id = ANY($3::uuid[]))
-          AND (${COLONNES.map((c) => `f.${c} IS NOT NULL`).join(' OR ')})
+          AND ${ficheCommencee('f')}
         ORDER BY p.family_name, p.given_name`,
       [tenantId, annee, employeeIds],
     );
     if (rows.length > 0) {
       await client.query(
         `UPDATE fiches_entretien
-            SET ${COLONNES.map((c) => `${c} = NULL`).join(', ')}, updated_at = now()
+            SET ${REMISE_A_ZERO}, updated_at = now()
           WHERE id = ANY($1::uuid[])`,
         [rows.map((r) => r.id)],
       );
@@ -119,7 +109,7 @@ export async function reinitialiserLaCampagne(
         matricule: r.matricule,
         prenom: r.prenom,
         nom: r.nom,
-        etape: r.etape,
+        etape: enMinuscule(LIBELLES_DE_L_AVANCEMENT[r.avancement]),
       })),
       applique: appliquer,
     };

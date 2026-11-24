@@ -396,6 +396,25 @@ export interface PersonneDesignee extends PersonneDeLaCampagne {
   matricule: string;
 }
 
+/** Jusqu'où est allée la fiche d'un agent, pour l'administration (ADR-0271). */
+export type AvancementDeLaFiche =
+  | 'auto_commencee'
+  | 'auto_transmise'
+  | 'evaluation_commencee'
+  | 'transmise_a_l_agent'
+  | 'validee'
+  | 'transmise_a_la_dch';
+
+/** L'avancement d'une fiche, en toutes lettres. */
+export const LIBELLES_DE_L_AVANCEMENT: Record<AvancementDeLaFiche, string> = {
+  auto_commencee: 'Auto-évaluation commencée',
+  auto_transmise: 'Auto-évaluation transmise',
+  evaluation_commencee: 'Évaluation du N+1 commencée',
+  transmise_a_l_agent: 'Transmise à l’agent',
+  validee: 'Validée par l’agent',
+  transmise_a_la_dch: 'Transmise à la DCH',
+};
+
 /** Un agent de la campagne, et qui l'évalue. */
 export interface EvaluateurDeLAgent {
   employeeId: string;
@@ -411,6 +430,8 @@ export interface EvaluateurDeLAgent {
   choisi: PersonneDesignee | null;
   /** Transmise à la DCH, la fiche garde son évaluateur. */
   transmise: boolean;
+  /** Jusqu'où la fiche est allée ; `null` : la campagne n'y a encore rien écrit (ADR-0271). */
+  avancement: AvancementDeLaFiche | null;
 }
 
 export interface AdministrationDeLaCampagne {

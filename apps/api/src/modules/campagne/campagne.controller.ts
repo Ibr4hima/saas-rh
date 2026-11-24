@@ -159,6 +159,16 @@ export class CampagneController {
     return this.campagne.choisirLEvaluateur(req.sessionUser, employeeId, body.evaluateurEmployeeId);
   }
 
+  /** La fiche de l'année d'un agent, remise à zéro par l'administration (ADR-0271). */
+  @Post('administration/fiches/:employeeId/remise-a-zero')
+  @HttpCode(200)
+  remettreAZero(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+  ) {
+    return this.campagne.remettreAZero(req.sessionUser, employeeId);
+  }
+
   /** Le suivi de la DCH : chaque agent à évaluer cette année, et où en est sa fiche. */
   @Get('dch')
   suiviDeLaDCH(@Req() req: AuthenticatedRequest) {

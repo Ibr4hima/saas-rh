@@ -20,6 +20,7 @@ import {
   sansLignesVides,
   type AccueilDeLaCampagne,
   type AdministrationDeLaCampagne,
+  type AvancementDeLaFiche,
   type AgentACommenter,
   type AgentDeLaCampagne,
   type AgentDeLEquipe,
@@ -61,6 +62,7 @@ import {
   type DonneesDeLaFiche,
 } from '../entretiens/fiche-pdf';
 import { evaluable } from '../evaluations/circuit';
+import { avancementDeLaFiche, ficheCommencee, REMISE_A_ZERO } from './remise-a-zero';
 import { unitesDe } from '../evaluations/unites';
 import { directionDeLUnite } from '../people/chaine';
 
@@ -348,6 +350,18 @@ export class CampagneService {
   ): Promise<AdministrationDeLaCampagne> {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await choisirLEvaluateurDans(tx, user, employeeId, evaluateurId);
+      return administrationDans(tx, user);
+    });
+  }
+
+  /**
+   * La fiche de l'année d'un agent, remise à zéro par l'administration
+   * (ADR-0271) : ce que la campagne y a écrit s'efface, les objectifs et
+   * l'évaluateur choisi restent. Une fiche déjà vierge ne change pas.
+   */
+  async remettreAZero(user: SessionUser, employeeId: string): Promise<AdministrationDeLaCampagne> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await remettreAZeroDans(tx, user, employeeId);
       return administrationDans(tx, user);
     });
   }
@@ -1682,6 +1696,7 @@ async function administrationDans(tx: Tx, user: SessionUser): Promise<Administra
     c_matricule: string | null;
     c_poste: string | null;
     transmise: boolean;
+    avancement: AvancementDeLaFiche | null;
   }>(sql`
     SELECT e.id, p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
            a.position_title AS poste,
@@ -1690,7 +1705,8 @@ async function administrationDans(tx: Tx, user: SessionUser): Promise<Administra
            m.employee_number AS m_matricule, am.position_title AS m_poste,
            c.id AS c_id, pc.given_name AS c_prenom, pc.family_name AS c_nom,
            c.employee_number AS c_matricule, ac.position_title AS c_poste,
-           f.transmise_dch_le IS NOT NULL AS transmise
+           f.transmise_dch_le IS NOT NULL AS transmise,
+           ${sql.raw(avancementDeLaFiche('f'))} AS avancement
       FROM employees e
       JOIN persons p ON p.id = e.person_id
       LEFT JOIN assignments a ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
@@ -1717,6 +1733,7 @@ async function administrationDans(tx: Tx, user: SessionUser): Promise<Administra
       organigramme: designee(r.m_id, r.m_prenom, r.m_nom, r.m_matricule, r.m_poste),
       choisi: designee(r.c_id, r.c_prenom, r.c_nom, r.c_matricule, r.c_poste),
       transmise: r.transmise,
+      avancement: r.avancement,
     })),
   };
 }
@@ -1742,6 +1759,27 @@ async function fixerLesDatesDans(tx: Tx, user: SessionUser, d: DatesDeLaCampagne
     VALUES (${uuidv7()}, ${user.tenantId}, ${annee}, ${d.du}, ${d.autoAu}, ${d.au})
     ON CONFLICT (tenant_id, annee) DO UPDATE
        SET du = EXCLUDED.du, auto_au = EXCLUDED.auto_au, au = EXCLUDED.au, updated_at = now()`);
+}
+
+/**
+ * La remise à zéro d'une fiche par l'administration (ADR-0271), sur un agent
+ * de la campagne : ce que la campagne y a écrit s'efface, comme avec la
+ * commande pnpm campagne:reinitialiser (ADR-0270).
+ */
+async function remettreAZeroDans(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
+  reserveALAdministration(user);
+  const annee = await anneeDeLaCampagne(tx);
+  const { rows } = await tx.execute(
+    sql`SELECT 1 FROM employees e WHERE e.id = ${employeeId} AND ${evaluable(sql`e`)}`,
+  );
+  if (rows.length === 0) {
+    problem(404, 'campagne.agent_introuvable', 'Agent introuvable parmi les agents de la campagne');
+  }
+  await tx.execute(sql`
+    UPDATE fiches_entretien f
+       SET ${sql.raw(REMISE_A_ZERO)}, updated_at = now()
+     WHERE f.employee_id = ${employeeId} AND f.annee = ${annee}
+       AND ${sql.raw(ficheCommencee('f'))}`);
 }
 
 /**

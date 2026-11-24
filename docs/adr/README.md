@@ -227,7 +227,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée, révisée par 0243                  |
 | [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223, 0227 et 0258    |
 | [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | révisée par 0226, 0227, 0233, 0256, 0265    |
-| [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | acceptée, révisée par 0227 et 0233          |
+| [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | complétée 0271, révisée 0227, 0233          |
 | [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée, révisée par 0236, 0237 et 0245    |
 | [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée, complétée par 0248 et 0264        |
 | [0225](0225-en-tete-sans-matricule.md)                | L'en-tête et les cartes des agents sans le matricule, le poste seul sous le nom         | acceptée                                    |
@@ -275,4 +275,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0267](0267-validation-sans-renvoi.md)                | L'agent valide son évaluation, sans pouvoir la renvoyer au N+1                          | acceptée                                    |
 | [0268](0268-telechargement-par-l-agent.md)            | Télécharger : l'agent enregistre son évaluation en PDF, sans la partie réservée         | acceptée, révisée par 0269                  |
 | [0269](0269-telechargement-apres-validation.md)       | Télécharger n'apparaît qu'une fois l'évaluation validée                                 | acceptée                                    |
-| [0270](0270-remise-a-zero-de-la-campagne.md)          | Remettre à zéro les fiches de la campagne après des essais                              | acceptée                                    |
+| [0270](0270-remise-a-zero-de-la-campagne.md)          | Remettre à zéro les fiches de la campagne après des essais                              | acceptée, complétée par 0271                |
+| [0271](0271-remise-a-zero-dans-l-administration.md)   | Remettre à zéro : l'administration remet la fiche d'un agent à zéro                     | acceptée                                    |

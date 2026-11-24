@@ -1213,6 +1213,49 @@ describe('l’administration de la campagne (ADR-0222)', () => {
       ).rejects.toMatchObject({ problem: { status, code } });
     }
   });
+
+  it('remet à zéro la fiche d’un agent, et garde ses objectifs (ADR-0271)', async () => {
+    await expect(campagne.remettreAZero(session('awa'), agents.ibou)).rejects.toMatchObject({
+      problem: { status: 403, code: 'campagne.administration_reservee' },
+    });
+    const avant = await campagne.administration(session('admin'));
+    expect(avant.agents.find((a) => a.employeeId === agents.ibou)?.avancement).toBe(
+      'transmise_a_la_dch',
+    );
+
+    const apres = await campagne.remettreAZero(session('admin'), agents.ibou);
+    const ibou = apres.agents.find((a) => a.employeeId === agents.ibou)!;
+    expect([ibou.avancement, ibou.transmise]).toEqual([null, false]);
+    // La fiche repart de l'auto-évaluation, avec ses objectifs.
+    const auto = await campagne.monAuto(session('ibou'));
+    expect(auto.etat).toBe('a_faire');
+    expect(auto.objectifs.length).toBeGreaterThan(0);
+    const n1 = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect([n1.autoEvaluation, n1.etatDeLEvaluation, n1.valideeLe, n1.dch]).toEqual([
+      null,
+      'a_faire',
+      null,
+      'en_attente',
+    ]);
+
+    // Le journal d'audit garde qui l'a remise à zéro, et ce qu'elle contenait.
+    const trace = await raw(
+      `SELECT actor_user_id AS auteur, old_data->>'transmise_dch_le' IS NOT NULL AS transmise
+         FROM audit_log
+        WHERE table_name = 'fiches_entretien' AND action = 'UPDATE'
+          AND row_id = (SELECT id FROM fiches_entretien WHERE employee_id = $1 AND annee = $2)
+          AND old_data->>'auto' IS NOT NULL AND new_data->>'auto' IS NULL`,
+      [agents.ibou, ANNEE],
+    );
+    expect(trace.rows).toEqual([{ auteur: ADMIN, transmise: true }]);
+
+    // Une fiche vierge ne change pas ; un agent hors campagne n'a pas de fiche.
+    const encore = await campagne.remettreAZero(session('admin'), agents.ibou);
+    expect(encore.agents.find((a) => a.employeeId === agents.ibou)?.avancement).toBeNull();
+    await expect(campagne.remettreAZero(session('admin'), agents.dg)).rejects.toMatchObject({
+      problem: { status: 404, code: 'campagne.agent_introuvable' },
+    });
+  });
 });
 
 describe('les phases de la campagne', () => {
