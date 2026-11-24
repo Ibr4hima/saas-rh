@@ -16,14 +16,18 @@ import type { Response } from 'express';
 import {
   choixDeLEvaluateurSchema,
   datesDeLaCampagneSchema,
+  datesDesObjectifsSchema,
   ecritureDeLAutoSchema,
   ecritureDeLEvaluationSchema,
   ecritureDesCommentairesSchema,
+  ecritureDesObjectifsSchema,
   type ChoixDeLEvaluateur,
   type DatesDeLaCampagne,
+  type DatesDesObjectifs,
   type EcritureDeLAuto,
   type EcritureDeLEvaluation,
   type EcritureDesCommentaires,
+  type EcritureDesObjectifs,
 } from '@teranga/contracts';
 import { contentDisposition } from '../../common/telechargement';
 import { ZodValidationPipe } from '../../common/zod.pipe';
@@ -40,7 +44,8 @@ import { CampagneService } from './campagne.service';
  * commentaires de N+2. Le suivi de la DCH et les fiches qui lui sont
  * transmises demandent l'habilitation « Tableau de bord » ; les dates de
  * l'évaluation et le choix des évaluateurs, un compte d'administration
- * (ADR-0222).
+ * (ADR-0222). Les objectifs de l'année, une fois leur fixation ouverte,
+ * s'écrivent par le N+1 de l'organigramme seulement (ADR-0274).
  */
 @Controller('campagne')
 @UseGuards(SessionGuard, AccesGuard)
@@ -134,6 +139,39 @@ export class CampagneController {
     return this.campagne.renvoyerAuN2(req.sessionUser, employeeId);
   }
 
+  /**
+   * Les objectifs d'un agent de son équipe dans l'organigramme : la page ne
+   * s'ouvre qu'à son N+1, une fois leur fixation ouverte (ADR-0274).
+   */
+  @Get('objectifs/equipe/:employeeId')
+  objectifsDeLAgent(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+  ) {
+    return this.campagne.objectifsDeLAgent(req.sessionUser, employeeId);
+  }
+
+  /** Le brouillon de ses objectifs. */
+  @Put('objectifs/equipe/:employeeId')
+  enregistrerLesObjectifs(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Body(new ZodValidationPipe(ecritureDesObjectifsSchema)) body: EcritureDesObjectifs,
+  ) {
+    return this.campagne.enregistrerLesObjectifs(req.sessionUser, employeeId, body.objectifs);
+  }
+
+  /** Ses objectifs, complets, transmis à l'agent. */
+  @Post('objectifs/equipe/:employeeId/transmission')
+  @HttpCode(200)
+  transmettreLesObjectifs(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Body(new ZodValidationPipe(ecritureDesObjectifsSchema)) body: EcritureDesObjectifs,
+  ) {
+    return this.campagne.transmettreLesObjectifs(req.sessionUser, employeeId, body.objectifs);
+  }
+
   /** L'administration de la campagne : les dates, et qui évalue qui (ADR-0222). */
   @Get('administration')
   administration(@Req() req: AuthenticatedRequest) {
@@ -147,6 +185,15 @@ export class CampagneController {
     @Body(new ZodValidationPipe(datesDeLaCampagneSchema)) body: DatesDeLaCampagne,
   ) {
     return this.campagne.fixerLesDates(req.sessionUser, body);
+  }
+
+  /** Les dates de la fixation des objectifs de l'année suivante (ADR-0274). */
+  @Put('administration/dates-des-objectifs')
+  fixerLesDatesDesObjectifs(
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(datesDesObjectifsSchema)) body: DatesDesObjectifs,
+  ) {
+    return this.campagne.fixerLesDatesDesObjectifs(req.sessionUser, body);
   }
 
   /** L'évaluateur d'un agent pour la campagne ; `null` : le N+1 de l'organigramme. */

@@ -227,7 +227,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée, révisée par 0243                  |
 | [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223, 0227 et 0258    |
 | [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | rév. 0226/0227/0233/0256/0265/0273          |
-| [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | complétée 0271, révisée 0227, 0233          |
+| [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | compl. 0271/0274, rév. 0227/0233            |
 | [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée, révisée par 0236, 0237 et 0245    |
 | [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée, complétée par 0248 et 0264        |
 | [0225](0225-en-tete-sans-matricule.md)                | L'en-tête et les cartes des agents sans le matricule, le poste seul sous le nom         | acceptée                                    |
@@ -244,7 +244,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0236](0236-puces-de-la-periode-reformulees.md)       | Deux puces de la période reformulées par l'APIX                                         | acceptée, révisée par 0237                  |
 | [0237](0237-puce-des-objectifs-raccourcie.md)         | La puce des objectifs de l'année à venir, raccourcie                                    | acceptée, révisée par 0272                  |
 | [0238](0238-reponses-oui-non-et-puces.md)             | Les réponses par oui ou non et en puces de l'auto-évaluation, souhaits obligatoires     | acceptée, complétée par 0251, 0259, 0261    |
-| [0239](0239-trois-a-cinq-objectifs-a-venir.md)        | De trois à cinq objectifs pour l'année à venir, fixés par le N+1                        | complétée 0262, remplacée par 0272          |
+| [0239](0239-trois-a-cinq-objectifs-a-venir.md)        | De trois à cinq objectifs pour l'année à venir, fixés par le N+1                        | compl. 0262, rempl. 0272, reprise 0274      |
 | [0240](0240-titres-de-section-plus-petits.md)         | Les titres de section de la campagne, un peu plus petits                                | acceptée                                    |
 | [0241](0241-valider-l-auto-evaluation.md)             | Valider son auto-évaluation, la fiche en PDF, et la barre au bas de la page             | révisée par 0242 et 0254, complétée 0260    |
 | [0242](0242-bandeau-de-l-auto-evaluation.md)          | Le bandeau de l'auto-évaluation, sans icône, Modifier à droite                          | acceptée                                    |
@@ -267,7 +267,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0259](0259-lecture-des-reponses.md)                  | La lecture des réponses : le oui et ses puces ensemble, les puces au bord               | acceptée                                    |
 | [0260](0260-valider-l-evaluation-du-n1.md)            | Valider chez le N+1 : la fiche en PDF avant de la transmettre à l'agent                 | acceptée                                    |
 | [0261](0261-autres-realisations-en-puces.md)          | Autres réalisations en dehors des objectifs, en puces                                   | acceptée                                    |
-| [0262](0262-aide-a-la-redaction-des-objectifs.md)     | Comment définir des objectifs : une fiche d'aide à côté du titre des objectifs          | acceptée, révisée par 0263 et 0272          |
+| [0262](0262-aide-a-la-redaction-des-objectifs.md)     | Comment définir des objectifs : une fiche d'aide à côté du titre des objectifs          | acceptée, révisée par 0263, 0272 et 0274    |
 | [0263](0263-fiche-des-objectifs-resserree.md)         | La fiche Comment définir des objectifs, resserrée : son titre, cinq parties             | acceptée                                    |
 | [0264](0264-reperes-sans-le-type-de-l-unite.md)       | Sous Département et Service, le nom de l'unité sans ce mot                              | acceptée                                    |
 | [0265](0265-entretien-confirme-et-date.md)            | Le N+1 confirme l'entretien avec l'agent et en donne la date                            | acceptée                                    |
@@ -277,5 +277,6 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0269](0269-telechargement-apres-validation.md)       | Télécharger n'apparaît qu'une fois l'évaluation validée                                 | acceptée                                    |
 | [0270](0270-remise-a-zero-de-la-campagne.md)          | Remettre à zéro les fiches de la campagne après des essais                              | acceptée, complétée par 0271                |
 | [0271](0271-remise-a-zero-dans-l-administration.md)   | Remettre à zéro : l'administration remet la fiche d'un agent à zéro                     | acceptée                                    |
-| [0272](0272-evaluation-sans-objectifs-a-venir.md)     | L'évaluation ne fixe plus les objectifs de l'année suivante                             | acceptée                                    |
+| [0272](0272-evaluation-sans-objectifs-a-venir.md)     | L'évaluation ne fixe plus les objectifs de l'année suivante                             | acceptée, complétée par 0274                |
 | [0273](0273-fiche-verrouillee-a-la-fin.md)            | À la fin de l'évaluation, la fiche est verrouillée                                      | acceptée                                    |
+| [0274](0274-campagne-des-objectifs.md)                | La fixation des objectifs, une campagne à part, en début d'année                        | acceptée                                    |

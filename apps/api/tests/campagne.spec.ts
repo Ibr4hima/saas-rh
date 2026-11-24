@@ -19,6 +19,7 @@ import {
   competencesDe,
   dateEnLettres,
   datesDeLaCampagneSchema,
+  datesDesObjectifsSchema,
   evaluationDuN1Schema,
   evaluationDuN1Vide,
   partieReserveeVide,
@@ -1309,5 +1310,246 @@ describe('les phases de la campagne', () => {
     await raw(`DELETE FROM evaluation_periodes WHERE tenant_id = $1`, [tenantId]);
     const sans = await campagne.accueil(session('moussa'));
     expect([sans.phase, sans.periode]).toEqual(['non_fixee', null]);
+  });
+});
+
+describe('la fixation des objectifs (ADR-0274)', () => {
+  const SUIVANTE = ANNEE + 1;
+  /** La période de la fixation des objectifs de l'année suivante, du … au …, autour d'aujourd'hui. */
+  const fixation = async (du: number, au: number) => {
+    await raw(`DELETE FROM objectifs_periodes WHERE tenant_id = $1`, [tenantId]);
+    await raw(
+      `INSERT INTO objectifs_periodes (id, tenant_id, annee, du, au) VALUES ($1,$2,$3,$4,$5)`,
+      [randomUUID(), tenantId, SUIVANTE, jour(du), jour(au)],
+    );
+  };
+  const objectif = (n: number, echeance: string | null = `${SUIVANTE}-06-30`) => ({
+    objectif: `Objectif ${n}`,
+    indicateur: `Indicateur ${n}`,
+    echeance,
+  });
+  const vide = { objectif: '', indicateur: '', echeance: null };
+  const dansLEquipe = async (qui: Nom, agent: Nom) =>
+    (await campagne.accueil(session(qui))).objectifs?.equipe.find(
+      (a) => a.employeeId === agents[agent],
+    );
+
+  beforeAll(async () => {
+    // L'évaluation de l'année est terminée : ses fiches sont verrouillées (ADR-0273).
+    await periode(-20, -15, -1);
+  });
+
+  it('avant l’ouverture de sa période, rien ne l’annonce', async () => {
+    expect((await campagne.accueil(session('awa'))).objectifs).toBeNull();
+    await expect(campagne.objectifsDeLAgent(session('awa'), agents.moussa)).rejects.toMatchObject({
+      problem: { status: 404, code: 'campagne.objectifs_introuvables' },
+    });
+    await fixation(2, 20);
+    expect((await campagne.accueil(session('awa'))).objectifs).toBeNull();
+    await expect(
+      campagne.enregistrerLesObjectifs(session('awa'), agents.moussa, [objectif(1)]),
+    ).rejects.toMatchObject({ problem: { status: 404, code: 'campagne.objectifs_introuvables' } });
+  });
+
+  it('l’administration fixe ses dates : dans l’année des objectifs, après la fin de l’évaluation', async () => {
+    const janvier = { du: `${SUIVANTE}-01-05`, au: `${SUIVANTE}-01-31` };
+    await expect(campagne.fixerLesDatesDesObjectifs(session('awa'), janvier)).rejects.toMatchObject(
+      { problem: { status: 403, code: 'campagne.administration_reservee' } },
+    );
+    const v = await campagne.fixerLesDatesDesObjectifs(session('admin'), janvier);
+    expect(v.objectifs).toEqual({ annee: SUIVANTE, periode: janvier, phase: 'a_venir' });
+    expect(datesDesObjectifsSchema.safeParse({ du: janvier.au, au: janvier.du }).success).toBe(
+      false,
+    );
+    await expect(
+      campagne.fixerLesDatesDesObjectifs(session('admin'), {
+        du: `${ANNEE}-12-28`,
+        au: janvier.au,
+      }),
+    ).rejects.toMatchObject({ problem: { status: 422, code: 'campagne.dates_hors_annee' } });
+    // L'évaluation finit avant la fixation des objectifs, d'un côté comme de l'autre.
+    const jusquEnJanvier = { du: jour(-20), autoAu: jour(-15), au: `${SUIVANTE}-01-10` };
+    await expect(campagne.fixerLesDates(session('admin'), jusquEnJanvier)).rejects.toMatchObject({
+      problem: { status: 422, code: 'campagne.evaluation_apres_les_objectifs' },
+    });
+    await raw(`DELETE FROM objectifs_periodes WHERE tenant_id = $1`, [tenantId]);
+    await campagne.fixerLesDates(session('admin'), jusquEnJanvier);
+    await expect(
+      campagne.fixerLesDatesDesObjectifs(session('admin'), { ...janvier, du: `${SUIVANTE}-01-10` }),
+    ).rejects.toMatchObject({ problem: { status: 422, code: 'campagne.objectifs_avant_la_fin' } });
+    await periode(-20, -15, -1);
+  });
+
+  it('ouverte, l’accueil donne à l’agent ses objectifs, et au N+1 son équipe dans l’organigramme', async () => {
+    await fixation(0, 10);
+    expect((await campagne.accueil(session('awa'))).objectifs).toEqual({
+      annee: SUIVANTE,
+      periode: { du: jour(0), au: jour(10) },
+      phase: 'ouverte',
+      miens: { transmis: null },
+      equipe: [
+        expect.objectContaining({
+          prenom: 'Ousmane',
+          nom: 'Fall',
+          etat: 'a_fixer',
+          transmisLe: null,
+        }),
+        expect.objectContaining({ prenom: 'Fatou', nom: 'Sall', etat: 'a_fixer' }),
+        expect.objectContaining({ prenom: 'Moussa', nom: 'Sarr', matricule: 'CAMP-MOUSSA' }),
+      ],
+    });
+    // Le sommet de l'organigramme n'en reçoit pas ; son équipe compte Ibou Ndiaye,
+    // dont l'évaluation revient à Awa Diop pour la campagne.
+    const dg = (await campagne.accueil(session('dg'))).objectifs;
+    expect(dg?.miens).toBeNull();
+    expect(dg?.equipe.map((a) => a.nom)).toEqual(['Diop', 'Ndiaye']);
+    // Un stage n'en reçoit pas non plus ; un compte sans dossier n'a ni objectifs ni équipe.
+    expect((await campagne.accueil(session('lamine'))).objectifs?.miens).toBeNull();
+    expect((await campagne.accueil(session('admin'))).objectifs).toMatchObject({
+      phase: 'ouverte',
+      miens: null,
+      equipe: [],
+    });
+  });
+
+  it('le N+1 garde un brouillon, que l’agent ne lit pas', async () => {
+    const v = await campagne.enregistrerLesObjectifs(session('awa'), agents.moussa, [
+      objectif(1),
+      vide,
+    ]);
+    expect(v).toMatchObject({
+      annee: SUIVANTE,
+      phase: 'ouverte',
+      objectifs: [objectif(1), vide],
+      etat: 'en_cours',
+      transmisLe: null,
+      modifiable: true,
+    });
+    expect(v.agent).toMatchObject({
+      prenom: 'Moussa',
+      nom: 'Sarr',
+      evaluateur: { prenom: 'Awa', nom: 'Diop' },
+    });
+    expect((await campagne.accueil(session('moussa'))).objectifs?.miens).toEqual({
+      transmis: null,
+    });
+    expect((await dansLEquipe('awa', 'moussa'))?.etat).toBe('en_cours');
+  });
+
+  it('ne les transmet pas incomplets, et dit ce qui manque', async () => {
+    await expect(
+      campagne.transmettreLesObjectifs(session('awa'), agents.moussa, [
+        objectif(1, `${ANNEE}-12-31`),
+        { ...objectif(2), indicateur: ' ' },
+      ]),
+    ).rejects.toMatchObject({
+      problem: {
+        status: 422,
+        code: 'campagne.objectifs_incomplets',
+        detail: `À compléter : l’échéance de l’objectif 1 (en ${SUIVANTE}), l’indicateur de réussite de l’objectif 2, les objectifs (3 au moins).`,
+      },
+    });
+    await expect(
+      campagne.transmettreLesObjectifs(
+        session('awa'),
+        agents.moussa,
+        [1, 2, 3, 4, 5, 6].map((n) => objectif(n)),
+      ),
+    ).rejects.toMatchObject({ problem: { detail: 'À compléter : les objectifs (5 au plus).' } });
+    // Le brouillon n'a pas bougé.
+    expect((await campagne.objectifsDeLAgent(session('awa'), agents.moussa)).objectifs).toEqual([
+      objectif(1),
+      vide,
+    ]);
+  });
+
+  it('transmis à l’agent, ils deviennent les objectifs de sa fiche de l’année, et ne changent plus', async () => {
+    const lireLesObjectifs = async (annee: number) =>
+      (
+        await raw(`SELECT objectifs FROM fiches_entretien WHERE employee_id = $1 AND annee = $2`, [
+          agents.moussa,
+          annee,
+        ])
+      ).rows[0]?.objectifs as unknown;
+    const deLEvaluation = await lireLesObjectifs(ANNEE);
+    const quatre = [
+      objectif(1),
+      objectif(2, `${SUIVANTE}-09-30`),
+      vide,
+      { ...objectif(3, `${SUIVANTE}-12-31`), objectif: '  Objectif 3  ' },
+    ];
+    const v = await campagne.transmettreLesObjectifs(session('awa'), agents.moussa, quatre);
+    // La ligne restée vide ne part pas.
+    const transmis = [
+      objectif(1),
+      objectif(2, `${SUIVANTE}-09-30`),
+      objectif(3, `${SUIVANTE}-12-31`),
+    ];
+    expect(v).toMatchObject({
+      objectifs: transmis,
+      etat: 'transmis',
+      transmisLe: AUJOURD_HUI,
+      modifiable: false,
+    });
+    expect((await campagne.accueil(session('moussa'))).objectifs?.miens).toEqual({
+      transmis: {
+        objectifs: transmis,
+        le: AUJOURD_HUI,
+        par: { prenom: 'Awa', nom: 'Diop', poste: 'Responsable du département' },
+      },
+    });
+    expect(await dansLEquipe('awa', 'moussa')).toMatchObject({
+      etat: 'transmis',
+      transmisLe: AUJOURD_HUI,
+    });
+    // Sur la fiche de l'année des objectifs, ceux qu'appréciera l'évaluation de
+    // fin d'année ; la fiche de l'évaluation de cette année ne bouge pas.
+    expect(await lireLesObjectifs(SUIVANTE)).toEqual(
+      transmis.map((o) => ({
+        id: expect.any(String),
+        intitule: o.objectif,
+        indicateurs: o.indicateur,
+        echeance: o.echeance,
+      })),
+    );
+    expect(await lireLesObjectifs(ANNEE)).toEqual(deLEvaluation);
+    for (const geste of [
+      () => campagne.enregistrerLesObjectifs(session('awa'), agents.moussa, quatre),
+      () => campagne.transmettreLesObjectifs(session('awa'), agents.moussa, quatre),
+    ]) {
+      await expect(geste()).rejects.toMatchObject({
+        problem: { status: 409, code: 'campagne.objectifs_transmis' },
+      });
+    }
+  });
+
+  it('ne s’ouvre qu’au N+1 de l’organigramme, pas à l’évaluateur de la campagne', async () => {
+    for (const [qui, agent] of [
+      // Awa Diop évalue Ibou Ndiaye pour la campagne ; son N+1 : Cheikh Mbaye.
+      ['awa', 'ibou'],
+      // Cheikh Mbaye évalue Ousmane Fall ; son N+1 : Awa Diop.
+      ['dg', 'ousmane'],
+      ['awa', 'lamine'],
+      ['moussa', 'fatou'],
+    ] as const) {
+      await expect(campagne.objectifsDeLAgent(session(qui), agents[agent])).rejects.toMatchObject({
+        problem: { status: 404, code: 'campagne.agent_hors_equipe' },
+      });
+    }
+    const ibou = await campagne.objectifsDeLAgent(session('dg'), agents.ibou);
+    expect([ibou.etat, ibou.modifiable]).toEqual(['a_fixer', true]);
+  });
+
+  it('après la fin de sa période, ils se lisent et ne s’écrivent plus', async () => {
+    await fixation(-10, -1);
+    const fatou = await campagne.objectifsDeLAgent(session('awa'), agents.fatou);
+    expect([fatou.phase, fatou.etat, fatou.modifiable]).toEqual(['terminee', 'a_fixer', false]);
+    await expect(
+      campagne.enregistrerLesObjectifs(session('awa'), agents.fatou, [objectif(1)]),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.objectifs_fermes' } });
+    const moussa = (await campagne.accueil(session('moussa'))).objectifs;
+    expect(moussa?.phase).toBe('terminee');
+    expect(moussa?.miens?.transmis?.objectifs).toHaveLength(3);
+    await raw(`DELETE FROM objectifs_periodes WHERE tenant_id = $1`, [tenantId]);
   });
 });

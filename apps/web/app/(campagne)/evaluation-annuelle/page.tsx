@@ -2,10 +2,14 @@
 
 import Link from 'next/link';
 import {
+  dateEnLettres,
   LIBELLES_DU_PERSONNEL,
   periodeDEvaluationEnLettres,
   type AgentACommenter,
+  type AgentAObjectifs,
   type AgentDeLEquipe,
+  type ObjectifsDeLAccueil,
+  type ObjectifsTransmis,
   type PeriodeDeLaCampagne,
 } from '@teranga/contracts';
 import { Card, cn, EmptyState, Skeleton } from '@teranga/ui';
@@ -18,9 +22,11 @@ import {
 import {
   BoutonMAutoEvaluer,
   BoutonValiderMonEvaluation,
+  jourCourt,
   statutDeLAgent,
   statutPourLeN2,
 } from '../../../components/campagne/fiche';
+import { TableauDesObjectifs } from '../../../components/campagne/objectifs';
 import { CarteDeLaPeriode } from '../../../components/campagne/periode';
 import { Icon } from '../../../components/icons';
 import { ApiError } from '../../../lib/api';
@@ -28,6 +34,7 @@ import {
   ACCUEIL_DE_LA_CAMPAGNE,
   ADMINISTRATION_DE_LA_CAMPAGNE,
   ficheDuN2,
+  objectifsDeLAgent,
   useAccueilDeLaCampagne,
 } from '../../../lib/campagne';
 
@@ -58,6 +65,11 @@ import {
    N+2 d'agents, « Fiches d'évaluation à commenter » : les fiches validées
    par l'agent, qui s'ouvrent pour ses commentaires (ADR-0218). Tant
    qu'aucune n'est arrivée chez le N+2, pas de section (ADR-0255).
+   Une fois la fixation des objectifs ouverte (ADR-0274), ses sections
+   passent devant celles de l'évaluation : « Mes objectifs », ceux que le
+   N+1 a transmis, en lecture ; puis, pour qui a une équipe dans
+   l'organigramme, une carte par agent, qui ouvre la page où le N+1 fixe
+   ses objectifs. Avant, rien ne les annonce.
    Les blocs montent l'un après l'autre à l'arrivée sur la page.
    ──────────────────────────────────────────────────────────────── */
 
@@ -121,6 +133,7 @@ export default function AccueilDeLaCampagnePage() {
   ) : recue?.etat === 'a_valider' && v.phase !== 'terminee' ? (
     <BoutonValiderMonEvaluation />
   ) : null;
+  const objectifs = v.objectifs;
   let rang = 0;
   return (
     <div className="flex flex-col gap-8 sm:gap-10">
@@ -130,6 +143,16 @@ export default function AccueilDeLaCampagnePage() {
       {v.administration ? (
         <Bloc rang={rang++}>
           <Administration periode={v.periode} />
+        </Bloc>
+      ) : null}
+      {objectifs?.miens ? (
+        <Bloc rang={rang++}>
+          <MesObjectifs objectifs={objectifs} transmis={objectifs.miens.transmis} />
+        </Bloc>
+      ) : null}
+      {objectifs && objectifs.equipe.length > 0 ? (
+        <Bloc rang={rang++}>
+          <ObjectifsDeLEquipe objectifs={objectifs} />
         </Bloc>
       ) : null}
       {auto ? (
@@ -253,6 +276,92 @@ function ACommenter({ agents }: { agents: AgentACommenter[] }) {
   );
 }
 
+/**
+ * Ses objectifs de l'année, une fois leur fixation ouverte (ADR-0274), tels
+ * que son N+1 les a transmis, en lecture, avec le jour de leur
+ * transmission ; avant, une ligne le dit.
+ */
+function MesObjectifs({
+  objectifs: o,
+  transmis,
+}: {
+  objectifs: ObjectifsDeLAccueil;
+  transmis: ObjectifsTransmis | null;
+}) {
+  const par = transmis?.par ? ` par ${transmis.par.prenom} ${transmis.par.nom}` : '';
+  return (
+    <section aria-labelledby="mes-objectifs" className="flex flex-col gap-4">
+      <TitreDeSection
+        id="mes-objectifs"
+        droite={
+          transmis ? (
+            <span className="text-[12px] font-semibold text-ink-muted">
+              Transmis{par} le {dateEnLettres(transmis.le)}
+            </span>
+          ) : undefined
+        }
+      >
+        Mes objectifs {o.annee}
+      </TitreDeSection>
+      <Card>
+        {transmis ? (
+          <TableauDesObjectifs annee={o.annee} objectifs={transmis.objectifs} />
+        ) : (
+          <p className="px-5 py-5 text-[13px] text-ink-muted">
+            {o.phase === 'ouverte'
+              ? 'Vos objectifs ne vous ont pas encore été transmis.'
+              : 'Aucun objectif ne vous a été transmis.'}
+          </p>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+/** Où en sont les objectifs d'un agent, sur sa carte. */
+function objectifsEnBref(a: AgentAObjectifs): string {
+  switch (a.etat) {
+    case 'transmis':
+      return a.transmisLe ? `Transmis le ${jourCourt(a.transmisLe)}` : 'Transmis';
+    case 'en_cours':
+      return 'En cours';
+    case 'a_fixer':
+      return 'À fixer';
+  }
+}
+
+/**
+ * Son équipe dans l'organigramme, pour la fixation des objectifs (ADR-0274) :
+ * d'abord les agents dont les objectifs restent à transmettre, puis les
+ * agents qui les ont reçus, comme les deux groupes de « Mon équipe ». Chaque
+ * carte ouvre la page où le N+1 fixe les objectifs de l'agent.
+ */
+function ObjectifsDeLEquipe({ objectifs: o }: { objectifs: ObjectifsDeLAccueil }) {
+  const carte = (a: AgentAObjectifs): CarteDUnAgent => ({
+    agent: a,
+    reperes: [{ libelle: 'Objectifs', valeur: objectifsEnBref(a) }],
+    href: objectifsDeLAgent(a.employeeId),
+  });
+  return (
+    <SectionDAgents
+      id="objectifs-de-mon-equipe"
+      titre={`Objectifs ${o.annee} de mon équipe`}
+      groupes={[
+        {
+          titre: o.phase === 'ouverte' ? 'Objectifs à fixer' : 'Objectifs non transmis',
+          point: 'non_faite',
+          cartes: o.equipe.filter((a) => a.etat !== 'transmis').map(carte),
+        },
+        {
+          titre: 'Objectifs transmis',
+          point: 'faite',
+          cartes: o.equipe.filter((a) => a.etat === 'transmis').map(carte),
+        },
+      ]}
+    />
+  );
+}
+
 /** « Du 15 au 30 décembre 2026 », ou ce qui manque, sur la tuile de l'administration. */
 function periodeEnBref(periode: PeriodeDeLaCampagne | null): string {
   if (!periode) return 'Dates de l’évaluation à fixer';
@@ -267,7 +376,8 @@ interface CarteDUnAgent {
    * Les repères qui suivent l'adresse, deux par ligne. Dans « Mon équipe »,
    * l'auto-évaluation faite et sa date, sinon le statut, cadre ou non cadre,
    * même inconnu (ADR-0235, ADR-0257). Pour le N+2, le N+1 de l'agent, puis
-   * où en est la fiche (ADR-0255).
+   * où en est la fiche (ADR-0255). Pour les objectifs, où ils en sont
+   * (ADR-0274).
    */
   reperes: { libelle: string; valeur: string | null }[];
   href?: string;
@@ -278,8 +388,9 @@ interface CarteDUnAgent {
  * l'un sous l'autre, séparés d'un filet. Un groupe vide ne s'affiche pas ;
  * un groupe sans titre, ses cartes seules.
  * Dans « Mon équipe », le titre d'un groupe porte un point devant lui : vert,
- * auto-évaluation faite ; rouge, non faite (ADR-0253). Les cartes, elles,
- * n'en ont pas (ADR-0250).
+ * auto-évaluation faite ; rouge, non faite (ADR-0253). De même pour les
+ * objectifs : vert, transmis ; rouge, pas encore (ADR-0274). Les cartes,
+ * elles, n'en ont pas (ADR-0250).
  */
 function SectionDAgents({
   id,

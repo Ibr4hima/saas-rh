@@ -3,9 +3,12 @@ import {
   autoEvaluationSchema,
   evaluationDuN1Schema,
   LONGUEURS_DE_LA_FICHE,
+  MAXIMUMS_DE_LA_FICHE,
+  objectifAVenirSchema,
   partieReserveeSchema,
   type AutoEvaluation,
   type EvaluationDuN1,
+  type ObjectifDeLAnneeAVenir,
   type ObjectifEvalue,
   type PartieReservee,
   type PersonnelDeLaFiche,
@@ -199,6 +202,11 @@ export interface AccueilDeLaCampagne {
   dch: { fiches: number; transmises: number } | null;
   /** Un compte d'administration : l'accueil ouvre l'administration de la campagne (ADR-0222). */
   administration: boolean;
+  /**
+   * La fixation des objectifs, une fois ouverte ; `null` avant : rien ne
+   * l'annonce (ADR-0274).
+   */
+  objectifs: ObjectifsDeLAccueil | null;
 }
 
 /** Un agent de l'équipe, tel que son évaluateur l'ouvre depuis sa carte. */
@@ -440,6 +448,8 @@ export interface AdministrationDeLaCampagne {
   phase: PhaseDeLaCampagne;
   /** Les agents à évaluer cette année, par ordre alphabétique. */
   agents: EvaluateurDeLAgent[];
+  /** La fixation des objectifs de l'année suivante, ses dates (ADR-0274). */
+  objectifs: { annee: number; periode: PeriodeDesObjectifs | null; phase: PhaseDesObjectifs };
 }
 
 /** Les dates de l'évaluation : le début, la fin de l'auto-évaluation, la fin. */
@@ -458,3 +468,86 @@ export type DatesDeLaCampagne = z.infer<typeof datesDeLaCampagneSchema>;
 /** L'évaluateur d'un agent pour la campagne ; `null` : le N+1 de l'organigramme. */
 export const choixDeLEvaluateurSchema = z.object({ evaluateurEmployeeId: z.uuid().nullable() });
 export type ChoixDeLEvaluateur = z.infer<typeof choixDeLEvaluateurSchema>;
+
+// ──────────────────────────────────────────────── la fixation des objectifs (ADR-0274)
+
+/**
+ * La période de la fixation des objectifs, AAAA-MM-JJ : en début d'année,
+ * après la fin de l'évaluation de l'année d'avant.
+ */
+export interface PeriodeDesObjectifs {
+  du: string;
+  au: string;
+}
+
+/** Où en est la fixation des objectifs, le jour même. */
+export type PhaseDesObjectifs = 'non_fixee' | 'a_venir' | 'ouverte' | 'terminee';
+
+/** Les objectifs d'un agent : à fixer, en cours d'écriture par le N+1, transmis. */
+export type EtatDesObjectifs = 'a_fixer' | 'en_cours' | 'transmis';
+
+/** Un agent de l'équipe du N+1, dans l'organigramme, et où en sont ses objectifs. */
+export interface AgentAObjectifs {
+  employeeId: string;
+  prenom: string;
+  nom: string;
+  matricule: string;
+  poste: string | null;
+  email: string | null;
+  etat: EtatDesObjectifs;
+  /** AAAA-MM-JJ : leur transmission à l'agent. */
+  transmisLe: string | null;
+}
+
+/** Ses objectifs, tels que son N+1 les a transmis. */
+export interface ObjectifsTransmis {
+  objectifs: ObjectifDeLAnneeAVenir[];
+  /** AAAA-MM-JJ. */
+  le: string;
+  par: PersonneDeLaCampagne | null;
+}
+
+/** La fixation des objectifs sur l'accueil, une fois ouverte. */
+export interface ObjectifsDeLAccueil {
+  /** L'année des objectifs : celle qui suit l'évaluation. */
+  annee: number;
+  periode: PeriodeDesObjectifs;
+  phase: 'ouverte' | 'terminee';
+  /**
+   * Ses propres objectifs : `null` sans N+1 dans l'organigramme ; `transmis`
+   * à `null` tant que le N+1 ne les a pas transmis.
+   */
+  miens: { transmis: ObjectifsTransmis | null } | null;
+  /** Son équipe dans l'organigramme ; vide s'il n'y en a pas. */
+  equipe: AgentAObjectifs[];
+}
+
+/** Les objectifs d'un agent, tels que son N+1 les fixe. */
+export interface ObjectifsDeLAgent {
+  annee: number;
+  periode: PeriodeDesObjectifs;
+  phase: 'ouverte' | 'terminee';
+  agent: AgentDeLaCampagne;
+  /** Le brouillon du N+1, ou les objectifs transmis ; vide tant que rien n'est écrit. */
+  objectifs: ObjectifDeLAnneeAVenir[];
+  etat: EtatDesObjectifs;
+  /** AAAA-MM-JJ. */
+  transmisLe: string | null;
+  /** Ouverts à l'écriture : pendant la période, tant qu'ils ne sont pas transmis. */
+  modifiable: boolean;
+}
+
+/** L'écriture des objectifs d'un agent : le brouillon, ou la version transmise. */
+export const ecritureDesObjectifsSchema = z.object({
+  objectifs: z.array(objectifAVenirSchema).max(MAXIMUMS_DE_LA_FICHE.objectifsAVenir),
+});
+export type EcritureDesObjectifs = z.infer<typeof ecritureDesObjectifsSchema>;
+
+/** Les dates de la fixation des objectifs : le début, la fin. */
+export const datesDesObjectifsSchema = z
+  .object({ du: z.iso.date(), au: z.iso.date() })
+  .refine((p) => p.du <= p.au, {
+    message: 'La fin de la période doit suivre son début',
+    path: ['au'],
+  });
+export type DatesDesObjectifs = z.infer<typeof datesDesObjectifsSchema>;

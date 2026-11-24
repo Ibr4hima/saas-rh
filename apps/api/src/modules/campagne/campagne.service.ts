@@ -8,11 +8,15 @@ import {
   autoEvaluationVide,
   ceQuiManqueALAutoEvaluation,
   ceQuiManqueALEvaluationDuN1,
+  ceQuiManqueAuxObjectifs,
   competencesDe,
+  dateEnLettres,
   evaluationDuN1Schema,
   evaluationDuN1Vide,
   nomDeLaFiche,
+  objectifAVenirSchema,
   objectifEvalueSchema,
+  objectifsEcrits,
   partieReserveeSchema,
   partieReserveeVide,
   personnelDeLaFiche,
@@ -22,12 +26,14 @@ import {
   type AdministrationDeLaCampagne,
   type AvancementDeLaFiche,
   type AgentACommenter,
+  type AgentAObjectifs,
   type AgentDeLaCampagne,
   type AgentDeLEquipe,
   type AutoDeLAgent,
   type AutoEvaluation,
   type CommentairesDuN2,
   type DatesDeLaCampagne,
+  type DatesDesObjectifs,
   type EcritureDeLEvaluation,
   type EtapeDeLaFiche,
   type EvaluateurDeLAgent,
@@ -35,6 +41,7 @@ import {
   type EtatDeLEvaluation,
   type EtatDeMonEvaluation,
   type EtatDesCommentaires,
+  type EtatDesObjectifs,
   type EvaluationDeLAgent,
   type EvaluationDuN1,
   type EvaluationRecue,
@@ -42,13 +49,18 @@ import {
   type FichePourLeN2,
   type MonAutoEvaluation,
   type MonEvaluation,
+  type ObjectifDeLAnneeAVenir,
   type ObjectifEvalue,
+  type ObjectifsDeLAccueil,
+  type ObjectifsDeLAgent,
   type PartieReservee,
   type PeriodeDeLaCampagne,
+  type PeriodeDesObjectifs,
   type PersonneDeLaCampagne,
   type PersonneDesignee,
   type PersonnelDeLaFiche,
   type PhaseDeLaCampagne,
+  type PhaseDesObjectifs,
   type SessionUser,
   type SuiviDeLaDCH,
 } from '@teranga/contracts';
@@ -97,6 +109,13 @@ import { directionDeLUnite } from '../people/chaine';
    renvoie au N+2. La DCH, avec l'habilitation « Tableau de bord », suit toutes
    les fiches de l'année et lit en entier celles qui lui sont transmises,
    avec leur PDF (ADR-0221).
+
+   Les objectifs ont leur propre campagne, en début d'année, après la fin
+   de l'évaluation (ADR-0274) : le N+1 de l'organigramme écrit ceux de
+   chaque agent de son équipe, en brouillon, puis les transmet à l'agent.
+   Transmis, ils deviennent les objectifs de sa fiche de l'année, ceux
+   qu'appréciera l'évaluation de fin d'année. Avant l'ouverture de leur
+   période, rien ne les annonce.
    ──────────────────────────────────────────────────────────────── */
 
 /** L'évaluateur de la campagne, sur un agent `e` et sa fiche de l'année `f`. */
@@ -130,6 +149,7 @@ export class CampagneService {
           aCommenter: [],
           dch,
           administration: user.role === 'admin',
+          objectifs: await objectifsDeLAccueil(tx, null),
         };
       }
       const fiche = await ficheDe(tx, moi, annee);
@@ -143,6 +163,7 @@ export class CampagneService {
         aCommenter: await aCommenterDe(tx, moi, annee),
         dch,
         administration: user.role === 'admin',
+        objectifs: await objectifsDeLAccueil(tx, moi),
       };
     });
   }
@@ -342,6 +363,17 @@ export class CampagneService {
     });
   }
 
+  /** Les dates de la fixation des objectifs de l'année suivante (ADR-0274). */
+  async fixerLesDatesDesObjectifs(
+    user: SessionUser,
+    dates: DatesDesObjectifs,
+  ): Promise<AdministrationDeLaCampagne> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await fixerLesDatesDesObjectifsDans(tx, user, dates);
+      return administrationDans(tx, user);
+    });
+  }
+
   /** L'évaluateur d'un agent pour la campagne ; `null` : le N+1 de l'organigramme. */
   async choisirLEvaluateur(
     user: SessionUser,
@@ -486,6 +518,43 @@ export class CampagneService {
     return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
       await ecrireMonAuto(tx, user, auto, true);
       return monAutoDans(tx, user);
+    });
+  }
+
+  /**
+   * Les objectifs d'un agent de son équipe dans l'organigramme, pour son
+   * N+1, une fois leur fixation ouverte (ADR-0274).
+   */
+  async objectifsDeLAgent(user: SessionUser, employeeId: string): Promise<ObjectifsDeLAgent> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, (tx) =>
+      objectifsDeLAgentDans(tx, user, employeeId),
+    );
+  }
+
+  /** Le brouillon des objectifs d'un agent, gardé tel qu'il est. */
+  async enregistrerLesObjectifs(
+    user: SessionUser,
+    employeeId: string,
+    objectifs: ObjectifDeLAnneeAVenir[],
+  ): Promise<ObjectifsDeLAgent> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await ecrireLesObjectifs(tx, user, employeeId, objectifs, false);
+      return objectifsDeLAgentDans(tx, user, employeeId);
+    });
+  }
+
+  /**
+   * Les objectifs d'un agent, complets, transmis à l'agent : ils ne changent
+   * plus. Incomplets, ils restent en brouillon et la réponse dit ce qui manque.
+   */
+  async transmettreLesObjectifs(
+    user: SessionUser,
+    employeeId: string,
+    objectifs: ObjectifDeLAnneeAVenir[],
+  ): Promise<ObjectifsDeLAgent> {
+    return this.db.withTenant({ tenantId: user.tenantId, userId: user.userId }, async (tx) => {
+      await ecrireLesObjectifs(tx, user, employeeId, objectifs, true);
+      return objectifsDeLAgentDans(tx, user, employeeId);
     });
   }
 }
@@ -1743,10 +1812,12 @@ async function administrationDans(tx: Tx, user: SessionUser): Promise<Administra
       LEFT JOIN assignments ac ON ac.employee_id = c.id AND ac.validity @> CURRENT_DATE
      WHERE ${evaluable(sql`e`)}
      ORDER BY p.family_name, p.given_name`);
+  const suivante = annee + 1;
   return {
     annee,
     periode,
     phase,
+    objectifs: { annee: suivante, ...(await periodeDesObjectifsDe(tx, suivante)) },
     agents: rows.map((r): EvaluateurDeLAgent => ({
       employeeId: r.id,
       prenom: r.prenom,
@@ -1765,7 +1836,8 @@ async function administrationDans(tx: Tx, user: SessionUser): Promise<Administra
 /**
  * Les dates de l'évaluation de l'année : le début, la fin de
  * l'auto-évaluation, la fin. La période commence dans l'année évaluée ou
- * la suivante, comme sur la plateforme de base.
+ * la suivante, comme sur la plateforme de base, et finit avant la fixation
+ * des objectifs de l'année suivante (ADR-0274).
  */
 async function fixerLesDatesDans(tx: Tx, user: SessionUser, d: DatesDeLaCampagne): Promise<void> {
   reserveALAdministration(user);
@@ -1776,6 +1848,14 @@ async function fixerLesDatesDans(tx: Tx, user: SessionUser, d: DatesDeLaCampagne
       422,
       'campagne.dates_hors_annee',
       `La période de l’évaluation ${annee} doit commencer en ${annee} ou en ${annee + 1}`,
+    );
+  }
+  const { periode: objectifs } = await periodeDesObjectifsDe(tx, annee + 1);
+  if (objectifs && d.au >= objectifs.du) {
+    problem(
+      422,
+      'campagne.evaluation_apres_les_objectifs',
+      `L’évaluation ${annee} doit finir avant le début de la fixation des objectifs ${annee + 1} (${dateEnLettres(objectifs.du)})`,
     );
   }
   await tx.execute(sql`
@@ -1857,4 +1937,315 @@ async function choisirLEvaluateurDans(
     ON CONFLICT (tenant_id, employee_id, annee) DO UPDATE
        SET evaluateur_employee_id = EXCLUDED.evaluateur_employee_id, updated_at = now()
      WHERE fiches_entretien.transmise_dch_le IS NULL`);
+}
+
+// ──────────────────────────────────────────────── la fixation des objectifs (ADR-0274)
+
+/**
+ * L'année des objectifs : celle qui suit l'évaluation de la campagne. Avec
+ * CAMPAGNE_D_EVALUATION=2026, la fixation des objectifs de 2027.
+ */
+async function anneeDesObjectifs(tx: Tx): Promise<number> {
+  return (await anneeDeLaCampagne(tx)) + 1;
+}
+
+/** La période de la fixation des objectifs d'une année, et la phase du jour. */
+async function periodeDesObjectifsDe(
+  tx: Tx,
+  annee: number,
+): Promise<{ periode: PeriodeDesObjectifs | null; phase: PhaseDesObjectifs }> {
+  const { rows } = await tx.execute<{ du: string; au: string; phase: PhaseDesObjectifs }>(sql`
+    SELECT du::text, au::text,
+           CASE WHEN CURRENT_DATE < du THEN 'a_venir'
+                WHEN CURRENT_DATE <= au THEN 'ouverte'
+                ELSE 'terminee' END AS phase
+      FROM objectifs_periodes WHERE annee = ${annee}`);
+  const r = rows[0];
+  if (!r) return { periode: null, phase: 'non_fixee' };
+  return { periode: { du: r.du, au: r.au }, phase: r.phase };
+}
+
+/** La fixation des objectifs, une fois ouverte ; avant, `null` : rien ne l'annonce. */
+async function fixationOuverte(
+  tx: Tx,
+): Promise<{ annee: number; periode: PeriodeDesObjectifs; phase: 'ouverte' | 'terminee' } | null> {
+  const annee = await anneeDesObjectifs(tx);
+  const { periode, phase } = await periodeDesObjectifsDe(tx, annee);
+  if (!periode || (phase !== 'ouverte' && phase !== 'terminee')) return null;
+  return { annee, periode, phase };
+}
+
+/** Transmis à l'agent, les objectifs ne changent plus. */
+const objectifsDejaTransmis = () =>
+  problem(409, 'campagne.objectifs_transmis', 'Objectifs déjà transmis à l’agent');
+
+/** Les objectifs relus sur la fiche de l'année : ceux transmis à l'agent, sinon le brouillon du N+1. */
+interface ObjectifsSurLaFiche {
+  objectifs: ObjectifDeLAnneeAVenir[];
+  etat: EtatDesObjectifs;
+  /** AAAA-MM-JJ. */
+  transmisLe: string | null;
+  /** Le N+1 qui les a écrits. */
+  par: PersonneDeLaCampagne | null;
+}
+
+async function objectifsSurLaFiche(
+  tx: Tx,
+  employeeId: string,
+  annee: number,
+): Promise<ObjectifsSurLaFiche> {
+  const { rows } = await tx.execute<{
+    objectifs: unknown;
+    brouillon: unknown;
+    transmis_le: string | null;
+    par_prenom: string | null;
+    par_nom: string | null;
+    par_poste: string | null;
+  }>(sql`
+    SELECT f.objectifs, f.objectifs_brouillon AS brouillon,
+           f.objectifs_transmis_le::date::text AS transmis_le,
+           pp.given_name AS par_prenom, pp.family_name AS par_nom, ap.position_title AS par_poste
+      FROM fiches_entretien f
+      LEFT JOIN employees par ON par.id = f.objectifs_par_employee_id
+      LEFT JOIN persons pp ON pp.id = par.person_id
+      LEFT JOIN assignments ap ON ap.employee_id = par.id AND ap.validity @> CURRENT_DATE
+     WHERE f.employee_id = ${employeeId} AND f.annee = ${annee}`);
+  const r = rows[0];
+  const par = r?.par_nom
+    ? { prenom: r.par_prenom ?? '', nom: r.par_nom, poste: r.par_poste }
+    : null;
+  if (r?.transmis_le) {
+    // Transmis, ils sont les objectifs de la fiche.
+    const transmis = objectifEvalueSchema.array().safeParse(r.objectifs);
+    return {
+      objectifs: transmis.success
+        ? transmis.data.map((o) => ({
+            objectif: o.intitule,
+            indicateur: o.indicateurs,
+            echeance: o.echeance ?? null,
+          }))
+        : [],
+      etat: 'transmis',
+      transmisLe: r.transmis_le,
+      par,
+    };
+  }
+  const brouillon = r?.brouillon ? objectifAVenirSchema.array().safeParse(r.brouillon) : null;
+  return {
+    objectifs: brouillon?.success ? brouillon.data : [],
+    etat: brouillon?.success ? 'en_cours' : 'a_fixer',
+    transmisLe: null,
+    par,
+  };
+}
+
+/** Vrai si l'agent, parmi les agents de la campagne, a `n1` pour N+1 dans l'organigramme. */
+async function dansSonEquipe(tx: Tx, employeeId: string, n1: string): Promise<boolean> {
+  const { rows } = await tx.execute(sql`
+    SELECT 1 FROM employees e
+     WHERE e.id = ${employeeId} AND ${evaluable(sql`e`)} AND e.manager_employee_id = ${n1}`);
+  return rows.length > 0;
+}
+
+/**
+ * La fixation des objectifs ouverte, et l'agent dans l'équipe de la personne
+ * connectée, dans l'organigramme. Sinon, introuvables : la réponse ne dit
+ * pas si ce dossier existe.
+ */
+async function agentAObjectifs(tx: Tx, user: SessionUser, employeeId: string) {
+  const fixation = await fixationOuverte(tx);
+  if (!fixation) problem(404, 'campagne.objectifs_introuvables', 'Objectifs introuvables');
+  const moi = await employeDuCompte(tx, user.userId);
+  if (!moi || !(await dansSonEquipe(tx, employeeId, moi))) {
+    problem(404, 'campagne.agent_hors_equipe', 'Agent introuvable dans votre équipe');
+  }
+  return { ...fixation, moi };
+}
+
+async function objectifsDeLAgentDans(
+  tx: Tx,
+  user: SessionUser,
+  employeeId: string,
+): Promise<ObjectifsDeLAgent> {
+  const { annee, periode, phase } = await agentAObjectifs(tx, user, employeeId);
+  const { objectifs, etat, transmisLe } = await objectifsSurLaFiche(tx, employeeId, annee);
+  return {
+    annee,
+    periode,
+    phase,
+    agent: await ficheDe(tx, employeeId, annee),
+    objectifs,
+    etat,
+    transmisLe,
+    modifiable: phase === 'ouverte' && etat !== 'transmis',
+  };
+}
+
+/**
+ * Écrit les objectifs d'un agent de son équipe : le brouillon, ou la
+ * version transmise, une fois complète. Pendant la période seulement, et
+ * tant qu'ils ne sont pas transmis. Transmis, ils partent sans leurs lignes
+ * restées vides, et deviennent les objectifs de sa fiche de l'année.
+ */
+async function ecrireLesObjectifs(
+  tx: Tx,
+  user: SessionUser,
+  employeeId: string,
+  objectifs: ObjectifDeLAnneeAVenir[],
+  transmettre: boolean,
+): Promise<void> {
+  const { annee, phase, moi } = await agentAObjectifs(tx, user, employeeId);
+  if (phase !== 'ouverte') {
+    problem(409, 'campagne.objectifs_fermes', 'La fixation des objectifs est terminée');
+  }
+  if ((await objectifsSurLaFiche(tx, employeeId, annee)).etat === 'transmis') {
+    objectifsDejaTransmis();
+  }
+  const ecrits = objectifsEcrits(objectifs).map((o) => ({
+    objectif: o.objectif.trim(),
+    indicateur: o.indicateur.trim(),
+    echeance: o.echeance,
+  }));
+  if (transmettre) {
+    const manque = ceQuiManqueAuxObjectifs(ecrits, annee);
+    if (manque.length > 0) {
+      problem(
+        422,
+        'campagne.objectifs_incomplets',
+        'Objectifs incomplets',
+        `À compléter : ${manque.join(', ')}.`,
+      );
+    }
+  }
+  const surLaFiche: ObjectifEvalue[] = ecrits.map((o) => ({
+    id: uuidv7(),
+    intitule: o.objectif,
+    indicateurs: o.indicateur,
+    echeance: o.echeance,
+  }));
+  // Le brouillon garde ses lignes telles qu'elles sont ; rien d'écrit, rien à garder.
+  const brouillon = transmettre ? ecrits : ecrits.length > 0 ? objectifs : null;
+  const { rows } = await tx.execute(sql`
+    INSERT INTO fiches_entretien (id, tenant_id, employee_id, annee, objectifs,
+           objectifs_brouillon, objectifs_par_employee_id, objectifs_transmis_le)
+    VALUES (${uuidv7()}, ${user.tenantId}, ${employeeId}, ${annee},
+            ${JSON.stringify(transmettre ? surLaFiche : [])}::jsonb,
+            ${brouillon ? JSON.stringify(brouillon) : null}::jsonb, ${moi},
+            ${transmettre ? sql`now()` : sql`NULL`})
+    ON CONFLICT (tenant_id, employee_id, annee) DO UPDATE
+       SET objectifs_brouillon = EXCLUDED.objectifs_brouillon,
+           objectifs_par_employee_id = EXCLUDED.objectifs_par_employee_id,
+           objectifs_transmis_le = EXCLUDED.objectifs_transmis_le,
+           ${transmettre ? sql`objectifs = EXCLUDED.objectifs,` : sql``}
+           updated_at = now()
+     WHERE fiches_entretien.objectifs_transmis_le IS NULL
+    RETURNING id`);
+  // Deux envois qui se croisent : le second trouve les objectifs transmis.
+  if (rows.length === 0) objectifsDejaTransmis();
+}
+
+/**
+ * La fixation des objectifs sur l'accueil, une fois ouverte : ses propres
+ * objectifs, et ceux de son équipe dans l'organigramme. Avant, `null`.
+ */
+async function objectifsDeLAccueil(
+  tx: Tx,
+  moi: string | null,
+): Promise<ObjectifsDeLAccueil | null> {
+  const fixation = await fixationOuverte(tx);
+  if (!fixation) return null;
+  if (!moi) return { ...fixation, miens: null, equipe: [] };
+  return {
+    ...fixation,
+    miens: await mesObjectifs(tx, moi, fixation.annee),
+    equipe: await equipeAObjectifs(tx, moi, fixation.annee),
+  };
+}
+
+/**
+ * Ses propres objectifs, tels que son N+1 les a transmis, jamais le
+ * brouillon. Sans N+1 dans l'organigramme, ou hors des agents de la campagne,
+ * `null`, à moins d'en avoir déjà reçu.
+ */
+async function mesObjectifs(
+  tx: Tx,
+  moi: string,
+  annee: number,
+): Promise<ObjectifsDeLAccueil['miens']> {
+  const lus = await objectifsSurLaFiche(tx, moi, annee);
+  if (lus.transmisLe) {
+    return { transmis: { objectifs: lus.objectifs, le: lus.transmisLe, par: lus.par } };
+  }
+  const { rows } = await tx.execute(sql`
+    SELECT 1 FROM employees e
+      JOIN employees n1 ON n1.id = e.manager_employee_id AND n1.status = 'active'
+     WHERE e.id = ${moi} AND ${evaluable(sql`e`)}`);
+  return rows.length > 0 ? { transmis: null } : null;
+}
+
+/** Son équipe dans l'organigramme, parmi les agents de la campagne, et où en sont leurs objectifs. */
+async function equipeAObjectifs(tx: Tx, moi: string, annee: number): Promise<AgentAObjectifs[]> {
+  const { rows } = await tx.execute<{
+    id: string;
+    prenom: string;
+    nom: string;
+    matricule: string;
+    poste: string | null;
+    email: string | null;
+    commences: boolean;
+    transmis_le: string | null;
+  }>(sql`
+    SELECT e.id, p.given_name AS prenom, p.family_name AS nom, e.employee_number AS matricule,
+           a.position_title AS poste, e.work_email AS email,
+           f.objectifs_brouillon IS NOT NULL AS commences,
+           f.objectifs_transmis_le::date::text AS transmis_le
+      FROM employees e
+      JOIN persons p ON p.id = e.person_id
+      LEFT JOIN assignments a ON a.employee_id = e.id AND a.validity @> CURRENT_DATE
+      LEFT JOIN fiches_entretien f ON f.employee_id = e.id AND f.annee = ${annee}
+     WHERE ${evaluable(sql`e`)} AND e.manager_employee_id = ${moi}
+     ORDER BY p.family_name, p.given_name`);
+  return rows.map((r) => ({
+    employeeId: r.id,
+    prenom: r.prenom,
+    nom: r.nom,
+    matricule: r.matricule,
+    poste: r.poste,
+    email: r.email,
+    etat: r.transmis_le ? 'transmis' : r.commences ? 'en_cours' : 'a_fixer',
+    transmisLe: r.transmis_le,
+  }));
+}
+
+/**
+ * Les dates de la fixation des objectifs : elle commence dans l'année des
+ * objectifs, après la fin de l'évaluation de l'année d'avant.
+ */
+async function fixerLesDatesDesObjectifsDans(
+  tx: Tx,
+  user: SessionUser,
+  d: DatesDesObjectifs,
+): Promise<void> {
+  reserveALAdministration(user);
+  const annee = await anneeDesObjectifs(tx);
+  if (Number(d.du.slice(0, 4)) !== annee) {
+    problem(
+      422,
+      'campagne.dates_hors_annee',
+      `La fixation des objectifs ${annee} doit commencer en ${annee}`,
+    );
+  }
+  const { periode: evaluation } = await periodeDe(tx, annee - 1);
+  if (evaluation && d.du <= evaluation.au) {
+    problem(
+      422,
+      'campagne.objectifs_avant_la_fin',
+      `La fixation des objectifs ${annee} doit commencer après la fin de l’évaluation ${annee - 1} (${dateEnLettres(evaluation.au)})`,
+    );
+  }
+  await tx.execute(sql`
+    INSERT INTO objectifs_periodes (id, tenant_id, annee, du, au)
+    VALUES (${uuidv7()}, ${user.tenantId}, ${annee}, ${d.du}, ${d.au})
+    ON CONFLICT (tenant_id, annee) DO UPDATE
+       SET du = EXCLUDED.du, au = EXCLUDED.au, updated_at = now()`);
 }

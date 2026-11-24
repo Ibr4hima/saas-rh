@@ -290,19 +290,25 @@ export const MAXIMUMS_DE_LA_FICHE = {
 } as const;
 
 /**
- * Les objectifs de l'année à venir que fixe le N+1 : trois au moins, cinq au
- * plus (ADR-0239). La fiche en garde jusqu'à dix, la limite d'avant la règle.
+ * Les objectifs de l'année que fixe le N+1, pendant la campagne des
+ * objectifs : trois au moins, cinq au plus (ADR-0239, ADR-0274). La fiche en
+ * garde jusqu'à dix, la limite d'avant la règle.
  */
 export const NOMBRE_D_OBJECTIFS_A_VENIR = { min: 3, max: 5 } as const;
 
 const texte = z.string().max(LONGUEURS_DE_LA_FICHE.texte);
 const ligne = z.string().max(LONGUEURS_DE_LA_FICHE.ligne);
 
-/** Un objectif de l'année évaluée, tel que la DCH l'a donné. */
+/**
+ * Un objectif de l'année évaluée, tel que la DCH l'a donné, ou que le N+1
+ * l'a fixé pendant la campagne des objectifs, avec son échéance (ADR-0274).
+ */
 export const objectifEvalueSchema = z.object({
   id: z.uuid(),
   intitule: z.string().trim().min(1).max(LONGUEURS_DE_LA_FICHE.intitule),
   indicateurs: z.string().trim().max(LONGUEURS_DE_LA_FICHE.indicateurs),
+  /** AAAA-MM-JJ. */
+  echeance: z.iso.date().nullable().optional(),
 });
 export type ObjectifEvalue = z.infer<typeof objectifEvalueSchema>;
 
@@ -373,6 +379,41 @@ export const objectifAVenirSchema = z.object({
   echeance: z.iso.date().nullable(),
 });
 export type ObjectifDeLAnneeAVenir = z.infer<typeof objectifAVenirSchema>;
+
+/**
+ * Les objectifs de l'année sans leurs lignes restées vides : une ligne
+ * ajoutée puis laissée blanche ne part pas avec eux (ADR-0274).
+ */
+export const objectifsEcrits = (objectifs: readonly ObjectifDeLAnneeAVenir[]) =>
+  objectifs.filter((o) => ecrite(o.objectif, o.indicateur, o.echeance));
+
+/**
+ * Ce qui manque aux objectifs de l'année pour partir à l'agent (ADR-0274) :
+ * de trois à cinq, chacun avec son intitulé, son indicateur de réussite et
+ * son échéance, dans l'année. Vide : ils peuvent partir.
+ */
+export function ceQuiManqueAuxObjectifs(
+  objectifs: readonly ObjectifDeLAnneeAVenir[],
+  annee: number,
+): string[] {
+  const manque: string[] = [];
+  const ecrits = objectifsEcrits(objectifs);
+  ecrits.forEach((o, i) => {
+    const n = i + 1;
+    if (!o.objectif.trim()) manque.push(`l’intitulé de l’objectif ${n}`);
+    if (!o.indicateur.trim()) manque.push(`l’indicateur de réussite de l’objectif ${n}`);
+    if (!o.echeance) manque.push(`l’échéance de l’objectif ${n}`);
+    else if (!o.echeance.startsWith(`${annee}-`)) {
+      manque.push(`l’échéance de l’objectif ${n} (en ${annee})`);
+    }
+  });
+  if (ecrits.length < NOMBRE_D_OBJECTIFS_A_VENIR.min) {
+    manque.push(`les objectifs (${NOMBRE_D_OBJECTIFS_A_VENIR.min} au moins)`);
+  } else if (ecrits.length > NOMBRE_D_OBJECTIFS_A_VENIR.max) {
+    manque.push(`les objectifs (${NOMBRE_D_OBJECTIFS_A_VENIR.max} au plus)`);
+  }
+  return manque;
+}
 
 export const formationSouhaiteeSchema = z.object({
   intitule: ligne,

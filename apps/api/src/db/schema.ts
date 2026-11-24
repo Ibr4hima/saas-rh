@@ -987,6 +987,17 @@ export const objectiveReviewSchedule = pgTable('objective_review_schedule', {
 
 // ---------- Évaluation annuelle sur la grille de l'APIX (0123, ADR-0149) ----------
 
+/** La période de la fixation des objectifs d'une année (0145, ADR-0274). */
+export const objectifsPeriodes = pgTable('objectifs_periodes', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  annee: smallint('annee').notNull(),
+  du: date('du').notNull(),
+  au: date('au').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** La période d'évaluation d'une année, fixée par qui dirige la DCH. */
 export const evaluationPeriodes = pgTable('evaluation_periodes', {
   id: uuid('id').primaryKey(),
@@ -1034,6 +1045,10 @@ export const fichesEntretien = pgTable('fiches_entretien', {
   repriseN2Le: timestamp('reprise_n2_le', { withTimezone: true }),
   transmiseDchLe: timestamp('transmise_dch_le', { withTimezone: true }),
   transmiseDchPar: uuid('transmise_dch_par'),
+  /** Les objectifs de l'année fixés par le N+1 : son brouillon, puis leur transmission (0145, ADR-0274). */
+  objectifsBrouillon: jsonb('objectifs_brouillon'),
+  objectifsParEmployeeId: uuid('objectifs_par_employee_id'),
+  objectifsTransmisLe: timestamp('objectifs_transmis_le', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

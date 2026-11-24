@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   LIBELLES_DE_L_AVANCEMENT,
+  periodeDEvaluationEnLettres,
   type AdministrationDeLaCampagne,
   type AvancementDeLaFiche,
   type EvaluateurDeLAgent,
@@ -47,7 +48,8 @@ import { CLE_CAMPAGNE } from '../../../../lib/campagne';
    L'administration de la campagne (ADR-0222), réservée aux comptes
    d'administration. En tête, l'année et ses grands nombres, avec l'import
    du fichier du personnel, le même que sur la plateforme. Puis les dates
-   de l'évaluation : le début, la fin de l'auto-évaluation, la fin. Enfin,
+   de l'évaluation : le début, la fin de l'auto-évaluation, la fin ; et
+   celles de la fixation des objectifs de l'année suivante (ADR-0274). Enfin,
    qui évalue qui : chaque agent à évaluer cette année, son N+1 dans
    l'organigramme, et son évaluateur pour la campagne, au choix de
    l'administration, sans toucher à l'organigramme. Une fiche commencée se
@@ -152,6 +154,7 @@ export default function AdministrationDeLaCampagnePage() {
         }
       />
       {v ? <Dates key={JSON.stringify(v.periode)} vue={v} /> : null}
+      {v ? <DatesDesObjectifs key={JSON.stringify(v.objectifs.periode)} vue={v} /> : null}
       <QuiEvalueQui vue={v} />
       {importOuvert ? (
         <FenetreImportEmployes
@@ -252,6 +255,93 @@ function Dates({ vue: v }: { vue: AdministrationDeLaCampagne }) {
                   <dd className="inline">{periodeDeLEvaluationDuN1(apercu)}</dd>
                 </div>
               </>
+            ) : null}
+          </dl>
+          {enregistrer.error ? (
+            <p role="alert" className="text-[12px] text-danger">
+              {messageDe(enregistrer.error)}
+            </p>
+          ) : null}
+          <Button
+            className="h-9 shrink-0 px-5"
+            disabled={!complete || !change}
+            loading={enregistrer.isPending}
+            onClick={() => enregistrer.mutate()}
+          >
+            Enregistrer
+          </Button>
+        </div>
+      </Card>
+    </section>
+  );
+}
+
+/**
+ * Les dates de la fixation des objectifs de l'année suivante (ADR-0274) :
+ * elle commence dans l'année des objectifs, après la fin de l'évaluation.
+ * Les deux champs s'alignent sur ceux de l'évaluation, au-dessus.
+ */
+function DatesDesObjectifs({ vue: v }: { vue: AdministrationDeLaCampagne }) {
+  const qc = useQueryClient();
+  const { annee, periode } = v.objectifs;
+  const [du, setDu] = useState(periode?.du ?? '');
+  const [au, setAu] = useState(periode?.au ?? '');
+  const enregistrer = useMutation({
+    mutationFn: () =>
+      api<AdministrationDeLaCampagne>('/campagne/administration/dates-des-objectifs', {
+        method: 'PUT',
+        body: { du, au },
+      }),
+    onSuccess: async (nouvelle) => {
+      qc.setQueryData(CLE, nouvelle);
+      await qc.invalidateQueries({ queryKey: CLE_CAMPAGNE, exact: true });
+    },
+  });
+  const finAvant = du !== '' && au !== '' && au < du;
+  const complete = du !== '' && au !== '' && !finAvant;
+  const change = du !== (periode?.du ?? '') || au !== (periode?.au ?? '');
+  const apercu = complete ? periodeDEvaluationEnLettres({ du, au }) : null;
+
+  return (
+    <section aria-labelledby="dates-des-objectifs" className="mt-5 flex flex-col gap-4">
+      <TitreDeSection id="dates-des-objectifs">
+        Dates de la fixation des objectifs {annee}
+      </TitreDeSection>
+      <Card>
+        <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-3">
+          <Field label="Début de la période" htmlFor="objectifs-du" required>
+            <DateInput
+              id="objectifs-du"
+              min={`${annee}-01-01`}
+              max={`${annee}-12-31`}
+              value={du}
+              onChange={(e) => setDu(e.target.value)}
+            />
+          </Field>
+          <Field
+            label="Fin de la période"
+            htmlFor="objectifs-au"
+            required
+            error={finAvant ? 'La fin de la période doit suivre son début' : undefined}
+          >
+            <DateInput
+              id="objectifs-au"
+              min={du || `${annee}-01-01`}
+              value={au}
+              aria-invalid={finAvant || undefined}
+              onChange={(e) => setAu(e.target.value)}
+            />
+          </Field>
+        </div>
+        <div className="flex flex-col gap-3 border-t border-line-soft px-5 py-3.5 sm:flex-row sm:items-center sm:gap-5">
+          <dl className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-ink-muted">
+            {apercu ? (
+              <div>
+                <dt className="inline font-semibold text-ink">Fixation des objectifs : </dt>
+                <dd className="inline">
+                  {apercu.charAt(0).toLocaleUpperCase('fr') + apercu.slice(1)}
+                </dd>
+              </div>
             ) : null}
           </dl>
           {enregistrer.error ? (

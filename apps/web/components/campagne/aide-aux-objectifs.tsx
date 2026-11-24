@@ -6,14 +6,14 @@ import { Modal } from '../modal';
 import { Bleu, FiletDuBandeau } from './charte';
 
 /* ────────────────────────────────────────────────────────────────
-   L'aide à la rédaction des objectifs de l'année à venir (ADR-0262).
+   L'aide à la rédaction des objectifs de l'année (ADR-0262).
 
-   À côté du titre « Objectifs et perspectives », pendant que le N+1
-   remplit la fiche, un bouton « Comment définir des objectifs ? » ouvre
-   une fiche pratique, à la charte de l'APIX : le bandeau bleu et son filet
-   orange, les titres en Anton, les parties numérotées en orange. Elle
-   explique ce qu'est un objectif, la méthode SMART, la rédaction pas à
-   pas et l'indicateur de réussite, puis donne des exemples tirés des
+   À côté du titre des objectifs, pendant que le N+1 fixe ceux d'un agent
+   de son équipe (ADR-0274), un bouton « Comment définir des objectifs ? »
+   ouvre une fiche pratique, à la charte de l'APIX : le bandeau bleu et son
+   filet orange, les titres en Anton, les parties numérotées en orange.
+   Elle explique ce qu'est un objectif, la méthode SMART, la rédaction pas
+   à pas et l'indicateur de réussite, puis donne des exemples tirés des
    métiers de l'APIX, chacun avec son indicateur de réussite et son
    échéance, comme les colonnes de la fiche. Elle ne porte aucune année :
    elle sert à chaque campagne, et ses échéances se disent en jour et en

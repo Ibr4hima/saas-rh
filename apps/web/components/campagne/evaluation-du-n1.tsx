@@ -49,10 +49,10 @@ import type { Changement } from './enregistrement';
    entière, dans son ordre, les parties de l'agent en lecture, celles du N+1
    à remplir. Pour chaque objectif, l'auto-évaluation de l'agent et
    l'appréciation du N+1 côte à côte sur un grand écran. Puis les
-   compétences, la synthèse et le plan d'action, les objectifs et les
-   formations de l'année suivante, les préoccupations et les souhaits de
-   l'agent, et la partie réservée à la hiérarchie. Les intitulés sont ceux
-   de la fiche de la DCH. Transmise, la même fiche se lit.
+   compétences, la synthèse et le plan d'action, les besoins de formation
+   (ADR-0272), les préoccupations et les souhaits de l'agent, et la partie
+   réservée à la hiérarchie. Les intitulés sont ceux de la fiche de la DCH.
+   Transmise, la même fiche se lit.
    ──────────────────────────────────────────────────────────────── */
 
 /** Une modification de l'évaluation, hors de la partie réservée. */
@@ -574,14 +574,14 @@ function Formations({
 // ──────────────────────────────────────────────── les tableaux
 
 /** Ce qu'une case reçoit de son tableau : son identifiant, son nom pour les lecteurs d'écran. */
-interface AttributsDeCase {
+export interface AttributsDeCase {
   id: string;
   'aria-label': string;
   autoFocus?: boolean;
 }
 
 /** Une case de texte d'un tableau : une ligne, qui s'allonge avec ce qu'on y écrit. */
-function CelluleDeTexte({
+export function CelluleDeTexte({
   valeur,
   max,
   onChange,
@@ -601,18 +601,20 @@ function CelluleDeTexte({
 
 /**
  * Un tableau de la fiche à remplir, ligne par ligne : le plan d'action, les
- * objectifs de l'année suivante, les formations. Sur une zone large, une
- * ligne par entrée sous les titres des colonnes, comme sur la fiche ; sur
- * une zone étroite, chaque entrée s'empile, chaque case sous son titre.
- * Sans `onChange`, le tableau se lit ; vide, il dit « Néant », comme le PDF.
- * Avec un minimum, il montre d'emblée autant de lignes à remplir, qui ne
- * s'enregistrent qu'à la première frappe, et n'en retire pas en dessous
- * (ADR-0239).
+ * formations, et les objectifs de l'année que fixe le N+1 (ADR-0274). Sur
+ * une zone large, une ligne par entrée sous les titres des colonnes, comme
+ * sur la fiche ; sur une zone étroite, chaque entrée s'empile, chaque case
+ * sous son titre. Sans `onChange`, le tableau se lit ; vide, il dit
+ * « Néant », comme le PDF. Avec un minimum, il montre d'emblée autant de
+ * lignes à remplir, qui ne s'enregistrent qu'à la première frappe, et n'en
+ * retire pas en dessous (ADR-0239). Avec `requises`, pendant la saisie, le
+ * titre de chaque colonne porte l'astérisque d'un champ obligatoire.
  */
-function Tableau<L>({
+export function Tableau<L>({
   nom,
   leNom,
   colonnes,
+  requises = false,
   gabarit,
   lignes: ecrites,
   min = 0,
@@ -628,6 +630,8 @@ function Tableau<L>({
   /** « l'action » : pour retirer une entrée. */
   leNom: string;
   colonnes: readonly string[];
+  /** Chaque case à remplir : son titre porte un astérisque pendant la saisie. */
+  requises?: boolean;
   /** Les colonnes, sur une zone large : le numéro, les cases, le retrait. */
   gabarit: string;
   lignes: readonly L[];
@@ -655,6 +659,13 @@ function Tableau<L>({
   const [cles, setCles] = useState(() => lignes.map((_, i) => i));
   const [nouvelle, setNouvelle] = useState<number | null>(null);
   const cleDe = (i: number) => (cles.length === lignes.length ? cles[i]! : i);
+  const etoile =
+    requises && onChange ? (
+      <span aria-hidden className="text-danger">
+        {' '}
+        *
+      </span>
+    ) : null;
 
   if (!onChange && lignes.length === 0) {
     return <p className="px-5 pt-3 pb-5 text-[13px] text-ink-muted">Néant</p>;
@@ -683,6 +694,7 @@ function Tableau<L>({
             {colonnes.map((c) => (
               <span key={c} className={TITRE_DE_COLONNE}>
                 {c}
+                {etoile}
               </span>
             ))}
           </div>
@@ -720,6 +732,7 @@ function Tableau<L>({
                         className="mb-1 text-[12px] font-semibold text-ink-muted @[46rem]:hidden"
                       >
                         {colonnes[k]}
+                        {etoile}
                       </p>
                       {c}
                     </div>

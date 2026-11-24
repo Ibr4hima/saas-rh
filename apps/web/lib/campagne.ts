@@ -22,6 +22,10 @@ export const SUIVI_DE_LA_DCH = `${ACCUEIL_DE_LA_CAMPAGNE}/dch`;
 /** La fiche d'un agent, transmise à la DCH. */
 export const ficheDeLaDCH = (employeeId: string) => `${SUIVI_DE_LA_DCH}/${employeeId}`;
 
+/** Les objectifs d'un agent de son équipe, que fixe son N+1 (ADR-0274). */
+export const objectifsDeLAgent = (employeeId: string) =>
+  `${ACCUEIL_DE_LA_CAMPAGNE}/objectifs/${employeeId}`;
+
 /** L'administration de la campagne : les dates, qui évalue qui, le personnel (ADR-0222). */
 export const ADMINISTRATION_DE_LA_CAMPAGNE = `${ACCUEIL_DE_LA_CAMPAGNE}/administration`;
 
