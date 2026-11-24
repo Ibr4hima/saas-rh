@@ -55,22 +55,31 @@ export type EtatDeMonEvaluation = 'en_attente' | 'a_valider' | 'validee';
 
 /** Les commentaires du N+2 sur la fiche d'un agent (ADR-0218). */
 export type EtatDesCommentaires =
-  /** La fiche n'est pas encore validée par l'agent. */
+  /** La fiche n'a pas été envoyée au N+2 (ADR-0278). */
   | 'en_attente'
-  /** Validée par l'agent : le N+2 la lit, et la commente s'il y a lieu. */
+  /**
+   * Envoyée par le N+1 en même temps qu'à l'agent : le N+2 la lit, et la
+   * commente s'il y a lieu, sans attendre la validation de l'agent (ADR-0278).
+   */
   | 'a_commenter'
   /** Le N+2 a commencé d'écrire. */
   | 'en_cours'
   /** Transmis au N+1 : ils ne changent plus. */
   | 'transmis'
-  /** Le N+1 a repris la fiche avant les commentaires : le N+2 ne la commente plus (ADR-0221). */
+  /**
+   * Le N+1 a repris la fiche avant les commentaires : le N+2 ne la commente
+   * plus, et la lit toujours (ADR-0221, ADR-0278).
+   */
   | 'reprise';
 
 /** La transmission de la fiche à la DCH, par le N+1 (ADR-0221). */
 export type EtatDeLaTransmission =
-  /** Pas encore : la fiche attend la validation de l'agent, ou les commentaires du N+2. */
+  /** Pas encore : la fiche attend la validation de l'agent, ou les commentaires du N+2 à qui elle a été envoyée. */
   | 'en_attente'
-  /** Validée par l'agent, commentée par le N+2 s'il y en a un, ou reprise au N+2 : le N+1 la transmet. */
+  /**
+   * Validée par l'agent, et commentée par le N+2 ou reprise au N+2 quand elle
+   * a été envoyée au N+2 (ADR-0278) : le N+1 la transmet.
+   */
   | 'a_transmettre'
   /** Transmise : la fiche ne change plus. */
   | 'transmise';
@@ -153,7 +162,10 @@ export interface AgentDeLEquipe {
   auto: AutoDeLAgent;
   /** Où en est son évaluation par la personne connectée (ADR-0216). */
   evaluation: EtatDeLEvaluation;
-  /** Où en sont les commentaires du N+2 ; `null` : l'agent n'a pas de N+2 (ADR-0218). */
+  /**
+   * Où en sont les commentaires du N+2 ; `null` : l'agent n'a pas de N+2, ou
+   * la fiche n'a pas été envoyée au N+2 (ADR-0218, ADR-0278).
+   */
   commentaires: EtatDesCommentaires | null;
   /** Où en est sa transmission à la DCH (ADR-0221). */
   dch: EtatDeLaTransmission;
@@ -162,7 +174,7 @@ export interface AgentDeLEquipe {
 /**
  * Un agent dont la personne connectée est le N+2, tel que sa carte le
  * présente : l'agent, son N+1, et où en sont les commentaires sur sa fiche,
- * validée par l'agent (ADR-0218, ADR-0255).
+ * que le N+1 a envoyée au N+2 (ADR-0218, ADR-0278).
  */
 export interface AgentACommenter {
   employeeId: string;
@@ -191,7 +203,8 @@ export interface AccueilDeLaCampagne {
   monEvaluation: EvaluationRecue | null;
   /**
    * Les fiches arrivées chez la personne connectée, N+2 de leurs agents :
-   * validées par l'agent (ADR-0218, ADR-0255) ; vide s'il n'y en a pas.
+   * celles que le N+1 a envoyées au N+2 avec l'évaluation (ADR-0255, ADR-0278) ;
+   * vide s'il n'y en a pas.
    */
   aCommenter: AgentACommenter[];
   /**
@@ -230,10 +243,16 @@ export interface EvaluationDeLAgent {
   valideeLe: string | null;
   /** Le N+2 de l'agent : l'évaluateur du N+1 ; `null` s'il n'y en a pas (ADR-0218). */
   n2: PersonneDeLaCampagne | null;
+  /**
+   * AAAA-MM-JJ : le jour où le N+1 a envoyé la fiche au N+2, avec
+   * l'évaluation ; `null` : elle n'a pas été envoyée au N+2 (ADR-0278).
+   */
+  envoyeeAuN2Le: string | null;
+  /** `null` : pas de N+2, ou la fiche n'a pas été envoyée au N+2 (ADR-0278). */
   etatDesCommentaires: EtatDesCommentaires | null;
   /** Les commentaires du N+2, une fois transmis. */
   commentairesDuN2: CommentairesDuN2 | null;
-  /** AAAA-MM-JJ : le jour où le N+1 a repris la fiche au N+2, tant qu'elle n'est pas renvoyée au N+2. */
+  /** AAAA-MM-JJ : le jour où le N+1 a repris la fiche au N+2, pour de bon (ADR-0278). */
   repriseAuN2Le: string | null;
   /** Où en est sa transmission à la DCH (ADR-0221). */
   dch: EtatDeLaTransmission;
@@ -252,6 +271,17 @@ export const ecritureDeLEvaluationSchema = z.object({
   reservee: partieReserveeSchema,
 });
 export type EcritureDeLEvaluation = z.infer<typeof ecritureDeLEvaluationSchema>;
+
+/**
+ * La transmission de l'évaluation : à l'agent, et au N+2 si le N+1 le
+ * choisit (`envoyerAuN2`). Le choix se fait là : la fiche ne part plus au
+ * N+2 ensuite (ADR-0278).
+ */
+export const transmissionDeLEvaluationSchema = ecritureDeLEvaluationSchema.extend({
+  envoyerAuN2: z.boolean().default(false),
+});
+/** Sans `envoyerAuN2`, la fiche ne part qu'à l'agent. */
+export type TransmissionDeLEvaluation = EcritureDeLEvaluation & { envoyerAuN2?: boolean };
 
 /** Son auto-évaluation, telle que son formulaire la lit (ADR-0215). */
 export interface MonAutoEvaluation {
@@ -302,7 +332,7 @@ export interface FicheComplete {
   reservee: PartieReservee;
 }
 
-/** La fiche d'un agent, telle que son N+2 l'ouvre pour la commenter (ADR-0218). */
+/** La fiche d'un agent, telle que son N+2 l'ouvre pour la commenter (ADR-0218, ADR-0278). */
 export interface FichePourLeN2 {
   annee: number;
   periode: PeriodeDeLaCampagne | null;
@@ -310,7 +340,10 @@ export interface FichePourLeN2 {
   /** L'agent, et son N+1 en évaluateur. */
   agent: AgentDeLaCampagne;
   objectifs: ObjectifEvalue[];
-  /** La fiche, une fois validée par l'agent ; `null` avant. */
+  /**
+   * La fiche, une fois envoyée par le N+1, reprise ou non ; `null` sans
+   * envoi (ADR-0278).
+   */
   fiche: FicheComplete | null;
   /** AAAA-MM-JJ. */
   autoTransmiseLe: string | null;
@@ -319,9 +352,16 @@ export interface FichePourLeN2 {
   /** Ses commentaires, tels qu'ils sont écrits. */
   commentaires: string;
   etat: EtatDesCommentaires;
+  /** AAAA-MM-JJ : le jour où le N+1 a envoyé la fiche au N+2 (ADR-0278). */
+  envoyeeLe: string | null;
   /** AAAA-MM-JJ : le jour de leur transmission au N+1. */
   transmisLe: string | null;
-  /** Ouverts à l'écriture : la fiche validée par l'agent, tant qu'ils ne sont pas transmis. */
+  /** AAAA-MM-JJ : le jour où le N+1 a repris la fiche ; le N+2 la lit sans la commenter. */
+  repriseLe: string | null;
+  /**
+   * Ouverts à l'écriture : la fiche envoyée par le N+1, tant qu'ils ne sont
+   * pas transmis et que la fiche n'est pas reprise.
+   */
   modifiable: boolean;
 }
 
@@ -339,7 +379,7 @@ export type EtapeDeLaFiche =
   | 'chez_le_n1'
   /** Transmise à l'agent, qui la valide. */
   | 'chez_l_agent'
-  /** Validée par l'agent : le N+2 la commente. */
+  /** Validée par l'agent, envoyée au N+2, qui ne l'a pas encore commentée (ADR-0278). */
   | 'chez_le_n2'
   /** De retour chez le N+1, qui la transmet à la DCH. */
   | 'a_transmettre'

@@ -732,8 +732,26 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
       },
       reservee: { comprehension: 'B', tenue: 'A', observations: '' },
     };
-    const t = await campagne.transmettreEvaluation(session('awa'), agents.ibou, complete);
+    // Envoyée en même temps au N+2, Cheikh Mbaye (ADR-0278).
+    const t = await campagne.transmettreEvaluation(session('awa'), agents.ibou, {
+      ...complete,
+      envoyerAuN2: true,
+    });
     expect([t.evaluation.arrondi, t.evaluation.justificationDeLArrondi]).toEqual([false, '']);
+    expect([t.envoyeeAuN2Le, t.etatDesCommentaires, t.dch]).toEqual([
+      AUJOURD_HUI,
+      'a_commenter',
+      'en_attente',
+    ]);
+    // Le N+2 la lit et la commente sans attendre la validation de l'agent.
+    const n2 = await campagne.ficheDuN2(session('dg'), agents.ibou);
+    expect([n2.etat, n2.envoyeeLe, n2.valideeLe, n2.modifiable]).toEqual([
+      'a_commenter',
+      AUJOURD_HUI,
+      null,
+      true,
+    ]);
+    expect(n2.fiche?.reservee.comprehension).toBe('B');
     expect([t.etatDeLEvaluation, t.modifiable, t.evaluationTransmiseLe]).toEqual([
       'transmise',
       false,
@@ -751,6 +769,7 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
 
   it('pour le personnel cadre, le management se remplit s’il y a lieu', async () => {
     const t = await campagne.transmettreEvaluation(session('awa'), agents.moussa, {
+      envoyerAuN2: true,
       evaluation: {
         ...evaluationDuN1Vide(),
         competences: competencesB('cadre'),
@@ -897,7 +916,6 @@ describe('le verrouillage à la fin de la campagne (ADR-0273)', () => {
     for (const geste of [
       () => campagne.enregistrerCommentaires(session('dg'), agents.ibou, 'Trop tard.'),
       () => campagne.reprendreAuN2(session('awa'), agents.ibou),
-      () => campagne.renvoyerAuN2(session('awa'), agents.ibou),
       () => campagne.transmettreALaDCH(session('awa'), agents.ibou),
     ]) {
       await expect(geste()).rejects.toMatchObject({
@@ -916,9 +934,9 @@ describe('le verrouillage à la fin de la campagne (ADR-0273)', () => {
 });
 
 describe('les commentaires du N+2 (ADR-0218)', () => {
-  it('le N+2 ne voit que les fiches validées par l’agent (ADR-0255)', async () => {
+  it('le N+2 ne voit que les fiches que le N+1 a envoyées au N+2 (ADR-0255, ADR-0278)', async () => {
     // Cheikh Mbaye évalue Awa Diop, qui évalue Ibou Ndiaye, Fatou Sall et Moussa Sarr.
-    // L'évaluation de Fatou Sall n'est pas validée : sa fiche n'est pas chez le N+2.
+    // L'évaluation de Fatou Sall n'est pas transmise : sa fiche n'est pas chez le N+2.
     const { aCommenter, equipe } = await campagne.accueil(session('dg'));
     expect(aCommenter.map((a) => [a.employeeId, a.commentaires])).toEqual([
       [agents.ibou, 'a_commenter'],
@@ -933,7 +951,7 @@ describe('les commentaires du N+2 (ADR-0218)', () => {
     expect(awa.equipe.find((a) => a.employeeId === agents.ibou)?.commentaires).toBe('a_commenter');
   });
 
-  it('s’ouvre au N+2 en entier, partie réservée comprise, une fois validée par l’agent', async () => {
+  it('s’ouvre au N+2 en entier, partie réservée comprise, dès l’envoi du N+1', async () => {
     const v = await campagne.ficheDuN2(session('dg'), agents.ibou);
     expect([v.etat, v.modifiable, v.valideeLe]).toEqual(['a_commenter', true, AUJOURD_HUI]);
     expect(v.fiche?.reservee.comprehension).toBe('B');
@@ -944,7 +962,7 @@ describe('les commentaires du N+2 (ADR-0218)', () => {
     expect([attente.etat, attente.fiche, attente.modifiable]).toEqual(['en_attente', null, false]);
     await expect(
       campagne.enregistrerCommentaires(session('dg'), agents.fatou, 'Trop tôt.'),
-    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.fiche_non_validee' } });
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.fiche_non_envoyee' } });
 
     // Le N+1 n'est pas le N+2 ; sans N+2 (le N+1 au sommet), personne ne l'est.
     for (const [qui, agent] of [
@@ -1023,7 +1041,7 @@ describe('la transmission à la DCH (ADR-0221)', () => {
     });
   });
 
-  it('chez le N+2, elle attend ; le N+1 la reprend, la renvoie au N+2, ou la transmet', async () => {
+  it('chez le N+2, elle attend ; le N+1 la reprend pour de bon, puis la transmet (ADR-0278)', async () => {
     // Le N+2 de Moussa Sarr n'a pas encore transmis ses commentaires.
     await raw(
       `UPDATE fiches_entretien SET commentaires_n2 = 'Brouillon du N+2.',
@@ -1043,10 +1061,14 @@ describe('la transmission à la DCH (ADR-0221)', () => {
       'a_transmettre',
       AUJOURD_HUI,
     ]);
-    // Le N+2 ne l'ouvre plus, ni ne la commente.
-    await expect(campagne.ficheDuN2(session('dg'), agents.moussa)).rejects.toMatchObject({
-      problem: { status: 409, code: 'campagne.fiche_reprise' },
-    });
+    // Le N+2 garde la fiche en lecture, sans plus la commenter.
+    const copie = await campagne.ficheDuN2(session('dg'), agents.moussa);
+    expect([copie.etat, copie.modifiable, copie.repriseLe]).toEqual([
+      'reprise',
+      false,
+      AUJOURD_HUI,
+    ]);
+    expect(copie.fiche?.evaluation.pointsForts).toBe('Autonomie.');
     await expect(
       campagne.enregistrerCommentaires(session('dg'), agents.moussa, 'Encore.'),
     ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.fiche_reprise' } });
@@ -1056,27 +1078,23 @@ describe('la transmission à la DCH (ADR-0221)', () => {
       problem: { status: 409, code: 'campagne.fiche_pas_chez_le_n2' },
     });
 
-    // Renvoyée au N+2, qui retrouve son brouillon.
-    const renvoyee = await campagne.renvoyerAuN2(session('awa'), agents.moussa);
-    expect([renvoyee.etatDesCommentaires, renvoyee.dch, renvoyee.repriseAuN2Le]).toEqual([
-      'en_cours',
-      'en_attente',
-      null,
-    ]);
-    expect((await campagne.ficheDuN2(session('dg'), agents.moussa)).commentaires).toBe(
-      'Brouillon du N+2.',
-    );
-
-    await campagne.reprendreAuN2(session('awa'), agents.moussa);
     const transmise = await campagne.transmettreALaDCH(session('awa'), agents.moussa);
     expect([transmise.dch, transmise.etatDesCommentaires]).toEqual(['transmise', 'reprise']);
-    await expect(campagne.renvoyerAuN2(session('awa'), agents.moussa)).rejects.toMatchObject({
+    await expect(campagne.reprendreAuN2(session('awa'), agents.moussa)).rejects.toMatchObject({
       problem: { status: 409, code: 'campagne.fiche_transmise' },
     });
   });
 
   it('sans N+2, elle part dès la validation de l’agent', async () => {
-    // Cheikh Mbaye, au sommet de l'organigramme, évalue Ousmane Fall.
+    // Cheikh Mbaye, au sommet de l'organigramme, évalue Ousmane Fall : la
+    // fiche ne peut pas être envoyée à un N+2 (ADR-0278).
+    await expect(
+      campagne.transmettreEvaluation(session('dg'), agents.ousmane, {
+        evaluation: evaluationDuN1Vide(),
+        reservee: partieReserveeVide(),
+        envoyerAuN2: true,
+      }),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.sans_n2' } });
     await raw(
       `UPDATE fiches_entretien SET evaluation_transmise_le = now(), validee_le = now()
         WHERE employee_id = $1 AND annee = $2`,
@@ -1089,6 +1107,64 @@ describe('la transmission à la DCH (ADR-0221)', () => {
       problem: { status: 409, code: 'campagne.fiche_pas_chez_le_n2' },
     });
     expect((await campagne.transmettreALaDCH(session('dg'), agents.ousmane)).dch).toBe('transmise');
+  });
+
+  it('sans envoi au N+2, elle n’y passe jamais, et part dès la validation de l’agent (ADR-0278)', async () => {
+    // La fiche de Fatou Sall, de l'équipe de Awa Diop : l'évaluation part
+    // sans envoi au N+2, puis l'agent la valide ; la fiche reprend ensuite
+    // son état.
+    const { rows } = await raw(
+      `SELECT auto_transmise_le, evaluation, evaluation_transmise_le, validee_le
+         FROM fiches_entretien WHERE employee_id = $1 AND annee = $2`,
+      [agents.fatou, ANNEE],
+    );
+    const avant = rows[0];
+    await raw(
+      `UPDATE fiches_entretien
+          SET auto_transmise_le = now(), evaluation = '{}'::jsonb,
+              evaluation_transmise_le = now(), validee_le = now()
+        WHERE employee_id = $1 AND annee = $2`,
+      [agents.fatou, ANNEE],
+    );
+    try {
+      const n1 = await campagne.agentDeLEquipe(session('awa'), agents.fatou);
+      expect(n1.n2).toMatchObject({ prenom: 'Cheikh', nom: 'Mbaye' });
+      expect([n1.envoyeeAuN2Le, n1.etatDesCommentaires, n1.dch]).toEqual([
+        null,
+        null,
+        'a_transmettre',
+      ]);
+      const { aCommenter } = await campagne.accueil(session('dg'));
+      expect(aCommenter.map((a) => a.employeeId)).not.toContain(agents.fatou);
+      const n2 = await campagne.ficheDuN2(session('dg'), agents.fatou);
+      expect([n2.etat, n2.fiche, n2.envoyeeLe, n2.modifiable]).toEqual([
+        'en_attente',
+        null,
+        null,
+        false,
+      ]);
+      await expect(campagne.reprendreAuN2(session('awa'), agents.fatou)).rejects.toMatchObject({
+        problem: { status: 409, code: 'campagne.fiche_pas_chez_le_n2' },
+      });
+      const dch = { ...session('awa'), capacites: ['pilotage'] } as SessionUser;
+      const suivi = await campagne.suiviDeLaDCH(dch);
+      expect(suivi.fiches.find((f) => f.employeeId === agents.fatou)?.etape).toBe('a_transmettre');
+    } finally {
+      await raw(
+        `UPDATE fiches_entretien
+            SET auto_transmise_le = $3, evaluation = $4,
+                evaluation_transmise_le = $5, validee_le = $6
+          WHERE employee_id = $1 AND annee = $2`,
+        [
+          agents.fatou,
+          ANNEE,
+          avant?.auto_transmise_le ?? null,
+          avant?.evaluation ?? null,
+          avant?.evaluation_transmise_le ?? null,
+          avant?.validee_le ?? null,
+        ],
+      );
+    }
   });
 
   it('la DCH suit chaque fiche de l’année, et lit en entier celles qui lui sont transmises', async () => {

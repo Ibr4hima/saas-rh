@@ -223,10 +223,10 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0215](0215-formulaire-d-auto-evaluation.md)          | Le formulaire d'auto-évaluation de la campagne, sur la fiche S1/EN05                    | compl. 0216, rév. 0233/0238/0241/0275       |
 | [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | compl. 0217, rév. 0226/0233/0239/0257/0275  |
 | [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | compl. 0218/0268, rév. 0220/0233/0267/0273  |
-| [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | compl. 0221, rév. 0226/0233/0252/0255/0273  |
+| [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | compl. 0221, révisée 6 fois, de 0226 à 0278 |
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée, révisée par 0243                  |
 | [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223, 0227 et 0258    |
-| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | rév. 0226/0227/0233/0256/0265/0273          |
+| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | rév. 0226/0227/0233/0256/0265/0273/0278     |
 | [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | compl. 0271/0274, rév. 0227/0233            |
 | [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée, révisée par 0236, 0237 et 0245    |
 | [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée, complétée par 0248 et 0264        |
@@ -260,7 +260,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0252](0252-etapes-sans-n2-etat-en-bleu.md)           | La bande des étapes : sans les commentaires du N+2 chez le N+1, l'état en bleu          | acceptée, révisée par 0258                  |
 | [0253](0253-point-des-groupes-de-l-equipe.md)         | Le point de couleur revient devant les titres de groupe de Mon équipe                   | acceptée                                    |
 | [0254](0254-barre-sans-ce-qui-manque.md)              | La barre au bas de la fiche ne dresse plus la liste de ce qui manque                    | acceptée                                    |
-| [0255](0255-fiches-a-commenter.md)                    | Fiches d'évaluation à commenter : sur l'accueil du N+2, les fiches validées par l'agent | acceptée                                    |
+| [0255](0255-fiches-a-commenter.md)                    | Fiches d'évaluation à commenter : sur l'accueil du N+2, les fiches validées par l'agent | acceptée, révisée par 0278                  |
 | [0256](0256-suivi-des-evaluations-dans-la-barre.md)   | Le suivi des évaluations s'ouvre d'un bouton de la barre, à gauche de la date           | acceptée                                    |
 | [0257](0257-cartes-de-l-equipe-ouvertes.md)           | Mon équipe : toutes les cartes s'ouvrent, et l'auto-évaluation faite y dit sa date      | acceptée                                    |
 | [0258](0258-evaluation-par-le-n1.md)                  | Évaluation par le N+1, dans la période et dans la bande des étapes                      | acceptée                                    |
@@ -283,3 +283,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0275](0275-notes-des-objectifs-de-0-a-3.md)          | Les objectifs se notent de 0 à 3, avec le relevé des notes et leur moyenne              | acceptée, révisée par 0276 et 0277          |
 | [0276](0276-notes-de-1-a-4-et-arrondi-a-2.md)         | Les objectifs se notent de 1 à 4 ; le N+1 peut arrondir la moyenne à 2 en le justifiant | acceptée, révisée par 0277                  |
 | [0277](0277-moyennes-sans-zeros-inutiles.md)          | Les moyennes des objectifs s'écrivent sans zéros inutiles : 3 / 4, 2,5 / 4, 1,67 / 4    | acceptée                                    |
+| [0278](0278-envoi-simultane-a-l-agent-et-au-n2.md)    | La fiche part à l'agent et, au choix du N+1, au N+2 en même temps                       | acceptée                                    |

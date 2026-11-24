@@ -36,12 +36,15 @@ import { CLE_CAMPAGNE } from '../../../../../lib/campagne';
 
 /* ────────────────────────────────────────────────────────────────
    La fiche d'un agent, ouverte par son N+2 depuis l'accueil (ADR-0218) :
-   l'en-tête de l'agent, ses trois étapes, puis, une fois la fiche validée
-   par l'agent, la fiche S1/EN05 entière, en lecture, partie réservée
-   comprise. Les commentaires du N+2 ferment la partie réservée : ils
+   l'en-tête de l'agent, ses trois étapes, puis, une fois la fiche envoyée
+   par le N+1 avec l'évaluation, la fiche S1/EN05 entière, en lecture,
+   partie réservée comprise, sans attendre la validation de l'agent
+   (ADR-0278). Les commentaires du N+2 ferment la partie réservée : ils
    s'enregistrent seuls, et la barre au bas de la page porte
-   « Transmettre au N+1 », avec ou sans un mot (ADR-0241). Transmis, ils se lisent et
-   ne changent plus. Cette page ne s'ouvre qu'au N+2 de l'agent.
+   « Transmettre au N+1 », avec ou sans un mot (ADR-0241). Transmis, ils se
+   lisent et ne changent plus. Reprise par le N+1, la fiche reste en
+   lecture, sans les commentaires. Cette page ne s'ouvre qu'au N+2 de
+   l'agent.
    ──────────────────────────────────────────────────────────────── */
 
 const cleDe = (employeeId: string) => [...CLE_CAMPAGNE, 'n2', employeeId];
@@ -88,14 +91,19 @@ export default function FicheDuN2Page() {
 
 function Fiche({ vue: v }: { vue: FichePourLeN2 }) {
   const auto = v.agent.auto ? statutDeLAgent(v.agent.auto) : null;
-  const evaluation = v.valideeLe
+  // Envoyée au N+2, la fiche l'est aussi à l'agent, qui la valide (ADR-0278).
+  const evaluation = v.evaluationTransmiseLe
     ? statutDeMonEvaluation({
-        etatDeLEvaluation: 'validee',
+        etatDeLEvaluation: v.valideeLe ? 'validee' : 'transmise',
         evaluationTransmiseLe: v.evaluationTransmiseLe,
         valideeLe: v.valideeLe,
       })
     : null;
-  const commentaires = statutDesCommentaires(v.etat, v.transmisLe, 'n2');
+  const commentaires = statutDesCommentaires(
+    v.etat,
+    v.etat === 'reprise' ? v.repriseLe : v.transmisLe,
+    'n2',
+  );
   return (
     <>
       <BandeauDeLAgent agent={v.agent} />
@@ -117,11 +125,7 @@ function Fiche({ vue: v }: { vue: FichePourLeN2 }) {
         <CarteDEtape
           titre="Commentaires du N+2"
           etat={commentaires?.libelle}
-          periode={
-            v.valideeLe
-              ? `Fiche reçue le ${dateEnLettres(v.valideeLe)}`
-              : 'Après la validation de l’agent'
-          }
+          periode={v.envoyeeLe ? `Fiche reçue le ${dateEnLettres(v.envoyeeLe)}` : 'Fiche non reçue'}
         />
       </Etapes>
       {!v.fiche ? (
@@ -129,7 +133,7 @@ function Fiche({ vue: v }: { vue: FichePourLeN2 }) {
           <EmptyState
             className="py-12"
             icon={<Icon name="how_to_reg" size={22} />}
-            title="La fiche n’est pas encore validée par l’agent"
+            title="La fiche ne vous a pas été envoyée"
           />
         </Card>
       ) : v.modifiable ? (
@@ -142,7 +146,10 @@ function Fiche({ vue: v }: { vue: FichePourLeN2 }) {
           auto={v.fiche.auto}
           evaluation={v.fiche.evaluation}
           reservee={v.fiche.reservee}
-          commentairesDuN2={<CommentairesDuN2Lus texte={v.commentaires} />}
+          // Reprise par le N+1, la fiche reste une copie, sans les commentaires.
+          commentairesDuN2={
+            v.etat === 'reprise' ? undefined : <CommentairesDuN2Lus texte={v.commentaires} />
+          }
         />
       )}
     </>

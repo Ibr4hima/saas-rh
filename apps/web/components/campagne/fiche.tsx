@@ -212,7 +212,8 @@ export function statutDeMonEvaluation(
 /**
  * Les commentaires du N+2, sur leur carte, à la page de l'agent : chez le N+1
  * qui les attend, puis reçus, ou la fiche reprise au N+2 ; chez le N+2 qui
- * les écrit, en cours, puis transmis. Rien avant la validation de l'agent.
+ * les écrit, en cours, puis transmis, ou la fiche reprise par le N+1, avec
+ * son jour. Rien sans l'envoi de la fiche au N+2 (ADR-0278).
  */
 export function statutDesCommentaires(
   etat: EtatDesCommentaires | null,
@@ -224,7 +225,7 @@ export function statutDesCommentaires(
     case 'transmis':
       return { libelle: `${vu === 'n1' ? 'Reçus' : 'Transmis'}${jour}`, ton: 'vert' };
     case 'reprise':
-      return { libelle: vu === 'n1' ? `Reprise${jour}` : 'Reprise par le N+1', ton: 'gris' };
+      return { libelle: vu === 'n1' ? `Reprise${jour}` : `Reprise par le N+1${jour}`, ton: 'gris' };
     case 'en_cours':
       return vu === 'n1'
         ? { libelle: 'Chez le N+2', ton: 'teal' }
@@ -238,8 +239,9 @@ export function statutDesCommentaires(
 
 /**
  * Un agent dont la personne connectée est le N+2, sur sa carte : où en sont
- * les commentaires sur sa fiche, validée par l'agent ; « À commenter » en
- * orange. Une fiche pas encore validée n'arrive pas chez le N+2 (ADR-0255).
+ * les commentaires sur sa fiche, que le N+1 a envoyée au N+2 ; « À commenter »
+ * en orange. Une fiche que le N+1 n'a pas envoyée n'arrive pas chez le N+2
+ * (ADR-0255, ADR-0278).
  */
 export function statutPourLeN2(a: AgentACommenter): Statut | null {
   switch (a.commentaires) {
@@ -252,7 +254,7 @@ export function statutPourLeN2(a: AgentACommenter): Statut | null {
     case 'a_commenter':
       return { libelle: 'À commenter', ton: 'orange' };
     case 'en_attente':
-      // Pas encore validée par l'agent : la fiche n'est pas chez le N+2 (ADR-0255).
+      // Pas envoyée par le N+1 : la fiche n'est pas chez le N+2 (ADR-0278).
       return null;
   }
 }

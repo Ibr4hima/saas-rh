@@ -62,9 +62,10 @@ import {
    avant (ADR-0257). Ni point ni fiche sur ces cartes : le groupe dit si
    l'auto-évaluation est faite (ADR-0250), et la carte, sa date, à la place
    du statut (ADR-0257). Enfin, pour le
-   N+2 d'agents, « Fiches d'évaluation à commenter » : les fiches validées
-   par l'agent, qui s'ouvrent pour ses commentaires (ADR-0218). Tant
-   qu'aucune n'est arrivée chez le N+2, pas de section (ADR-0255).
+   N+2 d'agents, « Fiches d'évaluation à commenter » : les fiches que le
+   N+1 a envoyées au N+2 avec l'évaluation, qui s'ouvrent pour les
+   commentaires du N+2 (ADR-0218, ADR-0278). Tant qu'aucune n'est arrivée chez le
+   N+2, pas de section (ADR-0255).
    Une fois la fixation des objectifs ouverte (ADR-0274), ses sections
    passent devant celles de l'évaluation : « Mes objectifs », ceux que le
    N+1 a transmis, en lecture ; puis, pour qui a une équipe dans
@@ -245,12 +246,12 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
 }
 
 /**
- * Les fiches arrivées chez le N+2 : celles que l'agent a validées, rangées
- * par N+1, sans groupe. Une fiche encore chez le N+1 ou chez l'agent n'y est
- * pas (ADR-0255). Le titre suit leur nombre : « Fiche d'évaluation à
- * commenter », puis « Fiches… ». Chaque carte dit le N+1 de l'agent
- * (ADR-0218), dans un repère comme l'adresse, puis où en est la fiche. Une
- * fiche reprise par le N+1 ne s'ouvre plus (ADR-0221).
+ * Les fiches arrivées chez le N+2 : celles que le N+1 a envoyées au N+2 avec
+ * l'évaluation, rangées par N+1, sans groupe (ADR-0255, ADR-0278). Le titre
+ * suit leur nombre : « Fiche d'évaluation à commenter », puis « Fiches… ».
+ * Chaque carte dit le N+1 de l'agent (ADR-0218), dans un repère comme
+ * l'adresse, puis où en est la fiche. Une fiche reprise par le N+1 s'ouvre
+ * toujours, en lecture (ADR-0278).
  */
 function ACommenter({ agents }: { agents: AgentACommenter[] }) {
   const carte = (a: AgentACommenter): CarteDUnAgent => {
@@ -261,10 +262,7 @@ function ACommenter({ agents }: { agents: AgentACommenter[] }) {
         { libelle: 'N+1', valeur: `${a.n1.prenom} ${a.n1.nom}` },
         ...(statut ? [{ libelle: 'Fiche', valeur: statut.libelle }] : []),
       ],
-      href:
-        a.commentaires === 'en_attente' || a.commentaires === 'reprise'
-          ? undefined
-          : ficheDuN2(a.employeeId),
+      href: a.commentaires === 'en_attente' ? undefined : ficheDuN2(a.employeeId),
     };
   };
   return (

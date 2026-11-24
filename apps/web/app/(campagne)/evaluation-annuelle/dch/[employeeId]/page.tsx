@@ -90,10 +90,14 @@ function Fiche({ vue: v }: { vue: FichePourLaDCH }) {
       <Etapes nombre={v.n2 ? 4 : 3}>
         {etape('Auto-évaluation', `Faite${le(v.autoTransmiseLe)}`, nom(v.agent))}
         {etape('Évaluation par le N+1', `Validée${le(v.valideeLe)}`, nom(n1))}
+        {/* Transmise à la DCH, une fiche envoyée au N+2 en revient commentée,
+            ou reprise ; sinon, elle n'a pas été envoyée au N+2 (ADR-0278). */}
         {v.n2
           ? recus
             ? etape('Commentaires du N+2', `Reçus${le(recus.le)}`, nom(recus.par ?? v.n2))
-            : etape('Commentaires du N+2', `Fiche reprise${le(v.repriseAuN2Le)}`, nom(v.n2))
+            : v.repriseAuN2Le
+              ? etape('Commentaires du N+2', `Fiche reprise${le(v.repriseAuN2Le)}`, nom(v.n2))
+              : etape('Commentaires du N+2', 'Fiche non envoyée', nom(v.n2))
           : null}
         {etape(
           'Transmission à la DCH',

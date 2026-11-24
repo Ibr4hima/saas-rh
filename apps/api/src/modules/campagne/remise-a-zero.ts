@@ -17,6 +17,7 @@ export const COLONNES_DE_LA_CAMPAGNE = [
   'reservee',
   'evaluation_par_employee_id',
   'evaluation_transmise_le',
+  'envoyee_n2_le',
   'validee_le',
   'renvoyee_le',
   'renvoi_mot',

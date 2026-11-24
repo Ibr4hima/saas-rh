@@ -21,6 +21,7 @@ import {
   ecritureDeLEvaluationSchema,
   ecritureDesCommentairesSchema,
   ecritureDesObjectifsSchema,
+  transmissionDeLEvaluationSchema,
   type ChoixDeLEvaluateur,
   type DatesDeLaCampagne,
   type DatesDesObjectifs,
@@ -28,6 +29,7 @@ import {
   type EcritureDeLEvaluation,
   type EcritureDesCommentaires,
   type EcritureDesObjectifs,
+  type TransmissionDeLEvaluation,
 } from '@teranga/contracts';
 import { contentDisposition } from '../../common/telechargement';
 import { ZodValidationPipe } from '../../common/zod.pipe';
@@ -75,13 +77,13 @@ export class CampagneController {
     return this.campagne.enregistrerEvaluation(req.sessionUser, employeeId, body);
   }
 
-  /** L'évaluation, complète, transmise à l'agent. */
+  /** L'évaluation, complète, transmise à l'agent, et au N+2 si le N+1 le choisit (ADR-0278). */
   @Post('equipe/:employeeId/evaluation/transmission')
   @HttpCode(200)
   transmettreEvaluation(
     @Req() req: AuthenticatedRequest,
     @Param('employeeId', ParseUUIDPipe) employeeId: string,
-    @Body(new ZodValidationPipe(ecritureDeLEvaluationSchema)) body: EcritureDeLEvaluation,
+    @Body(new ZodValidationPipe(transmissionDeLEvaluationSchema)) body: TransmissionDeLEvaluation,
   ) {
     return this.campagne.transmettreEvaluation(req.sessionUser, employeeId, body);
   }
@@ -119,7 +121,7 @@ export class CampagneController {
     return this.campagne.transmettreALaDCH(req.sessionUser, employeeId);
   }
 
-  /** La fiche, reprise par le N+1 au N+2 qui ne l'a pas commentée. */
+  /** La fiche, reprise par le N+1 au N+2 qui ne l'a pas commentée : c'est définitif (ADR-0278). */
   @Post('equipe/:employeeId/reprise-n2')
   @HttpCode(200)
   reprendreAuN2(
@@ -127,16 +129,6 @@ export class CampagneController {
     @Param('employeeId', ParseUUIDPipe) employeeId: string,
   ) {
     return this.campagne.reprendreAuN2(req.sessionUser, employeeId);
-  }
-
-  /** La fiche reprise, renvoyée au N+2. */
-  @Post('equipe/:employeeId/renvoi-n2')
-  @HttpCode(200)
-  renvoyerAuN2(
-    @Req() req: AuthenticatedRequest,
-    @Param('employeeId', ParseUUIDPipe) employeeId: string,
-  ) {
-    return this.campagne.renvoyerAuN2(req.sessionUser, employeeId);
   }
 
   /**

@@ -11,7 +11,7 @@ import {
   type EcritureDeLEvaluation,
   type EvaluationDeLAgent,
 } from '@teranga/contracts';
-import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
+import { Button, Card, Checkbox, EmptyState, Skeleton } from '@teranga/ui';
 import {
   BarreDeTransmission,
   useEnregistrementAuto,
@@ -50,14 +50,16 @@ import { aujourdhui } from '../../../../../lib/temps';
    où en est l'enregistrement (ADR-0254) et porte « Valider », qui montre la
    fiche en PDF à la place de la saisie, puis « Modifier » (ADR-0260), et
    « Transmettre à l'agent » (ADR-0241).
-   Transmise, l'évaluation se lit ; l'agent la valide (ADR-0217), sans
-   pouvoir la renvoyer (ADR-0267). Validée, la fiche passe au N+2 s'il y en a
-   un : ses commentaires ferment la partie réservée une fois transmis
-   (ADR-0218), sans étape propre dans la bande (ADR-0252). La dernière étape
-   est la transmission à la DCH : la barre du bas porte « Transmettre à la
-   DCH » une fois la fiche revenue du N+2, ou dès la validation sans N+2, et
-   « Reprendre au N+2 » tant que le N+2 la garde (ADR-0221). Cette page ne
-   s'ouvre qu'à l'évaluateur de l'agent.
+   En la transmettant à l'agent, le N+1 peut envoyer la fiche au N+2 en
+   même temps, d'une case de la confirmation ; plus tard, ce n'est plus
+   possible (ADR-0278). Transmise, l'évaluation se lit ; l'agent la valide
+   (ADR-0217), sans pouvoir la renvoyer (ADR-0267), pendant que le N+2 la
+   commente : ses commentaires ferment la partie réservée une fois transmis
+   (ADR-0218), sans étape propre dans la bande (ADR-0252). La barre du bas
+   suit l'agent et le N+2, porte « Reprendre au N+2 » tant que le N+2 garde
+   la fiche, puis « Transmettre à la DCH » une fois la fiche validée et
+   revenue du N+2, ou dès la validation sans envoi au N+2 (ADR-0221). Cette
+   page ne s'ouvre qu'à l'évaluateur de l'agent.
    ──────────────────────────────────────────────────────────────── */
 
 export default function AgentDeLEquipePage() {
@@ -166,6 +168,8 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
     corpsDeLEvaluation,
   );
   const [confirmer, setConfirmer] = useState(false);
+  // L'envoi au N+2 en même temps qu'à l'agent, au choix du N+1 (ADR-0278).
+  const [auN2, setAuN2] = useState(false);
   // Validée, la saisie se replie : la fiche s'affiche en PDF (ADR-0260).
   const [validee, setValidee] = useState(false);
   /** Valider, ou revenir à la saisie : la page repart de son haut. */
@@ -190,7 +194,7 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
       await vider();
       return api<EvaluationDeLAgent>(`${chemin}/transmission`, {
         method: 'POST',
-        body: contenu(),
+        body: { ...contenu(), envoyerAuN2: v.n2 !== null && auN2 },
       });
     },
     onSuccess: async (vue) => {
@@ -265,6 +269,24 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
             {v.agent.prenom} {v.agent.nom}
           </span>
           , sans la partie réservée à la hiérarchie. Elle ne pourra plus être modifiée.
+          {v.n2 ? (
+            // Le N+2 la reçoit en même temps, ou jamais (ADR-0278).
+            <div className="mt-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <Checkbox
+                  className="mt-[3px]"
+                  checked={auN2}
+                  onChange={(ev) => setAuN2(ev.target.checked)}
+                />
+                <span className="font-medium text-ink-strong">
+                  Envoyer aussi la fiche au N+2, {v.n2.prenom} {v.n2.nom}
+                </span>
+              </label>
+              <p className="mt-1 pl-7 text-[12.5px] text-ink-muted">
+                Après la transmission, la fiche ne pourra plus être envoyée au&nbsp;N+2.
+              </p>
+            </div>
+          ) : null}
         </Confirmation>
       ) : null}
     </>
@@ -282,17 +304,19 @@ function statutDeLaTransmission(v: EvaluationDeLAgent): Statut | null {
   return v.dch === 'a_transmettre' ? { libelle: 'À transmettre', ton: 'orange' } : null;
 }
 
-type GesteVersLaDCH = 'dch' | 'reprise-n2' | 'renvoi-n2';
+type GesteVersLaDCH = 'dch' | 'reprise-n2';
 
 /**
- * La fiche validée par l'agent, vers la DCH (ADR-0221). Revenue du N+2, ou
- * sans N+2, le N+1 la transmet. Chez le N+2, le N+1 la reprend s'il le
- * faut ; reprise, elle repart au N+2 ou à la DCH. À gauche, la dernière
- * étape franchie, avec son jour.
+ * Le suivi de la fiche transmise, au bas de la page (ADR-0278) : une ligne
+ * pour l'agent, qui la valide, et une pour le N+2 quand le N+1 a envoyé la
+ * fiche au N+2, chaque ligne avec son jour. Tant que le N+2 garde la fiche,
+ * le N+1 peut la reprendre, pour de bon. Validée par l'agent, revenue du
+ * N+2 ou reprise, ou sans envoi au N+2, le N+1 la transmet à la DCH
+ * (ADR-0221).
  */
 function VersLaDCH({ vue: v }: { vue: EvaluationDeLAgent }) {
   const qc = useQueryClient();
-  const [confirmer, setConfirmer] = useState<'dch' | 'reprise-n2' | null>(null);
+  const [confirmer, setConfirmer] = useState<GesteVersLaDCH | null>(null);
   const geste = useMutation({
     mutationFn: (route: GesteVersLaDCH) =>
       api<EvaluationDeLAgent>(`/campagne/equipe/${v.agent.employeeId}/${route}`, {
@@ -304,23 +328,27 @@ function VersLaDCH({ vue: v }: { vue: EvaluationDeLAgent }) {
       await qc.invalidateQueries({ queryKey: CLE_CAMPAGNE, exact: true });
     },
   });
+  const transmiseLe = v.evaluationTransmiseLe;
   const chezLeN2 =
-    v.dch === 'en_attente' &&
+    v.envoyeeAuN2Le !== null &&
     (v.etatDesCommentaires === 'a_commenter' || v.etatDesCommentaires === 'en_cours');
   // La campagne terminée, la fiche est verrouillée : plus de geste (ADR-0273).
-  if (v.phase === 'terminee' || (v.dch !== 'a_transmettre' && !chezLeN2)) return null;
+  if (v.phase === 'terminee' || !transmiseLe || v.dch === 'transmise') return null;
 
   const agent = `${v.agent.prenom} ${v.agent.nom}`;
   const n2 = v.n2 ? `${v.n2.prenom} ${v.n2.nom}` : null;
   const recus = v.commentairesDuN2;
-  const etape = chezLeN2
-    ? `Chez le N+2, ${n2}, depuis le ${v.valideeLe ? dateEnLettres(v.valideeLe) : ''}`
-    : recus
-      ? `Commentaires du N+2 reçus le ${dateEnLettres(recus.le)}`
-      : v.repriseAuN2Le
-        ? `Reprise au N+2 le ${dateEnLettres(v.repriseAuN2Le)}`
-        : v.valideeLe
-          ? `Validée par ${agent} le ${dateEnLettres(v.valideeLe)}`
+  const chezLAgent = v.valideeLe
+    ? `Validée par ${agent} le ${dateEnLettres(v.valideeLe)}`
+    : `Chez l’agent, ${agent}, depuis le ${dateEnLettres(transmiseLe)}`;
+  const auN2 = !v.envoyeeAuN2Le
+    ? null
+    : chezLeN2
+      ? `Chez le N+2${n2 ? `, ${n2},` : ''} depuis le ${dateEnLettres(v.envoyeeAuN2Le)}`
+      : recus
+        ? `Commentaires du N+2 reçus le ${dateEnLettres(recus.le)}`
+        : v.repriseAuN2Le
+          ? `Reprise au N+2 le ${dateEnLettres(v.repriseAuN2Le)}`
           : null;
   const enCours = (route: GesteVersLaDCH) => geste.isPending && geste.variables === route;
   const fermer = () => {
@@ -332,43 +360,35 @@ function VersLaDCH({ vue: v }: { vue: EvaluationDeLAgent }) {
     <>
       <div className="sticky bottom-4 z-20">
         <Card className="flex flex-col gap-3 px-5 py-3.5 shadow-[0_10px_30px_-12px_rgb(0_40_90/0.3)] sm:flex-row sm:items-center sm:gap-5">
-          <div className="min-w-0 flex-1">
-            <p className="text-[12px] leading-relaxed text-ink-muted">{etape}</p>
+          <div className="min-w-0 flex-1 text-[12px] leading-relaxed text-ink-muted">
+            <p>{chezLAgent}</p>
+            {auN2 ? <p>{auN2}</p> : null}
             {geste.error && !confirmer ? (
-              <p role="alert" className="mt-1 text-[12px] text-danger">
+              <p role="alert" className="mt-1 text-danger">
                 {messageDe(geste.error)}
               </p>
             ) : null}
           </div>
-          <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
-            {chezLeN2 ? (
-              <Button
-                variant="secondary"
-                className="h-9 px-4"
-                onClick={() => setConfirmer('reprise-n2')}
-              >
-                <Icon name="replay" size={15} />
-                Reprendre au N+2
-              </Button>
-            ) : null}
-            {v.dch === 'a_transmettre' && v.etatDesCommentaires === 'reprise' ? (
-              <Button
-                variant="secondary"
-                className="h-9 px-4"
-                loading={enCours('renvoi-n2')}
-                onClick={() => geste.mutate('renvoi-n2')}
-              >
-                <Icon name="arrow_forward" size={15} />
-                Renvoyer au N+2
-              </Button>
-            ) : null}
-            {v.dch === 'a_transmettre' ? (
-              <Button className="h-9 px-5" onClick={() => setConfirmer('dch')}>
-                <Icon name="task_alt" size={15} />
-                Transmettre à la DCH
-              </Button>
-            ) : null}
-          </div>
+          {chezLeN2 || v.dch === 'a_transmettre' ? (
+            <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
+              {chezLeN2 ? (
+                <Button
+                  variant="secondary"
+                  className="h-9 px-4"
+                  onClick={() => setConfirmer('reprise-n2')}
+                >
+                  <Icon name="replay" size={15} />
+                  Reprendre au N+2
+                </Button>
+              ) : null}
+              {v.dch === 'a_transmettre' ? (
+                <Button className="h-9 px-5" onClick={() => setConfirmer('dch')}>
+                  <Icon name="task_alt" size={15} />
+                  Transmettre à la DCH
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </Card>
       </div>
       {confirmer === 'dch' ? (
@@ -395,7 +415,7 @@ function VersLaDCH({ vue: v }: { vue: EvaluationDeLAgent }) {
           onClose={fermer}
         >
           {n2 ? <span className="font-semibold text-ink-strong">{n2}</span> : 'Le N+2'} ne pourra
-          plus la commenter. Vous pourrez ensuite la transmettre à la DCH.
+          plus la commenter, mais en gardera une copie. La reprise est définitive.
         </Confirmation>
       ) : null}
     </>
