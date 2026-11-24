@@ -113,11 +113,12 @@ export default function AccueilDeLaCampagnePage() {
   const recue = v.monEvaluation;
   const transmise = auto?.etat === 'transmise';
   // Le bouton, tant que l'auto-évaluation est ouverte et pas encore transmise ;
-  // puis, l'évaluation du N+1 arrivée, celui qui l'ouvre pour la valider.
+  // puis, l'évaluation du N+1 arrivée, celui qui l'ouvre pour la valider, tant
+  // que la campagne n'est pas terminée (ADR-0273).
   const aFaire = auto !== null && !transmise && v.phase === 'auto_evaluation';
   const action = aFaire ? (
     <BoutonMAutoEvaluer />
-  ) : recue?.etat === 'a_valider' ? (
+  ) : recue?.etat === 'a_valider' && v.phase !== 'terminee' ? (
     <BoutonValiderMonEvaluation />
   ) : null;
   let rang = 0;

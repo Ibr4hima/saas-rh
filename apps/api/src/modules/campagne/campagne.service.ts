@@ -494,6 +494,25 @@ export class CampagneService {
 const evaluationOuverte = (phase: PhaseDeLaCampagne) =>
   phase === 'auto_evaluation' || phase === 'evaluation';
 
+/**
+ * Après la date de fin de la période, la campagne d'évaluation est terminée
+ * et la fiche verrouillée : plus personne ne la modifie (ADR-0273).
+ */
+const evaluationTerminee = (phase: PhaseDeLaCampagne) => phase === 'terminee';
+
+/** Tout geste sur la fiche, refusé une fois la campagne d'évaluation terminée (ADR-0273). */
+async function ficheNonVerrouillee(tx: Tx, annee: number): Promise<void> {
+  const { phase } = await periodeDe(tx, annee);
+  if (evaluationTerminee(phase)) {
+    problem(
+      409,
+      'campagne.evaluation_terminee',
+      'La campagne d’évaluation est terminée',
+      'La fiche ne change plus.',
+    );
+  }
+}
+
 /** Un agent de l'équipe de la personne connectée ; hors de son équipe, introuvable. */
 async function agentDans(
   tx: Tx,
@@ -910,7 +929,7 @@ async function monEvaluationDans(tx: Tx, user: SessionUser): Promise<MonEvaluati
         : null,
     evaluateur: fiche.evaluateur,
     ...recue,
-    validable: recue.etat === 'a_valider',
+    validable: recue.etat === 'a_valider' && !evaluationTerminee(phase),
   };
 }
 
@@ -939,6 +958,7 @@ async function aValider(tx: Tx, user: SessionUser): Promise<{ id: string; annee:
  */
 async function validerMonEvaluationDans(tx: Tx, user: SessionUser): Promise<void> {
   const { id, annee } = await aValider(tx, user);
+  await ficheNonVerrouillee(tx, annee);
   await tx.execute(sql`
     UPDATE fiches_entretien SET validee_le = now(), updated_at = now()
      WHERE employee_id = ${id} AND annee = ${annee}
@@ -1304,7 +1324,7 @@ async function ficheDuN2Dans(
     commentaires: annuelle.commentairesDuN2?.texte ?? annuelle.commentairesN2 ?? '',
     etat,
     transmisLe: annuelle.commentairesDuN2?.le ?? null,
-    modifiable: etat === 'a_commenter' || etat === 'en_cours',
+    modifiable: (etat === 'a_commenter' || etat === 'en_cours') && !evaluationTerminee(phase),
   };
 }
 
@@ -1321,6 +1341,7 @@ async function ecrireCommentaires(
   transmettre: boolean,
 ): Promise<void> {
   const { moi, annee } = await monN2(tx, user, employeeId);
+  await ficheNonVerrouillee(tx, annee);
   const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
   if (!annuelle.valideeLe) {
     problem(409, 'campagne.fiche_non_validee', 'La fiche n’est pas encore validée par l’agent');
@@ -1370,6 +1391,7 @@ const ficheTransmise = () =>
  */
 async function transmettreALaDCHDans(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
   const { moi, annee } = await monAgent(tx, user, employeeId);
+  await ficheNonVerrouillee(tx, annee);
   const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
   const n2 = await n2De(tx, employeeId, annee);
   const etat = etatDeLaTransmission(annuelle, n2 !== null);
@@ -1398,6 +1420,7 @@ async function transmettreALaDCHDans(tx: Tx, user: SessionUser, employeeId: stri
  */
 async function reprendreAuN2Dans(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
   const { annee } = await monAgent(tx, user, employeeId);
+  await ficheNonVerrouillee(tx, annee);
   const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
   if (annuelle.transmiseALaDCHLe) ficheTransmise();
   const n2 = await n2De(tx, employeeId, annee);
@@ -1417,6 +1440,7 @@ async function reprendreAuN2Dans(tx: Tx, user: SessionUser, employeeId: string):
 /** La fiche reprise repart au N+2, avec le brouillon de ses commentaires. */
 async function renvoyerAuN2Dans(tx: Tx, user: SessionUser, employeeId: string): Promise<void> {
   const { annee } = await monAgent(tx, user, employeeId);
+  await ficheNonVerrouillee(tx, annee);
   const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
   if (annuelle.transmiseALaDCHLe) ficheTransmise();
   if (!annuelle.repriseAuN2Le || !(await n2De(tx, employeeId, annee))) {

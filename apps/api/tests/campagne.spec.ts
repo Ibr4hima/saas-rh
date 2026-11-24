@@ -836,10 +836,16 @@ describe('la validation par l’agent (ADR-0217)', () => {
     expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('validee');
   });
 
-  it('se valide encore après la période', async () => {
+  it('ne se valide plus après la date de fin : la fiche est verrouillée (ADR-0273)', async () => {
     await periode(-20, -15, -1);
-    expect((await campagne.validerMonEvaluation(session('moussa'))).etat).toBe('validee');
+    const v = await campagne.monEvaluation(session('moussa'));
+    expect([v.etat, v.validable]).toEqual(['a_valider', false]);
+    await expect(campagne.validerMonEvaluation(session('moussa'))).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_terminee' },
+    });
+    // Les dates repoussées, la fiche se déverrouille.
     await periode(-2, 3, 10);
+    expect((await campagne.validerMonEvaluation(session('moussa'))).etat).toBe('validee');
   });
 
   it('n’existe pas sans évaluation : au sommet, en stage, sans dossier', async () => {
@@ -850,6 +856,33 @@ describe('la validation par l’agent (ADR-0217)', () => {
     }
     expect((await campagne.accueil(session('dg'))).monEvaluation).toBeNull();
     expect((await campagne.accueil(session('fatou'))).monEvaluation?.etat).toBe('en_attente');
+  });
+});
+
+describe('le verrouillage à la fin de la campagne (ADR-0273)', () => {
+  it('après la date de fin, plus personne ne modifie la fiche', async () => {
+    // La fiche d'Ibou Ndiaye, validée, attend les commentaires de Cheikh Mbaye.
+    expect((await campagne.ficheDuN2(session('dg'), agents.ibou)).modifiable).toBe(true);
+    await periode(-20, -15, -1);
+    expect((await campagne.ficheDuN2(session('dg'), agents.ibou)).modifiable).toBe(false);
+    for (const geste of [
+      () => campagne.enregistrerCommentaires(session('dg'), agents.ibou, 'Trop tard.'),
+      () => campagne.reprendreAuN2(session('awa'), agents.ibou),
+      () => campagne.renvoyerAuN2(session('awa'), agents.ibou),
+      () => campagne.transmettreALaDCH(session('awa'), agents.ibou),
+    ]) {
+      await expect(geste()).rejects.toMatchObject({
+        problem: { status: 409, code: 'campagne.evaluation_terminee' },
+      });
+    }
+    // La fiche se lit toujours, sans changer.
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect([v.phase, v.modifiable, v.etatDesCommentaires]).toEqual([
+      'terminee',
+      false,
+      'a_commenter',
+    ]);
+    await periode(-2, 3, 10);
   });
 });
 

@@ -222,11 +222,11 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0214](0214-bouton-m-auto-evaluer.md)                 | Le bouton M'auto-évaluer et la coche bleue de l'auto-évaluation faite                   | complétée 0217, révisée 0220, 0226, 0227    |
 | [0215](0215-formulaire-d-auto-evaluation.md)          | Le formulaire d'auto-évaluation de la campagne, sur la fiche S1/EN05                    | complétée 0216, révisée 0233, 0238, 0241    |
 | [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | compl. 0217, révisée 0226, 0233, 0239, 0257 |
-| [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | compl. 0218, 0268, révisée 0220, 0233, 0267 |
-| [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | compl. 0221, révisée 0226, 0233, 0252, 0255 |
+| [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | compl. 0218/0268, rév. 0220/0233/0267/0273  |
+| [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | compl. 0221, rév. 0226/0233/0252/0255/0273  |
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée, révisée par 0243                  |
 | [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223, 0227 et 0258    |
-| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | révisée par 0226, 0227, 0233, 0256, 0265    |
+| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | rév. 0226/0227/0233/0256/0265/0273          |
 | [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | complétée 0271, révisée 0227, 0233          |
 | [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée, révisée par 0236, 0237 et 0245    |
 | [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée, complétée par 0248 et 0264        |
@@ -278,3 +278,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0270](0270-remise-a-zero-de-la-campagne.md)          | Remettre à zéro les fiches de la campagne après des essais                              | acceptée, complétée par 0271                |
 | [0271](0271-remise-a-zero-dans-l-administration.md)   | Remettre à zéro : l'administration remet la fiche d'un agent à zéro                     | acceptée                                    |
 | [0272](0272-evaluation-sans-objectifs-a-venir.md)     | L'évaluation ne fixe plus les objectifs de l'année suivante                             | acceptée                                    |
+| [0273](0273-fiche-verrouillee-a-la-fin.md)            | À la fin de l'évaluation, la fiche est verrouillée                                      | acceptée                                    |

@@ -307,7 +307,8 @@ function VersLaDCH({ vue: v }: { vue: EvaluationDeLAgent }) {
   const chezLeN2 =
     v.dch === 'en_attente' &&
     (v.etatDesCommentaires === 'a_commenter' || v.etatDesCommentaires === 'en_cours');
-  if (v.dch !== 'a_transmettre' && !chezLeN2) return null;
+  // La campagne terminée, la fiche est verrouillée : plus de geste (ADR-0273).
+  if (v.phase === 'terminee' || (v.dch !== 'a_transmettre' && !chezLeN2)) return null;
 
   const agent = `${v.agent.prenom} ${v.agent.nom}`;
   const n2 = v.n2 ? `${v.n2.prenom} ${v.n2.nom}` : null;
