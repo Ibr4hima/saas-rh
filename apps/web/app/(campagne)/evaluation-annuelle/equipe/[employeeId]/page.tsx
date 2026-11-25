@@ -51,7 +51,7 @@ import { aujourdhui } from '../../../../../lib/temps';
    Chaque modification s'enregistre seule ; la barre au bas de la page dit
    où en est l'enregistrement (ADR-0254) et porte « Valider », qui montre la
    fiche en PDF à la place de la saisie, puis « Modifier » (ADR-0260), et
-   « Transmettre à l'agent » (ADR-0241).
+   « Transmettre pour signature » (ADR-0241, ADR-0284).
    En la transmettant à l'agent, le N+1 peut envoyer la fiche au N+2 en
    même temps, d'une case de la confirmation ; plus tard, ce n'est plus
    possible (ADR-0278). Transmise, l'évaluation se lit ; l'agent la valide
@@ -256,7 +256,7 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
       <BarreDeTransmission
         etat={etat}
         manque={manque}
-        libelle="Transmettre à l’agent"
+        libelle="Transmettre pour signature"
         enCours={transmettre.isPending}
         onTransmettre={() => setConfirmer(true)}
         avant={
@@ -289,29 +289,26 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
             transmettre.reset();
           }}
         >
-          {/* Le texte de l'APIX (ADR-0266). */}
+          {/* Le texte de l'APIX (ADR-0266, ADR-0284). */}
           Votre évaluation sera transmise à{' '}
           <span className="font-semibold text-ink-strong">
             {v.agent.prenom} {v.agent.nom}
           </span>
-          , sans la partie réservée à la hiérarchie. Elle ne pourra plus être modifiée.
+          , sans la partie réservée à la hiérarchie{' '}
+          <strong className="font-semibold text-ink-strong">pour&nbsp;signature</strong>. Elle ne
+          pourra plus être modifiée.
           {v.n2 ? (
             // Le N+2 la reçoit en même temps, ou jamais (ADR-0278).
-            <div className="mt-4">
-              <label className="flex cursor-pointer items-start gap-3">
-                <Checkbox
-                  className="mt-[3px]"
-                  checked={auN2}
-                  onChange={(ev) => setAuN2(ev.target.checked)}
-                />
-                <span className="font-medium text-ink-strong">
-                  Envoyer aussi la fiche au N+2, {v.n2.prenom} {v.n2.nom}
-                </span>
-              </label>
-              <p className="mt-1 pl-7 text-[12.5px] text-ink-muted">
-                Après la transmission, la fiche ne pourra plus être envoyée au&nbsp;N+2.
-              </p>
-            </div>
+            <label className="mt-4 flex cursor-pointer items-start gap-3">
+              <Checkbox
+                className="mt-[3px]"
+                checked={auN2}
+                onChange={(ev) => setAuN2(ev.target.checked)}
+              />
+              <span className="font-medium text-ink-strong">
+                Envoyer aussi la fiche au N+2, {v.n2.prenom} {v.n2.nom} pour&nbsp;signature
+              </span>
+            </label>
           ) : null}
         </Confirmation>
       ) : null}

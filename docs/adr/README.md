@@ -221,7 +221,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0213](0213-fond-clair-fafafa.md)                     | Le fond clair de l'application revient à #FAFAFA                                        | acceptée                                    |
 | [0214](0214-bouton-m-auto-evaluer.md)                 | Le bouton M'auto-évaluer et la coche bleue de l'auto-évaluation faite                   | complétée 0217, révisée 0220, 0226, 0227    |
 | [0215](0215-formulaire-d-auto-evaluation.md)          | Le formulaire d'auto-évaluation de la campagne, sur la fiche S1/EN05                    | compl. 0216/0280, rév. 0233/0238/0241/0275  |
-| [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | compl. 0217, rév. 0226/0233/0239/0257/0275  |
+| [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | compl. 0217, révisée 6 fois, de 0226 à 0284 |
 | [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | compl. 0218/0268, rév. 0220/0233/0267/0273  |
 | [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | compl. 0221, révisée 6 fois, de 0226 à 0278 |
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée, révisée par 0243                  |
@@ -271,7 +271,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0263](0263-fiche-des-objectifs-resserree.md)         | La fiche Comment définir des objectifs, resserrée : son titre, cinq parties             | acceptée                                    |
 | [0264](0264-reperes-sans-le-type-de-l-unite.md)       | Sous Département et Service, le nom de l'unité sans ce mot                              | acceptée                                    |
 | [0265](0265-entretien-confirme-et-date.md)            | Le N+1 confirme l'entretien avec l'agent et en donne la date                            | acceptée, révisée par 0283                  |
-| [0266](0266-confirmation-du-n1.md)                    | Votre évaluation sera transmise à … : la confirmation du N+1                            | acceptée, révisée par 0267                  |
+| [0266](0266-confirmation-du-n1.md)                    | Votre évaluation sera transmise à … : la confirmation du N+1                            | acceptée, révisée par 0267 et 0284          |
 | [0267](0267-validation-sans-renvoi.md)                | L'agent valide son évaluation, sans pouvoir la renvoyer au N+1                          | acceptée                                    |
 | [0268](0268-telechargement-par-l-agent.md)            | Télécharger : l'agent enregistre son évaluation en PDF, sans la partie réservée         | acceptée, rév. 0269, compl. 0279            |
 | [0269](0269-telechargement-apres-validation.md)       | Télécharger n'apparaît qu'une fois l'évaluation validée                                 | acceptée                                    |
@@ -283,9 +283,10 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0275](0275-notes-des-objectifs-de-0-a-3.md)          | Les objectifs se notent de 0 à 3, avec le relevé des notes et leur moyenne              | acceptée, révisée par 0276 et 0277          |
 | [0276](0276-notes-de-1-a-4-et-arrondi-a-2.md)         | Les objectifs se notent de 1 à 4 ; le N+1 peut arrondir la moyenne à 2 en le justifiant | acceptée, révisée par 0277                  |
 | [0277](0277-moyennes-sans-zeros-inutiles.md)          | Les moyennes des objectifs s'écrivent sans zéros inutiles : 3 / 4, 2,5 / 4, 1,67 / 4    | acceptée                                    |
-| [0278](0278-envoi-simultane-a-l-agent-et-au-n2.md)    | La fiche part à l'agent et, au choix du N+1, au N+2 en même temps                       | acceptée, complétée par 0279                |
+| [0278](0278-envoi-simultane-a-l-agent-et-au-n2.md)    | La fiche part à l'agent et, au choix du N+1, au N+2 en même temps                       | acceptée, compl. 0279, rév. 0284            |
 | [0279](0279-telechargement-par-le-n1-et-le-n2.md)     | Le N+1 et le N+2 téléchargent aussi la fiche complète en PDF                            | acceptée, révisée par 0281                  |
 | [0280](0280-saisie-sans-perte.md)                     | La saisie ne se perd plus : relances, copie locale ; Continuer mon auto-évaluation      | acceptée                                    |
 | [0281](0281-bouton-telecharger.md)                    | Le bouton de téléchargement dit Télécharger, partout                                    | acceptée                                    |
 | [0282](0282-polices-et-theme-sans-saut.md)            | Les polices et le thème justes dès le premier affichage, déconnexion comprise           | acceptée                                    |
 | [0283](0283-case-de-l-entretien-et-section-8-4.md)    | La case de l'entretien ne parle plus des objectifs, et la section 8.4 disparaît         | acceptée                                    |
+| [0284](0284-transmission-pour-signature.md)           | Transmettre pour signature, à l'agent comme au N+2                                      | acceptée                                    |
