@@ -61,7 +61,7 @@ import { aujourdhui } from '../../../../../lib/temps';
    suit l'agent et le N+2, porte « Reprendre au N+2 » tant que le N+2 garde
    la fiche, puis « Transmettre à la DCH » une fois la fiche validée et
    revenue du N+2, ou dès la validation sans envoi au N+2 (ADR-0221). Dès
-   la transmission à l'agent, le bandeau porte « Télécharger le PDF » : la
+   la transmission à l'agent, le bandeau porte « Télécharger » : la
    fiche complète, partie réservée comprise (ADR-0279). Cette page ne
    s'ouvre qu'à l'évaluateur de l'agent.
    ──────────────────────────────────────────────────────────────── */
@@ -127,7 +127,7 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
             <TelechargerLaFiche
               chemin={`/campagne/equipe/${v.agent.employeeId}/pdf`}
               nom={nomDeLaFiche(v.annee, v.agent.matricule, true)}
-              libelle="Télécharger le PDF"
+              libelle="Télécharger"
             />
           ) : undefined
         }

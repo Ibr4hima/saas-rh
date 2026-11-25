@@ -82,7 +82,7 @@ function Fiche({ vue: v }: { vue: FichePourLaDCH }) {
           <TelechargerLaFiche
             chemin={`/campagne/dch/${v.agent.employeeId}/pdf`}
             nom={nomDeLaFiche(v.annee, v.agent.matricule, true)}
-            libelle="Télécharger le PDF"
+            libelle="Télécharger"
           />
         }
       />
