@@ -6,6 +6,13 @@ import { SCRIPT_AMORCAGE } from '../components/preferences';
 import { logoInstalle } from '../lib/logo-installe';
 import { Providers } from './providers';
 
+/** Les polices dont chaque page a besoin dès son premier affichage. */
+const POLICES_PRECHARGEES = [
+  'google-sans-latin.woff2',
+  'anton-latin.woff2',
+  'material-symbols-outlined.subset.woff2',
+];
+
 export const metadata: Metadata = {
   title: 'SGRH · APIX S.A',
   description: 'La gestion RH et la paie de la zone UEMOA, au niveau des meilleurs SaaS mondiaux.',
@@ -29,6 +36,19 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     // ignorait.
     <html lang="fr" data-theme="light" suppressHydrationWarning>
       <head>
+        {/* Les polices de toutes les pages, demandées dès la lecture du HTML,
+            sans attendre la feuille de style : le texte paraît d'emblée dans
+            sa police, sans passer par une autre (ADR-0282). */}
+        {POLICES_PRECHARGEES.map((police) => (
+          <link
+            key={police}
+            rel="preload"
+            href={`/fonts/${police}`}
+            as="font"
+            type="font/woff2"
+            crossOrigin="anonymous"
+          />
+        ))}
         {/* Le navigateur efface la valeur du nonce une fois la page chargée,
             pour qu'un script injecté ne la lise pas : React trouverait
             `nonce=""` là où le serveur l'a écrite. */}

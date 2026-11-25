@@ -192,7 +192,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0184](0184-niveaux-de-langue-facultatifs.md)         | Les niveaux de langue d'une offre : sans « Notions », et facultatifs                    | acceptée                                    |
 | [0185](0185-certificat-a-la-charte.md)                | Le certificat d'APIX Academy à la charte de l'APIX                                      | acceptée                                    |
 | [0186](0186-courriels-a-la-charte.md)                 | Les courriels à la charte de l'APIX                                                     | acceptée                                    |
-| [0187](0187-connexion-a-la-charte.md)                 | Les écrans de connexion à la charte de l'APIX, toujours en clair                        | acceptée, révisée par 0229                  |
+| [0187](0187-connexion-a-la-charte.md)                 | Les écrans de connexion à la charte de l'APIX, toujours en clair                        | acceptée, rév. 0229, compl. 0282            |
 | [0188](0188-verification-a-la-charte.md)              | La vérification d'un certificat à la charte de l'APIX                                   | acceptée, révisée par 0229                  |
 | [0189](0189-lettre-de-demande.md)                     | La lettre de demande, jointe par l'agent, lue et reprise par qui traite la demande      | acceptée, précisée par 0190, 0191, 0193     |
 | [0190](0190-demande-figee.md)                         | Au titre d'une demande, l'identité de l'agent et la date de la demande sont figées      | acceptée, précisée par 0197                 |
@@ -287,3 +287,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0279](0279-telechargement-par-le-n1-et-le-n2.md)     | Le N+1 et le N+2 téléchargent aussi la fiche complète en PDF                            | acceptée, révisée par 0281                  |
 | [0280](0280-saisie-sans-perte.md)                     | La saisie ne se perd plus : relances, copie locale ; Continuer mon auto-évaluation      | acceptée                                    |
 | [0281](0281-bouton-telecharger.md)                    | Le bouton de téléchargement dit Télécharger, partout                                    | acceptée                                    |
+| [0282](0282-polices-et-theme-sans-saut.md)            | Les polices et le thème justes dès le premier affichage, déconnexion comprise           | acceptée                                    |

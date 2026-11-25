@@ -117,6 +117,9 @@ export function MenuCompte({
     // Ce qui a été lu (candidatures, dossiers) ne reste pas dans l'onglet,
     // ni dans les autres onglets ouverts sur la même session.
     fermerSession(queryClient);
+    // L'écran de connexion est toujours en clair : on y passe dès le geste,
+    // pas une fois la page de connexion chargée (ADR-0282).
+    document.documentElement.dataset.theme = 'light';
     router.replace('/login');
   };
 

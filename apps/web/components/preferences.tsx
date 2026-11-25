@@ -1,5 +1,6 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import {
   createContext,
   useCallback,
@@ -39,12 +40,17 @@ export type Theme = 'clair' | 'sombre';
 
 export const CLE_THEME = 'teranga-theme';
 
+/**
+ * Les pages toujours en clair (ADR-0187) : les pages publiques, et les
+ * écrans de la connexion, le code et la clé d'accès compris.
+ */
+export const PAGES_EN_CLAIR =
+  /^\/(postuler|verifier|invitation|reinitialisation)\/|^\/(login|register|mot-de-passe-oublie)(\/|$)/;
+
 /** Le script inline du <head>. Écrit en une ligne, sans dépendance, et
     tolérant à l'échec : en navigation privée, `localStorage` peut lever.
-    Les pages toujours en clair (cf. useThemeClair) le sont dès le premier
-    pixel : les pages publiques, et les écrans de la connexion, le code et la
-    clé d'accès compris. */
-export const SCRIPT_AMORCAGE = `try{document.documentElement.dataset.theme=/^\\/(postuler|verifier|invitation|reinitialisation)\\/|^\\/(login|register|mot-de-passe-oublie)(\\/|$)/.test(location.pathname)||localStorage.getItem('${CLE_THEME}')!=='sombre'?'light':'dark'}catch(e){}`;
+    Les pages toujours en clair le sont dès le premier pixel. */
+export const SCRIPT_AMORCAGE = `try{document.documentElement.dataset.theme=/${PAGES_EN_CLAIR.source}/.test(location.pathname)||localStorage.getItem('${CLE_THEME}')!=='sombre'?'light':'dark'}catch(e){}`;
 
 /** Le thème gardé dans ce navigateur, le clair à défaut. */
 function themeGarde(): Theme {
@@ -95,6 +101,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setTheme(themeGarde());
   }, []);
+
+  // Le thème suit la page dès son affichage, avant le premier pixel : en
+  // clair sur les pages qui le sont toujours, même quand on y arrive depuis
+  // l'application en sombre et que la page n'a encore rien montré (ADR-0282).
+  const chemin = usePathname();
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme =
+      PAGES_EN_CLAIR.test(chemin ?? '') || themeGarde() !== 'sombre' ? 'light' : 'dark';
+  }, [chemin]);
 
   const basculer = useCallback(() => {
     setTheme((actuel) => {

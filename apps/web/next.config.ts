@@ -66,8 +66,14 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // Une police se garde une semaine, puis se relit en arrière-plan
+        // pendant que l'ancienne sert encore : une page rechargée ne
+        // l'attend jamais (ADR-0282).
         source: '/fonts/:fichier*',
-        headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }],
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Cache-Control', value: 'public, max-age=604800, stale-while-revalidate=2592000' },
+        ],
       },
     ];
   },

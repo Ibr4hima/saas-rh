@@ -51,7 +51,10 @@ function curl(url, binaryOut) {
   return execFileSync('curl', args, { encoding: binaryOut ? 'buffer' : 'utf8' });
 }
 
-const css = curl(`https://fonts.googleapis.com/css2?family=${FAMILY}&display=swap`);
+// `block` plutôt que `swap` : le texte attend sa police, préchargée avec la
+// page (app/layout.tsx), au lieu de paraître une seconde dans une autre
+// (ADR-0282).
+const css = curl(`https://fonts.googleapis.com/css2?family=${FAMILY}&display=block`);
 
 /**
  * Chaque bloc est précédé du nom de son sous-ensemble en commentaire — c'est
