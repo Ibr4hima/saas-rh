@@ -62,7 +62,7 @@ import {
    avant (ADR-0257). Ni point ni fiche sur ces cartes : le groupe dit si
    l'auto-évaluation est faite (ADR-0250), et la carte, sa date, à la place
    du statut (ADR-0257). Enfin, pour le
-   N+2 d'agents, « Fiches transmises pour avis et commentaire » (ADR-0286) :
+   N+2 d'agents, « Fiches transmises pour commentaire » (ADR-0286, ADR-0287) :
    les fiches que le N+1 a envoyées au N+2 avec l'évaluation, qui s'ouvrent
    pour les commentaires du N+2 (ADR-0218, ADR-0278). Tant qu'aucune n'est
    arrivée chez le N+2, pas de section (ADR-0255).
@@ -248,8 +248,8 @@ function Equipe({ equipe }: { equipe: AgentDeLEquipe[] }) {
 /**
  * Les fiches arrivées chez le N+2 : celles que le N+1 a envoyées au N+2 avec
  * l'évaluation, rangées par N+1, sans groupe (ADR-0255, ADR-0278). Le titre
- * suit leur nombre : « Fiche transmise pour avis et commentaire », puis
- * « Fiches transmises… » (ADR-0286). Chaque carte dit le N+1 de l'agent
+ * suit leur nombre : « Fiche transmise pour commentaire », puis « Fiches
+ * transmises… » (ADR-0286, ADR-0287). Chaque carte dit le N+1 de l'agent
  * (ADR-0218), dans un repère comme l'adresse ; où en est la fiche se lit
  * sur sa page. Une fiche reprise par le N+1 s'ouvre toujours, en lecture
  * (ADR-0278).
@@ -265,8 +265,8 @@ function ACommenter({ agents }: { agents: AgentACommenter[] }) {
       id="fiches-a-commenter"
       titre={
         agents.length > 1
-          ? 'Fiches transmises pour avis et commentaire'
-          : 'Fiche transmise pour avis et commentaire'
+          ? 'Fiches transmises pour commentaire'
+          : 'Fiche transmise pour commentaire'
       }
       groupes={[{ cartes: agents.map(carte) }]}
     />

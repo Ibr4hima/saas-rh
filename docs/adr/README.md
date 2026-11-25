@@ -291,4 +291,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0283](0283-case-de-l-entretien-et-section-8-4.md)    | La case de l'entretien ne parle plus des objectifs, et la section 8.4 disparaît         | acceptée                                    |
 | [0284](0284-transmission-pour-signature.md)           | Transmettre pour signature, à l'agent comme au N+2                                      | acceptée                                    |
 | [0285](0285-valider-mon-evaluation-en-haut.md)        | Valider mon évaluation monte en haut, à gauche de la date, sans la mention de la fiche  | acceptée                                    |
-| [0286](0286-fiches-pour-avis-et-commentaire.md)       | Fiche transmise pour avis et commentaire : section du N+2, sans l'état sur les cartes   | acceptée                                    |
+| [0286](0286-fiches-pour-avis-et-commentaire.md)       | Fiche transmise pour avis et commentaire : section du N+2, sans l'état sur les cartes   | acceptée, révisée par 0287                  |
+| [0287](0287-fiche-transmise-pour-commentaire.md)      | Fiche transmise pour commentaire : la section du N+2, sans pour avis                    | acceptée                                    |
