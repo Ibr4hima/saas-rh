@@ -10,6 +10,7 @@ import {
   type MonEvaluation,
 } from '@teranga/contracts';
 import { Button, Card, EmptyState, Skeleton } from '@teranga/ui';
+import { ActionDeLaBarre } from '../../../../components/campagne/coque';
 import { FicheDuN1 } from '../../../../components/campagne/evaluation-du-n1';
 import {
   EvaluationValidee,
@@ -31,9 +32,9 @@ import { ACCUEIL_DE_LA_CAMPAGNE, CLE_CAMPAGNE } from '../../../../lib/campagne';
    En tête : le N+1, le jour où l'évaluation est arrivée, le nombre
    d'objectifs, sa validation. Dessous, la fiche telle que le N+1 l'a
    transmise, qui s'arrête avant la partie réservée à la hiérarchie : la
-   page ne la reçoit pas. Une barre, collée au bas de l'écran, porte
-   « Valider mon évaluation », le seul geste de l'agent : le renvoi au N+1
-   n'existe plus (ADR-0267). Validée, la fiche se lit et ne change plus.
+   page ne la reçoit pas. « Valider mon évaluation », le seul geste de
+   l'agent, se tient en haut, à gauche de la date (ADR-0285) : le renvoi au
+   N+1 n'existe plus (ADR-0267). Validée, la fiche se lit et ne change plus.
    Une fois l'évaluation validée, « Télécharger », dans le bandeau, enregistre
    la fiche en PDF, sans la partie réservée à la hiérarchie (ADR-0268,
    ADR-0269).
@@ -153,18 +154,17 @@ function Evaluation({ vue: v }: { vue: MonEvaluation }) {
             reservee={null}
           />
           {v.validable ? (
-            <div className="sticky bottom-4 z-20">
-              <Card className="flex flex-col gap-3 px-5 py-3.5 shadow-[0_10px_30px_-12px_rgb(0_40_90/0.3)] sm:flex-row sm:items-center sm:gap-5">
-                {/* La mention de la fiche, mot pour mot. */}
-                <p className="min-w-0 flex-1 text-[12px] leading-relaxed text-ink-muted">
-                  La fiche n’est valable qu’une fois validée par l’agent.
-                </p>
-                <Button className="h-9 shrink-0 px-5" onClick={() => setAConfirmer(true)}>
-                  <Icon name="task_alt" size={15} />
-                  Valider mon évaluation
-                </Button>
-              </Card>
-            </div>
+            // En haut, à gauche de la date, comme les gestes de l'en-tête de
+            // la plateforme : 36 px de haut, l'aplat dans son filet (ADR-0285).
+            <ActionDeLaBarre>
+              <Button
+                className="h-9 shrink-0 bg-clip-padding px-3 whitespace-nowrap"
+                onClick={() => setAConfirmer(true)}
+              >
+                <Icon name="task_alt" size={18} />
+                Valider mon évaluation
+              </Button>
+            </ActionDeLaBarre>
           ) : null}
         </>
       ) : null}
