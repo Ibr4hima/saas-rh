@@ -329,6 +329,21 @@ export function TitreDeSection({
   // droite ; ailleurs, sous le filet. Ce qui se tient à côté du titre le
   // suit sur sa ligne ; ailleurs, sous le filet aussi. Le chapeau prend
   // toute la largeur.
+  // Le nombre reste collé au dernier mot du titre : sur un téléphone, il ne
+  // passe jamais seul à la ligne. Une espace le sépare du mot, pour les
+  // lecteurs d'écran ; sa marge complète l'écart, 12 px en tout. Centré sur
+  // la ligne, il n'en change pas la hauteur.
+  const compte =
+    nombre !== undefined ? (
+      <>
+        {' '}
+        <span className="relative -top-[0.1em] -my-1 ml-1.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary-soft px-2 align-middle font-sans text-[12px] font-bold tracking-normal text-primary tabular-nums">
+          {nombre}
+        </span>
+      </>
+    ) : null;
+  const texte = typeof children === 'string' ? children : null;
+  const coupure = texte ? texte.lastIndexOf(' ') + 1 : 0;
   return (
     <div
       className={cn(
@@ -341,12 +356,22 @@ export function TitreDeSection({
         className="flex flex-wrap items-center gap-x-3 gap-y-1 font-titre text-[20px] leading-[1.15] tracking-[0.015em] text-primary uppercase sm:col-start-1 sm:row-start-1 sm:text-[22px]"
       >
         {icone ? <Icon name={icone} size={20} className="-mr-1 self-center" /> : null}
-        <span>{children}</span>
-        {nombre !== undefined ? (
-          <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary-soft px-2 font-sans text-[12px] font-bold tracking-normal text-primary tabular-nums">
-            {nombre}
-          </span>
-        ) : null}
+        <span>
+          {texte !== null && compte ? (
+            <>
+              {texte.slice(0, coupure)}
+              <span className="whitespace-nowrap">
+                {texte.slice(coupure)}
+                {compte}
+              </span>
+            </>
+          ) : (
+            <>
+              {children}
+              {compte}
+            </>
+          )}
+        </span>
       </h2>
       <span
         aria-hidden

@@ -4,7 +4,6 @@ import {
   LIBELLES_DU_PERSONNEL,
   periodeDEvaluationEnLettres,
   type AgentDeLaCampagne,
-  type AgentACommenter,
   type AutoDeLAgent,
   type PersonneDeLaCampagne,
   type EtatDeLEvaluation,
@@ -234,28 +233,6 @@ export function statutDesCommentaires(
     case 'a_commenter':
       return vu === 'n1' ? { libelle: 'Chez le N+2', ton: 'teal' } : null;
     default:
-      return null;
-  }
-}
-
-/**
- * Un agent dont la personne connectée est le N+2, sur sa carte : où en sont
- * les commentaires sur sa fiche, que le N+1 a envoyée au N+2 ; « À commenter »
- * en orange. Une fiche que le N+1 n'a pas envoyée n'arrive pas chez le N+2
- * (ADR-0255, ADR-0278).
- */
-export function statutPourLeN2(a: AgentACommenter): Statut | null {
-  switch (a.commentaires) {
-    case 'transmis':
-      return { libelle: 'Commentaires transmis', ton: 'vert' };
-    case 'reprise':
-      return { libelle: 'Reprise par le N+1', ton: 'gris' };
-    case 'en_cours':
-      return { libelle: 'Commentaires en cours', ton: 'bleu' };
-    case 'a_commenter':
-      return { libelle: 'À commenter', ton: 'orange' };
-    case 'en_attente':
-      // Pas envoyée par le N+1 : la fiche n'est pas chez le N+2 (ADR-0278).
       return null;
   }
 }

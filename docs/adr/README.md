@@ -260,7 +260,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0252](0252-etapes-sans-n2-etat-en-bleu.md)           | La bande des étapes : sans les commentaires du N+2 chez le N+1, l'état en bleu          | acceptée, révisée par 0258                  |
 | [0253](0253-point-des-groupes-de-l-equipe.md)         | Le point de couleur revient devant les titres de groupe de Mon équipe                   | acceptée                                    |
 | [0254](0254-barre-sans-ce-qui-manque.md)              | La barre au bas de la fiche ne dresse plus la liste de ce qui manque                    | acceptée                                    |
-| [0255](0255-fiches-a-commenter.md)                    | Fiches d'évaluation à commenter : sur l'accueil du N+2, les fiches validées par l'agent | acceptée, révisée par 0278                  |
+| [0255](0255-fiches-a-commenter.md)                    | Fiches d'évaluation à commenter : sur l'accueil du N+2, les fiches validées par l'agent | acceptée, révisée par 0278 et 0286          |
 | [0256](0256-suivi-des-evaluations-dans-la-barre.md)   | Le suivi des évaluations s'ouvre d'un bouton de la barre, à gauche de la date           | acceptée, complétée par 0285                |
 | [0257](0257-cartes-de-l-equipe-ouvertes.md)           | Mon équipe : toutes les cartes s'ouvrent, et l'auto-évaluation faite y dit sa date      | acceptée                                    |
 | [0258](0258-evaluation-par-le-n1.md)                  | Évaluation par le N+1, dans la période et dans la bande des étapes                      | acceptée                                    |
@@ -291,3 +291,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0283](0283-case-de-l-entretien-et-section-8-4.md)    | La case de l'entretien ne parle plus des objectifs, et la section 8.4 disparaît         | acceptée                                    |
 | [0284](0284-transmission-pour-signature.md)           | Transmettre pour signature, à l'agent comme au N+2                                      | acceptée                                    |
 | [0285](0285-valider-mon-evaluation-en-haut.md)        | Valider mon évaluation monte en haut, à gauche de la date, sans la mention de la fiche  | acceptée                                    |
+| [0286](0286-fiches-pour-avis-et-commentaire.md)       | Fiche transmise pour avis et commentaire : section du N+2, sans l'état sur les cartes   | acceptée                                    |
