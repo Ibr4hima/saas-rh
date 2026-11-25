@@ -21,6 +21,7 @@ import { Icon, type IconName } from '../../components/icons';
 import { ArriveeDeLaPage } from '../../components/arrivee-de-la-page';
 import { PageTitleProvider, usePageTitleOverride } from '../../components/page-title';
 import { MenuCompte } from '../../components/menu-compte';
+import { ServeurInjoignable } from '../../components/serveur-injoignable';
 import { NotificationsBell } from '../../components/notifications-bell';
 import {
   EspaceProvider,
@@ -38,7 +39,7 @@ import {
 } from '../../components/entete';
 import { ANCRE_ONGLETS } from '../../components/onglets';
 import { RechercheAcademy } from '../../components/recherche-academy';
-import { api } from '../../lib/api';
+import { api, isUnauthorized } from '../../lib/api';
 import { ACCUEIL_DE_LA_CAMPAGNE, enCampagne as estEnCampagne } from '../../lib/campagne';
 import { useMe } from '../../lib/hooks';
 
@@ -1272,12 +1273,14 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const allowed = autorise(pathname);
 
   // Le lien d'un courriel mène à une page précise : la connexion y ramène.
+  // Seul un refus de la session y mène : un serveur qui ne répond pas ne
+  // ferme pas la session (ADR-0291).
   useEffect(() => {
-    if (me.isError) {
+    if (me.isError && isUnauthorized(me.error)) {
       const suite = `${window.location.pathname}${window.location.search}`;
       router.replace(`/login?suite=${encodeURIComponent(suite)}`);
     }
-  }, [me.isError, router]);
+  }, [me.isError, me.error, router]);
 
   // En campagne (ADR-0211), un agent ne voit que l'évaluation annuelle :
   // chaque page de la plateforme complète renvoie à l'accueil de la campagne.
@@ -1290,6 +1293,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
   }, [me.data, enCampagne, allowed, accueil, router]);
 
   if (!me.data) {
+    if (me.isError && !isUnauthorized(me.error)) {
+      return <ServeurInjoignable onReessayer={() => void me.refetch()} />;
+    }
     return (
       <div className="mx-auto max-w-6xl px-6 py-10">
         <Skeleton className="mb-6 h-8 w-40" />

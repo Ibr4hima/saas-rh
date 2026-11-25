@@ -285,7 +285,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0277](0277-moyennes-sans-zeros-inutiles.md)          | Les moyennes des objectifs s'écrivent sans zéros inutiles : 3 / 4, 2,5 / 4, 1,67 / 4    | acceptée                                    |
 | [0278](0278-envoi-simultane-a-l-agent-et-au-n2.md)    | La fiche part à l'agent et, au choix du N+1, au N+2 en même temps                       | acceptée, compl. 0279, rév. 0284 et 0289    |
 | [0279](0279-telechargement-par-le-n1-et-le-n2.md)     | Le N+1 et le N+2 téléchargent aussi la fiche complète en PDF                            | acceptée, révisée par 0281 et 0289          |
-| [0280](0280-saisie-sans-perte.md)                     | La saisie ne se perd plus : relances, copie locale ; Continuer mon auto-évaluation      | acceptée                                    |
+| [0280](0280-saisie-sans-perte.md)                     | La saisie ne se perd plus : relances, copie locale ; Continuer mon auto-évaluation      | acceptée, révisée par 0291                  |
 | [0281](0281-bouton-telecharger.md)                    | Le bouton de téléchargement dit Télécharger, partout                                    | acceptée                                    |
 | [0282](0282-polices-et-theme-sans-saut.md)            | Les polices et le thème justes dès le premier affichage, déconnexion comprise           | acceptée                                    |
 | [0283](0283-case-de-l-entretien-et-section-8-4.md)    | La case de l'entretien ne parle plus des objectifs, et la section 8.4 disparaît         | acceptée                                    |
@@ -296,3 +296,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0288](0288-connexion-et-infrastructure-durcies.md)   | La connexion et l'infrastructure durcies après l'audit                                  | acceptée                                    |
 | [0289](0289-n2-garde-et-gestes-reverifies.md)         | Campagne : le N+2 de l'envoi garde la fiche, l'évaluateur se fige, gestes revérifiés    | acceptée                                    |
 | [0290](0290-api-fermee-hors-campagne.md)              | Plateforme : l'API fermée hors campagne, et les abus bornés                             | acceptée                                    |
+| [0291](0291-client-web-saisies-et-session.md)         | Client web : saisies liées au compte, déconnexion sûre, retour vérifié                  | acceptée                                    |

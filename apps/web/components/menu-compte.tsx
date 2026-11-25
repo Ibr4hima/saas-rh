@@ -5,9 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@teranga/ui';
-import { api } from '../lib/api';
+import { api, isUnauthorized } from '../lib/api';
 import { useMe } from '../lib/hooks';
 import { fermerSession } from '../lib/session';
+import { memoire } from '../app/login/connexion';
+import { compteDe, effacerLesCopies } from '../lib/copies';
+import { toutEnregistrer } from './campagne/enregistrement';
 import { COMMANDE, COMMANDE_ACTIVE } from './entete';
 import { LIBELLES_ESPACE, type Espace } from './espace';
 import { Icon, type IconName } from './icons';
@@ -80,9 +83,11 @@ export function MenuCompte({
   const router = useRouter();
   const queryClient = useQueryClient();
   const { theme, basculer } = usePreferences();
+  const me = useMe();
   // L'icône du compte suit le sexe au dossier : person, ou person_2.
-  const soi: IconName = useMe().data?.gender === 'female' ? 'person_2' : 'person';
+  const soi: IconName = me.data?.gender === 'female' ? 'person_2' : 'person';
   const [ouvert, setOuvert] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
   const bouton = useRef<HTMLButtonElement>(null);
   // Le panneau vit dans un portail : il n'est plus DANS le bouton, et le
   // garde « clic à l'extérieur » doit le connaître, sinon choisir « Mode
@@ -112,8 +117,27 @@ export function MenuCompte({
   }, [ouvert]);
 
   const seDeconnecter = async () => {
+    setErreur(null);
+    // Ce qui attend d'être enregistré part d'abord, la session encore
+    // ouverte (ADR-0291).
+    const toutEstEnregistre = await toutEnregistrer();
+    try {
+      await api('/auth/logout', { method: 'POST' });
+    } catch (e) {
+      // Déjà fermée, la session : la déconnexion est faite. Sinon, elle
+      // tient encore, et la personne doit le savoir.
+      if (!isUnauthorized(e)) {
+        setErreur('Déconnexion impossible pour l’instant. Vérifiez la connexion, puis réessayez.');
+        return;
+      }
+    }
     setOuvert(false);
-    await api('/auth/logout', { method: 'POST' });
+    // Les copies des saisies de ce compte ne restent pas dans le navigateur ;
+    // ce qui n'a pas pu partir est dit sur l'écran de connexion.
+    if (me.data) effacerLesCopies(compteDe(me.data));
+    if (!toutEstEnregistre) {
+      memoire.erreur = 'Votre dernière saisie n’a pas pu être enregistrée avant la déconnexion.';
+    }
     // Ce qui a été lu (candidatures, dossiers) ne reste pas dans l'onglet,
     // ni dans les autres onglets ouverts sur la même session.
     fermerSession(queryClient);
@@ -251,6 +275,11 @@ export function MenuCompte({
             }}
           />
           <div className="my-1 h-px bg-line-soft" />
+          {erreur ? (
+            <p role="alert" className="max-w-[13.5rem] px-2.5 py-1.5 text-[12px] text-danger">
+              {erreur}
+            </p>
+          ) : null}
           <Rangee
             icone="logout"
             libelle="Se déconnecter"
@@ -316,6 +345,35 @@ function Panneau({
 
   // Avant peinture : sans cela le panneau apparaît un instant en haut à gauche.
   useLayoutEffect(placer, [placer]);
+
+  // Ouvert au clavier, le menu prend le focus : la tabulation ne traverse
+  // plus la page floutée derrière lui (ADR-0291).
+  const place = pos !== null;
+  useEffect(() => {
+    if (place) panneau.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, [place, panneau]);
+
+  /** Les flèches passent d'une rangée à l'autre ; la tabulation referme le menu. */
+  const auClavier = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const rangees = Array.from(
+      panneau.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+    );
+    if (rangees.length === 0) return;
+    const ici = rangees.indexOf(document.activeElement as HTMLElement);
+    const aller = (i: number) => {
+      e.preventDefault();
+      rangees[(i + rangees.length) % rangees.length]?.focus();
+    };
+    if (e.key === 'ArrowDown') aller(ici + 1);
+    else if (e.key === 'ArrowUp') aller(ici - 1);
+    else if (e.key === 'Home') aller(0);
+    else if (e.key === 'End') aller(rangees.length - 1);
+    else if (e.key === 'Tab') {
+      e.preventDefault();
+      onFermer();
+      ancre.current?.focus();
+    }
+  };
   useEffect(() => {
     window.addEventListener('resize', placer);
     return () => window.removeEventListener('resize', placer);
@@ -336,6 +394,7 @@ function Panneau({
       <div
         ref={panneau}
         role="menu"
+        onKeyDown={auClavier}
         style={{
           top: pos.top,
           bottom: pos.bottom,

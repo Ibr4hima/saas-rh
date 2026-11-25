@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { peut } from '@teranga/contracts';
 import { Skeleton } from '@teranga/ui';
+import { ServeurInjoignable } from '../components/serveur-injoignable';
+import { isUnauthorized } from '../lib/api';
 import { ACCUEIL_DE_LA_CAMPAGNE } from '../lib/campagne';
 import { useMe } from '../lib/hooks';
 
@@ -23,8 +25,12 @@ export default function HomePage() {
             ? '/dashboard'
             : '/moi',
       );
-    } else if (me.isError) router.replace('/login');
-  }, [me.data, me.isError, router]);
+    } else if (me.isError && isUnauthorized(me.error)) router.replace('/login');
+  }, [me.data, me.isError, me.error, router]);
+
+  if (me.isError && !isUnauthorized(me.error)) {
+    return <ServeurInjoignable onReessayer={() => void me.refetch()} />;
+  }
 
   return (
     <main className="mx-auto max-w-md px-6 py-24">

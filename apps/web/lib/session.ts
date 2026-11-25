@@ -3,6 +3,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { SessionUser } from '@teranga/contracts';
 import { useEffect } from 'react';
+import { compteDe, effacerLesCopies, purgerLesCopies } from './copies';
 
 /* Un cache, un compte.
 
@@ -17,7 +18,10 @@ import { useEffect } from 'react';
      la connexion redemandée ; une session ouverte ailleurs fait relire /me.
    · Et quel que soit le chemin (session reprise dans un autre onglet, page
      rendue par le bouton Retour du navigateur), dès que /me répond un autre
-     compte que celui du cache, tout le reste est relu. */
+     compte que celui du cache, tout le reste est relu.
+   · Les copies des saisies (cf. lib/copies.ts) suivent la même règle : dès
+     que /me répond, celles des autres comptes s'effacent, et les trop
+     vieilles avec elles (ADR-0291). */
 
 type Evenement = 'ouverte' | 'fermee';
 
@@ -61,10 +65,14 @@ export function useGardeDeSession(client: QueryClient) {
       if (e.type !== 'updated' || e.query.queryKey[0] !== 'me') return;
       const u = e.query.state.data as SessionUser | undefined;
       if (!u) return;
-      const compte = `${u.tenantId}:${u.userId}`;
+      const compte = compteDe(u);
       if (proprietaire !== null && proprietaire !== compte) {
         // Hors de la notification en cours, mais avant le rendu suivant.
         queueMicrotask(() => void client.resetQueries(toutSaufMoi));
+      }
+      if (proprietaire !== compte) {
+        purgerLesCopies();
+        effacerLesCopies(compte, true);
       }
       proprietaire = compte;
     });

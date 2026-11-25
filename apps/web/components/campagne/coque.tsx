@@ -11,11 +11,13 @@ import {
   SUIVI_DE_LA_DCH,
   useAccueilDeLaCampagne,
 } from '../../lib/campagne';
+import { isUnauthorized } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 import { majuscule } from '../../lib/mots';
 import { BrandMark } from '../brand-mark';
 import { Icon } from '../icons';
 import { MenuCompte } from '../menu-compte';
+import { ServeurInjoignable } from '../serveur-injoignable';
 
 /* ────────────────────────────────────────────────────────────────
    La coque de la campagne d'évaluation annuelle (ADR-0211, ADR-0212).
@@ -56,13 +58,14 @@ export function CoqueDeLaCampagne({ children }: { children: React.ReactNode }) {
   const me = useMe();
   const accueil = useAccueilDeLaCampagne();
 
-  // Sans session, la connexion ramène ici.
+  // Sans session, la connexion ramène ici. Un serveur qui ne répond pas
+  // ne ferme pas la session (ADR-0291).
   useEffect(() => {
-    if (me.isError) {
+    if (me.isError && isUnauthorized(me.error)) {
       const suite = `${window.location.pathname}${window.location.search}`;
       router.replace(`/login?suite=${encodeURIComponent(suite)}`);
     }
-  }, [me.isError, router]);
+  }, [me.isError, me.error, router]);
 
   // Le filet sous la barre ne paraît que quand la page passe dessous.
   const [defile, setDefile] = useState(false);
@@ -140,7 +143,13 @@ export function CoqueDeLaCampagne({ children }: { children: React.ReactNode }) {
               <div ref={setTete} className="contents" />
             </div>
           </div>
-          {me.data ? children : <Skeleton className="h-64 w-full rounded-bloc" />}
+          {me.data ? (
+            children
+          ) : me.isError && !isUnauthorized(me.error) ? (
+            <ServeurInjoignable onReessayer={() => void me.refetch()} />
+          ) : (
+            <Skeleton className="h-64 w-full rounded-bloc" />
+          )}
         </main>
       </div>
     </PlacesDuGeste.Provider>

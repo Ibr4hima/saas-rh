@@ -33,11 +33,20 @@ export function nomEnCapitales(saisie: string): string {
 
 /**
  * La page d'où l'on venait (le lien d'un courriel), si c'en est une du
- * portail : un chemin, jamais une adresse d'un autre site.
+ * portail : un chemin, jamais une adresse d'un autre site. L'adresse se lit
+ * comme le navigateur la suivrait : une tabulation ou un retour à la ligne
+ * glissés dans « //autre.site » n'en font pas un chemin du portail
+ * (ADR-0291).
  */
 function suiteDeLaPage(): string | null {
   const suite = new URLSearchParams(window.location.search).get('suite');
-  return suite && /^\/(?![/\\])/.test(suite) ? suite : null;
+  if (!suite?.startsWith('/')) return null;
+  try {
+    const lue = new URL(suite, window.location.origin);
+    return lue.origin === window.location.origin ? `${lue.pathname}${lue.search}${lue.hash}` : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Où aller une fois la session ouverte. */

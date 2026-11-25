@@ -1,9 +1,18 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { heureEnLettres } from '@teranga/contracts';
 import { Button, Card } from '@teranga/ui';
-import { api, ApiError } from '../../lib/api';
+import { api, ApiError, isUnauthorized } from '../../lib/api';
+import {
+  compteDe,
+  effacerCopie,
+  ecrireCopie,
+  lireCopie,
+  PREFIXE,
+  purgerLesCopies,
+} from '../../lib/copies';
 import { useMe } from '../../lib/hooks';
 import { messageDe, useGardeDeSaisie } from '../grille-evaluation';
 import { Icon } from '../icons';
@@ -23,6 +32,11 @@ import { Icon } from '../icons';
      compte et à la page. Au retour, après une coupure (ordinateur éteint,
      réseau tombé), la saisie reprend cette copie si le serveur n'a pas
      bougé depuis, et l'enregistre ; enregistrée, la copie s'efface.
+   La saisie appartient au compte qui a ouvert la page : un autre compte
+   connecté entre-temps dans ce navigateur ne reçoit rien d'elle. Une
+   session terminée arrête les envois ; la copie attend la reconnexion. La
+   déconnexion enregistre ce qui attend, puis efface les copies du compte
+   (ADR-0291).
    Une barre, au bas de la page, dit où en est l'enregistrement et porte
    la transmission (ADR-0241, ADR-0254).
    ──────────────────────────────────────────────────────────────── */
@@ -33,9 +47,6 @@ const DELAI = 800;
 const DELAI_MAX = 4000;
 /** Le temps avant la relance qui suit le n-ième échec : 2 s, 4 s, 8 s… 30 s au plus. */
 const relance = (echecs: number) => Math.min(30_000, 2000 * 2 ** Math.max(0, echecs - 1));
-/** Une copie du navigateur plus vieille que cela s'efface sans être reprise. */
-const DUREE_DES_COPIES = 30 * 24 * 3600 * 1000;
-const PREFIXE = 'teranga:brouillon:';
 
 export type EtatDeLEnregistrement =
   | { etat: 'au_repos' }
@@ -69,69 +80,32 @@ export function empreinte(valeur: unknown): string {
   );
 }
 
-/** La copie d'une saisie, dans le navigateur. */
-interface Copie<T> {
-  contenu: T;
-  /** L'empreinte de ce que le serveur gardait quand cette saisie a commencé. */
-  base: string;
-  /** Le moment de la dernière frappe, en millisecondes. */
-  le: number;
-}
+/** Les saisies ouvertes dans l'onglet : la déconnexion les enregistre d'abord. */
+const ouvertes = new Set<() => Promise<void>>();
 
-// Le stockage du navigateur peut manquer, être plein ou refusé : la saisie
-// continue sans copie.
-function lireCopie<T>(cle: string): Copie<T> | null {
-  try {
-    const brut = window.localStorage.getItem(cle);
-    if (!brut) return null;
-    const copie = JSON.parse(brut) as Partial<Copie<T>>;
-    return typeof copie.base === 'string' && typeof copie.le === 'number' && 'contenu' in copie
-      ? (copie as Copie<T>)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function ecrireCopie<T>(cle: string, copie: Copie<T>): void {
-  try {
-    window.localStorage.setItem(cle, JSON.stringify(copie));
-  } catch {
-    // Rien à faire : l'envoi au serveur suit.
-  }
-}
-
-function effacerCopie(cle: string): void {
-  try {
-    window.localStorage.removeItem(cle);
-  } catch {
-    // Rien à faire.
-  }
-}
-
-/** Les copies trop vieilles, ou illisibles, s'effacent. */
-function purgerLesCopies(): void {
-  try {
-    const limite = Date.now() - DUREE_DES_COPIES;
-    for (let i = window.localStorage.length - 1; i >= 0; i--) {
-      const cle = window.localStorage.key(i);
-      if (!cle?.startsWith(PREFIXE)) continue;
-      const copie = lireCopie(cle);
-      if (!copie || copie.le < limite) window.localStorage.removeItem(cle);
-    }
-  } catch {
-    // Rien à faire.
-  }
+/**
+ * Enregistre ce qui attend dans les saisies ouvertes, avant la
+ * déconnexion. Faux si l'une n'a pas pu l'être.
+ */
+export async function toutEnregistrer(delai = 5000): Promise<boolean> {
+  const envois = Promise.allSettled([...ouvertes].map((vider) => vider()));
+  // Un réseau qui ne répond plus ne retient pas la déconnexion.
+  const fini = await Promise.race([
+    envois,
+    new Promise<null>((r) => setTimeout(() => r(null), delai)),
+  ]);
+  return fini !== null && fini.every((e) => e.status === 'fulfilled');
 }
 
 /**
- * Un échec qui vaut une relance : le réseau, le serveur, la session. Un
- * refus (une évaluation fermée, transmise…) ne se relance pas.
+ * Un échec qui vaut une relance : le réseau, le serveur. Un refus (une
+ * évaluation fermée, transmise…) ne se relance pas, ni une session
+ * terminée : la reconnexion reprendra la copie.
  */
 const aRelancer = (e: unknown) => {
   if (!(e instanceof ApiError)) return true;
   const s = e.problem.status;
-  return s >= 500 || s === 401 || s === 408 || s === 429;
+  return s >= 500 || s === 408 || s === 429;
 };
 
 /**
@@ -169,9 +143,19 @@ export function useEnregistrementAuto<T>(
   const lire = useRef(options.lire);
   const apres = useRef(options.apresEnregistrement);
   apres.current = options.apresEnregistrement;
-  // La copie du navigateur, propre au compte et à la page.
+  // La saisie appartient au compte qui a ouvert la page ; sa copie aussi.
   const me = useMe();
-  const cle = me.data ? `${PREFIXE}${me.data.tenantId}:${me.data.userId}:${chemin}` : null;
+  const queryClient = useQueryClient();
+  const proprietaire = useRef<string | null>(null);
+  if (proprietaire.current === null && me.data) proprietaire.current = compteDe(me.data);
+  const compteActuel = useRef<string | null>(null);
+  compteActuel.current = me.data ? compteDe(me.data) : null;
+  /** Le compte connecté est encore celui qui a ouvert la page. */
+  const memeCompte = useCallback(
+    () => proprietaire.current !== null && compteActuel.current === proprietaire.current,
+    [],
+  );
+  const cle = proprietaire.current ? `${PREFIXE}${proprietaire.current}:${chemin}` : null;
   const cleCourante = useRef(cle);
   cleCourante.current = cle;
   useGardeDeSaisie(
@@ -180,8 +164,10 @@ export function useEnregistrementAuto<T>(
 
   const garderLaCopie = useCallback(() => {
     const k = cleCourante.current;
-    if (k) ecrireCopie(k, { contenu: dernier.current, base: base.current ?? '', le: Date.now() });
-  }, []);
+    if (k && memeCompte()) {
+      ecrireCopie(k, { contenu: dernier.current, base: base.current ?? '', le: Date.now() });
+    }
+  }, [memeCompte]);
 
   const vider = useCallback(
     async (keepalive = false): Promise<void> => {
@@ -189,6 +175,9 @@ export function useEnregistrementAuto<T>(
       while (enVol.current) await enVol.current;
       const contenu = dernier.current;
       if (contenu === enregistre.current) return;
+      // Un autre compte s'est connecté dans ce navigateur : la saisie ne part
+      // pas sous son nom.
+      if (!memeCompte()) return;
       premiere.current = null;
       setEtat({ etat: 'en_cours' });
       const envoi = api(chemin, { method: 'PUT', body: corps(contenu), keepalive });
@@ -208,7 +197,13 @@ export function useEnregistrementAuto<T>(
         }
         apres.current?.();
       } catch (e) {
-        if (aRelancer(e)) {
+        if (isUnauthorized(e)) {
+          // La session a pris fin : plus d'envoi. La copie reste, et la page
+          // la reprendra après la reconnexion, que /me relu va demander.
+          clearTimeout(minuterie.current);
+          setEtat({ etat: 'erreur', message: 'Votre session a expiré : reconnectez-vous.' });
+          void queryClient.invalidateQueries({ queryKey: ['me'] });
+        } else if (aRelancer(e)) {
           // La saisie reste à envoyer : nouvel essai, de plus en plus espacé.
           echecs.current += 1;
           clearTimeout(minuterie.current);
@@ -228,10 +223,19 @@ export function useEnregistrementAuto<T>(
         enVol.current = null;
       }
     },
-    [chemin, corps, garderLaCopie],
+    [chemin, corps, garderLaCopie, memeCompte, queryClient],
   );
   const viderRef = useRef(vider);
   viderRef.current = vider;
+
+  // La déconnexion enregistre d'abord ce qui attend ici.
+  useEffect(() => {
+    const avantDeSeDeconnecter = () => viderRef.current();
+    ouvertes.add(avantDeSeDeconnecter);
+    return () => {
+      ouvertes.delete(avantDeSeDeconnecter);
+    };
+  }, []);
 
   const changer: Changement<T> = useCallback(
     (maj) => {
@@ -299,7 +303,7 @@ export function useEnregistrementAuto<T>(
   useEffect(
     () => () => {
       clearTimeout(minuterie.current);
-      if (dernier.current === enregistre.current) return;
+      if (dernier.current === enregistre.current || !memeCompte()) return;
       const contenu = dernier.current;
       const k = cleCourante.current;
       void api(chemin, { method: 'PUT', body: corps(contenu), keepalive: true })
@@ -309,7 +313,7 @@ export function useEnregistrementAuto<T>(
         })
         .catch(() => undefined);
     },
-    [chemin, corps],
+    [chemin, corps, memeCompte],
   );
 
   /** Enregistrer tout de suite ce qui ne l'est pas encore : avant une transmission. */
