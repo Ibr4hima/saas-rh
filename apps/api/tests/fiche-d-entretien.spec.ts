@@ -99,6 +99,16 @@ describe('la fiche en PDF', () => {
     expect(vierge.textes).toContain('ÉCHELLE');
   });
 
+  it('la partie réservée s’arrête aux commentaires du N+2, sans section 8.4 (ADR-0283)', async () => {
+    for (const { textes, tout } of [await imprimer(ficheExemple()), await imprimerLaVierge()]) {
+      expect(textes).toContain('8.3');
+      expect(textes).not.toContain('8.4');
+      expect(tout).not.toContain('autres niveaux hiérarchiques');
+      // La diffusion suit les commentaires du N+2.
+      expect(tout).toContain('copie 2 au N+2, selon le circuit de validation.');
+    }
+  });
+
   it('imprime les points forts et les axes de développement en puces (ADR-0251)', async () => {
     const base = ficheExemple();
     /** Les puces dessinées : un rond bleu chacune. */
@@ -316,7 +326,6 @@ describe('la fiche vierge', () => {
       'PARTIE STRICTEMENT RÉSERVÉE À LA HIÉRARCHIE',
       'Observations du N+1',
       'Commentaires du N+2',
-      'Commentaires des autres niveaux hiérarchiques',
     ]) {
       expect(tout).toContain(titre);
     }

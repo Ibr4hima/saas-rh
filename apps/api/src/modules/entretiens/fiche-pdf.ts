@@ -1287,12 +1287,11 @@ function bilan(f: Composition, d: DonneesDeLaFiche): void {
 
 /**
  * Les lignes à écrire qui tiennent encore sur la page sous un titre de
- * sous-section, avec ce qui doit les suivre (`apres`) : de trois à six. S'il
- * en tient moins de trois, le titre passe à la page suivante avec ses lignes
- * habituelles.
+ * sous-section : de trois à six. S'il en tient moins de trois, le titre passe
+ * à la page suivante avec ses lignes habituelles.
  */
-function lignesQuiRestent(f: Composition, titre: number, apres = 0): number {
-  const reste = f.bas - f.y - AIR.avantSousSection - titre - 2 - apres;
+function lignesQuiRestent(f: Composition, titre: number): number {
+  const reste = f.bas - f.y - AIR.avantSousSection - titre - 2;
   const lignes = Math.floor(reste / PAS_D_ECRITURE);
   return lignes >= 3 ? Math.min(lignes, 6) : VIERGE.commentaire;
 }
@@ -1772,22 +1771,11 @@ function partieReservee(f: Composition, d: DonneesDeLaFiche, r: PartieReservee):
     signature(f, 'N+2', d.n2, d.n2?.le ?? null);
   }
 
-  // À la main, sur l'original : des lignes à écrire, entre deux filets, qui
-  // prennent la place restant sur la dernière page ; la diffusion les suit.
-  const diffusion =
-    'Diffusion : original au dossier du personnel (DCH)  ·  copie 1 au N+1  ·  copie 2 au N+2, selon le circuit de validation.';
-  const hDiffusion = 14 + f.hauteurDe(diffusion, f.largeur, { taille: PETIT });
-  const titre84 = 'Commentaires des autres niveaux hiérarchiques';
-  const lignes = lignesQuiRestent(f, f.hauteurDuSousTitre('8.4', titre84), hDiffusion);
-  const autres = [[f.aEcrire(lignes)]];
-  f.sousSection(
-    '8.4',
-    titre84,
-    f.debutDuTableau(pleineLargeur(f), autres, { titres: false }) + hDiffusion,
+  // La partie réservée s'arrête aux commentaires du N+2 (ADR-0283).
+  f.mention(
+    'Diffusion : original au dossier du personnel (DCH)  ·  copie 1 au N+1  ·  copie 2 au N+2, selon le circuit de validation.',
+    14,
   );
-  f.tableau(pleineLargeur(f), autres, { titres: false });
-
-  f.mention(diffusion, 14);
 }
 
 /**

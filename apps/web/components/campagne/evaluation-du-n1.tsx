@@ -171,8 +171,7 @@ function Entretien({
           }}
         />
         <span className="text-sm leading-relaxed font-medium text-ink-strong">
-          Je confirme avoir eu un entretien avec {saisie.agent} pour échanger sur son
-          auto-évaluation et ses objectifs.
+          Je confirme avoir eu un entretien avec {saisie.agent} pour échanger sur son évaluation.
           <span className="text-danger"> *</span>
         </span>
       </label>

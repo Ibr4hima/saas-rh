@@ -213,8 +213,8 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0205](0205-fiche-d-entretien-annuel.md)              | La fiche d'entretien annuel d'évaluation S1/EN05 : son texte corrigé et son PDF         | révisée : 0206, 0208, 0209, 0244, 0272      |
 | [0206](0206-fiche-a-l-en-tete-du-modele.md)           | La fiche d'entretien à l'en-tête du modèle, avec le bleu et l'orange de l'APIX          | acceptée, couleurs retouchées : 0207        |
 | [0207](0207-fiche-titre-noir-sections-en-bleu.md)     | La fiche d'entretien : titre en noir, numéros de section en bleu, sans barres en pied   | acceptée                                    |
-| [0208](0208-fiche-d-entretien-vierge.md)              | La fiche d'entretien vierge, toutes ses sections à remplir à la main                    | acceptée, révisée : 0209, 0272              |
-| [0209](0209-paraphes-sur-la-fiche-d-entretien.md)     | Les paraphes sur la fiche d'entretien, et les lignes de la section 8.4                  | acceptée                                    |
+| [0208](0208-fiche-d-entretien-vierge.md)              | La fiche d'entretien vierge, toutes ses sections à remplir à la main                    | acceptée, révisée : 0209, 0272, 0283        |
+| [0209](0209-paraphes-sur-la-fiche-d-entretien.md)     | Les paraphes sur la fiche d'entretien, et les lignes de la section 8.4                  | acceptée, révisée par 0283                  |
 | [0210](0210-connexion-de-l-administration.md)         | La page de connexion de l'administration, à l'adresse et au mot de passe                | acceptée, complétée par 0211 et 0222        |
 | [0211](0211-mode-campagne-et-accueil.md)              | Le mode campagne et l'accueil de l'évaluation annuelle, sans menu                       | révisée : 0212, 0214, 0216, 0222 à 0227     |
 | [0212](0212-barre-de-la-campagne.md)                  | La barre de la campagne, son titre en grand ; la connexion des agents par code          | acceptée, complétée (0219), révisée (0231)  |
@@ -270,7 +270,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0262](0262-aide-a-la-redaction-des-objectifs.md)     | Comment définir des objectifs : une fiche d'aide à côté du titre des objectifs          | acceptée, révisée par 0263, 0272 et 0274    |
 | [0263](0263-fiche-des-objectifs-resserree.md)         | La fiche Comment définir des objectifs, resserrée : son titre, cinq parties             | acceptée                                    |
 | [0264](0264-reperes-sans-le-type-de-l-unite.md)       | Sous Département et Service, le nom de l'unité sans ce mot                              | acceptée                                    |
-| [0265](0265-entretien-confirme-et-date.md)            | Le N+1 confirme l'entretien avec l'agent et en donne la date                            | acceptée                                    |
+| [0265](0265-entretien-confirme-et-date.md)            | Le N+1 confirme l'entretien avec l'agent et en donne la date                            | acceptée, révisée par 0283                  |
 | [0266](0266-confirmation-du-n1.md)                    | Votre évaluation sera transmise à … : la confirmation du N+1                            | acceptée, révisée par 0267                  |
 | [0267](0267-validation-sans-renvoi.md)                | L'agent valide son évaluation, sans pouvoir la renvoyer au N+1                          | acceptée                                    |
 | [0268](0268-telechargement-par-l-agent.md)            | Télécharger : l'agent enregistre son évaluation en PDF, sans la partie réservée         | acceptée, rév. 0269, compl. 0279            |
@@ -288,3 +288,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0280](0280-saisie-sans-perte.md)                     | La saisie ne se perd plus : relances, copie locale ; Continuer mon auto-évaluation      | acceptée                                    |
 | [0281](0281-bouton-telecharger.md)                    | Le bouton de téléchargement dit Télécharger, partout                                    | acceptée                                    |
 | [0282](0282-polices-et-theme-sans-saut.md)            | Les polices et le thème justes dès le premier affichage, déconnexion comprise           | acceptée                                    |
+| [0283](0283-case-de-l-entretien-et-section-8-4.md)    | La case de l'entretien ne parle plus des objectifs, et la section 8.4 disparaît         | acceptée                                    |
