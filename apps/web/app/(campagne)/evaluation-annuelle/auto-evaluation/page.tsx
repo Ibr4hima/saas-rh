@@ -7,6 +7,7 @@ import {
   ceQuiManqueALAutoEvaluation,
   dateEnLettres,
   reponsesObligatoiresDeLAuto,
+  type AccueilDeLaCampagne,
   type AutoEvaluation,
   type MonAutoEvaluation,
 } from '@teranga/contracts';
@@ -83,7 +84,9 @@ export default function AutoEvaluationPage() {
       </div>
     );
   }
-  if (!requete.data) {
+  // La saisie part de l'auto-évaluation relue à l'ouverture, jamais d'une
+  // copie gardée en mémoire depuis une visite précédente (ADR-0280).
+  if (!requete.data || !requete.isFetchedAfterMount) {
     return (
       <div className="flex flex-col gap-4">
         <RetourALAccueil libelle="Accueil" />
@@ -93,11 +96,25 @@ export default function AutoEvaluationPage() {
     );
   }
   // Transmise, la fiche repart de zéro, en lecture.
-  return <AutoEvaluation key={requete.data.etat} vue={requete.data} />;
+  return (
+    <AutoEvaluation
+      key={requete.data.etat === 'transmise' ? 'transmise' : 'saisie'}
+      vue={requete.data}
+    />
+  );
 }
 
 /** Le corps d'un envoi : l'auto-évaluation, telle qu'elle est écrite. */
 const corpsDeLAuto = (auto: AutoEvaluation) => ({ auto });
+
+/** L'auto-évaluation, telle que le serveur la rend après un enregistrement. */
+const lireLAuto = (r: unknown) => (r as MonAutoEvaluation).auto;
+
+/** Commencée, l'auto-évaluation se continue : l'accueil le dit sans attendre (ADR-0280). */
+const commencee = (a: AccueilDeLaCampagne | undefined) =>
+  a?.moi?.auto?.etat === 'a_faire'
+    ? { ...a, moi: { ...a.moi, auto: { ...a.moi.auto, etat: 'en_cours' as const } } }
+    : a;
 
 function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
   const qc = useQueryClient();
@@ -107,7 +124,10 @@ function AutoEvaluation({ vue }: { vue: MonAutoEvaluation }) {
     changer,
     vider,
     contenu,
-  } = useEnregistrementAuto(CHEMIN, vue.auto, corpsDeLAuto);
+  } = useEnregistrementAuto(CHEMIN, vue.auto, corpsDeLAuto, {
+    lire: lireLAuto,
+    apresEnregistrement: () => qc.setQueryData<AccueilDeLaCampagne>(CLE_CAMPAGNE, commencee),
+  });
   const [confirmer, setConfirmer] = useState(false);
   // Validée, la saisie se replie : la fiche s'affiche en PDF (ADR-0241).
   const [validee, setValidee] = useState(false);

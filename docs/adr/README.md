@@ -220,7 +220,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0212](0212-barre-de-la-campagne.md)                  | La barre de la campagne, son titre en grand ; la connexion des agents par code          | acceptée, complétée (0219), révisée (0231)  |
 | [0213](0213-fond-clair-fafafa.md)                     | Le fond clair de l'application revient à #FAFAFA                                        | acceptée                                    |
 | [0214](0214-bouton-m-auto-evaluer.md)                 | Le bouton M'auto-évaluer et la coche bleue de l'auto-évaluation faite                   | complétée 0217, révisée 0220, 0226, 0227    |
-| [0215](0215-formulaire-d-auto-evaluation.md)          | Le formulaire d'auto-évaluation de la campagne, sur la fiche S1/EN05                    | compl. 0216, rév. 0233/0238/0241/0275       |
+| [0215](0215-formulaire-d-auto-evaluation.md)          | Le formulaire d'auto-évaluation de la campagne, sur la fiche S1/EN05                    | compl. 0216/0280, rév. 0233/0238/0241/0275  |
 | [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | compl. 0217, rév. 0226/0233/0239/0257/0275  |
 | [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | compl. 0218/0268, rév. 0220/0233/0267/0273  |
 | [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | compl. 0221, révisée 6 fois, de 0226 à 0278 |
@@ -279,9 +279,10 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0271](0271-remise-a-zero-dans-l-administration.md)   | Remettre à zéro : l'administration remet la fiche d'un agent à zéro                     | acceptée                                    |
 | [0272](0272-evaluation-sans-objectifs-a-venir.md)     | L'évaluation ne fixe plus les objectifs de l'année suivante                             | acceptée, complétée par 0274                |
 | [0273](0273-fiche-verrouillee-a-la-fin.md)            | À la fin de l'évaluation, la fiche est verrouillée                                      | acceptée                                    |
-| [0274](0274-campagne-des-objectifs.md)                | La fixation des objectifs, une campagne à part, en début d'année                        | acceptée                                    |
+| [0274](0274-campagne-des-objectifs.md)                | La fixation des objectifs, une campagne à part, en début d'année                        | acceptée, complétée par 0280                |
 | [0275](0275-notes-des-objectifs-de-0-a-3.md)          | Les objectifs se notent de 0 à 3, avec le relevé des notes et leur moyenne              | acceptée, révisée par 0276 et 0277          |
 | [0276](0276-notes-de-1-a-4-et-arrondi-a-2.md)         | Les objectifs se notent de 1 à 4 ; le N+1 peut arrondir la moyenne à 2 en le justifiant | acceptée, révisée par 0277                  |
 | [0277](0277-moyennes-sans-zeros-inutiles.md)          | Les moyennes des objectifs s'écrivent sans zéros inutiles : 3 / 4, 2,5 / 4, 1,67 / 4    | acceptée                                    |
 | [0278](0278-envoi-simultane-a-l-agent-et-au-n2.md)    | La fiche part à l'agent et, au choix du N+1, au N+2 en même temps                       | acceptée, complétée par 0279                |
 | [0279](0279-telechargement-par-le-n1-et-le-n2.md)     | Le N+1 et le N+2 téléchargent aussi la fiche complète en PDF                            | acceptée                                    |
+| [0280](0280-saisie-sans-perte.md)                     | La saisie ne se perd plus : relances, copie locale ; Continuer mon auto-évaluation      | acceptée                                    |

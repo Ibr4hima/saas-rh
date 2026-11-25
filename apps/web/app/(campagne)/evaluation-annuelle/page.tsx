@@ -44,7 +44,8 @@ import {
 
    En tête, le bandeau de la personne, sur le bleu de la charte : ses
    initiales, son nom et son poste ; à droite, le bouton « M’auto-évaluer »
-   tant que l'auto-évaluation est ouverte (ADR-0214), puis « Valider mon
+   tant que l'auto-évaluation est ouverte (ADR-0214), « Continuer mon
+   auto-évaluation » une fois commencée (ADR-0280), puis « Valider mon
    évaluation » quand le N+1 l'a transmise (ADR-0217). Un filet orange, bien
    droit, le ferme (ADR-0228) ; dessous, ses repères, comme sur la fiche de
    son dossier : direction, département, service, supérieur hiérarchique,
@@ -130,7 +131,7 @@ export default function AccueilDeLaCampagnePage() {
   // que la campagne n'est pas terminée (ADR-0273).
   const aFaire = auto !== null && !transmise && v.phase === 'auto_evaluation';
   const action = aFaire ? (
-    <BoutonMAutoEvaluer />
+    <BoutonMAutoEvaluer commencee={auto.etat === 'en_cours'} />
   ) : recue?.etat === 'a_valider' && v.phase !== 'terminee' ? (
     <BoutonValiderMonEvaluation />
   ) : null;

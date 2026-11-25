@@ -97,11 +97,12 @@ export const BOUTON_DU_BANDEAU =
   'inline-flex h-11 w-full items-center justify-center gap-2 rounded-controle bg-white px-5 text-[13.5px] font-bold whitespace-nowrap text-[#004f91] shadow-[0_10px_24px_-12px_rgb(0_0_0/0.55)] transition-[background-color,transform] duration-150 hover:bg-[#eaf3fd] active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:w-auto';
 
 /** Le bouton qui ouvre son auto-évaluation, dans le bandeau de l'accueil. */
-export function BoutonMAutoEvaluer() {
+export function BoutonMAutoEvaluer({ commencee = false }: { commencee?: boolean }) {
   return (
     <Link href={AUTO_EVALUATION} className={BOUTON_DU_BANDEAU}>
       <Icon name="edit" size={17} />
-      M’auto-évaluer
+      {/* Commencée, elle se continue (ADR-0280). */}
+      {commencee ? 'Continuer mon auto-évaluation' : 'M’auto-évaluer'}
     </Link>
   );
 }

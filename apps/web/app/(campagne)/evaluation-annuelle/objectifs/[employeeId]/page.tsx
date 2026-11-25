@@ -66,7 +66,9 @@ export default function ObjectifsDeLAgentPage() {
             }
           />
         </Card>
-      ) : !v ? (
+      ) : !v || !vue.isFetchedAfterMount ? (
+        // La saisie part de la fiche relue à l'ouverture, jamais d'une copie
+        // gardée en mémoire depuis une visite précédente (ADR-0280).
         <>
           <Skeleton className="mb-4 h-[158px] w-full rounded-bloc" />
           <Skeleton className="h-[264px] w-full rounded-bloc" />
@@ -105,6 +107,11 @@ function Objectifs({ vue: v }: { vue: ObjectifsDeLAgent }) {
 /** Le corps d'un envoi : les objectifs, tels qu'ils sont écrits. */
 const corpsDesObjectifs = (e: EcritureDesObjectifs) => e;
 
+/** Les objectifs, tels que le serveur les rend après un enregistrement. */
+const lireLesObjectifs = (r: unknown): EcritureDesObjectifs => ({
+  objectifs: (r as ObjectifsDeLAgent).objectifs,
+});
+
 /** Les objectifs à écrire, qui s'enregistrent seuls, puis se transmettent à l'agent. */
 function Saisie({ vue: v }: { vue: ObjectifsDeLAgent }) {
   const qc = useQueryClient();
@@ -113,6 +120,7 @@ function Saisie({ vue: v }: { vue: ObjectifsDeLAgent }) {
     chemin,
     { objectifs: v.objectifs },
     corpsDesObjectifs,
+    { lire: lireLesObjectifs },
   );
   const [confirmer, setConfirmer] = useState(false);
   const manque = ceQuiManqueAuxObjectifs(valeur.objectifs, v.annee);

@@ -93,14 +93,16 @@ export default function AgentDeLEquipePage() {
             }
           />
         </Card>
-      ) : !v ? (
+      ) : !v || !vue.isFetchedAfterMount ? (
+        // La saisie part de la fiche relue à l'ouverture, jamais d'une copie
+        // gardée en mémoire depuis une visite précédente (ADR-0280).
         <>
           <Skeleton className="mb-4 h-[158px] w-full rounded-bloc" />
           <Skeleton className="h-[86px] w-full rounded-bloc" />
         </>
       ) : (
         // Transmise, la fiche repart de zéro, en lecture.
-        <Agent key={v.etatDeLEvaluation} vue={v} />
+        <Agent key={v.modifiable ? 'saisie' : 'lecture'} vue={v} />
       )}
     </div>
   );
@@ -175,6 +177,12 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
 /** Le corps d'un envoi : l'évaluation et la partie réservée, telles qu'elles sont écrites. */
 const corpsDeLEvaluation = (e: EcritureDeLEvaluation) => e;
 
+/** L'évaluation et la partie réservée, telles que le serveur les rend après un enregistrement. */
+const lireLEvaluation = (r: unknown): EcritureDeLEvaluation => {
+  const vue = r as EvaluationDeLAgent;
+  return { evaluation: vue.evaluation, reservee: vue.reservee };
+};
+
 /** L'évaluation à remplir, qui s'enregistre seule, puis se transmet à l'agent. */
 function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluation }) {
   const qc = useQueryClient();
@@ -183,6 +191,7 @@ function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluatio
     chemin,
     { evaluation: v.evaluation, reservee: v.reservee },
     corpsDeLEvaluation,
+    { lire: lireLEvaluation },
   );
   const [confirmer, setConfirmer] = useState(false);
   // L'envoi au N+2 en même temps qu'à l'agent, au choix du N+1 (ADR-0278).

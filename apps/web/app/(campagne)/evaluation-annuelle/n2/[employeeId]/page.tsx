@@ -79,7 +79,9 @@ export default function FicheDuN2Page() {
             }
           />
         </Card>
-      ) : !v ? (
+      ) : !v || !vue.isFetchedAfterMount ? (
+        // La saisie part de la fiche relue à l'ouverture, jamais d'une copie
+        // gardée en mémoire depuis une visite précédente (ADR-0280).
         <>
           <Skeleton className="mb-4 h-[158px] w-full rounded-bloc" />
           <Skeleton className="h-[86px] w-full rounded-bloc" />
@@ -174,6 +176,9 @@ function Fiche({ vue: v }: { vue: FichePourLeN2 }) {
 /** Le corps d'un envoi : les commentaires, tels qu'ils sont écrits. */
 const corpsDesCommentaires = (commentaires: string) => ({ commentaires });
 
+/** Les commentaires, tels que le serveur les rend après un enregistrement. */
+const lireLesCommentaires = (r: unknown) => (r as FichePourLeN2).commentaires;
+
 /** Les commentaires à écrire, qui s'enregistrent seuls, puis se transmettent au N+1. */
 function Saisie({ vue: v, fiche }: { vue: FichePourLeN2; fiche: FicheComplete }) {
   const qc = useQueryClient();
@@ -182,6 +187,7 @@ function Saisie({ vue: v, fiche }: { vue: FichePourLeN2; fiche: FicheComplete })
     chemin,
     v.commentaires,
     corpsDesCommentaires,
+    { lire: lireLesCommentaires },
   );
   const [confirmer, setConfirmer] = useState(false);
   const sansCommentaire = !valeur.trim();
