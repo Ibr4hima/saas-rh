@@ -6,6 +6,7 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import { pourLeJournal } from '../../common/problem';
 import { parLeSysteme } from '../../db/systeme';
 import { TenantDb, type Tx } from '../../db/tenant-db';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -60,7 +61,7 @@ export class Veille implements OnModuleInit, OnModuleDestroy {
     if (this.arretee) return;
     this.minuterie = setTimeout(() => {
       void this.veiller()
-        .catch((e: unknown) => this.logger.error(`Tour manqué : ${(e as Error).message}`))
+        .catch((e: unknown) => this.logger.error('Tour manqué', pourLeJournal(e)))
         .finally(() => this.programmer());
     }, delai);
     this.minuterie.unref();
@@ -85,7 +86,7 @@ export class Veille implements OnModuleInit, OnModuleDestroy {
             await parLeSysteme(tx, () => etape(tx));
           });
         } catch (e) {
-          this.logger.error(`Organisation ${id}, ${nom} : ${(e as Error).message}`);
+          this.logger.error(`Organisation ${id}, ${nom}`, pourLeJournal(e));
         }
       }
     }

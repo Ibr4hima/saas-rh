@@ -6,6 +6,7 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import { pourLeJournal } from '../../common/problem';
 import { TenantDb } from '../../db/tenant-db';
 import { inactiverLesContratsEchus } from './activite';
 
@@ -60,7 +61,7 @@ export class PassageDeMinuit implements OnModuleInit, OnModuleDestroy {
 
   /** La base absente à minuit : le passage suivant rattrapera. */
   private consigner(e: unknown): void {
-    this.logger.error(`Passage manqué : ${(e as Error).message}`);
+    this.logger.error('Passage manqué', pourLeJournal(e));
   }
 
   /**
@@ -80,7 +81,7 @@ export class PassageDeMinuit implements OnModuleInit, OnModuleDestroy {
           inactiverLesContratsEchus(tx, id),
         );
       } catch (e) {
-        this.logger.error(`Organisation ${id} : ${(e as Error).message}`);
+        this.logger.error(`Organisation ${id}`, pourLeJournal(e));
       }
     }
     return rangees;

@@ -34,7 +34,7 @@ import {
   adresseDuClient,
   empreinte,
 } from '../../common/limiteur';
-import { ProblemException, problem } from '../../common/problem';
+import { ProblemException, pourLeJournal, problem } from '../../common/problem';
 import { ZodValidationPipe } from '../../common/zod.pipe';
 import { loadEnv } from '../../config/env';
 import { SESSION_COOKIE, optionsDuCookie } from './auth.constants';
@@ -163,7 +163,7 @@ export class AuthController {
     }
     void this.reinitialisation
       .demander(body.email)
-      .catch((e: Error) => this.logger.error(`Lien de réinitialisation : ${e.message}`));
+      .catch((e: unknown) => this.logger.error('Lien de réinitialisation', pourLeJournal(e)));
   }
 
   @Get('auth/reinitialisation/:token')

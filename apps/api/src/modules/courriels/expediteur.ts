@@ -2,6 +2,7 @@ import { Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common'
 import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { EncryptionService } from '../../common/encryption.service';
+import { pourLeJournal } from '../../common/problem';
 import { loadEnv } from '../../config/env';
 import * as t from '../../db/schema';
 import { TenantDb, type Tx } from '../../db/tenant-db';
@@ -259,7 +260,7 @@ export class ExpediteurCourriels implements OnModuleInit, OnModuleDestroy {
           if (await this.unPassage()) this.encore = true;
         } while (this.encore);
       } catch (e) {
-        this.logger.error(`Passage interrompu : ${(e as Error).message}`);
+        this.logger.error('Passage interrompu', pourLeJournal(e));
       } finally {
         this.passage = null;
       }

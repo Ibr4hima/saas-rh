@@ -1194,9 +1194,9 @@ async function aValider(tx: Tx, user: SessionUser): Promise<{ id: string; annee:
 }
 
 /**
- * L'agent valide son évaluation, à tout moment une fois transmise : la
- * fiche n'est valable qu'une fois validée. Elle ne change plus ensuite, même
- * par deux gestes qui se croisent.
+ * L'agent valide son évaluation une fois transmise, jusqu'à la fin de la
+ * période (ADR-0273) : la fiche n'est valable qu'une fois validée. Elle ne
+ * change plus ensuite, même par deux gestes qui se croisent.
  */
 async function validerMonEvaluationDans(tx: Tx, user: SessionUser): Promise<void> {
   const { id, annee } = await aValider(tx, user);

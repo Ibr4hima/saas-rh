@@ -9,9 +9,10 @@
  * clés d'accès.
  */
 import { randomUUID } from 'node:crypto';
+import { Logger } from '@nestjs/common';
 import { verify as argonVerify } from '@node-rs/argon2';
 import { Pool } from 'pg';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionService } from '../src/common/encryption.service';
 import { Limiteur } from '../src/common/limiteur';
 import { ProblemException } from '../src/common/problem';
@@ -426,6 +427,31 @@ describe('la route', () => {
     await raw(
       `DELETE FROM rate_limit_counters WHERE bucket IN ('connexion_ip', 'connexion_compte')`,
     );
+  });
+
+  it('une panne de la demande ne laisse pas l’adresse dans le journal (audit)', async () => {
+    const email = `journal-${randomUUID()}@${domaine}`;
+    // Drizzle écrit les valeurs de la requête dans le message de son erreur.
+    const panne = Object.assign(new Error(`Failed query: select 1\nparams: ${email}`), {
+      query: 'select 1',
+      params: [email],
+    });
+    const reinit = {
+      demander: () => Promise.reject(panne),
+    } as unknown as ReinitialisationService;
+    const ctrl = new AuthController(new AuthService(db), new Limiteur(db), reinit);
+    const journal = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const ip = `10.${Math.floor(Math.random() * 250)}.3.${Math.floor(Math.random() * 250)}`;
+    try {
+      await ctrl.motDePasseOublie({ email }, requete(ip), reponse());
+      await vi.waitFor(() => expect(journal).toHaveBeenCalled());
+      const ecrit = JSON.stringify(journal.mock.calls);
+      expect(ecrit).toContain('select 1');
+      expect(ecrit).not.toContain(email);
+    } finally {
+      journal.mockRestore();
+      await raw(`DELETE FROM rate_limit_counters WHERE bucket IN ('oubli_ip', 'oubli_compte')`);
+    }
   });
 
   it('un jeton mal formé n’ouvre rien', async () => {
