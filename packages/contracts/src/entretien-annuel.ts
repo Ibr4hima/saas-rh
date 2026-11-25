@@ -1,0 +1,778 @@
+import { z } from 'zod';
+import { NIVEAUX, niveauSchema, type Niveau } from './evaluations';
+
+/* ────────────────────────────────────────────────────────────────
+   La fiche d'entretien annuel d'évaluation de l'APIX (réf. S1/EN05),
+   ADR-0205.
+
+   Une seule fiche pour tout le personnel, cadre ou non cadre. L'agent la
+   commence (son auto-évaluation), le N+1 la complète après l'entretien,
+   l'agent la valide, le N+2 la commente. La dernière partie est réservée à
+   la hiérarchie : l'agent ne la voit jamais.
+
+   Le texte est celui de la grille de la DCH, corrigé de ses fautes et écrit
+   sans accord au masculin ni au féminin. Les écrans et le PDF le lisent
+   ici : il n'existe qu'à un endroit.
+   ──────────────────────────────────────────────────────────────── */
+
+/** La référence de la fiche dans le système documentaire de la DCH. */
+export const REFERENCE_DE_LA_FICHE = {
+  reference: 'S1/EN05',
+  version: '02',
+  /** AAAA-MM-JJ. */
+  application: '2018-12-15',
+} as const;
+
+export const TITRE_DE_LA_FICHE = 'Fiche d’entretien annuel d’évaluation';
+
+// ──────────────────────────────────────────────── les notes des objectifs (ADR-0275, ADR-0276)
+
+/**
+ * Les notes d'un objectif, de la meilleure à la plus basse : l'agent et le
+ * N+1 notent chaque objectif de 1 à 4 (ADR-0276), à la place des lettres A
+ * à D.
+ */
+export const NOTES_D_OBJECTIF = [4, 3, 2, 1] as const;
+export type NoteDObjectif = (typeof NOTES_D_OBJECTIF)[number];
+
+/** La meilleure note, 4 : chaque moyenne se lit sur 4. */
+export const NOTE_MAXIMALE: NoteDObjectif = 4;
+
+/** La moyenne à partir de laquelle l'agent atteint ses objectifs de l'année : 2 sur 4. */
+export const MOYENNE_D_ATTEINTE = 2;
+
+/** À partir de cette moyenne, et en dessous de 2, le N+1 peut l'arrondir à 2. */
+export const SEUIL_DE_L_ARRONDI = 1.5;
+
+/** Ce que dit chaque note de l'atteinte de l'objectif, et des résultats. */
+export const NOTES_D_ATTEINTE: Record<NoteDObjectif, { libelle: string; resultats: string }> = {
+  4: { libelle: 'Dépassé', resultats: 'Résultats excellents' },
+  3: { libelle: 'Réalisé', resultats: 'Résultats satisfaisants' },
+  2: { libelle: 'Partiellement réalisé', resultats: 'Résultats à améliorer' },
+  1: { libelle: 'Non réalisé', resultats: 'Résultats non acceptables' },
+};
+
+/** La note de chaque lettre d'avant les notes : A vaut 4, B 3, C 2, D 1. */
+export const NOTE_DE_LA_LETTRE: Record<Niveau, NoteDObjectif> = { A: 4, B: 3, C: 2, D: 1 };
+
+/** Vrai si une moyenne peut s'arrondir à 2 : de 1,5 à moins de 2 (ADR-0276). */
+export const arrondiPossible = (moyenne: number | null): boolean =>
+  moyenne !== null && moyenne >= SEUIL_DE_L_ARRONDI && moyenne < MOYENNE_D_ATTEINTE;
+
+const noteDObjectifSchema = z.literal(NOTES_D_OBJECTIF);
+
+/**
+ * Une appréciation écrite avant les notes : son niveau, une lettre, se relit
+ * en note. La base garde la lettre jusqu'au prochain enregistrement.
+ */
+function avecSaNote(appreciation: unknown): unknown {
+  if (typeof appreciation !== 'object' || appreciation === null) return appreciation;
+  if ('note' in appreciation || !('niveau' in appreciation)) return appreciation;
+  const { niveau, ...reste } = appreciation as { niveau: unknown };
+  const lettre = NIVEAUX.find((n) => n === niveau);
+  return { ...reste, note: lettre ? NOTE_DE_LA_LETTRE[lettre] : null };
+}
+
+/**
+ * La moyenne de notes d'objectifs, sur 4 : `null` sans objectif, et tant
+ * qu'une note manque.
+ */
+export function moyenneDesNotes(notes: readonly (NoteDObjectif | null)[]): number | null {
+  if (notes.length === 0 || notes.some((n) => n === null)) return null;
+  return notes.reduce<number>((total, n) => total + (n ?? 0), 0) / notes.length;
+}
+
+/**
+ * Une moyenne à la française, au centième près et sans zéro inutile :
+ * « 3 », « 2,5 », « 1,67 » (ADR-0277).
+ */
+export const moyenneEnChiffres = (moyenne: number): string =>
+  String(Math.round(moyenne * 100) / 100).replace('.', ',');
+
+/** Les niveaux d'une compétence. */
+export const NIVEAUX_DE_COMPETENCE: Record<Niveau, string> = {
+  A: 'Excellent',
+  B: 'Satisfaisant',
+  C: 'À améliorer',
+  D: 'Non acceptable',
+};
+
+export const CLES_DE_COMPETENCE = [
+  'connaissances',
+  'qualite',
+  'organisation',
+  'initiative',
+  'engagement',
+  'equipe',
+  'responsabilite',
+  'imprevus',
+  'assiduite',
+  'resolution',
+  'management',
+] as const;
+export type CleDeCompetence = (typeof CLES_DE_COMPETENCE)[number];
+
+export interface Competence {
+  cle: CleDeCompetence;
+  intitule: string;
+  /** Ce que veut dire chaque niveau pour cette compétence. */
+  niveaux: Record<Niveau, string>;
+  /** Le management : le personnel cadre seulement, et s'il y a lieu. */
+  cadres?: true;
+}
+
+/** Les onze compétences, dans l'ordre de la grille. */
+export const COMPETENCES: readonly Competence[] = [
+  {
+    cle: 'connaissances',
+    intitule: 'Connaissances techniques et pratiques',
+    niveaux: {
+      A: 'Maîtrise parfaitement son travail.',
+      B: 'Maîtrise ses tâches avec compétence.',
+      C: 'Lacunes techniques, maîtrise limitée.',
+      D: 'Lacunes graves, ne maîtrise pas son travail.',
+    },
+  },
+  {
+    cle: 'qualite',
+    intitule: 'Qualité du travail',
+    niveaux: {
+      A: 'Travail irréprochable et constant.',
+      B: 'Travail satisfaisant et de qualité.',
+      C: 'Travail à peine satisfaisant, souvent repris.',
+      D: 'Travail à reprendre constamment.',
+    },
+  },
+  {
+    cle: 'organisation',
+    intitule: 'Organisation et planification',
+    niveaux: {
+      A: 'Organise parfaitement son travail et anticipe.',
+      B: 'Organise son travail et respecte les délais.',
+      C: 'Difficultés à respecter les délais.',
+      D: 'N’organise pas son travail, se laisse vite déborder.',
+    },
+  },
+  {
+    cle: 'initiative',
+    intitule: 'Sens de l’initiative',
+    niveaux: {
+      A: 'Prend des initiatives et des décisions judicieuses.',
+      B: 'Prend souvent de bonnes initiatives.',
+      C: 'Prend peu d’initiatives, a besoin d’aide.',
+      D: 'Ne prend aucune initiative.',
+    },
+  },
+  {
+    cle: 'engagement',
+    intitule: 'Engagement et motivation',
+    niveaux: {
+      A: 'Ne ménage ni son temps ni ses efforts.',
+      B: 'Fait des efforts pour mener à bien ses tâches.',
+      C: 'A besoin d’encouragements pour travailler.',
+      D: 'Doit faire l’objet de rappels à l’ordre constants.',
+    },
+  },
+  {
+    cle: 'equipe',
+    intitule: 'Esprit d’équipe',
+    niveaux: {
+      A: 'Excellent esprit d’équipe, collaboration sans faille.',
+      B: 'Collabore bien avec ses collègues et sa hiérarchie.',
+      C: 'Collabore peu, tend à travailler en solitaire.',
+      D: 'Rejette toute collaboration.',
+    },
+  },
+  {
+    cle: 'responsabilite',
+    intitule: 'Sens des responsabilités et fiabilité',
+    niveaux: {
+      A: 'Assume pleinement ses responsabilités, grande fiabilité.',
+      B: 'Assume correctement ses responsabilités.',
+      C: 'N’assume qu’après rappel, a besoin d’un suivi.',
+      D: 'N’assume pas ses responsabilités, demande un contrôle systématique.',
+    },
+  },
+  {
+    cle: 'imprevus',
+    intitule: 'Capacité à faire face aux imprévus',
+    niveaux: {
+      A: 'Anticipe les imprévus avant qu’ils ne surviennent.',
+      B: 'Gère efficacement les imprévus lorsqu’ils se présentent.',
+      C: 'Perd pied face à une crise complexe ou à l’accumulation de problèmes.',
+      D: 'Ignore le problème ou prend des décisions qui aggravent la situation initiale.',
+    },
+  },
+  {
+    cle: 'assiduite',
+    intitule: 'Ponctualité, absentéisme et assiduité',
+    niveaux: {
+      A: 'Assiduité et ponctualité remarquables, ne quitte son lieu de travail qu’exceptionnellement.',
+      B: 'Absences et retards rares, assiduité et ponctualité constantes.',
+      C: 'Quelques absences et retards, perd parfois son temps dans la journée.',
+      D: 'Beaucoup d’absences et de retards, ne se consacre jamais à son travail.',
+    },
+  },
+  {
+    cle: 'resolution',
+    intitule: 'Capacité de résolution de problèmes',
+    niveaux: {
+      A: 'Identifie la cause profonde du problème, propose des solutions innovantes.',
+      B: 'Autonome dans la résolution de la plupart des problèmes de son domaine d’expertise.',
+      C: 'A souvent besoin d’un appui pour structurer son approche de résolution.',
+      D: 'Évite de prendre en charge les problèmes ou réagit tardivement.',
+    },
+  },
+  {
+    cle: 'management',
+    intitule: 'Management',
+    niveaux: {
+      A: 'Très fort ascendant, aptitude naturelle à diriger.',
+      B: 'Son autorité est acceptée, se fait obéir.',
+      C: 'Son autorité est souvent contestée.',
+      D: 'Aucune autorité, pratique le laisser-faire.',
+    },
+    cadres: true,
+  },
+];
+
+/** Les compétences de la fiche d'un agent : le management ne vaut que pour le personnel cadre. */
+export const competencesDe = (personnel: PersonnelDeLaFiche): readonly Competence[] =>
+  COMPETENCES.filter((c) => !c.cadres || personnel === 'cadre');
+
+export const PERSONNELS_DE_LA_FICHE = ['cadre', 'non_cadre'] as const;
+export type PersonnelDeLaFiche = (typeof PERSONNELS_DE_LA_FICHE)[number];
+
+/**
+ * Le personnel de la fiche d'un agent : cadre, sinon non cadre. Sans statut
+ * connu, le management ne s'applique pas.
+ */
+export const personnelDeLaFiche = (statut: PersonnelDeLaFiche | null): PersonnelDeLaFiche =>
+  statut === 'cadre' ? 'cadre' : 'non_cadre';
+
+export const LIBELLES_DU_PERSONNEL: Record<PersonnelDeLaFiche, string> = {
+  cadre: 'Cadre',
+  non_cadre: 'Non-cadre',
+};
+
+/** La synthèse générale du N+1, dans la partie réservée à la hiérarchie. */
+export const SYNTHESE_GENERALE: readonly {
+  cle: 'comprehension' | 'tenue';
+  intitule: string;
+  niveaux: Record<Niveau, string>;
+}[] = [
+  {
+    cle: 'comprehension',
+    intitule: 'Compréhension du poste',
+    niveaux: {
+      A: 'Connaît parfaitement le poste de travail.',
+      B: 'Connaît assez bien le poste de travail.',
+      C: 'Connaît à peine le poste de travail.',
+      D: 'Ne connaît pas le poste de travail.',
+    },
+  },
+  {
+    cle: 'tenue',
+    intitule: 'Tenue du poste',
+    niveaux: {
+      A: 'Tient parfaitement le poste.',
+      B: 'Tient correctement le poste.',
+      C: 'A besoin d’un suivi pour tenir le poste.',
+      D: 'N’est pas à l’aise dans le poste.',
+    },
+  },
+];
+
+/*
+   Une question peut se répondre en puces, une par ligne (`puces`), ou
+   d'abord par oui ou par non, puis, si oui, en puces (`ouiNon`, la clé du
+   choix) (ADR-0238).
+*/
+
+/** Le récapitulatif de l'année, rempli par l'agent. */
+export const QUESTIONS_DU_BILAN = [
+  { cle: 'vecu', question: 'Comment avez-vous vécu l’année ?' },
+  {
+    cle: 'difficultes',
+    question: 'Avez-vous rencontré des difficultés dans vos tâches ? Si oui, lesquelles ?',
+    ouiNon: 'aDesDifficultes',
+  },
+] as const;
+
+/** Les préoccupations et les souhaits de l'agent. */
+export const QUESTIONS_DES_SOUHAITS = [
+  {
+    cle: 'avenir',
+    question: 'Comment envisagez-vous votre avenir professionnel ?',
+    precision: 'Évolution, mobilité…',
+  },
+  {
+    cle: 'missions',
+    question:
+      'Quelles missions vous conviennent le mieux, et lesquelles souhaiteriez-vous développer ?',
+    puces: true,
+  },
+  {
+    cle: 'contraintes',
+    question:
+      'Quelles sont les principales difficultés ou contraintes que vous rencontrez dans votre travail ?',
+    puces: true,
+  },
+  {
+    cle: 'competencesInexploitees',
+    question:
+      'Y a-t-il des compétences ou des qualités qui ne sont pas assez exploitées dans votre poste ?',
+    ouiNon: 'aDesCompetencesInexploitees',
+  },
+] as const;
+
+/** Les longueurs que chaque champ accepte, en caractères. */
+export const LONGUEURS_DE_LA_FICHE = {
+  intitule: 600,
+  indicateurs: 600,
+  /** Une réponse ou un commentaire. */
+  texte: 2000,
+  /** Une cellule d'un tableau : une action, une formation. */
+  ligne: 300,
+  delai: 80,
+} as const;
+
+/** Au plus, dans les tableaux de la fiche. */
+export const MAXIMUMS_DE_LA_FICHE = {
+  objectifs: 12,
+  actions: 8,
+  objectifsAVenir: 10,
+  formations: 6,
+} as const;
+
+/**
+ * Les objectifs de l'année que fixe le N+1, pendant la campagne des
+ * objectifs : trois au moins, cinq au plus (ADR-0239, ADR-0274). La fiche en
+ * garde jusqu'à dix, la limite d'avant la règle.
+ */
+export const NOMBRE_D_OBJECTIFS_A_VENIR = { min: 3, max: 5 } as const;
+
+const texte = z.string().max(LONGUEURS_DE_LA_FICHE.texte);
+const ligne = z.string().max(LONGUEURS_DE_LA_FICHE.ligne);
+
+/**
+ * Un objectif de l'année évaluée, tel que la DCH l'a donné, ou que le N+1
+ * l'a fixé pendant la campagne des objectifs, avec son échéance (ADR-0274).
+ */
+export const objectifEvalueSchema = z.object({
+  id: z.uuid(),
+  intitule: z.string().trim().min(1).max(LONGUEURS_DE_LA_FICHE.intitule),
+  indicateurs: z.string().trim().max(LONGUEURS_DE_LA_FICHE.indicateurs),
+  /** AAAA-MM-JJ. */
+  echeance: z.iso.date().nullable().optional(),
+});
+export type ObjectifEvalue = z.infer<typeof objectifEvalueSchema>;
+
+/** Ce que l'agent dit d'un objectif : sa note, de 1 à 4 (ADR-0276), ses résultats. */
+export const appreciationDeLAgentSchema = z.preprocess(
+  avecSaNote,
+  z.object({
+    note: noteDObjectifSchema.nullable(),
+    resultats: texte,
+    commentaire: texte,
+  }),
+);
+export type AppreciationDeLAgent = z.infer<typeof appreciationDeLAgentSchema>;
+
+/** Ce que le N+1 retient d'un objectif, après l'entretien : sa note, de 1 à 4 (ADR-0276). */
+export const appreciationDuN1Schema = z.preprocess(
+  avecSaNote,
+  z.object({
+    note: noteDObjectifSchema.nullable(),
+    commentaire: texte,
+  }),
+);
+export type AppreciationDuN1 = z.infer<typeof appreciationDuN1Schema>;
+
+/**
+ * L'auto-évaluation : tout ce que l'agent écrit. Une réponse en puces garde
+ * une puce par ligne. Un choix oui ou non vaut `null` tant que l'agent n'a
+ * pas choisi (ADR-0238).
+ */
+export const autoEvaluationSchema = z.object({
+  vecu: texte,
+  aDesDifficultes: z.boolean().nullable(),
+  /** En puces, si oui. */
+  difficultes: texte,
+  /** Par objectif, sous son identifiant. */
+  objectifs: z.record(z.uuid(), appreciationDeLAgentSchema),
+  autresRealisations: texte,
+  avenir: texte,
+  /** En puces. */
+  missions: texte,
+  /** En puces. */
+  contraintes: texte,
+  aDesCompetencesInexploitees: z.boolean().nullable(),
+  /** En puces, si oui. */
+  competencesInexploitees: texte,
+  autresCommentaires: texte,
+});
+export type AutoEvaluation = z.infer<typeof autoEvaluationSchema>;
+
+/** Les choix oui ou non de l'auto-évaluation. */
+export type ChoixDeLAuto = 'aDesDifficultes' | 'aDesCompetencesInexploitees';
+
+/**
+ * Les puces d'une réponse : ses lignes écrites, sans le tiret ou la puce
+ * qu'un texte collé ou écrit avant les puces mettait en tête (ADR-0238).
+ */
+export const pucesDe = (texte: string): string[] =>
+  texte
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*[-•*–]\s+/, '').trim())
+    .filter(Boolean);
+
+export const actionSchema = z.object({
+  action: ligne,
+  delai: z.string().max(LONGUEURS_DE_LA_FICHE.delai),
+  suivi: ligne,
+});
+export type ActionDuPlan = z.infer<typeof actionSchema>;
+
+export const objectifAVenirSchema = z.object({
+  objectif: z.string().max(LONGUEURS_DE_LA_FICHE.intitule),
+  indicateur: z.string().max(LONGUEURS_DE_LA_FICHE.indicateurs),
+  /** AAAA-MM-JJ. */
+  echeance: z.iso.date().nullable(),
+});
+export type ObjectifDeLAnneeAVenir = z.infer<typeof objectifAVenirSchema>;
+
+/**
+ * Les objectifs de l'année sans leurs lignes restées vides : une ligne
+ * ajoutée puis laissée blanche ne part pas avec eux (ADR-0274).
+ */
+export const objectifsEcrits = (objectifs: readonly ObjectifDeLAnneeAVenir[]) =>
+  objectifs.filter((o) => ecrite(o.objectif, o.indicateur, o.echeance));
+
+/**
+ * Ce qui manque aux objectifs de l'année pour partir à l'agent (ADR-0274) :
+ * de trois à cinq, chacun avec son intitulé, son indicateur de réussite et
+ * son échéance, dans l'année. Vide : ils peuvent partir.
+ */
+export function ceQuiManqueAuxObjectifs(
+  objectifs: readonly ObjectifDeLAnneeAVenir[],
+  annee: number,
+): string[] {
+  const manque: string[] = [];
+  const ecrits = objectifsEcrits(objectifs);
+  ecrits.forEach((o, i) => {
+    const n = i + 1;
+    if (!o.objectif.trim()) manque.push(`l’intitulé de l’objectif ${n}`);
+    if (!o.indicateur.trim()) manque.push(`l’indicateur de réussite de l’objectif ${n}`);
+    if (!o.echeance) manque.push(`l’échéance de l’objectif ${n}`);
+    else if (!o.echeance.startsWith(`${annee}-`)) {
+      manque.push(`l’échéance de l’objectif ${n} (en ${annee})`);
+    }
+  });
+  if (ecrits.length < NOMBRE_D_OBJECTIFS_A_VENIR.min) {
+    manque.push(`les objectifs (${NOMBRE_D_OBJECTIFS_A_VENIR.min} au moins)`);
+  } else if (ecrits.length > NOMBRE_D_OBJECTIFS_A_VENIR.max) {
+    manque.push(`les objectifs (${NOMBRE_D_OBJECTIFS_A_VENIR.max} au plus)`);
+  }
+  return manque;
+}
+
+export const formationSouhaiteeSchema = z.object({
+  intitule: ligne,
+  justification: ligne,
+});
+export type FormationSouhaitee = z.infer<typeof formationSouhaiteeSchema>;
+
+/** L'évaluation du N+1 : ce que l'agent lit aussi. */
+export const evaluationDuN1Schema = z.object({
+  objectifs: z.record(z.uuid(), appreciationDuN1Schema),
+  competences: z.partialRecord(z.enum(CLES_DE_COMPETENCE), niveauSchema.nullable()),
+  pointsForts: texte,
+  axesDeDeveloppement: texte,
+  plan: z.array(actionSchema).max(MAXIMUMS_DE_LA_FICHE.actions),
+  formations: z.array(formationSouhaiteeSchema).max(MAXIMUMS_DE_LA_FICHE.formations),
+  /** Le N+1 confirme avoir reçu l'agent en entretien (ADR-0265). */
+  entretienConfirme: z.boolean().default(false),
+  /**
+   * AAAA-MM-JJ : le jour de l'entretien, entre la transmission de
+   * l'auto-évaluation et le jour où l'évaluation part à l'agent (ADR-0265).
+   */
+  dateDeLEntretien: z.iso.date().nullable().default(null),
+  /**
+   * La moyenne des objectifs arrondie à 2 par le N+1, quand elle va de 1,5
+   * à moins de 2, et pourquoi : la justification est obligatoire (ADR-0276).
+   */
+  arrondi: z.boolean().default(false),
+  justificationDeLArrondi: texte.default(''),
+});
+export type EvaluationDuN1 = z.infer<typeof evaluationDuN1Schema>;
+
+/** La partie strictement réservée à la hiérarchie : jamais lue par l'agent. */
+export const partieReserveeSchema = z.object({
+  comprehension: niveauSchema.nullable(),
+  tenue: niveauSchema.nullable(),
+  observations: texte,
+});
+export type PartieReservee = z.infer<typeof partieReserveeSchema>;
+
+/**
+ * Ce qui manque à une auto-évaluation pour partir au N+1 (ADR-0215,
+ * ADR-0238), dans l'ordre de la fiche : les deux questions du
+ * récapitulatif, pour chaque objectif sa note et ses résultats obtenus,
+ * puis les quatre questions des préoccupations et des souhaits. Une
+ * question à choix demande oui ou non, et, si oui, une puce au moins. Les
+ * commentaires, les autres réalisations et les autres commentaires se
+ * remplissent s'il y a lieu. L'écran et l'API appliquent la même règle.
+ */
+export function ceQuiManqueALAutoEvaluation(
+  auto: AutoEvaluation,
+  objectifs: readonly ObjectifEvalue[],
+): string[] {
+  const manque: string[] = [];
+  const choix = (oui: boolean | null, texte: string, quoi: string) => {
+    if (oui === null || (oui && pucesDe(texte).length === 0)) manque.push(quoi);
+  };
+  if (!auto.vecu.trim()) manque.push('le vécu de l’année');
+  choix(auto.aDesDifficultes, auto.difficultes, 'les difficultés rencontrées');
+  objectifs.forEach((o, i) => {
+    const a = auto.objectifs[o.id];
+    if ((a?.note ?? null) === null) manque.push(`la note de l’objectif ${i + 1}`);
+    if (!a?.resultats.trim()) manque.push(`les résultats de l’objectif ${i + 1}`);
+  });
+  if (!auto.avenir.trim()) manque.push('l’avenir professionnel');
+  if (pucesDe(auto.missions).length === 0) manque.push('les missions');
+  if (pucesDe(auto.contraintes).length === 0) manque.push('les contraintes du travail');
+  choix(
+    auto.aDesCompetencesInexploitees,
+    auto.competencesInexploitees,
+    'les compétences peu exploitées',
+  );
+  return manque;
+}
+
+/** Les réponses obligatoires d'une auto-évaluation : six questions, et deux par objectif (ADR-0238). */
+export const reponsesObligatoiresDeLAuto = (objectifs: readonly ObjectifEvalue[]): number =>
+  6 + 2 * objectifs.length;
+
+/**
+ * Le choix que donnait une réponse écrite avant les choix oui ou non
+ * (ADR-0238) : rien d'écrit, pas de choix ; une réponse courte qui commence
+ * par « Non », « Aucune », « Néant » ou « Rien », non ; une autre, oui.
+ */
+function choixDUneReponseEcrite(texte: string): boolean | null {
+  const mots = texte
+    .toLocaleLowerCase('fr')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .split(/[^a-z]+/)
+    .filter(Boolean);
+  if (mots.length === 0) return null;
+  return !(mots.length <= 3 && ['non', 'aucun', 'aucune', 'neant', 'rien'].includes(mots[0]!));
+}
+
+/**
+ * Une auto-évaluation relue depuis la base : un champ absent reprend sa
+ * valeur vide, et un choix absent se déduit de la réponse écrite avant les
+ * choix oui ou non (ADR-0238).
+ */
+export function autoEvaluationRelue(lue: Partial<AutoEvaluation>): AutoEvaluation {
+  const auto = { ...autoEvaluationVide(), ...lue };
+  return {
+    ...auto,
+    aDesDifficultes: auto.aDesDifficultes ?? choixDUneReponseEcrite(auto.difficultes),
+    aDesCompetencesInexploitees:
+      auto.aDesCompetencesInexploitees ?? choixDUneReponseEcrite(auto.competencesInexploitees),
+  };
+}
+
+/**
+ * L'auto-évaluation telle qu'elle part au N+1 : une réponse en puces sans
+ * ses lignes vides, et, sur un non, sans la liste écrite avant de changer
+ * d'avis (ADR-0238).
+ */
+export function autoEvaluationTransmise(auto: AutoEvaluation): AutoEvaluation {
+  const enPuces = (texte: string) => pucesDe(texte).join('\n');
+  return {
+    ...auto,
+    difficultes: auto.aDesDifficultes ? enPuces(auto.difficultes) : '',
+    missions: enPuces(auto.missions),
+    contraintes: enPuces(auto.contraintes),
+    competencesInexploitees: auto.aDesCompetencesInexploitees
+      ? enPuces(auto.competencesInexploitees)
+      : '',
+  };
+}
+
+/**
+ * Ce qui manque à l'évaluation du N+1 pour partir à l'agent (ADR-0216), dans
+ * l'ordre de la fiche : la note de chaque objectif (ADR-0275), la
+ * justification d'une moyenne arrondie à 2 (ADR-0276), chaque compétence
+ * (le management, pour le personnel cadre, seulement s'il y a lieu), les
+ * points forts et les axes de développement, la synthèse
+ * générale de la partie réservée, puis l'entretien : sa confirmation et sa
+ * date (ADR-0265). Avec `entretien`, la date doit tomber entre la
+ * transmission de l'auto-évaluation (`du`) et le jour même (`au`). Le plan
+ * d'action, les formations et les observations se remplissent s'il y a lieu.
+ */
+export function ceQuiManqueALEvaluationDuN1(
+  evaluation: EvaluationDuN1,
+  reservee: PartieReservee,
+  objectifs: readonly ObjectifEvalue[],
+  personnel: PersonnelDeLaFiche,
+  entretien?: { du: string | null; au: string },
+): string[] {
+  const manque: string[] = [];
+  objectifs.forEach((o, i) => {
+    if ((evaluation.objectifs[o.id]?.note ?? null) === null) {
+      manque.push(`la note de l’objectif ${i + 1}`);
+    }
+  });
+  // Arrondie à 2, la moyenne demande pourquoi (ADR-0276).
+  if (arrondiDeLEvaluation(evaluation, objectifs) && !evaluation.justificationDeLArrondi.trim()) {
+    manque.push('la justification de l’arrondi');
+  }
+  for (const c of competencesDe(personnel)) {
+    if (!c.cadres && !evaluation.competences[c.cle]) {
+      manque.push(`la compétence « ${c.intitule} »`);
+    }
+  }
+  if (!evaluation.pointsForts.trim()) manque.push('les points forts');
+  if (!evaluation.axesDeDeveloppement.trim()) manque.push('les axes de développement');
+  for (const c of SYNTHESE_GENERALE) {
+    if (!reservee[c.cle]) manque.push(`la ${c.intitule.toLocaleLowerCase('fr')}`);
+  }
+  const le = evaluation.dateDeLEntretien;
+  if (!evaluation.entretienConfirme) {
+    manque.push('la confirmation de l’entretien');
+  } else if (
+    !le ||
+    (entretien && ((entretien.du !== null && le < entretien.du) || le > entretien.au))
+  ) {
+    manque.push('la date de l’entretien');
+  }
+  return manque;
+}
+
+/** Une case écrite : un texte qui n'est pas que des blancs, une date. */
+const ecrite = (...cases: (string | null)[]) => cases.some((c) => c !== null && c.trim() !== '');
+
+/**
+ * Les tableaux de l'évaluation du N+1 sans leurs lignes restées vides : une
+ * ligne ajoutée puis laissée blanche ne part pas avec l'évaluation transmise.
+ */
+export function sansLignesVides(e: EvaluationDuN1): EvaluationDuN1 {
+  return {
+    ...e,
+    plan: e.plan.filter((a) => ecrite(a.action, a.delai, a.suivi)),
+    formations: e.formations.filter((f) => ecrite(f.intitule, f.justification)),
+  };
+}
+
+export const autoEvaluationVide = (): AutoEvaluation => ({
+  vecu: '',
+  aDesDifficultes: null,
+  difficultes: '',
+  objectifs: {},
+  autresRealisations: '',
+  avenir: '',
+  missions: '',
+  contraintes: '',
+  aDesCompetencesInexploitees: null,
+  competencesInexploitees: '',
+  autresCommentaires: '',
+});
+
+export const evaluationDuN1Vide = (): EvaluationDuN1 => ({
+  objectifs: {},
+  competences: {},
+  pointsForts: '',
+  axesDeDeveloppement: '',
+  plan: [],
+  formations: [],
+  entretienConfirme: false,
+  dateDeLEntretien: null,
+  arrondi: false,
+  justificationDeLArrondi: '',
+});
+
+export const partieReserveeVide = (): PartieReservee => ({
+  comprehension: null,
+  tenue: null,
+  observations: '',
+});
+
+/** Le nom du PDF d'une fiche : « fiche-entretien-2026-EMP-002.pdf ». */
+export function nomDeLaFiche(annee: number, matricule: string | null, complete = false): string {
+  const sans = (matricule ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const net = sans.replace(/[^A-Za-z0-9-]/g, '_');
+  return `fiche-entretien-${annee}${net ? `-${net}` : ''}${complete ? '-complete' : ''}.pdf`;
+}
+
+// ──────────────────────────────────────────────── le relevé des notes (ADR-0275)
+
+/** La moyenne des notes du N+1, sur les objectifs de la fiche. */
+export const moyenneDuN1 = (
+  evaluation: EvaluationDuN1,
+  objectifs: readonly ObjectifEvalue[],
+): number | null => moyenneDesNotes(objectifs.map((o) => evaluation.objectifs[o.id]?.note ?? null));
+
+/**
+ * Vrai si la moyenne du N+1 est arrondie à 2 : le N+1 l'a demandé, et la
+ * moyenne va de 1,5 à moins de 2. Hors de là, la demande reste sans effet.
+ */
+export const arrondiDeLEvaluation = (
+  evaluation: EvaluationDuN1,
+  objectifs: readonly ObjectifEvalue[],
+): boolean => evaluation.arrondi && arrondiPossible(moyenneDuN1(evaluation, objectifs));
+
+/**
+ * L'évaluation telle qu'elle part à l'agent, pour l'arrondi (ADR-0276) : un
+ * arrondi que la moyenne ne permet plus tombe, avec sa justification.
+ */
+export function avecSonArrondi(
+  evaluation: EvaluationDuN1,
+  objectifs: readonly ObjectifEvalue[],
+): EvaluationDuN1 {
+  return arrondiDeLEvaluation(evaluation, objectifs)
+    ? evaluation
+    : { ...evaluation, arrondi: false, justificationDeLArrondi: '' };
+}
+
+/** Un objectif dans le relevé : sa note à l'auto-évaluation, et chez le N+1. */
+export interface LigneDuReleve {
+  objectif: ObjectifEvalue;
+  agent: NoteDObjectif | null;
+  n1: NoteDObjectif | null;
+}
+
+/**
+ * Le relevé des notes obtenues, comme celui de l'ancienne grille du
+ * personnel non cadre : la note de chaque objectif, à l'auto-évaluation et
+ * chez le N+1, puis la moyenne de chaque colonne, sur 4. Celle du N+1,
+ * arrondie à 2, devient la moyenne retenue (ADR-0276). Sans `evaluation`,
+ * la partie de l'agent seule.
+ */
+export function releveDesObjectifs(
+  objectifs: readonly ObjectifEvalue[],
+  auto: AutoEvaluation,
+  evaluation: EvaluationDuN1 | null,
+): {
+  lignes: LigneDuReleve[];
+  moyennes: { agent: number | null; n1: number | null };
+  /** La moyenne du N+1 arrondie à 2 ; `false` sans arrondi. */
+  arrondi: boolean;
+} {
+  const lignes = objectifs.map((objectif) => ({
+    objectif,
+    agent: auto.objectifs[objectif.id]?.note ?? null,
+    n1: evaluation?.objectifs[objectif.id]?.note ?? null,
+  }));
+  return {
+    lignes,
+    moyennes: {
+      agent: moyenneDesNotes(lignes.map((l) => l.agent)),
+      n1: evaluation ? moyenneDesNotes(lignes.map((l) => l.n1)) : null,
+    },
+    arrondi: evaluation ? arrondiDeLEvaluation(evaluation, objectifs) : false,
+  };
+}

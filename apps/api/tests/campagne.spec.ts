@@ -1,0 +1,1861 @@
+/**
+ * L'accueil de la campagne d'évaluation annuelle (ADR-0211).
+ *
+ * Ce qui compte : toute personne y lit sa fiche comme celle de son dossier
+ * (poste, direction, département, service, N+1, statut) et l'état de son
+ * auto-évaluation ; un N+1 y voit les agents à évaluer, avec l'état de
+ * chaque auto-évaluation. L'évaluateur choisi pour la campagne remplace le
+ * N+1 de l'organigramme, sans toucher à l'organigramme. Ni le sommet de
+ * l'organigramme ni un stage ne sont évalués.
+ */
+import { randomUUID } from 'node:crypto';
+import PDFDocument from 'pdfkit';
+import { Pool } from 'pg';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  autoEvaluationRelue,
+  autoEvaluationVide,
+  ceQuiManqueALEvaluationDuN1,
+  competencesDe,
+  dateEnLettres,
+  datesDeLaCampagneSchema,
+  datesDesObjectifsSchema,
+  evaluationDuN1Schema,
+  evaluationDuN1Vide,
+  partieReserveeVide,
+  type AutoEvaluation,
+  type EcritureDeLEvaluation,
+  type EvaluationDuN1,
+  type SessionUser,
+} from '@teranga/contracts';
+import { loadEnv } from '../src/config/env';
+import { runMigrations } from '../src/db/migrate';
+import { TenantDb } from '../src/db/tenant-db';
+import { CampagneService } from '../src/modules/campagne/campagne.service';
+
+const env = loadEnv();
+const tenantId = randomUUID();
+
+/** Un jour autour d'aujourd'hui, AAAA-MM-JJ. */
+const jour = (decalage: number) =>
+  new Date(Date.now() + decalage * 86_400_000).toISOString().slice(0, 10);
+const AUJOURD_HUI = jour(0);
+const ANNEE = Number(AUJOURD_HUI.slice(0, 4));
+
+type Nom = 'dg' | 'awa' | 'moussa' | 'fatou' | 'ibou' | 'ousmane' | 'lamine';
+const NOMS: Nom[] = ['dg', 'awa', 'moussa', 'fatou', 'ibou', 'ousmane', 'lamine'];
+const comptes = Object.fromEntries(NOMS.map((n) => [n, randomUUID()])) as Record<Nom, string>;
+const agents = Object.fromEntries(NOMS.map((n) => [n, randomUUID()])) as Record<Nom, string>;
+const unites = {
+  generale: randomUUID(),
+  dch: randomUUID(),
+  developpement: randomUUID(),
+  administration: randomUUID(),
+};
+
+const session = (qui: Nom | 'admin') =>
+  ({
+    userId: qui === 'admin' ? ADMIN : comptes[qui],
+    tenantId,
+    role: qui === 'admin' ? 'admin' : 'employee',
+  }) as SessionUser;
+const ADMIN = randomUUID();
+
+let ownerPool: Pool;
+let db: TenantDb;
+let campagne: CampagneService;
+
+const raw = (q: string, p: unknown[] = []) => ownerPool.query(q, p as never[]);
+
+async function agent(
+  qui: Nom,
+  prenom: string,
+  nom: string,
+  n1: Nom | null,
+  unite: string,
+  poste: string,
+  o: { personnel?: 'cadre' | 'non_cadre' } = {},
+) {
+  const personId = randomUUID();
+  await raw(
+    `INSERT INTO users (id, email, password_hash, given_name, family_name) VALUES ($1,$2,'x',$3,$4)`,
+    [comptes[qui], `camp-${qui}-${comptes[qui]}@test.local`, prenom, nom],
+  );
+  await raw(
+    `INSERT INTO persons (id, tenant_id, user_id, given_name, family_name) VALUES ($1,$2,$3,$4,$5)`,
+    [personId, tenantId, comptes[qui], prenom, nom],
+  );
+  await raw(
+    `INSERT INTO employees (id, tenant_id, person_id, employee_number, hired_on, status,
+                            manager_employee_id, personnel)
+     VALUES ($1,$2,$3,$4,'2020-01-01','active',$5,$6)`,
+    [
+      agents[qui],
+      tenantId,
+      personId,
+      `CAMP-${qui.toUpperCase()}`,
+      n1 ? agents[n1] : null,
+      o.personnel ?? null,
+    ],
+  );
+  await raw(
+    `INSERT INTO assignments (id, tenant_id, employee_id, org_unit_id, position_title, validity)
+     VALUES ($1,$2,$3,$4,$5,daterange('2020-01-01'::date, NULL))`,
+    [randomUUID(), tenantId, agents[qui], unite, poste],
+  );
+}
+
+/** La fiche d'un agent pour l'année : son évaluateur choisi, son auto-évaluation. */
+async function fiche(
+  qui: Nom,
+  o: { evaluateur?: Nom; commencee?: boolean; transmise?: boolean } = {},
+) {
+  await raw(
+    `INSERT INTO fiches_entretien (id, tenant_id, employee_id, annee, evaluateur_employee_id,
+                                   auto, auto_transmise_le)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [
+      randomUUID(),
+      tenantId,
+      agents[qui],
+      ANNEE,
+      o.evaluateur ? agents[o.evaluateur] : null,
+      o.commencee || o.transmise ? '{}' : null,
+      o.transmise ? new Date() : null,
+    ],
+  );
+}
+
+/** La période de l'année, du … à la fin de l'auto-évaluation … au …. */
+async function periode(du: number, autoAu: number | null, au: number) {
+  await raw(`DELETE FROM evaluation_periodes WHERE tenant_id = $1`, [tenantId]);
+  await raw(
+    `INSERT INTO evaluation_periodes (id, tenant_id, annee, du, auto_au, au)
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [randomUUID(), tenantId, ANNEE, jour(du), autoAu === null ? null : jour(autoAu), jour(au)],
+  );
+}
+
+beforeAll(async () => {
+  await runMigrations(env.DATABASE_URL);
+  ownerPool = new Pool({ connectionString: env.DATABASE_URL, max: 3 });
+  db = new TenantDb();
+  campagne = new CampagneService(db);
+
+  await raw(`INSERT INTO tenants (id, name, slug) VALUES ($1,'Campagne',$2)`, [
+    tenantId,
+    `campagne-${tenantId.slice(0, 8)}`,
+  ]);
+  const unite = (
+    id: string,
+    type: string,
+    nom: string,
+    parent: string | null,
+    abrege: string | null = null,
+  ) =>
+    raw(
+      `INSERT INTO org_units (id, tenant_id, unit_type, name, parent_id, short_name)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [id, tenantId, type, nom, parent, abrege],
+    );
+  await unite(unites.generale, 'direction', 'Direction Générale', null, 'DG');
+  await unite(unites.dch, 'direction', 'Direction du Capital Humain', unites.generale, 'DCH');
+  await unite(
+    unites.developpement,
+    'department',
+    'Département Développement du personnel',
+    unites.dch,
+  );
+  await unite(
+    unites.administration,
+    'service',
+    'Service Administration du personnel',
+    unites.developpement,
+  );
+
+  await agent('dg', 'Cheikh', 'Mbaye', null, unites.generale, 'Direction générale');
+  await agent('awa', 'Awa', 'Diop', 'dg', unites.developpement, 'Responsable du département', {
+    personnel: 'cadre',
+  });
+  await agent(
+    'moussa',
+    'Moussa',
+    'Sarr',
+    'awa',
+    unites.administration,
+    'Gestionnaire de l’administration du personnel',
+    { personnel: 'cadre' },
+  );
+  await agent('fatou', 'Fatou', 'Sall', 'awa', unites.administration, 'Secrétaire', {
+    personnel: 'non_cadre',
+  });
+  // N+1 dans l'organigramme : Cheikh Mbaye ; évaluation de la campagne : Awa Diop.
+  await agent('ibou', 'Ibou', 'Ndiaye', 'dg', unites.administration, 'Comptable');
+  // N+1 dans l'organigramme : Awa Diop ; évaluation de la campagne : Cheikh Mbaye.
+  await agent('ousmane', 'Ousmane', 'Fall', 'awa', unites.administration, 'Analyste');
+  await agent('lamine', 'Lamine', 'Ba', 'awa', unites.administration, 'Stagiaire');
+  await raw(
+    `INSERT INTO contracts (id, tenant_id, employee_id, contract_type, start_date, end_date)
+     VALUES ($1,$2,$3,'stage',$4,$5)`,
+    [randomUUID(), tenantId, agents.lamine, jour(-30), jour(60)],
+  );
+  for (const [id, responsable] of [
+    [unites.generale, agents.dg],
+    [unites.developpement, agents.awa],
+  ] as const) {
+    await raw(`UPDATE org_units SET manager_employee_id = $1 WHERE id = $2`, [responsable, id]);
+  }
+
+  await fiche('moussa', { transmise: true });
+  await fiche('fatou', { commencee: true });
+  await fiche('ibou', { evaluateur: 'awa' });
+  await fiche('ousmane', { evaluateur: 'dg' });
+
+  await raw(
+    `INSERT INTO users (id, email, password_hash, given_name, family_name) VALUES ($1,$2,'x','Admin','Plateforme')`,
+    [ADMIN, `camp-admin-${ADMIN}@test.local`],
+  );
+  await periode(-2, 3, 10);
+});
+
+afterAll(async () => {
+  await ownerPool?.end();
+  await db?.pool.end();
+});
+
+describe('la fiche de qui se connecte', () => {
+  it('comme son dossier : poste, direction, département, service, N+1, statut', async () => {
+    // L'adresse professionnelle de l'agent, et le sexe inscrit au dossier du N+1 (ADR-0224).
+    await raw(`UPDATE employees SET work_email = 'moussa.sarr@camp.test' WHERE id = $1`, [
+      agents.moussa,
+    ]);
+    await raw(
+      `UPDATE persons SET gender = 'female' WHERE id = (SELECT person_id FROM employees WHERE id = $1)`,
+      [agents.awa],
+    );
+    const { annee, moi, equipe } = await campagne.accueil(session('moussa'));
+    expect(annee).toBe(ANNEE);
+    expect(moi).toEqual({
+      employeeId: agents.moussa,
+      prenom: 'Moussa',
+      nom: 'Sarr',
+      matricule: 'CAMP-MOUSSA',
+      poste: 'Gestionnaire de l’administration du personnel',
+      personnel: 'cadre',
+      direction: 'Direction du Capital Humain',
+      directionAbregee: 'DCH',
+      departement: 'Département Développement du personnel',
+      service: 'Service Administration du personnel',
+      email: 'moussa.sarr@camp.test',
+      evaluateur: {
+        prenom: 'Awa',
+        nom: 'Diop',
+        poste: 'Responsable du département',
+        genre: 'female',
+      },
+      auto: { etat: 'transmise', transmiseLe: AUJOURD_HUI },
+    });
+    expect(equipe).toEqual([]);
+  });
+
+  it('l’auto-évaluation : commencée, puis à faire sans fiche', async () => {
+    expect((await campagne.accueil(session('fatou'))).moi?.auto).toEqual({
+      etat: 'en_cours',
+      transmiseLe: null,
+    });
+    expect((await campagne.accueil(session('awa'))).moi?.auto).toEqual({
+      etat: 'a_faire',
+      transmiseLe: null,
+    });
+  });
+
+  it('ni le sommet de l’organigramme ni un stage ne sont évalués', async () => {
+    expect((await campagne.accueil(session('dg'))).moi?.auto).toBeNull();
+    expect((await campagne.accueil(session('lamine'))).moi?.auto).toBeNull();
+  });
+
+  it('un compte sans dossier d’agent n’a ni fiche ni équipe', async () => {
+    const { moi, equipe } = await campagne.accueil(session('admin'));
+    expect(moi).toBeNull();
+    expect(equipe).toEqual([]);
+  });
+});
+
+describe('l’équipe d’un N+1', () => {
+  it('les agents à évaluer, par ordre alphabétique, avec leur auto-évaluation', async () => {
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.map((a) => [a.nom, a.auto.etat])).toEqual([
+      ['Ndiaye', 'a_faire'],
+      ['Sall', 'en_cours'],
+      ['Sarr', 'transmise'],
+    ]);
+    expect(equipe[2]).toMatchObject({
+      employeeId: agents.moussa,
+      prenom: 'Moussa',
+      matricule: 'CAMP-MOUSSA',
+      poste: 'Gestionnaire de l’administration du personnel',
+      email: 'moussa.sarr@camp.test',
+      auto: { transmiseLe: AUJOURD_HUI },
+    });
+    // Sans adresse professionnelle au dossier, la carte n'en a pas (ADR-0234).
+    expect(equipe[0]!.email).toBeNull();
+    // Le statut de chaque agent, à droite de l'adresse ; inconnu, il reste vide (ADR-0235).
+    expect(equipe.map((a) => a.personnel)).toEqual([null, 'non_cadre', 'cadre']);
+  });
+
+  it('l’évaluateur choisi pour la campagne remplace le N+1, sans toucher à l’organigramme', async () => {
+    expect((await campagne.accueil(session('ibou'))).moi?.evaluateur).toEqual({
+      prenom: 'Awa',
+      nom: 'Diop',
+      poste: 'Responsable du département',
+      genre: 'female',
+    });
+    const dg = await campagne.accueil(session('dg'));
+    expect(dg.equipe.map((a) => a.nom)).toEqual(['Diop', 'Fall']);
+    const { rows } = await raw(
+      `SELECT employee_number, manager_employee_id FROM employees WHERE id = ANY($1::uuid[])`,
+      [[agents.ibou, agents.ousmane]],
+    );
+    expect(Object.fromEntries(rows.map((r) => [r.employee_number, r.manager_employee_id]))).toEqual(
+      { 'CAMP-IBOU': agents.dg, 'CAMP-OUSMANE': agents.awa },
+    );
+  });
+});
+
+describe('la fiche d’un agent, ouverte depuis sa carte', () => {
+  it('la fiche s’ouvre à l’évaluateur, de l’organigramme comme de la campagne', async () => {
+    const moussa = await campagne.agentDeLEquipe(session('awa'), agents.moussa);
+    expect(moussa.annee).toBe(ANNEE);
+    expect(moussa.agent).toMatchObject({
+      employeeId: agents.moussa,
+      prenom: 'Moussa',
+      service: 'Service Administration du personnel',
+      evaluateur: { prenom: 'Awa', nom: 'Diop' },
+      auto: { etat: 'transmise', transmiseLe: AUJOURD_HUI },
+    });
+    const ibou = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect(ibou.agent.nom).toBe('Ndiaye');
+  });
+
+  it('hors de son équipe, l’agent reste introuvable', async () => {
+    const introuvable = { problem: { status: 404, code: 'campagne.agent_hors_equipe' } };
+    // Ousmane Fall : N+1 Awa Diop dans l'organigramme, évaluation confiée ailleurs.
+    await expect(campagne.agentDeLEquipe(session('awa'), agents.ousmane)).rejects.toMatchObject(
+      introuvable,
+    );
+    await expect(campagne.agentDeLEquipe(session('fatou'), agents.moussa)).rejects.toMatchObject(
+      introuvable,
+    );
+    // Un dossier en stage n'est pas évalué, même par son N+1.
+    await expect(campagne.agentDeLEquipe(session('awa'), agents.lamine)).rejects.toMatchObject(
+      introuvable,
+    );
+    await expect(campagne.agentDeLEquipe(session('admin'), agents.moussa)).rejects.toMatchObject(
+      introuvable,
+    );
+  });
+});
+
+describe('l’auto-évaluation (ADR-0215)', () => {
+  const OBJ1 = randomUUID();
+  const OBJ2 = randomUUID();
+  const brouillon: AutoEvaluation = {
+    ...autoEvaluationVide(),
+    vecu: 'Une année chargée, avec la reprise des dossiers.',
+    objectifs: {
+      [OBJ1]: { note: 3, resultats: '', commentaire: '' },
+      // Un objectif qui n'est pas sur la fiche : il ne s'enregistre pas.
+      [randomUUID()]: { note: 4, resultats: 'Hors fiche.', commentaire: '' },
+    },
+  };
+  const complete: AutoEvaluation = {
+    ...brouillon,
+    // Un non, après une liste écrite sur un oui : elle ne part pas (ADR-0238).
+    aDesDifficultes: false,
+    difficultes: 'Une liste écrite avant le non.',
+    objectifs: {
+      [OBJ1]: { note: 3, resultats: 'Délai de 48 heures tenu.', commentaire: '' },
+      [OBJ2]: {
+        note: 2,
+        resultats: 'Deux tiers des dossiers à jour.',
+        commentaire: 'Archives.',
+      },
+    },
+    avenir: 'Rester au service du personnel.',
+    // Une puce vide et un tiret collé : la liste part sans eux.
+    missions: 'L’accueil des agents\n\n- La tenue des dossiers',
+    contraintes: 'Des archives à reprendre.',
+    aDesCompetencesInexploitees: true,
+    competencesInexploitees: 'La rédaction',
+  };
+
+  beforeAll(async () => {
+    await raw(`UPDATE fiches_entretien SET objectifs = $1::jsonb WHERE employee_id = $2`, [
+      JSON.stringify([
+        { id: OBJ1, intitule: 'Délivrer les attestations sous 48 heures', indicateurs: 'Délai' },
+        { id: OBJ2, intitule: 'Tenir à jour les dossiers du personnel', indicateurs: '' },
+      ]),
+      agents.ibou,
+    ]);
+    await periode(-2, 3, 10);
+  });
+
+  it('se lit vide, avec les objectifs de la fiche, ouverte à l’écriture', async () => {
+    const v = await campagne.monAuto(session('ibou'));
+    expect(v.objectifs.map((o) => o.id)).toEqual([OBJ1, OBJ2]);
+    expect(v.auto).toEqual(autoEvaluationVide());
+    expect([v.etat, v.modifiable, v.evaluateur?.nom]).toEqual(['a_faire', true, 'Diop']);
+  });
+
+  it('garde le brouillon, que le N+1 ne lit pas', async () => {
+    const v = await campagne.enregistrerMonAuto(session('ibou'), brouillon);
+    expect(v.etat).toBe('en_cours');
+    expect(v.auto.vecu).toBe(brouillon.vecu);
+    expect(Object.keys(v.auto.objectifs)).toEqual([OBJ1]);
+    const vu = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect(vu.objectifs).toHaveLength(2);
+    expect(vu.autoEvaluation).toBeNull();
+  });
+
+  it('ne part pas incomplète, et dit ce qui manque', async () => {
+    await expect(campagne.transmettreMonAuto(session('ibou'), brouillon)).rejects.toMatchObject({
+      problem: {
+        status: 422,
+        code: 'campagne.auto_incomplete',
+        detail:
+          'À compléter : les difficultés rencontrées, les résultats de l’objectif 1, ' +
+          'la note de l’objectif 2, les résultats de l’objectif 2, l’avenir professionnel, ' +
+          'les missions, les contraintes du travail, les compétences peu exploitées.',
+      },
+    });
+    // Un oui demande une puce au moins (ADR-0238).
+    await expect(
+      campagne.transmettreMonAuto(session('ibou'), {
+        ...complete,
+        aDesDifficultes: true,
+        difficultes: '\n  \n',
+      }),
+    ).rejects.toMatchObject({
+      problem: { status: 422, detail: 'À compléter : les difficultés rencontrées.' },
+    });
+    expect((await campagne.monAuto(session('ibou'))).etat).toBe('en_cours');
+  });
+
+  it('se montre en PDF, la partie de l’agent, telle que le formulaire la porte (ADR-0241)', async () => {
+    const { filename, pdf } = await campagne.apercuDeMonAuto(session('ibou'), complete);
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU.pdf`);
+    // Rien ne s'enregistre : le brouillon reste celui d'avant.
+    expect((await campagne.monAuto(session('ibou'))).auto.avenir).toBe('');
+  });
+
+  it('écrite avant les choix oui ou non, une réponse se relit en oui ou en non (ADR-0238)', () => {
+    const lue = autoEvaluationRelue({ vecu: 'Une année.', difficultes: 'Des retards.' });
+    expect([lue.aDesDifficultes, lue.aDesCompetencesInexploitees]).toEqual([true, null]);
+    expect(lue.missions).toBe('');
+    for (const non of ['Non.', 'Aucune difficulté.', 'Néant', 'Rien à signaler']) {
+      expect(autoEvaluationRelue({ difficultes: non }).aDesDifficultes).toBe(false);
+    }
+    expect(
+      autoEvaluationRelue({ difficultes: 'Non, mais des retards de livraison.' }),
+    ).toMatchObject({ aDesDifficultes: true });
+  });
+
+  it('complète, part au N+1, qui la lit ; elle ne change plus', async () => {
+    // Deux envois qui se croisent : un seul part, l'autre reçoit le refus (ADR-0289).
+    const envois = await Promise.allSettled([
+      campagne.transmettreMonAuto(session('ibou'), complete),
+      campagne.transmettreMonAuto(session('ibou'), complete),
+    ]);
+    expect(envois.filter((e) => e.status === 'fulfilled')).toHaveLength(1);
+    expect(envois.find((e) => e.status === 'rejected')).toMatchObject({
+      reason: { problem: { status: 409, code: 'campagne.auto_transmise' } },
+    });
+    const v = await campagne.monAuto(session('ibou'));
+    expect([v.etat, v.modifiable, v.transmiseLe]).toEqual(['transmise', false, AUJOURD_HUI]);
+    const vu = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect(vu.autoEvaluation).toMatchObject({
+      aDesDifficultes: false,
+      difficultes: '',
+      missions: 'L’accueil des agents\nLa tenue des dossiers',
+      aDesCompetencesInexploitees: true,
+      competencesInexploitees: 'La rédaction',
+    });
+    expect(vu.autoEvaluation?.objectifs[OBJ2]?.note).toBe(2);
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.auto.etat).toBe('transmise');
+    await expect(campagne.enregistrerMonAuto(session('ibou'), complete)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.auto_transmise' },
+    });
+    // Transmise, elle ne se prévisualise plus : ce qui ne s'écrit plus ne s'imprime plus.
+    await expect(campagne.apercuDeMonAuto(session('ibou'), complete)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.auto_transmise' },
+    });
+  });
+
+  it('se ferme quand la période de l’auto-évaluation est passée', async () => {
+    await periode(-8, -3, 10);
+    expect((await campagne.monAuto(session('fatou'))).modifiable).toBe(false);
+    await expect(
+      campagne.enregistrerMonAuto(session('fatou'), autoEvaluationVide()),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.auto_fermee' } });
+    await periode(-2, 3, 10);
+  });
+
+  it('n’existe ni au sommet de l’organigramme, ni pour un stage, ni sans dossier', async () => {
+    for (const qui of ['dg', 'lamine', 'admin'] as const) {
+      await expect(campagne.monAuto(session(qui))).rejects.toMatchObject({
+        problem: { status: 404, code: 'campagne.sans_auto_evaluation' },
+      });
+    }
+  });
+});
+
+describe('l’évaluation du N+1 (ADR-0216)', () => {
+  /** Toutes les compétences d'une fiche au niveau B, le management laissé de côté. */
+  const competencesB = (personnel: 'cadre' | 'non_cadre') =>
+    Object.fromEntries(
+      competencesDe(personnel)
+        .filter((c) => !c.cadres)
+        .map((c) => [c.cle, 'B' as const]),
+    );
+
+  it('s’ouvre au N+1 une fois l’auto-évaluation transmise, vide', async () => {
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.moussa);
+    expect([v.etatDeLEvaluation, v.modifiable]).toEqual(['a_faire', true]);
+    expect(v.evaluation).toEqual(evaluationDuN1Vide());
+    expect(v.reservee).toEqual(partieReserveeVide());
+    // Fatou Sall n'a pas transmis : pas d'évaluation.
+    expect((await campagne.agentDeLEquipe(session('awa'), agents.fatou)).modifiable).toBe(false);
+    await expect(
+      campagne.enregistrerEvaluation(session('awa'), agents.fatou, {
+        evaluation: evaluationDuN1Vide(),
+        reservee: partieReserveeVide(),
+      }),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.auto_non_transmise' } });
+  });
+
+  it('garde le brouillon : les objectifs de la fiche, les compétences de l’agent', async () => {
+    const { objectifs } = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const [o1] = objectifs;
+    const v = await campagne.enregistrerEvaluation(session('awa'), agents.ibou, {
+      evaluation: {
+        ...evaluationDuN1Vide(),
+        objectifs: {
+          [o1!.id]: { note: 3, commentaire: 'Délai tenu.' },
+          [randomUUID()]: { note: 4, commentaire: 'Hors fiche.' },
+        },
+        // Ibou Ndiaye n'est pas cadre : le management ne s'enregistre pas.
+        competences: { connaissances: 'B', management: 'A' },
+      },
+      reservee: { comprehension: 'B', tenue: null, observations: 'Bonne année.' },
+    });
+    expect(v.etatDeLEvaluation).toBe('en_cours');
+    expect(Object.keys(v.evaluation.objectifs)).toEqual([o1!.id]);
+    expect(v.evaluation.competences).toEqual({ connaissances: 'B' });
+    expect(v.reservee.comprehension).toBe('B');
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('en_cours');
+  });
+
+  it('ne part pas incomplète, et dit ce qui manque', async () => {
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const erreur = await campagne
+      .transmettreEvaluation(session('awa'), agents.ibou, {
+        evaluation: v.evaluation,
+        reservee: v.reservee,
+      })
+      .then(
+        () => null,
+        (e: { problem: { status: number; code: string; detail: string } }) => e.problem,
+      );
+    expect(erreur).toMatchObject({ status: 422, code: 'campagne.evaluation_incomplete' });
+    expect(erreur?.detail).toContain('la note de l’objectif 2');
+    expect(erreur?.detail).toContain('la compétence « Qualité du travail »');
+    expect(erreur?.detail).toContain('les points forts');
+    expect(erreur?.detail).toContain('la tenue du poste');
+    // L'évaluation ne fixe plus les objectifs de l'année à venir (ADR-0272).
+    expect(erreur?.detail).not.toContain('année à venir');
+    expect(erreur?.detail).not.toContain('Management');
+  });
+
+  it('« Valider » montre la fiche en PDF, telle que l’évaluation la remplit, sans l’enregistrer (ADR-0260)', async () => {
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const ecriture: EcritureDeLEvaluation = {
+      evaluation: { ...v.evaluation, pointsForts: 'Rigueur.' },
+      reservee: v.reservee,
+    };
+    const { filename, pdf } = await campagne.apercuDeLEvaluation(
+      session('awa'),
+      agents.ibou,
+      ecriture,
+    );
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU-complete.pdf`);
+    // Rien ne s'enregistre : le brouillon reste celui d'avant.
+    const apres = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect(apres.evaluation.pointsForts).toBe(v.evaluation.pointsForts);
+    expect(apres.etatDeLEvaluation).toBe('en_cours');
+    // Hors de son équipe, l'agent est introuvable ; sans auto-évaluation transmise, pas de fiche.
+    await expect(
+      campagne.apercuDeLEvaluation(session('fatou'), agents.ibou, ecriture),
+    ).rejects.toMatchObject({ problem: { status: 404, code: 'campagne.agent_hors_equipe' } });
+    await expect(
+      campagne.apercuDeLEvaluation(session('awa'), agents.fatou, ecriture),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.auto_non_transmise' } });
+  });
+
+  it('ne part qu’avec l’entretien confirmé et daté, entre l’auto-évaluation et le jour même (ADR-0265)', async () => {
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const ecriture = (entretien: Partial<EvaluationDuN1>): EcritureDeLEvaluation => ({
+      evaluation: {
+        ...v.evaluation,
+        objectifs: Object.fromEntries(
+          v.objectifs.map((o) => [o.id, { note: 3 as const, commentaire: '' }]),
+        ),
+        competences: competencesB('non_cadre'),
+        pointsForts: 'Rigueur.',
+        axesDeDeveloppement: 'Déléguer.',
+        ...entretien,
+      },
+      reservee: { comprehension: 'B', tenue: 'A', observations: '' },
+    });
+    const refus = (entretien: Partial<EvaluationDuN1>) =>
+      campagne.transmettreEvaluation(session('awa'), agents.ibou, ecriture(entretien)).then(
+        () => null,
+        (e: { problem: { status: number; detail: string } }) => e.problem,
+      );
+    expect(await refus({ entretienConfirme: false, dateDeLEntretien: null })).toMatchObject({
+      status: 422,
+      detail: 'À compléter : la confirmation de l’entretien.',
+    });
+    // L'auto-évaluation d'Ibou Ndiaye est partie aujourd'hui : ni la veille, ni demain.
+    for (const dateDeLEntretien of [null, jour(-1), jour(1)]) {
+      expect(await refus({ entretienConfirme: true, dateDeLEntretien })).toMatchObject({
+        status: 422,
+        detail: 'À compléter : la date de l’entretien.',
+      });
+    }
+    // Sans la confirmation, le brouillon ne garde pas de date.
+    const brouillon = await campagne.enregistrerEvaluation(
+      session('awa'),
+      agents.ibou,
+      ecriture({ entretienConfirme: false, dateDeLEntretien: AUJOURD_HUI }),
+    );
+    expect(brouillon.evaluation.dateDeLEntretien).toBeNull();
+    // Le PDF de « Valider » imprime la date confirmée, au lieu de « À fixer ».
+    const textes = async (entretien: Partial<EvaluationDuN1>) => {
+      const espion = vi.spyOn(PDFDocument.prototype, 'text');
+      try {
+        await campagne.apercuDeLEvaluation(session('awa'), agents.ibou, ecriture(entretien));
+        // Les espaces insécables du PDF lus comme des espaces.
+        return espion.mock.calls
+          .map((appel) => String(appel[0]).replace(/[\u00a0\u202f]/g, ' '))
+          .join('\n');
+      } finally {
+        espion.mockRestore();
+      }
+    };
+    const date = await textes({ entretienConfirme: true, dateDeLEntretien: AUJOURD_HUI });
+    expect(date).toContain(dateEnLettres(AUJOURD_HUI));
+    expect(date).not.toContain('À fixer');
+    expect(await textes({ entretienConfirme: false, dateDeLEntretien: null })).toContain('À fixer');
+  });
+
+  it('ne fixe plus les objectifs de l’année à venir (ADR-0272)', async () => {
+    const complete = {
+      ...evaluationDuN1Vide(),
+      competences: competencesB('non_cadre'),
+      pointsForts: 'Rigueur.',
+      axesDeDeveloppement: 'Déléguer.',
+      entretienConfirme: true,
+      dateDeLEntretien: AUJOURD_HUI,
+    };
+    const reservee = { comprehension: 'B' as const, tenue: 'A' as const, observations: '' };
+    expect(ceQuiManqueALEvaluationDuN1(complete, reservee, [], 'non_cadre')).toEqual([]);
+    // Ceux d'une évaluation écrite avant restent en base, mais ne se relisent plus.
+    const avant = {
+      ...complete,
+      objectifsAVenir: [{ objectif: 'Un objectif', indicateur: '', echeance: null }],
+    };
+    expect(evaluationDuN1Schema.parse(avant)).not.toHaveProperty('objectifsAVenir');
+    // Le PDF de « Valider » : la partie 5 ne garde que les formations.
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const espion = vi.spyOn(PDFDocument.prototype, 'text');
+    try {
+      await campagne.apercuDeLEvaluation(session('awa'), agents.ibou, {
+        evaluation: v.evaluation,
+        reservee: v.reservee,
+      });
+      const textes = espion.mock.calls.map((appel) => String(appel[0])).join('\n');
+      expect(textes).toContain('BESOINS ET PROJETS DE FORMATION');
+      expect(textes).not.toContain('OBJECTIFS ET PERSPECTIVES');
+      expect(textes).not.toContain(String(ANNEE + 1));
+    } finally {
+      espion.mockRestore();
+    }
+  });
+
+  it('arrondie à 2, de 1,5 à moins de 2, la moyenne ne part pas sans sa justification (ADR-0276)', async () => {
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const [o1, o2] = v.objectifs;
+    const erreur = await campagne
+      .transmettreEvaluation(session('awa'), agents.ibou, {
+        evaluation: {
+          ...v.evaluation,
+          // 3 et 1 : une moyenne de 2, rien à arrondir ; 2 et 1 : 1,5.
+          objectifs: {
+            [o1!.id]: { note: 2, commentaire: '' },
+            [o2!.id]: { note: 1, commentaire: '' },
+          },
+          arrondi: true,
+          justificationDeLArrondi: ' ',
+        },
+        reservee: v.reservee,
+      })
+      .then(
+        () => null,
+        (e: { problem: { detail: string } }) => e.problem,
+      );
+    expect(erreur?.detail).toContain('la justification de l’arrondi');
+  });
+
+  it('complète, part à l’agent ; elle ne change plus', async () => {
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    const complete: EcritureDeLEvaluation = {
+      evaluation: {
+        ...v.evaluation,
+        objectifs: Object.fromEntries(
+          v.objectifs.map((o) => [o.id, { note: 3 as const, commentaire: '' }]),
+        ),
+        competences: competencesB('non_cadre'),
+        pointsForts: 'Rigueur et disponibilité.',
+        axesDeDeveloppement: 'Déléguer davantage.',
+        // Une ligne ajoutée puis laissée vide ne part pas.
+        plan: [
+          { action: 'Tutorat par un pair', delai: '3 mois', suivi: '' },
+          { action: ' ', delai: '', suivi: '' },
+        ],
+        // L'entretien, confirmé le jour même de l'auto-évaluation (ADR-0265).
+        entretienConfirme: true,
+        dateDeLEntretien: AUJOURD_HUI,
+        // Un arrondi à 2 demandé sur une moyenne de 3 : il ne part pas (ADR-0276).
+        arrondi: true,
+        justificationDeLArrondi: 'Sans objet.',
+      },
+      reservee: { comprehension: 'B', tenue: 'A', observations: '' },
+    };
+    // Envoyée en même temps au N+2, Cheikh Mbaye (ADR-0278). Deux envois qui
+    // se croisent : un seul part, l'autre reçoit le refus (ADR-0289).
+    const envois = await Promise.allSettled([
+      campagne.transmettreEvaluation(session('awa'), agents.ibou, {
+        ...complete,
+        envoyerAuN2: true,
+      }),
+      campagne.transmettreEvaluation(session('awa'), agents.ibou, {
+        ...complete,
+        envoyerAuN2: true,
+      }),
+    ]);
+    expect(envois.filter((e) => e.status === 'fulfilled')).toHaveLength(1);
+    expect(envois.find((e) => e.status === 'rejected')).toMatchObject({
+      reason: { problem: { status: 409, code: 'campagne.evaluation_transmise' } },
+    });
+    const t = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect([t.evaluation.arrondi, t.evaluation.justificationDeLArrondi]).toEqual([false, '']);
+    expect([t.envoyeeAuN2Le, t.etatDesCommentaires, t.dch]).toEqual([
+      AUJOURD_HUI,
+      'a_commenter',
+      'en_attente',
+    ]);
+    // Le N+2 la lit et la commente sans attendre la validation de l'agent.
+    const n2 = await campagne.ficheDuN2(session('dg'), agents.ibou);
+    expect([n2.etat, n2.envoyeeLe, n2.valideeLe, n2.modifiable]).toEqual([
+      'a_commenter',
+      AUJOURD_HUI,
+      null,
+      true,
+    ]);
+    expect(n2.fiche?.reservee.comprehension).toBe('B');
+    expect([t.etatDeLEvaluation, t.modifiable, t.evaluationTransmiseLe]).toEqual([
+      'transmise',
+      false,
+      AUJOURD_HUI,
+    ]);
+    expect(t.evaluation.plan).toEqual([
+      { action: 'Tutorat par un pair', delai: '3 mois', suivi: '' },
+    ]);
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('transmise');
+    await expect(
+      campagne.enregistrerEvaluation(session('awa'), agents.ibou, complete),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.evaluation_transmise' } });
+    // Transmise, elle ne se prévisualise plus : le PDF est celui qui se télécharge.
+    await expect(
+      campagne.apercuDeLEvaluation(session('awa'), agents.ibou, complete),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.evaluation_transmise' } });
+  });
+
+  it('pour le personnel cadre, le management se remplit s’il y a lieu', async () => {
+    const t = await campagne.transmettreEvaluation(session('awa'), agents.moussa, {
+      envoyerAuN2: true,
+      evaluation: {
+        ...evaluationDuN1Vide(),
+        competences: competencesB('cadre'),
+        pointsForts: 'Autonomie.',
+        axesDeDeveloppement: 'Prise de parole.',
+        entretienConfirme: true,
+        dateDeLEntretien: AUJOURD_HUI,
+      },
+      reservee: { comprehension: 'A', tenue: 'B', observations: '' },
+    });
+    expect(t.etatDeLEvaluation).toBe('transmise');
+    expect(t.evaluation.competences.management).toBeUndefined();
+  });
+
+  it('ne s’ouvre qu’à l’évaluateur, et pendant la période', async () => {
+    const vide = { evaluation: evaluationDuN1Vide(), reservee: partieReserveeVide() };
+    await expect(
+      campagne.enregistrerEvaluation(session('fatou'), agents.moussa, vide),
+    ).rejects.toMatchObject({ problem: { status: 404, code: 'campagne.agent_hors_equipe' } });
+    // Ousmane Fall a transmis ; son évaluateur pour la campagne est Cheikh Mbaye.
+    await raw(
+      `UPDATE fiches_entretien SET auto = '{}'::jsonb, auto_transmise_le = now()
+        WHERE employee_id = $1`,
+      [agents.ousmane],
+    );
+    await periode(-20, -15, -1);
+    await expect(
+      campagne.enregistrerEvaluation(session('dg'), agents.ousmane, vide),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.evaluation_fermee' } });
+    await periode(-2, 3, 10);
+    const v = await campagne.enregistrerEvaluation(session('dg'), agents.ousmane, vide);
+    expect(v.etatDeLEvaluation).toBe('en_cours');
+  });
+});
+
+describe('la validation par l’agent (ADR-0217)', () => {
+  it('se lit une fois transmise, sans le brouillon du N+1 ni la partie réservée', async () => {
+    // Cheikh Mbaye a commencé l'évaluation d'Ousmane Fall, sans la transmettre.
+    const attente = await campagne.monEvaluation(session('ousmane'));
+    expect([attente.etat, attente.evaluation, attente.validable]).toEqual([
+      'en_attente',
+      null,
+      false,
+    ]);
+    await expect(campagne.validerMonEvaluation(session('ousmane'))).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_non_transmise' },
+    });
+
+    const v = await campagne.monEvaluation(session('ibou'));
+    expect([v.etat, v.transmiseLe, v.validable]).toEqual(['a_valider', AUJOURD_HUI, true]);
+    expect(v.personnel).toBe('non_cadre');
+    expect(v.evaluation?.pointsForts).toBe('Rigueur et disponibilité.');
+    expect(v.evaluateur).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
+    expect(JSON.stringify(v)).not.toContain('comprehension');
+    expect((await campagne.accueil(session('ibou'))).monEvaluation).toEqual({
+      etat: 'a_valider',
+      transmiseLe: AUJOURD_HUI,
+      valideeLe: null,
+    });
+    // Rien à télécharger avant la validation (ADR-0269).
+    await expect(campagne.pdfDeMonEvaluation(session('ibou'))).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_non_validee' },
+    });
+  });
+
+  it('ne se renvoie pas au N+1 ; un ancien renvoi se lit comme un brouillon du N+1 (ADR-0267)', async () => {
+    const v = await campagne.monEvaluation(session('ibou'));
+    expect(v).not.toHaveProperty('renvoyable');
+    expect(v).not.toHaveProperty('renvoi');
+    // Un renvoi d'avant l'ADR-0267, resté en base : le N+1 retrouve son
+    // brouillon, et le mot de l'agent ne s'affiche plus nulle part.
+    await raw(
+      `UPDATE fiches_entretien
+          SET evaluation_transmise_le = NULL, renvoyee_le = now(), renvoi_mot = 'À revoir.'
+        WHERE employee_id = $1`,
+      [agents.ibou],
+    );
+    expect((await campagne.monEvaluation(session('ibou'))).etat).toBe('en_attente');
+    const n1 = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect([n1.etatDeLEvaluation, n1.modifiable]).toEqual(['en_cours', true]);
+    expect(JSON.stringify(n1)).not.toContain('À revoir.');
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('en_cours');
+    await raw(
+      `UPDATE fiches_entretien
+          SET evaluation_transmise_le = now(), renvoyee_le = NULL, renvoi_mot = NULL
+        WHERE employee_id = $1`,
+      [agents.ibou],
+    );
+  });
+
+  it('validée, elle ne change plus : ni nouvelle validation, ni écriture du N+1', async () => {
+    const v = await campagne.validerMonEvaluation(session('ibou'));
+    expect([v.etat, v.valideeLe, v.validable]).toEqual(['validee', AUJOURD_HUI, false]);
+    expect(v.evaluation?.pointsForts).toBe('Rigueur et disponibilité.');
+    await expect(campagne.validerMonEvaluation(session('ibou'))).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_validee' },
+    });
+    await expect(
+      campagne.enregistrerEvaluation(session('awa'), agents.ibou, {
+        evaluation: evaluationDuN1Vide(),
+        reservee: partieReserveeVide(),
+      }),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.evaluation_validee' } });
+    const n1 = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect([n1.etatDeLEvaluation, n1.valideeLe, n1.modifiable]).toEqual([
+      'validee',
+      AUJOURD_HUI,
+      false,
+    ]);
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('validee');
+  });
+
+  it('ne se valide plus après la date de fin : la fiche est verrouillée (ADR-0273)', async () => {
+    await periode(-20, -15, -1);
+    const v = await campagne.monEvaluation(session('moussa'));
+    expect([v.etat, v.validable]).toEqual(['a_valider', false]);
+    await expect(campagne.validerMonEvaluation(session('moussa'))).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_terminee' },
+    });
+    // Les dates repoussées, la fiche se déverrouille.
+    await periode(-2, 3, 10);
+    expect((await campagne.validerMonEvaluation(session('moussa'))).etat).toBe('validee');
+  });
+
+  it('n’existe pas sans évaluation : au sommet, en stage, sans dossier', async () => {
+    for (const qui of ['dg', 'lamine', 'admin'] as const) {
+      await expect(campagne.monEvaluation(session(qui))).rejects.toMatchObject({
+        problem: { status: 404, code: 'campagne.sans_auto_evaluation' },
+      });
+    }
+    expect((await campagne.accueil(session('dg'))).monEvaluation).toBeNull();
+    expect((await campagne.accueil(session('fatou'))).monEvaluation?.etat).toBe('en_attente');
+  });
+});
+
+describe('le verrouillage à la fin de la campagne (ADR-0273)', () => {
+  it('après la date de fin, plus personne ne modifie la fiche', async () => {
+    // La fiche d'Ibou Ndiaye, validée, attend les commentaires de Cheikh Mbaye.
+    expect((await campagne.ficheDuN2(session('dg'), agents.ibou)).modifiable).toBe(true);
+    await periode(-20, -15, -1);
+    expect((await campagne.ficheDuN2(session('dg'), agents.ibou)).modifiable).toBe(false);
+    for (const geste of [
+      () => campagne.enregistrerCommentaires(session('dg'), agents.ibou, 'Trop tard.'),
+      () => campagne.reprendreAuN2(session('awa'), agents.ibou),
+      () => campagne.transmettreALaDCH(session('awa'), agents.ibou),
+    ]) {
+      await expect(geste()).rejects.toMatchObject({
+        problem: { status: 409, code: 'campagne.evaluation_terminee' },
+      });
+    }
+    // La fiche se lit toujours, sans changer.
+    const v = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect([v.phase, v.modifiable, v.etatDesCommentaires]).toEqual([
+      'terminee',
+      false,
+      'a_commenter',
+    ]);
+    await periode(-2, 3, 10);
+  });
+});
+
+describe('les commentaires du N+2 (ADR-0218)', () => {
+  it('le N+2 ne voit que les fiches que le N+1 a envoyées au N+2 (ADR-0255, ADR-0278)', async () => {
+    // Cheikh Mbaye évalue Awa Diop, qui évalue Ibou Ndiaye, Fatou Sall et Moussa Sarr.
+    // L'évaluation de Fatou Sall n'est pas transmise : sa fiche n'est pas chez le N+2.
+    const { aCommenter, equipe } = await campagne.accueil(session('dg'));
+    expect(aCommenter.map((a) => [a.employeeId, a.commentaires])).toEqual([
+      [agents.ibou, 'a_commenter'],
+      [agents.moussa, 'a_commenter'],
+    ]);
+    expect(aCommenter[0]!.n1).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
+    expect(aCommenter.map((a) => a.email)).toEqual([null, 'moussa.sarr@camp.test']);
+    // Au sommet de l'organigramme, son équipe n'a pas de N+2.
+    expect(equipe.every((a) => a.commentaires === null)).toBe(true);
+    const awa = await campagne.accueil(session('awa'));
+    expect(awa.aCommenter).toEqual([]);
+    expect(awa.equipe.find((a) => a.employeeId === agents.ibou)?.commentaires).toBe('a_commenter');
+  });
+
+  it('s’ouvre au N+2 en entier, partie réservée comprise, dès l’envoi du N+1', async () => {
+    const v = await campagne.ficheDuN2(session('dg'), agents.ibou);
+    expect([v.etat, v.modifiable, v.valideeLe]).toEqual(['a_commenter', true, AUJOURD_HUI]);
+    expect(v.fiche?.reservee.comprehension).toBe('B');
+    expect(v.fiche?.evaluation.pointsForts).toBe('Rigueur et disponibilité.');
+    expect(v.agent.evaluateur).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
+
+    const attente = await campagne.ficheDuN2(session('dg'), agents.fatou);
+    expect([attente.etat, attente.fiche, attente.modifiable]).toEqual(['en_attente', null, false]);
+    await expect(
+      campagne.enregistrerCommentaires(session('dg'), agents.fatou, 'Trop tôt.'),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.fiche_non_envoyee' } });
+
+    // Le N+1 n'est pas le N+2 ; sans N+2 (le N+1 au sommet), personne ne l'est.
+    for (const [qui, agent] of [
+      ['awa', agents.ibou],
+      ['dg', agents.ousmane],
+      ['fatou', agents.moussa],
+    ] as const) {
+      await expect(campagne.ficheDuN2(session(qui), agent)).rejects.toMatchObject({
+        problem: { status: 404, code: 'campagne.agent_hors_perimetre' },
+      });
+    }
+  });
+
+  it('garde le brouillon, que le N+1 ne lit pas', async () => {
+    const v = await campagne.enregistrerCommentaires(session('dg'), agents.ibou, 'Brouillon.');
+    expect([v.etat, v.commentaires]).toEqual(['en_cours', 'Brouillon.']);
+    const n1 = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect(n1.n2).toMatchObject({ prenom: 'Cheikh', nom: 'Mbaye' });
+    expect([n1.etatDesCommentaires, n1.commentairesDuN2]).toEqual(['en_cours', null]);
+    expect((await campagne.agentDeLEquipe(session('dg'), agents.ousmane)).n2).toBeNull();
+  });
+
+  it('le N+2 de l’envoi garde la fiche, même quand l’organigramme change (ADR-0289)', async () => {
+    // Awa Diop passe sous Ousmane Fall pour la campagne : Ousmane Fall devient
+    // le N+2 de son équipe pour ce qui n'est pas encore envoyé. Les fiches
+    // déjà envoyées restent à Cheikh Mbaye, qui les a reçues.
+    const { rows } = await raw(
+      `SELECT evaluateur_employee_id AS e FROM fiches_entretien WHERE employee_id = $1 AND annee = $2`,
+      [agents.awa, ANNEE],
+    );
+    await raw(
+      `INSERT INTO fiches_entretien (id, tenant_id, employee_id, annee, evaluateur_employee_id)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (tenant_id, employee_id, annee)
+       DO UPDATE SET evaluateur_employee_id = EXCLUDED.evaluateur_employee_id`,
+      [randomUUID(), tenantId, agents.awa, ANNEE, agents.ousmane],
+    );
+    try {
+      const cheikh = await campagne.accueil(session('dg'));
+      expect(cheikh.aCommenter.map((a) => a.employeeId)).toEqual([agents.ibou, agents.moussa]);
+      const v = await campagne.ficheDuN2(session('dg'), agents.ibou);
+      expect([v.etat, v.modifiable, v.fiche?.reservee.comprehension]).toEqual([
+        'en_cours',
+        true,
+        'B',
+      ]);
+      // Le nouveau N+2 n'a rien reçu : ces fiches ne s'ouvrent pas pour Ousmane Fall.
+      expect((await campagne.accueil(session('ousmane'))).aCommenter).toEqual([]);
+      for (const geste of [
+        () => campagne.ficheDuN2(session('ousmane'), agents.ibou),
+        () => campagne.pdfDuN2(session('ousmane'), agents.ibou),
+        () => campagne.enregistrerCommentaires(session('ousmane'), agents.ibou, 'Lu.'),
+      ]) {
+        await expect(geste()).rejects.toMatchObject({
+          problem: { status: 404, code: 'campagne.agent_hors_perimetre' },
+        });
+      }
+      // Le N+1 voit le N+2 de l'envoi ; pour une fiche pas encore envoyée, le N+2 d'aujourd'hui.
+      expect((await campagne.agentDeLEquipe(session('awa'), agents.ibou)).n2).toMatchObject({
+        prenom: 'Cheikh',
+        nom: 'Mbaye',
+      });
+      expect((await campagne.agentDeLEquipe(session('awa'), agents.fatou)).n2).toMatchObject({
+        prenom: 'Ousmane',
+        nom: 'Fall',
+      });
+      const brouillon = await campagne.enregistrerCommentaires(
+        session('dg'),
+        agents.ibou,
+        'Brouillon.',
+      );
+      expect(brouillon.etat).toBe('en_cours');
+    } finally {
+      await raw(
+        `UPDATE fiches_entretien SET evaluateur_employee_id = $3 WHERE employee_id = $1 AND annee = $2`,
+        [agents.awa, ANNEE, rows[0]?.e ?? null],
+      );
+    }
+  });
+
+  it('transmis au N+1, ils ne changent plus ; l’agent ne les lit jamais', async () => {
+    const texte = 'Un agent fiable, à préparer à plus de responsabilités.';
+    const v = await campagne.transmettreCommentaires(session('dg'), agents.ibou, texte);
+    expect([v.etat, v.transmisLe, v.modifiable, v.commentaires]).toEqual([
+      'transmis',
+      AUJOURD_HUI,
+      false,
+      texte,
+    ]);
+    await expect(
+      campagne.transmettreCommentaires(session('dg'), agents.ibou, 'Encore.'),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.commentaires_transmis' } });
+    const n1 = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect(n1.etatDesCommentaires).toBe('transmis');
+    expect(n1.commentairesDuN2).toEqual({
+      texte,
+      le: AUJOURD_HUI,
+      par: { prenom: 'Cheikh', nom: 'Mbaye', poste: 'Direction générale' },
+    });
+    expect(JSON.stringify(await campagne.monEvaluation(session('ibou')))).not.toContain('fiable');
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.commentaires).toBe('transmis');
+  });
+
+  it('sans un mot, la fiche revient au N+1 sans commentaire', async () => {
+    const v = await campagne.transmettreCommentaires(session('dg'), agents.moussa, '');
+    expect([v.etat, v.commentaires]).toEqual(['transmis', '']);
+    expect(
+      (await campagne.agentDeLEquipe(session('awa'), agents.moussa)).commentairesDuN2?.texte,
+    ).toBe('');
+  });
+});
+
+describe('la transmission à la DCH (ADR-0221)', () => {
+  it('le N+1 transmet la fiche une fois les commentaires du N+2 reçus ; elle ne change plus', async () => {
+    const avant = await campagne.accueil(session('awa'));
+    expect(avant.equipe.find((a) => a.employeeId === agents.ibou)?.dch).toBe('a_transmettre');
+    expect(avant.equipe.find((a) => a.employeeId === agents.fatou)?.dch).toBe('en_attente');
+
+    const v = await campagne.transmettreALaDCH(session('awa'), agents.ibou);
+    expect([v.dch, v.transmiseALaDCHLe, v.modifiable]).toEqual(['transmise', AUJOURD_HUI, false]);
+    const { equipe } = await campagne.accueil(session('awa'));
+    expect(equipe.find((a) => a.employeeId === agents.ibou)?.dch).toBe('transmise');
+
+    await expect(campagne.transmettreALaDCH(session('awa'), agents.ibou)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.fiche_transmise' },
+    });
+    await expect(campagne.transmettreALaDCH(session('awa'), agents.fatou)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.fiche_non_validee' },
+    });
+    // Le N+2 ne la transmet pas : la transmission revient à l'évaluateur de l'agent.
+    await expect(campagne.transmettreALaDCH(session('dg'), agents.ibou)).rejects.toMatchObject({
+      problem: { status: 404, code: 'campagne.agent_hors_equipe' },
+    });
+    // Transmise, elle reste au N+1 qui l'a transmise, même si l'organigramme
+    // change ensuite (ADR-0222, ADR-0289).
+    await raw(
+      `UPDATE fiches_entretien SET evaluateur_employee_id = $3 WHERE employee_id = $1 AND annee = $2`,
+      [agents.ibou, ANNEE, agents.dg],
+    );
+    try {
+      expect((await campagne.agentDeLEquipe(session('awa'), agents.ibou)).dch).toBe('transmise');
+      await expect(campagne.agentDeLEquipe(session('dg'), agents.ibou)).rejects.toMatchObject({
+        problem: { status: 404, code: 'campagne.agent_hors_equipe' },
+      });
+      await expect(campagne.pdfDeLEquipe(session('dg'), agents.ibou)).rejects.toMatchObject({
+        problem: { status: 404, code: 'campagne.agent_hors_equipe' },
+      });
+    } finally {
+      await raw(
+        `UPDATE fiches_entretien SET evaluateur_employee_id = $3 WHERE employee_id = $1 AND annee = $2`,
+        [agents.ibou, ANNEE, agents.awa],
+      );
+    }
+  });
+
+  it('chez le N+2, elle attend ; le N+1 la reprend pour de bon, puis la transmet (ADR-0278)', async () => {
+    // Le N+2 de Moussa Sarr n'a pas encore transmis ses commentaires.
+    await raw(
+      `UPDATE fiches_entretien SET commentaires_n2 = 'Brouillon du N+2.',
+              commentaires_n2_transmis_le = NULL
+        WHERE employee_id = $1 AND annee = $2`,
+      [agents.moussa, ANNEE],
+    );
+    const attente = await campagne.agentDeLEquipe(session('awa'), agents.moussa);
+    expect([attente.etatDesCommentaires, attente.dch]).toEqual(['en_cours', 'en_attente']);
+    await expect(campagne.transmettreALaDCH(session('awa'), agents.moussa)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.fiche_chez_le_n2' },
+    });
+
+    const reprise = await campagne.reprendreAuN2(session('awa'), agents.moussa);
+    expect([reprise.etatDesCommentaires, reprise.dch, reprise.repriseAuN2Le]).toEqual([
+      'reprise',
+      'a_transmettre',
+      AUJOURD_HUI,
+    ]);
+    // Le N+2 garde la fiche en lecture, sans plus la commenter.
+    const copie = await campagne.ficheDuN2(session('dg'), agents.moussa);
+    expect([copie.etat, copie.modifiable, copie.repriseLe]).toEqual([
+      'reprise',
+      false,
+      AUJOURD_HUI,
+    ]);
+    expect(copie.fiche?.evaluation.pointsForts).toBe('Autonomie.');
+    await expect(
+      campagne.enregistrerCommentaires(session('dg'), agents.moussa, 'Encore.'),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.fiche_reprise' } });
+    const { aCommenter } = await campagne.accueil(session('dg'));
+    expect(aCommenter.find((a) => a.employeeId === agents.moussa)?.commentaires).toBe('reprise');
+    await expect(campagne.reprendreAuN2(session('awa'), agents.moussa)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.fiche_pas_chez_le_n2' },
+    });
+
+    const transmise = await campagne.transmettreALaDCH(session('awa'), agents.moussa);
+    expect([transmise.dch, transmise.etatDesCommentaires]).toEqual(['transmise', 'reprise']);
+    await expect(campagne.reprendreAuN2(session('awa'), agents.moussa)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.fiche_transmise' },
+    });
+  });
+
+  it('sans N+2, elle part dès la validation de l’agent', async () => {
+    // Cheikh Mbaye, au sommet de l'organigramme, évalue Ousmane Fall : la
+    // fiche ne peut pas être envoyée à un N+2 (ADR-0278).
+    await expect(
+      campagne.transmettreEvaluation(session('dg'), agents.ousmane, {
+        evaluation: evaluationDuN1Vide(),
+        reservee: partieReserveeVide(),
+        envoyerAuN2: true,
+      }),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.sans_n2' } });
+    await raw(
+      `UPDATE fiches_entretien SET evaluation_transmise_le = now(), validee_le = now()
+        WHERE employee_id = $1 AND annee = $2`,
+      [agents.ousmane, ANNEE],
+    );
+    const { equipe } = await campagne.accueil(session('dg'));
+    const ousmane = equipe.find((a) => a.employeeId === agents.ousmane);
+    expect([ousmane?.commentaires, ousmane?.dch]).toEqual([null, 'a_transmettre']);
+    await expect(campagne.reprendreAuN2(session('dg'), agents.ousmane)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.fiche_pas_chez_le_n2' },
+    });
+    expect((await campagne.transmettreALaDCH(session('dg'), agents.ousmane)).dch).toBe('transmise');
+  });
+
+  it('sans envoi au N+2, elle n’y passe jamais, et part dès la validation de l’agent (ADR-0278)', async () => {
+    // La fiche de Fatou Sall, de l'équipe de Awa Diop : l'évaluation part
+    // sans envoi au N+2, puis l'agent la valide ; la fiche reprend ensuite
+    // son état.
+    const { rows } = await raw(
+      `SELECT auto_transmise_le, evaluation, evaluation_transmise_le, validee_le
+         FROM fiches_entretien WHERE employee_id = $1 AND annee = $2`,
+      [agents.fatou, ANNEE],
+    );
+    const avant = rows[0];
+    await raw(
+      `UPDATE fiches_entretien
+          SET auto_transmise_le = now(), evaluation = '{}'::jsonb,
+              evaluation_transmise_le = now(), validee_le = now()
+        WHERE employee_id = $1 AND annee = $2`,
+      [agents.fatou, ANNEE],
+    );
+    try {
+      const n1 = await campagne.agentDeLEquipe(session('awa'), agents.fatou);
+      expect(n1.n2).toMatchObject({ prenom: 'Cheikh', nom: 'Mbaye' });
+      expect([n1.envoyeeAuN2Le, n1.etatDesCommentaires, n1.dch]).toEqual([
+        null,
+        null,
+        'a_transmettre',
+      ]);
+      const { aCommenter } = await campagne.accueil(session('dg'));
+      expect(aCommenter.map((a) => a.employeeId)).not.toContain(agents.fatou);
+      const n2 = await campagne.ficheDuN2(session('dg'), agents.fatou);
+      expect([n2.etat, n2.fiche, n2.envoyeeLe, n2.modifiable]).toEqual([
+        'en_attente',
+        null,
+        null,
+        false,
+      ]);
+      await expect(campagne.reprendreAuN2(session('awa'), agents.fatou)).rejects.toMatchObject({
+        problem: { status: 409, code: 'campagne.fiche_pas_chez_le_n2' },
+      });
+      const dch = { ...session('awa'), capacites: ['pilotage'] } as SessionUser;
+      const suivi = await campagne.suiviDeLaDCH(dch);
+      expect(suivi.fiches.find((f) => f.employeeId === agents.fatou)?.etape).toBe('a_transmettre');
+    } finally {
+      await raw(
+        `UPDATE fiches_entretien
+            SET auto_transmise_le = $3, evaluation = $4,
+                evaluation_transmise_le = $5, validee_le = $6
+          WHERE employee_id = $1 AND annee = $2`,
+        [
+          agents.fatou,
+          ANNEE,
+          avant?.auto_transmise_le ?? null,
+          avant?.evaluation ?? null,
+          avant?.evaluation_transmise_le ?? null,
+          avant?.validee_le ?? null,
+        ],
+      );
+    }
+  });
+
+  it('la DCH suit chaque fiche de l’année, et lit en entier celles qui lui sont transmises', async () => {
+    for (const geste of [
+      () => campagne.suiviDeLaDCH(session('awa')),
+      () => campagne.ficheDeLaDCH(session('awa'), agents.ibou),
+      () => campagne.pdfDeLaDCH(session('awa'), agents.ibou),
+    ]) {
+      await expect(geste()).rejects.toMatchObject({ problem: { status: 403 } });
+    }
+    // L'habilitation « Tableau de bord », confiée par la DCH, ou l'administration.
+    const dch = { ...session('fatou'), capacites: ['pilotage'] } as SessionUser;
+    const suivi = await campagne.suiviDeLaDCH(dch);
+    // Le brouillon de Fatou Sall ne compte pas : son auto-évaluation n'est pas faite.
+    expect(suivi.fiches.map((f) => [f.nom, f.etape])).toEqual([
+      ['Diop', 'auto_non_faite'],
+      ['Fall', 'transmise'],
+      ['Ndiaye', 'transmise'],
+      ['Sall', 'auto_non_faite'],
+      ['Sarr', 'transmise'],
+    ]);
+    expect(suivi.fiches[2]).toMatchObject({
+      direction: 'DCH',
+      n1: { prenom: 'Awa', nom: 'Diop' },
+      transmiseLe: AUJOURD_HUI,
+    });
+    expect((await campagne.accueil(session('admin'))).dch).toEqual({ fiches: 5, transmises: 3 });
+    expect((await campagne.accueil(session('awa'))).dch).toBeNull();
+
+    await expect(campagne.ficheDeLaDCH(dch, agents.awa)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.fiche_non_transmise' },
+    });
+    // Membre de la DCH ou non, sa propre fiche ne s'ouvre pas depuis le suivi :
+    // la partie réservée et les commentaires du N+2 ne sont pas pour l'agent (ADR-0289).
+    const ibouDCH = { ...session('ibou'), capacites: ['pilotage'] } as SessionUser;
+    for (const geste of [
+      () => campagne.ficheDeLaDCH(ibouDCH, agents.ibou),
+      () => campagne.pdfDeLaDCH(ibouDCH, agents.ibou),
+    ]) {
+      await expect(geste()).rejects.toMatchObject({
+        problem: { status: 403, code: 'campagne.sa_propre_fiche' },
+      });
+    }
+    expect((await campagne.suiviDeLaDCH(ibouDCH)).fiches.map((x) => [x.nom, x.ouvrable])).toEqual([
+      ['Diop', false],
+      ['Fall', true],
+      ['Ndiaye', false],
+      ['Sall', false],
+      ['Sarr', true],
+    ]);
+    const f = await campagne.ficheDeLaDCH(session('admin'), agents.ibou);
+    expect(f.fiche.reservee.comprehension).toBe('B');
+    expect(f.commentairesDuN2?.texte).toBe(
+      'Un agent fiable, à préparer à plus de responsabilités.',
+    );
+    expect([f.transmiseLe, f.valideeLe, f.repriseAuN2Le]).toEqual([AUJOURD_HUI, AUJOURD_HUI, null]);
+    expect(f.transmisePar).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
+    expect(f.evaluePar).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
+    expect(f.n2).toMatchObject({ prenom: 'Cheikh', nom: 'Mbaye' });
+
+    const espion = vi.spyOn(PDFDocument.prototype, 'text');
+    try {
+      const { filename, pdf } = await campagne.pdfDeLaDCH(dch, agents.ibou);
+      expect(filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU-complete.pdf`);
+      expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+      // La date de l'entretien confirmée par le N+1, plus « À fixer » (ADR-0265).
+      expect(espion.mock.calls.map((appel) => String(appel[0]))).not.toContain('À fixer');
+    } finally {
+      espion.mockRestore();
+    }
+  });
+});
+
+describe('le PDF de la fiche, pour le N+1 et le N+2 (ADR-0279)', () => {
+  /** Le PDF, et tout le texte qu'il imprime. */
+  async function imprime(geste: () => Promise<{ filename: string; pdf: Buffer }>) {
+    const espion = vi.spyOn(PDFDocument.prototype, 'text');
+    try {
+      const { filename, pdf } = await geste();
+      return {
+        filename,
+        pdf,
+        texte: espion.mock.calls.map((appel) => String(appel[0])).join(' '),
+      };
+    } finally {
+      espion.mockRestore();
+    }
+  }
+
+  it('le N+1 télécharge la fiche complète dès la transmission à l’agent', async () => {
+    const ibou = await imprime(() => campagne.pdfDeLEquipe(session('awa'), agents.ibou));
+    expect(ibou.filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU-complete.pdf`);
+    expect(ibou.pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    // La partie réservée, et les commentaires du N+2, une fois transmis.
+    expect(ibou.texte).toContain('Commentaires du N+2');
+    expect(ibou.texte).toContain('fiable');
+    await expect(campagne.pdfDeLEquipe(session('awa'), agents.fatou)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_non_transmise' },
+    });
+    // Le N+2 n'est pas le N+1 de l'agent.
+    await expect(campagne.pdfDeLEquipe(session('dg'), agents.ibou)).rejects.toMatchObject({
+      problem: { status: 404, code: 'campagne.agent_hors_equipe' },
+    });
+  });
+
+  it('le N+2 télécharge la fiche envoyée, même reprise, sans un brouillon jamais transmis', async () => {
+    const ibou = await imprime(() => campagne.pdfDuN2(session('dg'), agents.ibou));
+    expect(ibou.filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU-complete.pdf`);
+    expect(ibou.texte).toContain('fiable');
+    // Reprise par le N+1 : la copie du N+2, sans son brouillon.
+    const moussa = await imprime(() => campagne.pdfDuN2(session('dg'), agents.moussa));
+    expect(moussa.pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(moussa.texte).not.toContain('Brouillon du N+2.');
+    await expect(campagne.pdfDuN2(session('dg'), agents.fatou)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.fiche_non_envoyee' },
+    });
+    await expect(campagne.pdfDuN2(session('awa'), agents.ibou)).rejects.toMatchObject({
+      problem: { status: 404, code: 'campagne.agent_hors_perimetre' },
+    });
+  });
+});
+
+describe('le téléchargement de son évaluation (ADR-0268)', () => {
+  /** Les textes d'un PDF, les espaces insécables lus comme des espaces. */
+  const textesDuPdf = async (generer: () => Promise<unknown>): Promise<string> => {
+    const espion = vi.spyOn(PDFDocument.prototype, 'text');
+    try {
+      await generer();
+      return espion.mock.calls
+        .map((appel) => String(appel[0]).replace(/[\u00a0\u202f]/g, ' '))
+        .join('\n');
+    } finally {
+      espion.mockRestore();
+    }
+  };
+
+  it('donne à l’agent sa fiche validée en PDF, sans la partie réservée ni les commentaires du N+2', async () => {
+    const { filename, pdf } = await campagne.pdfDeMonEvaluation(session('ibou'));
+    expect(filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU.pdf`);
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect((await campagne.monEvaluation(session('ibou'))).matricule).toBe('CAMP-IBOU');
+
+    const dch = { ...session('fatou'), capacites: ['pilotage'] } as SessionUser;
+    const complete = await textesDuPdf(() => campagne.pdfDeLaDCH(dch, agents.ibou));
+    const agent = await textesDuPdf(() => campagne.pdfDeMonEvaluation(session('ibou')));
+    expect(agent).toContain('VALIDATION ET SUIVI');
+    for (const reserve of [
+      'PARTIE STRICTEMENT RÉSERVÉE À LA HIÉRARCHIE',
+      'Commentaires du N+2',
+      'à préparer à plus de responsabilités',
+    ]) {
+      expect(complete).toContain(reserve);
+      expect(agent).not.toContain(reserve);
+    }
+  });
+
+  it('attend la validation par l’agent, et n’existe pas sans évaluation (ADR-0269)', async () => {
+    // Fatou Sall attend encore l'évaluation de son N+1.
+    await expect(campagne.pdfDeMonEvaluation(session('fatou'))).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_non_validee' },
+    });
+    await expect(campagne.pdfDeMonEvaluation(session('dg'))).rejects.toMatchObject({
+      problem: { status: 404, code: 'campagne.sans_auto_evaluation' },
+    });
+  });
+});
+
+describe('l’administration de la campagne (ADR-0222)', () => {
+  it('est réservée aux comptes d’administration', async () => {
+    for (const geste of [
+      () => campagne.administration(session('awa')),
+      () => campagne.fixerLesDates(session('awa'), { du: jour(-2), autoAu: jour(3), au: jour(10) }),
+      () => campagne.choisirLEvaluateur(session('awa'), agents.fatou, agents.dg),
+    ]) {
+      await expect(geste()).rejects.toMatchObject({
+        problem: { status: 403, code: 'campagne.administration_reservee' },
+      });
+    }
+    expect((await campagne.accueil(session('admin'))).administration).toBe(true);
+    expect((await campagne.accueil(session('awa'))).administration).toBe(false);
+  });
+
+  it('liste les agents à évaluer, leur N+1 dans l’organigramme et le choix de l’administration', async () => {
+    const { agents: liste } = await campagne.administration(session('admin'));
+    // Le sommet de l'organigramme et les stages restent hors de la campagne.
+    expect(liste.map((a) => a.nom)).toEqual(['Diop', 'Fall', 'Ndiaye', 'Sall', 'Sarr']);
+    const ibou = liste.find((a) => a.employeeId === agents.ibou)!;
+    expect(ibou.organigramme).toMatchObject({ prenom: 'Cheikh', nom: 'Mbaye' });
+    expect(ibou.choisi).toMatchObject({ prenom: 'Awa', nom: 'Diop', matricule: 'CAMP-AWA' });
+    const fatou = liste.find((a) => a.employeeId === agents.fatou)!;
+    expect([fatou.organigramme?.nom, fatou.choisi, fatou.transmise]).toEqual(['Diop', null, false]);
+    expect(ibou.transmise).toBe(true);
+  });
+
+  it('fixe les dates : le début, la fin de l’auto-évaluation, la fin', async () => {
+    const v = await campagne.fixerLesDates(session('admin'), {
+      du: jour(-4),
+      autoAu: jour(1),
+      au: jour(12),
+    });
+    expect(v.periode).toEqual({ du: jour(-4), autoAu: jour(1), au: jour(12) });
+    expect((await campagne.accueil(session('moussa'))).periode?.autoAu).toBe(jour(1));
+    // Les dates se suivent, et la période commence dans l'année évaluée ou la suivante.
+    expect(
+      datesDeLaCampagneSchema.safeParse({ du: jour(5), autoAu: jour(2), au: jour(9) }).success,
+    ).toBe(false);
+    await expect(
+      campagne.fixerLesDates(session('admin'), {
+        du: `${ANNEE + 2}-01-05`,
+        autoAu: `${ANNEE + 2}-01-10`,
+        au: `${ANNEE + 2}-01-20`,
+      }),
+    ).rejects.toMatchObject({ problem: { status: 422, code: 'campagne.dates_hors_annee' } });
+    await periode(-2, 3, 10);
+  });
+
+  it('choisit librement l’évaluateur, puis revient à l’organigramme', async () => {
+    // Fatou Sall a Awa Diop pour N+1 dans l'organigramme ; Cheikh Mbaye l'évalue pour la campagne.
+    const v = await campagne.choisirLEvaluateur(session('admin'), agents.fatou, agents.dg);
+    expect(v.agents.find((a) => a.employeeId === agents.fatou)?.choisi?.nom).toBe('Mbaye');
+    expect((await campagne.accueil(session('dg'))).equipe.map((a) => a.employeeId)).toContain(
+      agents.fatou,
+    );
+    expect((await campagne.accueil(session('awa'))).equipe.map((a) => a.employeeId)).not.toContain(
+      agents.fatou,
+    );
+    // Choisir le N+1 de l'organigramme, c'est revenir à l'organigramme.
+    const retour = await campagne.choisirLEvaluateur(session('admin'), agents.fatou, agents.awa);
+    expect(retour.agents.find((a) => a.employeeId === agents.fatou)?.choisi).toBeNull();
+    await campagne.choisirLEvaluateur(session('admin'), agents.fatou, agents.dg);
+    const sans = await campagne.choisirLEvaluateur(session('admin'), agents.fatou, null);
+    expect(sans.agents.find((a) => a.employeeId === agents.fatou)?.choisi).toBeNull();
+    expect((await campagne.accueil(session('awa'))).equipe.map((a) => a.employeeId)).toContain(
+      agents.fatou,
+    );
+  });
+
+  it('refuse l’agent comme son propre évaluateur, un évaluateur inconnu, une fiche transmise, un agent hors campagne', async () => {
+    for (const [agent, evaluateur, status, code] of [
+      [agents.fatou, agents.fatou, 422, 'campagne.evaluateur_soi_meme'],
+      [agents.fatou, randomUUID(), 422, 'campagne.evaluateur_introuvable'],
+      [agents.ibou, agents.dg, 409, 'campagne.fiche_transmise'],
+      [agents.dg, agents.awa, 404, 'campagne.agent_introuvable'],
+      [agents.lamine, agents.awa, 404, 'campagne.agent_introuvable'],
+    ] as const) {
+      await expect(
+        campagne.choisirLEvaluateur(session('admin'), agent, evaluateur),
+      ).rejects.toMatchObject({ problem: { status, code } });
+    }
+  });
+
+  it('remet à zéro la fiche d’un agent, et garde ses objectifs (ADR-0271)', async () => {
+    await expect(campagne.remettreAZero(session('awa'), agents.ibou)).rejects.toMatchObject({
+      problem: { status: 403, code: 'campagne.administration_reservee' },
+    });
+    const avant = await campagne.administration(session('admin'));
+    expect(avant.agents.find((a) => a.employeeId === agents.ibou)?.avancement).toBe(
+      'transmise_a_la_dch',
+    );
+
+    const apres = await campagne.remettreAZero(session('admin'), agents.ibou);
+    const ibou = apres.agents.find((a) => a.employeeId === agents.ibou)!;
+    expect([ibou.avancement, ibou.transmise]).toEqual([null, false]);
+    // La fiche repart de l'auto-évaluation, avec ses objectifs.
+    const auto = await campagne.monAuto(session('ibou'));
+    expect(auto.etat).toBe('a_faire');
+    expect(auto.objectifs.length).toBeGreaterThan(0);
+    const n1 = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
+    expect([n1.autoEvaluation, n1.etatDeLEvaluation, n1.valideeLe, n1.dch]).toEqual([
+      null,
+      'a_faire',
+      null,
+      'en_attente',
+    ]);
+
+    // Le journal d'audit garde qui l'a remise à zéro, et ce qu'elle contenait.
+    const trace = await raw(
+      `SELECT actor_user_id AS auteur, old_data->>'transmise_dch_le' IS NOT NULL AS transmise
+         FROM audit_log
+        WHERE table_name = 'fiches_entretien' AND action = 'UPDATE'
+          AND row_id = (SELECT id FROM fiches_entretien WHERE employee_id = $1 AND annee = $2)
+          AND old_data->>'auto' IS NOT NULL AND new_data->>'auto' IS NULL`,
+      [agents.ibou, ANNEE],
+    );
+    expect(trace.rows).toEqual([{ auteur: ADMIN, transmise: true }]);
+
+    // Une fiche vierge ne change pas ; un agent hors campagne n'a pas de fiche.
+    const encore = await campagne.remettreAZero(session('admin'), agents.ibou);
+    expect(encore.agents.find((a) => a.employeeId === agents.ibou)?.avancement).toBeNull();
+    await expect(campagne.remettreAZero(session('admin'), agents.dg)).rejects.toMatchObject({
+      problem: { status: 404, code: 'campagne.agent_introuvable' },
+    });
+  });
+});
+
+describe('les phases de la campagne', () => {
+  it('à venir, auto-évaluation, évaluation, terminée, et sans période', async () => {
+    const phase = async () => (await campagne.accueil(session('moussa'))).phase;
+    await periode(2, 5, 12);
+    expect(await phase()).toBe('a_venir');
+    await periode(-2, 3, 10);
+    expect(await phase()).toBe('auto_evaluation');
+    expect((await campagne.accueil(session('moussa'))).periode).toEqual({
+      du: jour(-2),
+      autoAu: jour(3),
+      au: jour(10),
+    });
+    await periode(-8, -3, 10);
+    expect(await phase()).toBe('evaluation');
+    await periode(-20, -15, -1);
+    expect(await phase()).toBe('terminee');
+    // Sans fin d'auto-évaluation, toute la période est à l'auto-évaluation.
+    await periode(-8, null, 10);
+    expect(await phase()).toBe('auto_evaluation');
+    await raw(`DELETE FROM evaluation_periodes WHERE tenant_id = $1`, [tenantId]);
+    const sans = await campagne.accueil(session('moussa'));
+    expect([sans.phase, sans.periode]).toEqual(['non_fixee', null]);
+  });
+});
+
+describe('la fixation des objectifs (ADR-0274)', () => {
+  const SUIVANTE = ANNEE + 1;
+  /** La période de la fixation des objectifs de l'année suivante, du … au …, autour d'aujourd'hui. */
+  const fixation = async (du: number, au: number) => {
+    await raw(`DELETE FROM objectifs_periodes WHERE tenant_id = $1`, [tenantId]);
+    await raw(
+      `INSERT INTO objectifs_periodes (id, tenant_id, annee, du, au) VALUES ($1,$2,$3,$4,$5)`,
+      [randomUUID(), tenantId, SUIVANTE, jour(du), jour(au)],
+    );
+  };
+  const objectif = (n: number, echeance: string | null = `${SUIVANTE}-06-30`) => ({
+    objectif: `Objectif ${n}`,
+    indicateur: `Indicateur ${n}`,
+    echeance,
+  });
+  const vide = { objectif: '', indicateur: '', echeance: null };
+  const dansLEquipe = async (qui: Nom, agent: Nom) =>
+    (await campagne.accueil(session(qui))).objectifs?.equipe.find(
+      (a) => a.employeeId === agents[agent],
+    );
+
+  beforeAll(async () => {
+    // L'évaluation de l'année est terminée : ses fiches sont verrouillées (ADR-0273).
+    await periode(-20, -15, -1);
+  });
+
+  it('avant l’ouverture de sa période, rien ne l’annonce', async () => {
+    expect((await campagne.accueil(session('awa'))).objectifs).toBeNull();
+    await expect(campagne.objectifsDeLAgent(session('awa'), agents.moussa)).rejects.toMatchObject({
+      problem: { status: 404, code: 'campagne.objectifs_introuvables' },
+    });
+    await fixation(2, 20);
+    expect((await campagne.accueil(session('awa'))).objectifs).toBeNull();
+    await expect(
+      campagne.enregistrerLesObjectifs(session('awa'), agents.moussa, [objectif(1)]),
+    ).rejects.toMatchObject({ problem: { status: 404, code: 'campagne.objectifs_introuvables' } });
+  });
+
+  it('l’administration fixe ses dates : dans l’année des objectifs, après la fin de l’évaluation', async () => {
+    const janvier = { du: `${SUIVANTE}-01-05`, au: `${SUIVANTE}-01-31` };
+    await expect(campagne.fixerLesDatesDesObjectifs(session('awa'), janvier)).rejects.toMatchObject(
+      { problem: { status: 403, code: 'campagne.administration_reservee' } },
+    );
+    const v = await campagne.fixerLesDatesDesObjectifs(session('admin'), janvier);
+    expect(v.objectifs).toEqual({ annee: SUIVANTE, periode: janvier, phase: 'a_venir' });
+    expect(datesDesObjectifsSchema.safeParse({ du: janvier.au, au: janvier.du }).success).toBe(
+      false,
+    );
+    await expect(
+      campagne.fixerLesDatesDesObjectifs(session('admin'), {
+        du: `${ANNEE}-12-28`,
+        au: janvier.au,
+      }),
+    ).rejects.toMatchObject({ problem: { status: 422, code: 'campagne.dates_hors_annee' } });
+    // L'évaluation finit avant la fixation des objectifs, d'un côté comme de l'autre.
+    const jusquEnJanvier = { du: jour(-20), autoAu: jour(-15), au: `${SUIVANTE}-01-10` };
+    await expect(campagne.fixerLesDates(session('admin'), jusquEnJanvier)).rejects.toMatchObject({
+      problem: { status: 422, code: 'campagne.evaluation_apres_les_objectifs' },
+    });
+    await raw(`DELETE FROM objectifs_periodes WHERE tenant_id = $1`, [tenantId]);
+    await campagne.fixerLesDates(session('admin'), jusquEnJanvier);
+    await expect(
+      campagne.fixerLesDatesDesObjectifs(session('admin'), { ...janvier, du: `${SUIVANTE}-01-10` }),
+    ).rejects.toMatchObject({ problem: { status: 422, code: 'campagne.objectifs_avant_la_fin' } });
+    await periode(-20, -15, -1);
+  });
+
+  it('ouverte, l’accueil donne à l’agent ses objectifs, et au N+1 son équipe dans l’organigramme', async () => {
+    await fixation(0, 10);
+    expect((await campagne.accueil(session('awa'))).objectifs).toEqual({
+      annee: SUIVANTE,
+      periode: { du: jour(0), au: jour(10) },
+      phase: 'ouverte',
+      miens: { transmis: null },
+      equipe: [
+        expect.objectContaining({
+          prenom: 'Ousmane',
+          nom: 'Fall',
+          etat: 'a_fixer',
+          transmisLe: null,
+        }),
+        expect.objectContaining({ prenom: 'Fatou', nom: 'Sall', etat: 'a_fixer' }),
+        expect.objectContaining({ prenom: 'Moussa', nom: 'Sarr', matricule: 'CAMP-MOUSSA' }),
+      ],
+    });
+    // Le sommet de l'organigramme n'en reçoit pas ; son équipe compte Ibou Ndiaye,
+    // dont l'évaluation revient à Awa Diop pour la campagne.
+    const dg = (await campagne.accueil(session('dg'))).objectifs;
+    expect(dg?.miens).toBeNull();
+    expect(dg?.equipe.map((a) => a.nom)).toEqual(['Diop', 'Ndiaye']);
+    // Un stage n'en reçoit pas non plus ; un compte sans dossier n'a ni objectifs ni équipe.
+    expect((await campagne.accueil(session('lamine'))).objectifs?.miens).toBeNull();
+    expect((await campagne.accueil(session('admin'))).objectifs).toMatchObject({
+      phase: 'ouverte',
+      miens: null,
+      equipe: [],
+    });
+  });
+
+  it('le N+1 garde un brouillon, que l’agent ne lit pas', async () => {
+    const v = await campagne.enregistrerLesObjectifs(session('awa'), agents.moussa, [
+      objectif(1),
+      vide,
+    ]);
+    expect(v).toMatchObject({
+      annee: SUIVANTE,
+      phase: 'ouverte',
+      objectifs: [objectif(1), vide],
+      etat: 'en_cours',
+      transmisLe: null,
+      modifiable: true,
+    });
+    expect(v.agent).toMatchObject({
+      prenom: 'Moussa',
+      nom: 'Sarr',
+      evaluateur: { prenom: 'Awa', nom: 'Diop' },
+    });
+    expect((await campagne.accueil(session('moussa'))).objectifs?.miens).toEqual({
+      transmis: null,
+    });
+    expect((await dansLEquipe('awa', 'moussa'))?.etat).toBe('en_cours');
+  });
+
+  it('ne les transmet pas incomplets, et dit ce qui manque', async () => {
+    await expect(
+      campagne.transmettreLesObjectifs(session('awa'), agents.moussa, [
+        objectif(1, `${ANNEE}-12-31`),
+        { ...objectif(2), indicateur: ' ' },
+      ]),
+    ).rejects.toMatchObject({
+      problem: {
+        status: 422,
+        code: 'campagne.objectifs_incomplets',
+        detail: `À compléter : l’échéance de l’objectif 1 (en ${SUIVANTE}), l’indicateur de réussite de l’objectif 2, les objectifs (3 au moins).`,
+      },
+    });
+    await expect(
+      campagne.transmettreLesObjectifs(
+        session('awa'),
+        agents.moussa,
+        [1, 2, 3, 4, 5, 6].map((n) => objectif(n)),
+      ),
+    ).rejects.toMatchObject({ problem: { detail: 'À compléter : les objectifs (5 au plus).' } });
+    // Le brouillon n'a pas bougé.
+    expect((await campagne.objectifsDeLAgent(session('awa'), agents.moussa)).objectifs).toEqual([
+      objectif(1),
+      vide,
+    ]);
+  });
+
+  it('transmis à l’agent, ils deviennent les objectifs de sa fiche de l’année, et ne changent plus', async () => {
+    const lireLesObjectifs = async (annee: number) =>
+      (
+        await raw(`SELECT objectifs FROM fiches_entretien WHERE employee_id = $1 AND annee = $2`, [
+          agents.moussa,
+          annee,
+        ])
+      ).rows[0]?.objectifs as unknown;
+    const deLEvaluation = await lireLesObjectifs(ANNEE);
+    const quatre = [
+      objectif(1),
+      objectif(2, `${SUIVANTE}-09-30`),
+      vide,
+      { ...objectif(3, `${SUIVANTE}-12-31`), objectif: '  Objectif 3  ' },
+    ];
+    const v = await campagne.transmettreLesObjectifs(session('awa'), agents.moussa, quatre);
+    // La ligne restée vide ne part pas.
+    const transmis = [
+      objectif(1),
+      objectif(2, `${SUIVANTE}-09-30`),
+      objectif(3, `${SUIVANTE}-12-31`),
+    ];
+    expect(v).toMatchObject({
+      objectifs: transmis,
+      etat: 'transmis',
+      transmisLe: AUJOURD_HUI,
+      modifiable: false,
+    });
+    expect((await campagne.accueil(session('moussa'))).objectifs?.miens).toEqual({
+      transmis: {
+        objectifs: transmis,
+        le: AUJOURD_HUI,
+        par: { prenom: 'Awa', nom: 'Diop', poste: 'Responsable du département' },
+      },
+    });
+    expect(await dansLEquipe('awa', 'moussa')).toMatchObject({
+      etat: 'transmis',
+      transmisLe: AUJOURD_HUI,
+    });
+    // Sur la fiche de l'année des objectifs, ceux qu'appréciera l'évaluation de
+    // fin d'année ; la fiche de l'évaluation de cette année ne bouge pas.
+    expect(await lireLesObjectifs(SUIVANTE)).toEqual(
+      transmis.map((o) => ({
+        id: expect.any(String),
+        intitule: o.objectif,
+        indicateurs: o.indicateur,
+        echeance: o.echeance,
+      })),
+    );
+    expect(await lireLesObjectifs(ANNEE)).toEqual(deLEvaluation);
+    for (const geste of [
+      () => campagne.enregistrerLesObjectifs(session('awa'), agents.moussa, quatre),
+      () => campagne.transmettreLesObjectifs(session('awa'), agents.moussa, quatre),
+    ]) {
+      await expect(geste()).rejects.toMatchObject({
+        problem: { status: 409, code: 'campagne.objectifs_transmis' },
+      });
+    }
+  });
+
+  it('ne s’ouvre qu’au N+1 de l’organigramme, pas à l’évaluateur de la campagne', async () => {
+    for (const [qui, agent] of [
+      // Awa Diop évalue Ibou Ndiaye pour la campagne ; son N+1 : Cheikh Mbaye.
+      ['awa', 'ibou'],
+      // Cheikh Mbaye évalue Ousmane Fall ; son N+1 : Awa Diop.
+      ['dg', 'ousmane'],
+      ['awa', 'lamine'],
+      ['moussa', 'fatou'],
+    ] as const) {
+      await expect(campagne.objectifsDeLAgent(session(qui), agents[agent])).rejects.toMatchObject({
+        problem: { status: 404, code: 'campagne.agent_hors_equipe' },
+      });
+    }
+    const ibou = await campagne.objectifsDeLAgent(session('dg'), agents.ibou);
+    expect([ibou.etat, ibou.modifiable]).toEqual(['a_fixer', true]);
+  });
+
+  it('après la fin de sa période, ils se lisent et ne s’écrivent plus', async () => {
+    await fixation(-10, -1);
+    const fatou = await campagne.objectifsDeLAgent(session('awa'), agents.fatou);
+    expect([fatou.phase, fatou.etat, fatou.modifiable]).toEqual(['terminee', 'a_fixer', false]);
+    await expect(
+      campagne.enregistrerLesObjectifs(session('awa'), agents.fatou, [objectif(1)]),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.objectifs_fermes' } });
+    const moussa = (await campagne.accueil(session('moussa'))).objectifs;
+    expect(moussa?.phase).toBe('terminee');
+    expect(moussa?.miens?.transmis?.objectifs).toHaveLength(3);
+    await raw(`DELETE FROM objectifs_periodes WHERE tenant_id = $1`, [tenantId]);
+  });
+});
+
+describe('les notes des objectifs (ADR-0275)', () => {
+  it('une fiche écrite avec les lettres d’avant se relit en notes : A 4, D 1', async () => {
+    const { rows } = await raw(
+      `SELECT objectifs FROM fiches_entretien WHERE employee_id = $1 AND annee = $2`,
+      [agents.ibou, ANNEE],
+    );
+    const [o1, o2] = (rows[0].objectifs as { id: string }[]).map((o) => o.id);
+    await raw(
+      `UPDATE fiches_entretien SET auto = $3::jsonb WHERE employee_id = $1 AND annee = $2`,
+      [
+        agents.ibou,
+        ANNEE,
+        JSON.stringify({
+          ...autoEvaluationVide(),
+          objectifs: {
+            [o1!]: { niveau: 'A', resultats: 'Fait.', commentaire: '' },
+            [o2!]: { niveau: 'D', resultats: 'Pas encore.', commentaire: '' },
+          },
+        }),
+      ],
+    );
+    const { auto } = await campagne.monAuto(session('ibou'));
+    expect(auto.objectifs[o1!]).toEqual({ note: 4, resultats: 'Fait.', commentaire: '' });
+    expect(auto.objectifs[o2!]?.note).toBe(1);
+  });
+});

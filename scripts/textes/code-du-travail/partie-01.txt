@@ -1,0 +1,243 @@
+%% page 3
+REPUBLIQUE DU SENEGAL
+Un Peuple – Un But – Une Foi
+Loi n°
+portant Code du Travail
+
+TITRE PREMIER.- DES DISPOSITIONS GÉNÉRALES
+
+Article premier.- Objet
+Le présent Code fixe les règles régissant les relations de travail entre employeurs et travailleurs.
+
+Article 2.- Champ d’application
+Le présent Code s’applique aux relations individuelles et collectives de travail entre travailleurs et employeurs ainsi qu’entre ces derniers, les apprentis et les stagiaires.
+Quels que soient le lieu de la conclusion du contrat et la résidence de l'une ou de l'autre partie, tout contrat de travail conclu pour être exécuté au Sénégal est soumis aux dispositions du présent Code.
+Les personnes nommées dans un emploi permanent dans un cadre de l’Administration publique ne sont pas soumises aux dispositions du présent Code.
+
+Article 3.- Définitions
+Au sens du présent Code, on entend par :
+- **allocation :** somme versée au travailleur en cas de suspension du contrat de travail ;
+- **appréciation des risques :** processus global d’identification, d’analyse et d’évaluation des risques auxquels sont exposés les travailleurs. L’appréciation des risques est réalisée de façon systématique et itérative par l’employeur, avec la participation des travailleurs. Elle s’appuie sur des éléments factuels du milieu de travail et peut être complétée par des enquêtes plus approfondies ;
+- **avantage social :** prestation offerte par l’employeur en vue d’améliorer les conditions de vie des travailleurs ;
+- **centrale syndicale ou confédération :** union syndicale regroupant au moins cinq (5) syndicats professionnels de différents secteurs ou branches d’activité ;
+- **contrat d'apprentissage :** contrat par lequel un employeur ou un maître d’apprentissage s'engage à assurer une formation professionnelle méthodique et complète dispensée dans l'entreprise ou le lieu d’apprentissage et, éventuellement, dans un centre de formation, à un apprenti qui s'oblige en retour à travailler pour cet employeur ou maître d’apprentissage pendant une durée déterminée ; est également assimilé à un contrat d’apprentissage le contrat conclu entre un employeur, un centre de formation, un institut ou une université et un élève, un étudiant ou un apprenti pour permettre à ce dernier de recevoir une formation théorique et pratique, en alternance ;
+%% page 4
+- **contrat d’engagement à l’essai :** contrat par lequel un employeur et un travailleur, en vue de conclure un contrat de travail définitif, verbal ou écrit, décident au préalable, dans le cadre d’un engagement à l’essai, d'apprécier, notamment pour le premier, la qualité des services du travailleur et son rendement, et pour le second, la qualité de vie et des conditions de travail, la rémunération, la sécurité et santé au travail ainsi que le climat social ;
+- **contrat de stage :** contrat par lequel un employeur s'engage à assurer à une personne appelée stagiaire, l'acquisition d'une expérience et d'aptitudes professionnelles pour faciliter son accès à l’emploi et son insertion dans le milieu professionnel ;
+- **contrat de travail :** contrat par lequel une personne physique, appelée travailleur, s’engage à mettre son activité professionnelle, moyennant rémunération, sous la direction et l’autorité d’une autre personne physique ou morale, appelée employeur ;
+- **contrat de travail à durée déterminée** : contrat de travail dont la durée est précisée à l'avance suivant la volonté des parties. Un contrat de travail passé pour l'exécution d'un ouvrage déterminé ou la réalisation d'une entreprise dont la durée ne peut être préalablement fixée avec précision est assimilé à un contrat à durée déterminée. Un contrat dont le terme est subordonné à un événement futur et certain dont la date n'est pas exactement connue est également assimilé à un contrat à durée déterminée ;
+- **contrat de travail à durée indéterminée :** contrat de travail dont le terme n’est pas fixé à l’avance. Il peut être conclu à temps plein ou à temps partiel ;
+- **contrat de travail d'équipe :** contrat par lequel un groupe de travailleurs s’engage conjointement auprès d’un employeur pour accomplir une prestation de travail ;
+- **contrat de travail en alternance :** contrat de travail de type particulier par lequel le travailleur exerce une activité professionnelle rémunérée en entreprise, en alternance avec des périodes de formation professionnelle théorique dispensées dans un organisme agréé, en vue de l’acquisition d’une qualification professionnelle reconnue ;
+- **convention collective de travail :** accord relatif aux conditions de travail conclu entre, d'une part, les représentants d'un ou plusieurs syndicats de travailleurs ou les délégués du personnel, et, d'autre part, un ou plusieurs groupements d'employeurs ou un ou plusieurs employeurs pris individuellement ;
+- **démission :** rupture non équivoque du contrat de travail à l’initiative du travailleur ;
+- **déplacement :** exécution d’une prestation de travail hors du lieu habituel d’emploi du travailleur, décidée par l’employeur, pour une durée inférieure ou égale à six (6) mois consécutifs ;
+- **détachement :** mise à disposition temporaire d’un travailleur d’une société à une autre d’un même groupe ;
+- **dialogue social :** tous types de négociation, de consultation ou simplement d'échange d'informations entre des représentants du Gouvernement, des employeurs et des travailleurs sur des questions présentant un intérêt commun relatives à la politique économique et sociale ;
+%% page 5
+- **différend collectif** : différend qui oppose un groupe de travailleurs à un ou plusieurs employeurs ayant un objet professionnel et portant sur un ou plusieurs droits ou intérêts collectifs existants ou futurs ;
+- **différend individuel :** différend qui oppose un ou plusieurs travailleurs à leur employeur et portant sur un ou plusieurs droits individuels à l’occasion de l'exécution du contrat de travail ;
+- **discrimination :** toute distinction, exclusion ou préférence fondée, notamment sur la race, la couleur, l'âge, le sexe, l'activité syndicale, l'appartenance à une religion, une confrérie ou une secte, l'opinion politique, l'ascendance nationale, l'ethnie, l'origine sociale, le handicap, la grossesse, la situation de famille, l'état de santé, le statut sérologique, l’apparence physique, l’exercice d’un mandat électif, qui a pour effet de rompre ou d'altérer l'égalité des chances ou de traitement en matière d'emploi ou de profession ;
+- **employeur :** personne physique ou morale qui conclut le contrat de travail, verse la rémunération et exerce, directement ou par l’intermédiaire de ses représentants, le pouvoir de direction, de contrôle et de sanction à l’égard du travailleur ; elle constitue une entreprise au sens du présent Code ;
+- **enfant :** toute personne âgée de moins de dix-huit (18) ans ;
+- **entreprise extérieure :** entreprise qui effectue des travaux ou des prestations de service dans l’établissement ou les dépendances d’une entreprise utilisatrice. Sont exclues de la définition des entreprises extérieures les entreprises de travail temporaire et les agences de placement ;
+- **établissement :** groupe de personnes travaillant en commun en un lieu déterminé tel qu’une usine, un local ou un chantier sous une autorité commune représentant l'entreprise. Un établissement donné relève toujours d'une entreprise. Un établissement unique et indépendant constitue à la fois une entreprise et un établissement. Exceptionnellement, l'établissement peut ne comporter qu'une seule personne ;
+- **fédération syndicale :** union syndicale regroupant au moins deux (2) syndicats professionnels d’un même secteur ou d’une même branche d’activité ;
+- **grève :** cessation concertée et collective du travail en vue d’appuyer des revendications professionnelles ;
+- **harcèlement moral** : conduite se manifestant par des comportements, paroles, actes ou gestes répétés qui sont hostiles ou non désirés et portant atteinte à la dignité ou à l’intégrité morale ou physique du travailleur et ou entraînant, pour celui-ci, un milieu de travail néfaste. Une seule conduite grave peut constituer du harcèlement moral, si elle porte une telle atteinte et produit un effet nocif continu pour le travailleur ;
+- **harcèlement sexuel :** tout comportement non désiré à connotation sexuelle s’exprimant physiquement, verbalement ou non, ou tout autre comportement fondé sur le sexe, ayant pour effet de porter atteinte à la dignité des femmes et des hommes ;
+- **indemnité :** élément de rémunération ayant pour but de compenser ou de réparer une sujétion ou une perte subie par le travailleur ;
+%% page 6
+- **intéressement :** gratification que l’employeur peut accorder aux travailleurs lorsque les objectifs de l’établissement ou de l’entreprise sont atteints. Il prend la forme d’une prime supplémentaire versée en fin d’année ou tout autre dispositif similaire, plus favorable ou ayant le même objet ;
+- **jeune travailleur :** toute personne âgée d’au moins seize (16) ans et de moins de dix-huit (18) ans admise à exercer une activité salariée en vertu d’un contrat de travail et soumise à des règles particulières de protection en raison de son âge ;
+- **jour férié :** jour de repos considéré par la loi comme fête religieuse ou civile ;
+- **jour ouvrable :** jour consacré au travail et aux activités professionnelles. Il s’agit de tous les jours de la semaine à l’exclusion de celui réservé au repos hebdomadaire et des jours fériés chômés en vertu de la loi ou de stipulations conventionnelles ;
+- **jour ouvré :** jour effectivement travaillé dans l’entreprise ou l’établissement ;
+- **licenciement :** rupture du contrat de travail à l’initiative de l’employeur ;
+- **licenciement pour motif économique :** rupture du contrat de travail pour un ou plusieurs motifs résultant d’une suppression ou d’une transformation d’emploi, consécutive, notamment à :
+  1. des difficultés économiques de nature à compromettre durablement l’équilibre financier de l’entreprise ;
+  2. des mutations technologiques ;
+  3. une réorganisation de l’entreprise nécessaire à la sauvegarde de la compétitivité de l’entreprise ;
+  4. la cessation d'activité de l'entreprise consécutive à l’un des motifs visés aux points 1 à 3;
+- **licenciement pour motif personnel :** rupture du contrat de travail à l’initiative de l’employeur pour un motif inhérent à la personne du travailleur ;
+- ***lock-out* :** fermeture temporaire de tout ou partie d'une entreprise ou d'un établissement, décidée par l'employeur en cas de différend collectif de travail ;
+- **mise en disponibilité :** position du travailleur qui, pour convenances personnelles, et après y avoir été autorisé, cesse momentanément son service chez l'employeur ;
+- **mutation :** affectation du travailleur, décidée par l’employeur, pour une durée supérieure à six (6) mois, vers un lieu autre que son lieu de résidence habituelle ou d’emploi habituel, en vue d’y exécuter sa prestation de travail ;
+- **négociation collective :** négociation entre un ou plusieurs employeurs, groupes ou organisations d’employeurs, d’une part, et une ou plusieurs organisations ou groupes de travailleurs, d’autre part, visant à fixer les conditions de travail et d’emploi et ou à régler les relations entre eux ;
+- **participation :** mécanisme qui permet à une entreprise de distribuer une partie de ses bénéfices à ses travailleurs ;
+- **placement :** activité consistant à rapprocher les offres et les demandes d’emploi, sans que l’intermédiaire ne devienne partie aux relations de travail susceptibles d’en découler ;
+%% page 7
+- **plan d’épargne d’entreprise :** système d’épargne collective donnant aux travailleurs de l’entreprise la faculté, avec le concours de celle-ci, de procéder ou de participer à la constitution d’un portefeuille de valeurs mobilières ;
+- **plan d’épargne retraite :** système d’épargne collective qui a pour objet l'acquisition et la jouissance de droits viagers personnels ou le versement d'un capital, payables au titulaire à compter, au plus tôt, de la date de liquidation de sa pension dans un régime obligatoire d'assurance vieillesse ;
+- **plan social :** convention conclue entre un employeur et des travailleurs en vue de rompre des contrats de travail pour un motif économique sans recourir aux licenciements ;
+- **préavis :** délai de prévenance que l’employeur ou le travailleur respecte avant la prise d’effet d’une modification, d’une suspension ou d’une rupture du contrat de travail ;
+- **prime :** somme versée par l’employeur au travailleur pour le récompenser ou le motiver ;
+- **rémunération :** salaire, accessoires de salaire et tout autre avantage, en espèces ou en nature, accordé directement ou indirectement par l'employeur au travailleur en raison de l’emploi de ce dernier ;
+- **salaire :** contrepartie de la prestation de travail fournie par le travailleur au profit de l’employeur ;
+- **sanction disciplinaire :** toute mesure prise à l’encontre du travailleur par l’employeur à la suite d’un comportement fautif ;
+- **sous-traitance :** convention par laquelle une entreprise, dite entreprise principale, fait appel à une autre, dite entreprise sous-traitante, pour l’exécution d’un ouvrage ou d’un service entrant dans l’objet de l’activité de l’entreprise principale ;
+- **syndicat professionnel :** groupement de personnes exerçant la même profession, des métiers similaires ou des professions connexes concourant à l'établissement de produits ou à la fourniture de services déterminés, ou exerçant la même profession libérale et ayant pour objet exclusif l’étude et la défense des droits ainsi que des intérêts matériels, moraux et sociaux tant collectifs qu’individuels de ses membres ;
+- **télétravail :** mode d’organisation ou de réalisation du travail dans lequel la prestation, qui s’exécute habituellement en tout ou partie dans les locaux de l’employeur, est effectuée par un travailleur hors de ces locaux, en utilisant les technologies de l’information et de la communication ;
+- **temps de travail :** période pendant laquelle le travailleur est exclusivement à la disposition de l'employeur et se conforme à ses directives, sans pouvoir vaquer librement à ses occupations personnelles ;
+- **transfert :** opération par laquelle un travailleur quitte une société pour entrer définitivement au service d’une autre d’un même groupe ;
+- **travail de valeur égale :** travail qui exige des travailleurs un ensemble comparable de connaissances professionnelles consacrées par un titre, par un diplôme ou par une pratique professionnelle, de capacités découlant de l'expérience acquise, de responsabilités et de charge physique ou mentale ;
+%% page 8
+- **travail forcé :** tout travail ou service exigé d'un individu sous la menace d'une peine quelconque ou d'une sanction et pour lequel ledit individu ne s'est pas offert de plein gré. Toutefois, le terme « travail forcé ou obligatoire » ne comprend pas :
+  • tout travail ou service exigé en vertu des lois sur le service militaire et affecté à des travaux ayant un caractère militaire ;
+  • tout travail ou service exigé d'un individu en cas de guerre, de sinistre ou de circonstance mettant en danger, ou risquant de mettre en danger, la vie ou les conditions normales d'existence de l'ensemble ou d'une partie de la population ;
+  • les travaux au bénéfice de la société tels qu'ils sont définis par la règlementation pénale ;
+- **travailleur :** personne physique, quels que soient son sexe et sa nationalité, qui s’est engagée à mettre son activité professionnelle, moyennant rémunération, sous la direction et l’autorité d’une autre personne physique ou morale, publique ou privée. Pour la détermination de la qualité de travailleur, il n’est tenu compte ni du statut juridique de l’employeur, ni de celui du travailleur ;
+- **violence physique :** usage de la force physique contre une autre personne ou un groupe de personnes qui entraîne un préjudice physique, sexuel ou moral ;
+- **violence verbale :** toute menace, insulte ou communication orale visant à humilier ou dénigrer une personne.
+
+TITRE II.- DES DROITS ET LIBERTÉS AU TRAVAIL
+
+Article 4.- Droit au travail et égalité d’accès
+Le droit au travail est reconnu à chaque citoyen comme un droit fondamental. L'État met tout en œuvre pour l'aider à trouver un emploi et à le conserver lorsqu'il l'a obtenu.
+L'État assure l'égalité des chances et de traitement des citoyens en ce qui concerne l'accès à la formation professionnelle et à l'emploi, sans distinction fondée, notamment sur l’origine sociale, l’ascendance nationale, la couleur, la race, le sexe, l’âge, le handicap, ou les convictions politiques, syndicales ou religieuses.
+
+Article 5.- Interdiction du travail forcé ou obligatoire
+Le travail forcé ou obligatoire est interdit.
+
+Article 6.- Interdiction des pires formes de travail des enfants
+Les pires formes de travail sont interdites aux enfants de tout âge.
+Sont notamment considérées comme pires formes de travail des enfants :
+  a) toutes les formes d'esclavage ou pratiques analogues, telles que la vente et la traite des enfants, la servitude pour dettes et le servage ainsi que le travail forcé ou obligatoire, y compris le recrutement forcé ou obligatoire des enfants en vue de leur utilisation dans des conflits armés ;
+  b) l'utilisation, le recrutement ou l'offre d'un enfant à des fins de prostitution, de production de matériel pornographique ou de spectacles pornographiques ;
+%% page 9
+  c) l'utilisation, le recrutement ou l'offre d'un enfant aux fins d'activités illicites, notamment pour la production et le trafic de stupéfiants, tels que les définissent les conventions internationales pertinentes ;
+  d) les travaux qui, par leur nature ou les conditions dans lesquelles ils s'exercent, sont susceptibles de nuire à la santé, à la sécurité ou à la moralité de l'enfant.
+
+Article 7.- Liberté d’association et droit de négociation collective
+La liberté d’association et le droit de négociation collective sont reconnus aux travailleurs et aux employeurs.
+
+Article 8.- Protection de la liberté syndicale
+Il est interdit à tout employeur de prendre en considération l'appartenance à un syndicat ou l'exercice d'une activité syndicale pour prendre des décisions en ce qui concerne, notamment l'embauche, la conduite et la répartition des tâches, la formation professionnelle, l'avancement, la rémunération ainsi que l'octroi d'avantages sociaux et les mesures de discipline.
+L’employeur ne peut utiliser aucun moyen de pression direct ou indirect en faveur ou à l'encontre d'une organisation syndicale quelconque.
+
+Article 9.- Principe d’égalité professionnelle
+L'employeur veille au respect de l'égalité professionnelle, de l'égalité de traitement et de la non-discrimination en matière d'embauche, de formation et pendant l'exécution du contrat de travail, notamment pour l'attribution des tâches, les conditions de travail, la rémunération et autres avantages sociaux, la promotion et lors de la rupture du contrat de travail.
+
+Article 10.- Interdiction de la discrimination
+La discrimination est interdite sous toutes ses formes, qu'elle soit directe ou indirecte.
+Toutefois, les différences de traitement sont admises, lorsqu'elles obéissent à des exigences professionnelles essentielles et déterminantes, pour autant que l'objectif soit légitime et les exigences proportionnées. Il en est ainsi, notamment des distinctions fondées sur l'âge, l'état de santé et le handicap.
+Les différences de traitement fondées sur l'âge et justifiées par les conditions de travail ou la protection de la sécurité et la santé du jeune travailleur ainsi que celles fondées sur l'état de santé ayant entraîné une inaptitude constatée par voie médicale ne constituent pas une discrimination. Il en est de même des mesures prises en faveur des personnes handicapées et visant à favoriser l'égalité des chances et de traitement.
+
+Article 11.- Présomption de discrimination et nullité des actes discriminatoires
+La discrimination à l'égard du travailleur ou du candidat à un emploi est présumée lorsque ce dernier présente des indices sérieux et concordants ou si l'employeur ne conteste pas les allégations portées contre lui.
+Toute disposition, toute mesure ou tout acte de discrimination pris en violation de la règlementation en matière de discrimination est nul et de nul effet.
+%% page 10
+De même, est nul et de nul effet, le licenciement du travailleur faisant suite à une action en justice engagée par ce dernier ou en sa faveur sur le fondement des dispositions sur la discrimination, lorsqu'il est établi que le licenciement est motivé par ladite action.
+
+Article 12.- Protection des témoins en matière de discrimination
+Aucun travailleur ne peut être sanctionné pour avoir témoigné sur des agissements ou des actes perpétrés en violation d'un droit découlant de l'application des dispositions sur la discrimination. En pareil cas, le travailleur dispose des mêmes voies de recours prévues à l’article 15 du présent Code.
+Est nul et de nul effet tout acte, toute mesure et toute décision à l’encontre du travailleur témoin, lorsqu’il est établi qu’ils sont motivés par son témoignage.
+
+Article 13.- Action judiciaire des organisations syndicales en matière de discrimination
+Les organisations syndicales de travailleurs peuvent, sur habilitation écrite de tout travailleur victime de discrimination, exercer en justice toutes les actions résultant de l'application des dispositions sur la discrimination relativement aux faits portant un préjudice direct ou indirect à l'intérêt individuel ou collectif de leurs membres.
+
+Article 14.- Droit de recours juridictionnel du candidat victime de discrimination
+Le candidat à l'emploi victime de discrimination dispose, au même titre que le travailleur, d'un droit de recours auprès du tribunal du travail pour paiement de dommages-intérêts, en réparation du préjudice subi.
+
+Article 15.- Sanctions judiciaires des actes de discrimination
+La juridiction compétente saisie, à cet effet, constate la nullité de l'acte et ordonne la réintégration du travailleur, sous astreinte, sans préjudice du paiement des salaires échus et à échoir.
+Lorsque l'acte de discrimination porte sur l'octroi d'un avantage pécuniaire ou matériel, le juge rétablit la victime dans ses droits et peut, éventuellement, allouer des dommages-intérêts.
+
+Article 16.- Droit à un milieu de travail sûr et sain
+Tout travailleur a droit à un milieu de travail sûr et sain.
+
+Article 17.- Interdiction de toute forme de violence ou de harcèlement au travail
+Toutes les formes de violence ou de harcèlement au travail sont interdites.
+
+Article 18.- Champ d’application des dispositions relatives à la violence et au harcèlement
+Les dispositions relatives à la violence et au harcèlement s’appliquent :
+- aux relations entre le travailleur et l’employeur ou toute personne exerçant un pouvoir hiérarchique dans l’entreprise ;
+- aux relations entre les travailleurs ;
+%% page 11
+- aux personnes en formation, aux stagiaires, aux apprentis et aux personnes à la recherche d’un emploi.
+Ces dispositions s’appliquent à la violence et au harcèlement pouvant survenir par le fait ou à l’occasion de la relation de travail, que ce soit sur ou en dehors du lieu de travail.
+
+Article 19.- Prévention et action contre la violence et le harcèlement au travail
+L’employeur prend, avec diligence, les moyens raisonnables pour prévenir les actes de harcèlement et ou de violence en milieu de travail provenant de toute personne et, lorsqu’une telle conduite est portée à sa connaissance, pour la faire cesser.
+
+Article 20.- Protection contre les représailles en matière de violence ou de harcèlement au travail
+Aucun travailleur, stagiaire ou apprenti ne peut être sanctionné pour avoir refusé de subir ou dénoncé des agissements de violence et de harcèlement de la part de l’employeur, de son représentant ou de toute personne qui, agissant de façon individuelle ou collective et abusant de l'autorité que lui confèrent ses fonctions, a donné des ordres, proféré des menaces, imposé des contraintes ou exercé des pressions de toute nature sur lui.
+Aucun travailleur, stagiaire ou apprenti ne peut être sanctionné pour avoir témoigné des agissements définis à l'alinéa premier du présent article ou pour les avoir relatés.
+Nul ne peut prendre en considération le fait que la personne intéressée a refusé de subir ou dénoncé les agissements de violence ou de harcèlement ou qu'une personne témoin les a relatés, pour prendre une décision, notamment en matière d'embauche, de rémunération, de formation, d'affectation, de qualification, de classification, de promotion professionnelle, de mutation, de déplacement, de sanctions disciplinaires, de renouvellement, de prolongation ou de résiliation de contrat de travail.
+
+Article 21.- Charge de la preuve et responsabilité en matière de violence ou de harcèlement au travail
+La charge de la preuve des faits faisant présumer l'existence de violence ou de harcèlement incombe à la victime. Il revient à la partie défenderesse de prouver que ces agissements ne sont pas constitutifs de violence ou de harcèlement.
+Tout auteur de violence ou de harcèlement s’expose à des dommages-intérêts sans préjudice des sanctions pénales prévues aux articles 449 et 450 du présent Code.
+
+Article 22.- Droit à l’expression directe et collective du travailleur
+Dans les entreprises, le travailleur et ses représentants bénéficient d'un droit à l'expression directe et collective sur le contenu, les conditions d'exercice et l'organisation du travail.
+Cette expression a pour objet de permettre au travailleur de participer à la définition des actions à mettre en œuvre pour améliorer ses conditions de travail, l'organisation du travail, la qualité de la production et l'optimisation de la productivité dans l'unité de travail à laquelle il appartient dans l'entreprise.
+Les opinions que le travailleur, quelle que soit sa position dans la hiérarchie professionnelle, émet dans l'exercice du droit d'expression, ne peuvent motiver une sanction.
+%% page 12
+Les modalités d’application du droit à l’expression directe et collective du travailleur sont fixées par décret.
+
+Article 23.- Protection des droits fondamentaux du travailleur lors du traitement des données à caractère personnel
+La collecte, le traitement, la transmission, le stockage et l’usage des données à caractère personnel, sous quelque forme que ce soit, au sein de l’entreprise, ne peuvent, en aucun cas, porter atteinte aux droits et libertés fondamentaux du travailleur.
+Les conditions de traitement et de conservation des données à caractère personnel sont fixées par la loi portant protection des données à caractère personnel.
+
+Article 24.- Installation et exploitation des systèmes de surveillance et de contrôle
+La surveillance, le contrôle et l’évaluation des travailleurs ne peuvent apporter des restrictions à leurs droits et libertés individuels et collectifs qu’en cas de nécessité justifiée par la tâche à accomplir et uniquement dans des proportions adaptées au but recherché.
+L’employeur prend en compte le respect de la vie privée du travailleur dans l’installation et l’exploitation d’un système de surveillance, de contrôle ou d’évaluation des travailleurs dans l’entreprise, notamment la vidéosurveillance, la géolocalisation, l’accès par badge ou par dispositif biométrique, l’accès aux documents, fichiers ou courriers électroniques ou physiques d’un travailleur.
+L’installation et l’exploitation d’un système de surveillance sont soumises aux conditions déterminées par la loi portant protection des données à caractère personnel.
+
+Article 25.- Protection contre la restriction des droits et libertés du travailleur
+L’employeur ne peut restreindre les droits et libertés du travailleur qu’en cas de nécessité justifiée par la nature de la tâche à accomplir et uniquement dans des proportions adaptées au but recherché.
+
+Article 26.- Encadrement de l’exercice des droits et libertés au travail
+Les droits et libertés au travail s’exercent dans le respect des principes garantis par la Constitution ainsi que des lois et règlements en vigueur.
+
+TITRE III.- DES SYNDICATS PROFESSIONNELS
+
+Chapitre premier.- De la constitution et de la dissolution des syndicats professionnels
+
+Article 27.- Liberté de constitution et d’adhésion syndicale
+Les personnes exerçant la même profession ou métier, ou des professions ou métiers similaires ou connexes qui concourent à l'établissement de produits ou à la fourniture de services déterminés, ou la même profession libérale, peuvent constituer librement un syndicat professionnel.
+Tout travailleur ou employeur peut adhérer librement à un syndicat dans le cadre de sa profession.
+%% page 13
+Les jeunes travailleurs âgés d’au moins seize (16) ans peuvent adhérer librement aux syndicats.
+
+Article 28.- Conditions d’éligibilité aux fonctions de direction syndicale
+Les membres sénégalais de tout syndicat professionnel chargés de l'administration ou de la direction du syndicat ont l’obligation d’avoir leur domicile légal au Sénégal, de jouir de leurs droits civils et de ne pas avoir fait l'objet d’une condamnation entraînant la perte du droit de vote conformément aux lois électorales en vigueur.
+Tout ressortissant étranger adhérent à un syndicat peut, s'il remplit les conditions prévues à l’alinéa premier du présent article et s'il est domicilié au Sénégal depuis cinq (5) ans au moins, accéder aux fonctions d'administration et de direction de ce syndicat, à condition que son pays d'origine accorde le même droit aux ressortissants sénégalais.
+
+Article 29.- Formalités administratives de constitution de syndicat
+Les fondateurs de tout syndicat professionnel déposent les statuts et la liste des personnes qui, à un titre quelconque, sont chargées de son administration et de sa direction. Pour chacune de ces personnes, il est indiqué les prénoms, nom, filiation, date et lieu de naissance, de même que l’origine professionnelle.
+Ce dépôt a lieu en quatre (4) exemplaires contre accusé de réception à l’inspection du travail et de la sécurité sociale du ressort. L’accusé de réception emporte reconnaissance de la personnalité juridique du syndicat.
+Dans un délai de dix (10) jours ouvrables suivant ce dépôt, l’inspecteur du travail et de la sécurité sociale adresse au Ministre chargé du Travail, au Ministre chargé de l'Intérieur et au procureur de la République un rapport d'enquête précisant les circonstances et conditions de formation du syndicat, notamment la date, le lieu du congrès constitutif et les origines professionnelles des membres, avec ampliation des statuts et de la liste des membres chargés de l'administration et de la direction du syndicat.
+
+Article 30.- Enquête du procureur de la République
+Le procureur de la République vérifie la régularité des statuts ainsi que la situation, au regard des prescriptions des articles 28 et 29 du présent Code, de chacun des membres chargés de l'administration et de la direction du syndicat.
+Dans un délai de quinze (15) jours ouvrables suivant la date de transmission du dossier par l'inspecteur du travail et de la sécurité sociale au procureur de la République, ce dernier notifie directement ses conclusions au Ministre chargé de l'Intérieur, à l'inspecteur du travail et de la sécurité sociale ainsi qu'aux dirigeants du syndicat.
+Lorsque les conclusions du procureur de la République font état d’une violation des dispositions relatives à la constitution des syndicats professionnels, les fondateurs disposent d’un délai de trente (30) jours ouvrables à compter de la notification pour procéder à la régularisation.
+%% page 14
+À l’expiration de ce délai, si la régularisation n’est pas intervenue, le procureur de la République peut requérir de la juridiction compétente la dissolution judiciaire du syndicat.
+
+Article 31.- Renouvellement des instances des syndicats
+Les organes chargés de l’administration et de la direction du syndicat sont renouvelés au moins une fois tous les trois (3) ans en assemblée générale ou congrès. Ils sont rééligibles.
+
+Article 32.- Modification des statuts et ou de la composition des instances
+La modification des statuts et les changements dans la direction et l’administration du syndicat obéissent aux conditions prévues pour le dépôt initial.
+
+Article 33.- Maintien de la qualité de membre
+Les personnes ayant cessé d’exercer leur fonction ou leur profession peuvent continuer à faire partie d'un syndicat professionnel, sous réserve d'avoir exercé l'une ou l'autre au moins pendant un (1) an.
+
+Article 34.- Liberté de démission
+Tout membre d'un syndicat professionnel peut s'en retirer à tout instant, nonobstant toute clause contraire, sans préjudice du droit du syndicat de réclamer la cotisation afférente aux six (6) mois qui suivent la démission.
+
+Article 35.- Rapport annuel d’activité du syndicat
+Au cours du premier semestre suivant la fin de chaque exercice, les dirigeants de tout syndicat communiquent au Ministre chargé du Travail et au procureur de la République du ressort un rapport annuel faisant apparaître, notamment les statistiques de ses effectifs, le montant des cotisations encaissées et la situation financière, en particulier le bilan du syndicat pour l’année précédente.
+
+Article 36.- Dissolution de syndicat et liquidation des biens
+En cas de dissolution volontaire, statutaire ou judiciaire, les biens du syndicat sont dévolus conformément aux statuts. À défaut de dispositions statutaires, cette dévolution est effectuée selon les règles déterminées par l’assemblée générale ou, en cas de carence, par décision judiciaire.
+En aucun cas, ces biens ne peuvent être répartis entre les membres.
+Les organisations syndicales d’employeurs et de travailleurs ne peuvent faire l’objet d’aucune mesure de dissolution ou de suspension par voie administrative.
+
+Chapitre II.- De la capacité civile et des activités des syndicats professionnels
+
+Article 37.- Personnalité civile et droit d’ester en justice des syndicats
+Les syndicats professionnels jouissent de la personnalité civile. Ils ont le droit d'ester en justice, d'acquérir sans autorisation, à titre gratuit ou onéreux, des biens meubles et immeubles.

@@ -1,0 +1,743 @@
+'use client';
+
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  LIBELLES_DE_L_AVANCEMENT,
+  periodeDEvaluationEnLettres,
+  type AdministrationDeLaCampagne,
+  type AvancementDeLaFiche,
+  type EvaluateurDeLAgent,
+  type PersonneDesignee,
+} from '@teranga/contracts';
+import {
+  Badge,
+  Button,
+  Card,
+  DateInput,
+  EmptyState,
+  Field,
+  Input,
+  Select,
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+  Tr,
+} from '@teranga/ui';
+import { BandeauDePage, TitreDeSection } from '../../../../components/campagne/charte';
+import {
+  BOUTON_DU_BANDEAU,
+  periodeDeLAuto,
+  periodeDeLEvaluationDuN1,
+  RetourALAccueil,
+} from '../../../../components/campagne/fiche';
+import { ChoixDUnAgent, type AgentChoisi } from '../../../../components/complements-fiche';
+import { Repere } from '../../../../components/fiche';
+import { CartePleine, CorpsDefilant } from '../../../../components/gabarit';
+import { messageDe } from '../../../../components/grille-evaluation';
+import { Icon } from '../../../../components/icons';
+import { FenetreImportEmployes } from '../../../../components/import-employes';
+import { Modal, ModalSection } from '../../../../components/modal';
+import { RechercheDuTableau, SqueletteTableau } from '../../../../components/tableau';
+import { api, ApiError } from '../../../../lib/api';
+import { CLE_CAMPAGNE } from '../../../../lib/campagne';
+
+/* ────────────────────────────────────────────────────────────────
+   L'administration de la campagne (ADR-0222), réservée aux comptes
+   d'administration. En tête, l'année et ses grands nombres, avec l'import
+   du fichier du personnel, le même que sur la plateforme. Puis les dates
+   de l'évaluation : le début, la fin de l'auto-évaluation, la fin ; et
+   celles de la fixation des objectifs de l'année suivante (ADR-0274). Enfin,
+   qui évalue qui : chaque agent à évaluer cette année, son N+1 dans
+   l'organigramme, et son évaluateur pour la campagne, au choix de
+   l'administration, sans toucher à l'organigramme. Une fiche commencée se
+   remet à zéro depuis sa ligne (ADR-0271).
+   ──────────────────────────────────────────────────────────────── */
+
+const CLE = [...CLE_CAMPAGNE, 'administration'] as const;
+
+type Filtre = 'tous' | 'sans' | 'hors';
+
+/** Le nom d'une personne désignée. */
+const nomDe = (p: PersonneDesignee) => `${p.prenom} ${p.nom}`;
+
+/** L'évaluateur de la campagne : le choix de l'administration, sinon le N+1 de l'organigramme. */
+const evaluateurDe = (a: EvaluateurDeLAgent) => a.choisi ?? a.organigramme;
+
+/** Le mot à taper pour remettre une fiche à zéro. */
+const MOT_DE_LA_REMISE_A_ZERO = 'EFFACER';
+
+/** L'ordre des étapes d'une fiche : ce qu'une remise à zéro efface en dépend. */
+const RANG: Record<AvancementDeLaFiche, number> = {
+  auto_commencee: 1,
+  auto_transmise: 2,
+  evaluation_commencee: 3,
+  transmise_a_l_agent: 4,
+  validee: 5,
+  transmise_a_la_dch: 6,
+};
+
+/** Les boutons ronds au bout d'une ligne : remettre à zéro, modifier. */
+const BOUTON_DE_LIGNE =
+  'inline-flex size-8 items-center justify-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-primary/[0.08] hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40';
+
+/** Un nom ou un matricule, sans accents ni capitales, pour la recherche. */
+const plat = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+export default function AdministrationDeLaCampagnePage() {
+  const qc = useQueryClient();
+  const vue = useQuery({
+    queryKey: CLE,
+    queryFn: () => api<AdministrationDeLaCampagne>('/campagne/administration'),
+    retry: false,
+  });
+  const [importOuvert, setImportOuvert] = useState(false);
+  const v = vue.data;
+
+  if (vue.error) {
+    return (
+      <div className="flex flex-col gap-4">
+        <RetourALAccueil libelle="Accueil" />
+        <Card>
+          <EmptyState
+            className="py-12"
+            icon={<Icon name="settings" size={22} />}
+            title={
+              vue.error instanceof ApiError
+                ? vue.error.problem.title
+                : 'Impossible d’afficher l’administration de la campagne'
+            }
+          />
+        </Card>
+      </div>
+    );
+  }
+
+  const agents = v?.agents ?? [];
+  return (
+    <div className="flex flex-col gap-4">
+      <RetourALAccueil libelle="Accueil" />
+      <BandeauDePage
+        icone="settings"
+        titre="Administration de la campagne"
+        sousTitre={v ? `Évaluation annuelle ${v.annee}` : 'Évaluation annuelle'}
+        action={
+          <button
+            type="button"
+            className={BOUTON_DU_BANDEAU}
+            title="Importer l’effectif depuis un classeur .xlsx"
+            onClick={() => setImportOuvert(true)}
+          >
+            <Icon name="upload_file" size={17} />
+            Importer le personnel
+          </button>
+        }
+        reperes={
+          v
+            ? [
+                <Repere key="agents" label="Agents à évaluer" valeur={String(agents.length)} />,
+                <Repere
+                  key="sans"
+                  label="Sans évaluateur"
+                  valeur={String(agents.filter((a) => !evaluateurDe(a)).length)}
+                  ton={agents.some((a) => !evaluateurDe(a)) ? 'attente' : undefined}
+                />,
+                <Repere
+                  key="hors"
+                  label="Évaluations hors organigramme"
+                  valeur={String(agents.filter((a) => a.choisi).length)}
+                />,
+              ]
+            : undefined
+        }
+      />
+      {v ? <Dates key={JSON.stringify(v.periode)} vue={v} /> : null}
+      {v ? <DatesDesObjectifs key={JSON.stringify(v.objectifs.periode)} vue={v} /> : null}
+      <QuiEvalueQui vue={v} />
+      {importOuvert ? (
+        <FenetreImportEmployes
+          onClose={() => {
+            setImportOuvert(false);
+            // Des agents peuvent arriver, ou changer de N+1.
+            void qc.invalidateQueries({ queryKey: CLE_CAMPAGNE });
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Les dates de l'évaluation : le début de la période, la fin de
+ * l'auto-évaluation, la fin de la période. Dessous, les deux temps tels que
+ * les agents les liront sur leur accueil.
+ */
+function Dates({ vue: v }: { vue: AdministrationDeLaCampagne }) {
+  const qc = useQueryClient();
+  const [du, setDu] = useState(v.periode?.du ?? '');
+  const [autoAu, setAutoAu] = useState(v.periode?.autoAu ?? '');
+  const [au, setAu] = useState(v.periode?.au ?? '');
+  const enregistrer = useMutation({
+    mutationFn: () =>
+      api<AdministrationDeLaCampagne>('/campagne/administration/dates', {
+        method: 'PUT',
+        body: { du, autoAu, au },
+      }),
+    onSuccess: async (nouvelle) => {
+      qc.setQueryData(CLE, nouvelle);
+      await qc.invalidateQueries({ queryKey: CLE_CAMPAGNE, exact: true });
+    },
+  });
+  const autoAvant = du !== '' && autoAu !== '' && autoAu < du;
+  const finAvant = autoAu !== '' && au !== '' && au < autoAu;
+  const complete = du !== '' && autoAu !== '' && au !== '' && !autoAvant && !finAvant;
+  const change =
+    du !== (v.periode?.du ?? '') ||
+    autoAu !== (v.periode?.autoAu ?? '') ||
+    au !== (v.periode?.au ?? '');
+  const apercu = complete ? { du, autoAu, au } : null;
+
+  return (
+    <section aria-labelledby="dates-de-l-evaluation" className="mt-5 flex flex-col gap-4">
+      <TitreDeSection id="dates-de-l-evaluation">Dates de l’évaluation</TitreDeSection>
+      <Card>
+        <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-3">
+          <Field label="Début de la période" htmlFor="periode-du" required>
+            <DateInput id="periode-du" value={du} onChange={(e) => setDu(e.target.value)} />
+          </Field>
+          <Field
+            label="Fin de l’auto-évaluation"
+            htmlFor="periode-auto"
+            required
+            error={
+              autoAvant
+                ? 'La fin de l’auto-évaluation doit suivre le début de la période'
+                : undefined
+            }
+          >
+            <DateInput
+              id="periode-auto"
+              min={du || undefined}
+              value={autoAu}
+              aria-invalid={autoAvant || undefined}
+              onChange={(e) => setAutoAu(e.target.value)}
+            />
+          </Field>
+          <Field
+            label="Fin de la période"
+            htmlFor="periode-au"
+            required
+            error={
+              finAvant ? 'La fin de la période doit suivre la fin de l’auto-évaluation' : undefined
+            }
+          >
+            <DateInput
+              id="periode-au"
+              min={autoAu || du || undefined}
+              value={au}
+              aria-invalid={finAvant || undefined}
+              onChange={(e) => setAu(e.target.value)}
+            />
+          </Field>
+        </div>
+        <div className="flex flex-col gap-3 border-t border-line-soft px-5 py-3.5 sm:flex-row sm:items-center sm:gap-5">
+          <dl className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-ink-muted">
+            {apercu ? (
+              <>
+                <div>
+                  <dt className="inline font-semibold text-ink">Auto-évaluation : </dt>
+                  <dd className="inline">{periodeDeLAuto(apercu)}</dd>
+                </div>
+                <div>
+                  <dt className="inline font-semibold text-ink">Évaluation : </dt>
+                  <dd className="inline">{periodeDeLEvaluationDuN1(apercu)}</dd>
+                </div>
+              </>
+            ) : null}
+          </dl>
+          {enregistrer.error ? (
+            <p role="alert" className="text-[12px] text-danger">
+              {messageDe(enregistrer.error)}
+            </p>
+          ) : null}
+          <Button
+            className="h-9 shrink-0 px-5"
+            disabled={!complete || !change}
+            loading={enregistrer.isPending}
+            onClick={() => enregistrer.mutate()}
+          >
+            Enregistrer
+          </Button>
+        </div>
+      </Card>
+    </section>
+  );
+}
+
+/**
+ * Les dates de la fixation des objectifs de l'année suivante (ADR-0274) :
+ * elle commence dans l'année des objectifs, après la fin de l'évaluation.
+ * Les deux champs s'alignent sur ceux de l'évaluation, au-dessus.
+ */
+function DatesDesObjectifs({ vue: v }: { vue: AdministrationDeLaCampagne }) {
+  const qc = useQueryClient();
+  const { annee, periode } = v.objectifs;
+  const [du, setDu] = useState(periode?.du ?? '');
+  const [au, setAu] = useState(periode?.au ?? '');
+  const enregistrer = useMutation({
+    mutationFn: () =>
+      api<AdministrationDeLaCampagne>('/campagne/administration/dates-des-objectifs', {
+        method: 'PUT',
+        body: { du, au },
+      }),
+    onSuccess: async (nouvelle) => {
+      qc.setQueryData(CLE, nouvelle);
+      await qc.invalidateQueries({ queryKey: CLE_CAMPAGNE, exact: true });
+    },
+  });
+  const finAvant = du !== '' && au !== '' && au < du;
+  const complete = du !== '' && au !== '' && !finAvant;
+  const change = du !== (periode?.du ?? '') || au !== (periode?.au ?? '');
+  const apercu = complete ? periodeDEvaluationEnLettres({ du, au }) : null;
+
+  return (
+    <section aria-labelledby="dates-des-objectifs" className="mt-5 flex flex-col gap-4">
+      <TitreDeSection id="dates-des-objectifs">
+        Dates de la fixation des objectifs {annee}
+      </TitreDeSection>
+      <Card>
+        <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-3">
+          <Field label="Début de la période" htmlFor="objectifs-du" required>
+            <DateInput
+              id="objectifs-du"
+              min={`${annee}-01-01`}
+              max={`${annee}-12-31`}
+              value={du}
+              onChange={(e) => setDu(e.target.value)}
+            />
+          </Field>
+          <Field
+            label="Fin de la période"
+            htmlFor="objectifs-au"
+            required
+            error={finAvant ? 'La fin de la période doit suivre son début' : undefined}
+          >
+            <DateInput
+              id="objectifs-au"
+              min={du || `${annee}-01-01`}
+              value={au}
+              aria-invalid={finAvant || undefined}
+              onChange={(e) => setAu(e.target.value)}
+            />
+          </Field>
+        </div>
+        <div className="flex flex-col gap-3 border-t border-line-soft px-5 py-3.5 sm:flex-row sm:items-center sm:gap-5">
+          <dl className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-ink-muted">
+            {apercu ? (
+              <div>
+                <dt className="inline font-semibold text-ink">Fixation des objectifs : </dt>
+                <dd className="inline">
+                  {apercu.charAt(0).toLocaleUpperCase('fr') + apercu.slice(1)}
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+          {enregistrer.error ? (
+            <p role="alert" className="text-[12px] text-danger">
+              {messageDe(enregistrer.error)}
+            </p>
+          ) : null}
+          <Button
+            className="h-9 shrink-0 px-5"
+            disabled={!complete || !change}
+            loading={enregistrer.isPending}
+            onClick={() => enregistrer.mutate()}
+          >
+            Enregistrer
+          </Button>
+        </div>
+      </Card>
+    </section>
+  );
+}
+
+/**
+ * Qui évalue qui : chaque agent à évaluer cette année, son N+1 dans
+ * l'organigramme, et son évaluateur pour la campagne. On cherche un agent
+ * par son nom ou son matricule, et on filtre les agents sans évaluateur, ou
+ * les évaluations hors organigramme.
+ */
+function QuiEvalueQui({ vue: v }: { vue: AdministrationDeLaCampagne | undefined }) {
+  const [recherche, setRecherche] = useState('');
+  const [filtre, setFiltre] = useState<Filtre>('tous');
+  const [ouvert, setOuvert] = useState<EvaluateurDeLAgent | null>(null);
+  const [aRemettre, setARemettre] = useState<EvaluateurDeLAgent | null>(null);
+  const agents = v?.agents ?? [];
+  const cherche = plat(recherche.trim());
+  const visibles = agents.filter(
+    (a) =>
+      (filtre === 'tous' ||
+        (filtre === 'sans' && !evaluateurDe(a)) ||
+        (filtre === 'hors' && a.choisi)) &&
+      (!cherche ||
+        plat(`${a.prenom} ${a.nom}`).includes(cherche) ||
+        plat(a.matricule).includes(cherche)),
+  );
+
+  return (
+    <section aria-labelledby="qui-evalue-qui" className="mt-5 flex flex-col gap-4">
+      <TitreDeSection
+        id="qui-evalue-qui"
+        droite={
+          <>
+            <RechercheDuTableau
+              valeur={recherche}
+              onChange={setRecherche}
+              placeholder="Nom ou matricule…"
+              libelle="Rechercher un agent"
+            />
+            <Select
+              aria-label="Évaluateur"
+              value={filtre}
+              onChange={(e) => setFiltre(e.target.value as Filtre)}
+              className="h-8 w-auto text-[12.5px]"
+            >
+              <option value="tous">Tous les agents</option>
+              <option value="sans">Sans évaluateur</option>
+              <option value="hors">Hors organigramme</option>
+            </Select>
+          </>
+        }
+      >
+        Qui évalue qui
+      </TitreDeSection>
+      <CartePleine>
+        {!v ? (
+          <CorpsDefilant>
+            <SqueletteTableau />
+          </CorpsDefilant>
+        ) : visibles.length === 0 ? (
+          <CorpsDefilant className="grid place-items-center py-10">
+            <EmptyState
+              icon={<Icon name="groups" size={22} />}
+              title={agents.length === 0 ? 'Aucun agent à évaluer' : 'Aucun résultat'}
+            />
+          </CorpsDefilant>
+        ) : (
+          <Table>
+            <THead>
+              <tr>
+                <Th>Agent</Th>
+                <Th className="max-md:hidden">Direction</Th>
+                <Th className="max-lg:hidden">N+1 dans l’organigramme</Th>
+                <Th className="max-sm:hidden">Évaluateur de la campagne</Th>
+                <Th>
+                  <span className="sr-only">Actions</span>
+                </Th>
+              </tr>
+            </THead>
+            <TBody>
+              {visibles.map((a) => (
+                <Ligne
+                  key={a.employeeId}
+                  agent={a}
+                  onModifier={() => setOuvert(a)}
+                  onRemettreAZero={() => setARemettre(a)}
+                />
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CartePleine>
+      {ouvert ? <FenetreEvaluateur agent={ouvert} onClose={() => setOuvert(null)} /> : null}
+      {aRemettre ? (
+        <FenetreRemiseAZero agent={aRemettre} onClose={() => setARemettre(null)} />
+      ) : null}
+    </section>
+  );
+}
+
+/** L'évaluateur d'un agent, dans sa cellule : son nom, et « Hors organigramme » s'il y a lieu. */
+function Evaluateur({ agent: a }: { agent: EvaluateurDeLAgent }) {
+  const e = evaluateurDe(a);
+  if (!e) return <Badge tone="orange">À désigner</Badge>;
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="font-semibold text-ink-strong">{nomDe(e)}</span>
+      {a.choisi ? <Badge tone="teal">Hors organigramme</Badge> : null}
+    </span>
+  );
+}
+
+function Ligne({
+  agent: a,
+  onModifier,
+  onRemettreAZero,
+}: {
+  agent: EvaluateurDeLAgent;
+  onModifier: () => void;
+  onRemettreAZero: () => void;
+}) {
+  return (
+    <Tr>
+      <Td>
+        <span className="block font-semibold text-ink-strong">
+          {a.prenom} {a.nom}
+        </span>
+        <span className="font-mono text-[11px] tracking-tight text-ink-muted">{a.matricule}</span>
+        {/* Sur un téléphone, l'évaluateur passe sous le nom. */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 sm:hidden">
+          <span className="text-[12px] text-ink-muted">Évaluateur :</span>
+          <Evaluateur agent={a} />
+        </div>
+      </Td>
+      <Td className="max-md:hidden">{a.direction}</Td>
+      <Td className="max-lg:hidden">{a.organigramme ? nomDe(a.organigramme) : null}</Td>
+      <Td className="max-sm:hidden">
+        <Evaluateur agent={a} />
+      </Td>
+      <Td className="w-12 text-right whitespace-nowrap">
+        {/* Seule une fiche commencée se remet à zéro (ADR-0271). */}
+        {a.avancement ? (
+          <button
+            type="button"
+            onClick={onRemettreAZero}
+            aria-label={`Remettre à zéro la fiche de ${a.prenom} ${a.nom}`}
+            title="Remettre à zéro"
+            className={BOUTON_DE_LIGNE}
+          >
+            <Icon name="replay" size={17} />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={onModifier}
+          disabled={a.transmise}
+          aria-label={`Évaluateur de ${a.prenom} ${a.nom}`}
+          title={a.transmise ? 'Fiche transmise à la DCH' : 'Modifier l’évaluateur'}
+          className={BOUTON_DE_LIGNE}
+        >
+          <Icon name="edit" size={17} />
+        </button>
+      </Td>
+    </Tr>
+  );
+}
+
+/**
+ * Le choix de l'évaluateur d'un agent : tout agent en activité. Revenir à
+ * l'organigramme rend la fiche au N+1 de l'organigramme.
+ */
+function FenetreEvaluateur({
+  agent: a,
+  onClose,
+}: {
+  agent: EvaluateurDeLAgent;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const actuel = evaluateurDe(a);
+  const [choisi, setChoisi] = useState<AgentChoisi | null>(
+    actuel ? { id: actuel.employeeId, nom: nomDe(actuel), matricule: actuel.matricule } : null,
+  );
+  const enregistrer = useMutation({
+    mutationFn: (evaluateurEmployeeId: string | null) =>
+      api<AdministrationDeLaCampagne>(`/campagne/administration/evaluateurs/${a.employeeId}`, {
+        method: 'PUT',
+        body: { evaluateurEmployeeId },
+      }),
+    onSuccess: async (nouvelle) => {
+      qc.setQueryData(CLE, nouvelle);
+      await qc.invalidateQueries({ queryKey: CLE_CAMPAGNE, exact: true });
+      onClose();
+    },
+  });
+  const enCours = (id: string | null) => enregistrer.isPending && enregistrer.variables === id;
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Évaluateur de ${a.prenom} ${a.nom}`}
+      maxWidth="max-w-md"
+      footer={
+        <>
+          {a.choisi && a.organigramme ? (
+            <Button
+              variant="secondary"
+              className="mr-auto"
+              loading={enCours(null)}
+              onClick={() => enregistrer.mutate(null)}
+            >
+              Revenir à l’organigramme
+            </Button>
+          ) : null}
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button
+            disabled={!choisi || choisi.id === actuel?.employeeId}
+            loading={choisi ? enCours(choisi.id) : false}
+            onClick={() => choisi && enregistrer.mutate(choisi.id)}
+          >
+            Enregistrer
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[12.5px]">
+          <dt className="text-ink-muted">Matricule</dt>
+          <dd className="font-mono tracking-tight text-ink-strong">{a.matricule}</dd>
+          <dt className="text-ink-muted">N+1 dans l’organigramme</dt>
+          <dd className="font-semibold text-ink-strong">
+            {a.organigramme ? nomDe(a.organigramme) : 'Aucun'}
+          </dd>
+        </dl>
+        <Field label="Évaluateur de la campagne" htmlFor="evaluateur" required>
+          <ChoixDUnAgent
+            id="evaluateur"
+            agent={choisi}
+            exclure={a.employeeId}
+            onChoisir={setChoisi}
+          />
+        </Field>
+        {enregistrer.error ? (
+          <p role="alert" className="text-[12px] text-danger">
+            {messageDe(enregistrer.error)}
+          </p>
+        ) : null}
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Remettre à zéro la fiche d'un agent (ADR-0271) : ce que la campagne y a
+ * écrit s'efface, et la fiche repart de l'auto-évaluation. Comme pour vider
+ * l'import, la fenêtre dit ce qui part et ce qui reste, et demande un mot à
+ * taper.
+ */
+function FenetreRemiseAZero({
+  agent: a,
+  onClose,
+}: {
+  agent: EvaluateurDeLAgent;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [saisie, setSaisie] = useState('');
+  const remettre = useMutation({
+    mutationFn: () =>
+      api<AdministrationDeLaCampagne>(
+        `/campagne/administration/fiches/${a.employeeId}/remise-a-zero`,
+        { method: 'POST' },
+      ),
+    onSuccess: (nouvelle) => {
+      qc.setQueryData(CLE, nouvelle);
+      // Les pages de la campagne relisent la fiche.
+      void qc.invalidateQueries({ queryKey: CLE_CAMPAGNE });
+      onClose();
+    },
+  });
+  const rang = a.avancement ? RANG[a.avancement] : 0;
+  const efface = [
+    'L’auto-évaluation',
+    rang >= RANG.evaluation_commencee
+      ? 'L’évaluation du N+1, avec la partie réservée à la hiérarchie'
+      : null,
+    rang >= RANG.validee ? 'La validation par l’agent, et les commentaires du N+2' : null,
+    rang >= RANG.transmise_a_la_dch ? 'La transmission à la DCH' : null,
+  ].filter((l): l is string => l !== null);
+  const reste = [
+    'Les objectifs de l’année',
+    'L’évaluateur de la campagne',
+    'Les dates de la campagne et le compte de l’agent',
+    'La trace de la remise à zéro, dans le journal d’audit',
+  ];
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Remettre à zéro la fiche de ${a.prenom} ${a.nom} ?`}
+      subtitle="Cette action ne peut pas être annulée."
+      maxWidth="max-w-lg"
+      footer={
+        <>
+          {remettre.error ? (
+            <p
+              role="alert"
+              className="min-w-0 flex-1 rounded-lg bg-danger-soft px-3 py-2 text-xs font-semibold text-danger"
+            >
+              {messageDe(remettre.error)}
+            </p>
+          ) : null}
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button
+            variant="danger"
+            disabled={saisie.trim().toUpperCase() !== MOT_DE_LA_REMISE_A_ZERO}
+            loading={remettre.isPending}
+            onClick={() => remettre.mutate()}
+          >
+            Remettre à zéro
+          </Button>
+        </>
+      }
+    >
+      <ModalSection title="La fiche">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[12.5px]">
+          <dt className="text-ink-muted">Matricule</dt>
+          <dd className="font-mono tracking-tight text-ink-strong">{a.matricule}</dd>
+          <dt className="text-ink-muted">Avancement</dt>
+          <dd className="font-semibold text-ink-strong">
+            {a.avancement ? LIBELLES_DE_L_AVANCEMENT[a.avancement] : null}
+          </dd>
+        </dl>
+      </ModalSection>
+
+      <ModalSection title="Ce qui sera effacé">
+        <ul className="flex flex-col gap-1.5 text-[12.5px] text-ink">
+          {efface.map((l) => (
+            <li key={l} className="flex items-start gap-2">
+              <Icon name="close" size={14} className="mt-0.5 shrink-0 text-danger" />
+              <span>{l}</span>
+            </li>
+          ))}
+        </ul>
+      </ModalSection>
+
+      <ModalSection title="Ce qui reste">
+        <ul className="flex flex-col gap-1.5 text-[12.5px] text-ink">
+          {reste.map((l) => (
+            <li key={l} className="flex items-start gap-2">
+              <Icon name="check" size={14} className="mt-0.5 shrink-0 text-ink-muted" />
+              <span>{l}</span>
+            </li>
+          ))}
+        </ul>
+      </ModalSection>
+
+      <ModalSection title="Confirmation">
+        <label
+          htmlFor="remise-a-zero"
+          className="mb-2 block text-[12.5px] font-medium text-ink-strong"
+        >
+          Tapez <span className="font-mono font-bold">{MOT_DE_LA_REMISE_A_ZERO}</span> pour
+          confirmer
+        </label>
+        <Input
+          id="remise-a-zero"
+          autoComplete="off"
+          value={saisie}
+          onChange={(e) => setSaisie(e.target.value)}
+          placeholder={MOT_DE_LA_REMISE_A_ZERO}
+        />
+      </ModalSection>
+    </Modal>
+  );
+}

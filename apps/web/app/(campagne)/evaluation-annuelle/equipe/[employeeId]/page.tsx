@@ -1,0 +1,446 @@
+'use client';
+
+import { useParams } from 'next/navigation';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  ceQuiManqueALEvaluationDuN1,
+  dateEnLettres,
+  nomDeLaFiche,
+  personnelDeLaFiche,
+  type AutoEvaluation,
+  type EcritureDeLEvaluation,
+  type EvaluationDeLAgent,
+} from '@teranga/contracts';
+import { Button, Card, Checkbox, EmptyState, Skeleton } from '@teranga/ui';
+import {
+  BarreDeTransmission,
+  useEnregistrementAuto,
+} from '../../../../../components/campagne/enregistrement';
+import {
+  CommentairesDuN2Lus,
+  FicheDuN1,
+} from '../../../../../components/campagne/evaluation-du-n1';
+import {
+  CarteDEtape,
+  Etapes,
+  jourCourt,
+  periodeDeLAuto,
+  periodeDeLEvaluation,
+  RetourALAccueil,
+  statutDeLAgent,
+  statutDeMonEvaluation,
+  type Statut,
+} from '../../../../../components/campagne/fiche';
+import { ApercuEnPdf } from '../../../../../components/campagne/apercu';
+import { BandeauDeLAgent } from '../../../../../components/campagne/charte';
+import { TelechargerLaFiche } from '../../../../../components/campagne/telecharger';
+import { Confirmation, messageDe } from '../../../../../components/grille-evaluation';
+import { Icon } from '../../../../../components/icons';
+import { api, ApiError } from '../../../../../lib/api';
+import { CLE_CAMPAGNE } from '../../../../../lib/campagne';
+import { aujourdhui } from '../../../../../lib/temps';
+
+/* ────────────────────────────────────────────────────────────────
+   Un agent de l'équipe, ouvert depuis sa carte (ADR-0211) : sa fiche,
+   comme sur l'accueil ; ses étapes, l'auto-évaluation, l'évaluation par le
+   N+1 et la transmission à la DCH, côte à côte sur un grand écran ; puis,
+   l'auto-évaluation transmise, la fiche S1/EN05 entière, que le N+1 remplit
+   (ADR-0216). Avant, la page s'arrête aux étapes : toute carte de l'équipe
+   s'ouvre, l'auto-évaluation faite ou non (ADR-0257).
+   Chaque modification s'enregistre seule ; la barre au bas de la page dit
+   où en est l'enregistrement (ADR-0254) et porte « Valider », qui montre la
+   fiche en PDF à la place de la saisie, puis « Modifier » (ADR-0260), et
+   « Transmettre pour signature » (ADR-0241, ADR-0284).
+   En la transmettant à l'agent, le N+1 peut envoyer la fiche au N+2 en
+   même temps, d'une case de la confirmation ; plus tard, ce n'est plus
+   possible (ADR-0278). Transmise, l'évaluation se lit ; l'agent la valide
+   (ADR-0217), sans pouvoir la renvoyer (ADR-0267), pendant que le N+2 la
+   commente : ses commentaires ferment la partie réservée une fois transmis
+   (ADR-0218), sans étape propre dans la bande (ADR-0252). La barre du bas
+   suit l'agent et le N+2, porte « Reprendre au N+2 » tant que le N+2 garde
+   la fiche, puis « Transmettre à la DCH » une fois la fiche validée et
+   revenue du N+2, ou dès la validation sans envoi au N+2 (ADR-0221). Dès
+   la transmission à l'agent, le bandeau porte « Télécharger » : la
+   fiche complète, partie réservée comprise (ADR-0279). Cette page ne
+   s'ouvre qu'à l'évaluateur de l'agent.
+   ──────────────────────────────────────────────────────────────── */
+
+export default function AgentDeLEquipePage() {
+  const { employeeId } = useParams<{ employeeId: string }>();
+  const vue = useQuery({
+    queryKey: [...CLE_CAMPAGNE, 'equipe', employeeId],
+    queryFn: () => api<EvaluationDeLAgent>(`/campagne/equipe/${employeeId}`),
+    retry: false,
+    // La saisie garde son propre état : relire la fiche au retour sur
+    // l'onglet n'apporterait rien.
+    refetchOnWindowFocus: false,
+  });
+  const v = vue.data;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <RetourALAccueil libelle="Mon équipe" />
+      {vue.error ? (
+        <Card>
+          <EmptyState
+            className="py-12"
+            icon={<Icon name="groups" size={22} />}
+            title={
+              vue.error instanceof ApiError
+                ? vue.error.problem.title
+                : 'Impossible d’afficher la fiche de cet agent'
+            }
+          />
+        </Card>
+      ) : !v || !vue.isFetchedAfterMount ? (
+        // La saisie part de la fiche relue à l'ouverture, jamais d'une copie
+        // gardée en mémoire depuis une visite précédente (ADR-0280).
+        <>
+          <Skeleton className="mb-4 h-[158px] w-full rounded-bloc" />
+          <Skeleton className="h-[86px] w-full rounded-bloc" />
+        </>
+      ) : (
+        // Transmise, la fiche repart de zéro, en lecture.
+        <Agent key={v.modifiable ? 'saisie' : 'lecture'} vue={v} />
+      )}
+    </div>
+  );
+}
+
+function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
+  const auto = v.agent.auto ? statutDeLAgent(v.agent.auto) : null;
+  const evaluation = statutDeMonEvaluation(v);
+  const dch = statutDeLaTransmission(v);
+  const n2 = v.commentairesDuN2;
+  const carteDeLAuto = auto ? (
+    <CarteDEtape titre="Auto-évaluation" etat={auto.libelle} periode={periodeDeLAuto(v.periode)} />
+  ) : null;
+  return (
+    <>
+      <BandeauDeLAgent
+        agent={v.agent}
+        action={
+          // La fiche complète, partie réservée comprise, dès la transmission
+          // à l'agent (ADR-0279).
+          v.evaluationTransmiseLe ? (
+            <TelechargerLaFiche
+              chemin={`/campagne/equipe/${v.agent.employeeId}/pdf`}
+              nom={nomDeLaFiche(v.annee, v.agent.matricule, true)}
+              libelle="Télécharger"
+            />
+          ) : undefined
+        }
+      />
+      {/* Les étapes côte à côte : l'auto-évaluation, l'évaluation par le N+1,
+          la DCH. Les commentaires du N+2 se lisent sur la fiche (ADR-0252). */}
+      <Etapes nombre={3}>
+        {carteDeLAuto}
+        <CarteDEtape
+          titre="Évaluation par le N+1"
+          etat={evaluation?.libelle}
+          periode={periodeDeLEvaluation(v.periode)}
+        />
+        <CarteDEtape
+          titre="Transmission à la DCH"
+          etat={dch?.libelle}
+          periode="Direction du Capital Humain"
+        />
+      </Etapes>
+      {/* Sans auto-évaluation transmise, la page s'arrête aux étapes (ADR-0257). */}
+      {v.autoEvaluation ? (
+        <>
+          {v.modifiable ? (
+            <Saisie vue={v} auto={v.autoEvaluation} />
+          ) : (
+            <>
+              <FicheDuN1
+                annee={v.annee}
+                objectifs={v.objectifs}
+                personnel={personnelDeLaFiche(v.agent.personnel)}
+                auto={v.autoEvaluation}
+                evaluation={v.evaluation}
+                reservee={v.reservee}
+                commentairesDuN2={
+                  n2 ? <CommentairesDuN2Lus texte={n2.texte} par={n2.par} le={n2.le} /> : undefined
+                }
+              />
+              <VersLaDCH vue={v} />
+            </>
+          )}
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/** Le corps d'un envoi : l'évaluation et la partie réservée, telles qu'elles sont écrites. */
+const corpsDeLEvaluation = (e: EcritureDeLEvaluation) => e;
+
+/** L'évaluation et la partie réservée, telles que le serveur les rend après un enregistrement. */
+const lireLEvaluation = (r: unknown): EcritureDeLEvaluation => {
+  const vue = r as EvaluationDeLAgent;
+  return { evaluation: vue.evaluation, reservee: vue.reservee };
+};
+
+/** L'évaluation à remplir, qui s'enregistre seule, puis se transmet à l'agent. */
+function Saisie({ vue: v, auto }: { vue: EvaluationDeLAgent; auto: AutoEvaluation }) {
+  const qc = useQueryClient();
+  const chemin = `/campagne/equipe/${v.agent.employeeId}/evaluation`;
+  const { valeur, etat, changer, vider, contenu } = useEnregistrementAuto(
+    chemin,
+    { evaluation: v.evaluation, reservee: v.reservee },
+    corpsDeLEvaluation,
+    { lire: lireLEvaluation },
+  );
+  const [confirmer, setConfirmer] = useState(false);
+  // L'envoi au N+2 en même temps qu'à l'agent, au choix du N+1 (ADR-0278).
+  const [auN2, setAuN2] = useState(false);
+  // Validée, la saisie se replie : la fiche s'affiche en PDF (ADR-0260).
+  const [validee, setValidee] = useState(false);
+  /** Valider, ou revenir à la saisie : la page repart de son haut. */
+  const basculer = (valider: boolean) => {
+    setValidee(valider);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const personnel = personnelDeLaFiche(v.agent.personnel);
+  // L'entretien se tient entre la transmission de l'auto-évaluation et
+  // aujourd'hui (ADR-0265).
+  const entretien = { du: v.agent.auto?.transmiseLe ?? null, au: aujourdhui() };
+  const manque = ceQuiManqueALEvaluationDuN1(
+    valeur.evaluation,
+    valeur.reservee,
+    v.objectifs,
+    personnel,
+    entretien,
+  );
+
+  const transmettre = useMutation({
+    mutationFn: async () => {
+      await vider();
+      return api<EvaluationDeLAgent>(`${chemin}/transmission`, {
+        method: 'POST',
+        body: { ...contenu(), envoyerAuN2: v.n2 !== null && auN2 },
+      });
+    },
+    onSuccess: async (vue) => {
+      qc.setQueryData([...CLE_CAMPAGNE, 'equipe', v.agent.employeeId], vue);
+      await qc.invalidateQueries({ queryKey: CLE_CAMPAGNE, exact: true });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+  });
+
+  return (
+    <>
+      {validee ? (
+        // La fiche entière, partie réservée comprise, telle que la saisie la
+        // remplit, enregistrée ou non.
+        <ApercuEnPdf
+          chemin={`/campagne/equipe/${v.agent.employeeId}/apercu`}
+          corps={valeur}
+          cle={[...CLE_CAMPAGNE, 'equipe', v.agent.employeeId]}
+          titre={`Fiche d’entretien ${v.annee} de ${v.agent.prenom} ${v.agent.nom}`}
+        />
+      ) : (
+        <FicheDuN1
+          annee={v.annee}
+          objectifs={v.objectifs}
+          personnel={personnel}
+          auto={auto}
+          evaluation={valeur.evaluation}
+          reservee={valeur.reservee}
+          entretien={{ agent: `${v.agent.prenom} ${v.agent.nom}`, ...entretien }}
+          onChange={changer}
+        />
+      )}
+      <BarreDeTransmission
+        etat={etat}
+        manque={manque}
+        libelle="Transmettre pour signature"
+        enCours={transmettre.isPending}
+        onTransmettre={() => setConfirmer(true)}
+        avant={
+          validee ? (
+            <Button variant="secondary" className="h-9 px-5" onClick={() => basculer(false)}>
+              <Icon name="edit" size={15} />
+              Modifier
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              className="h-9 px-5"
+              disabled={manque.length > 0 || transmettre.isPending}
+              onClick={() => basculer(true)}
+            >
+              Valider
+            </Button>
+          )
+        }
+      />
+      {confirmer ? (
+        <Confirmation
+          titre="Transmettre l’évaluation ?"
+          libelle="Transmettre"
+          enCours={transmettre.isPending}
+          erreur={transmettre.error ? messageDe(transmettre.error) : null}
+          onConfirmer={() => transmettre.mutate()}
+          onClose={() => {
+            setConfirmer(false);
+            transmettre.reset();
+          }}
+        >
+          {/* Le texte de l'APIX (ADR-0266, ADR-0284). */}
+          Votre évaluation sera transmise à{' '}
+          <span className="font-semibold text-ink-strong">
+            {v.agent.prenom} {v.agent.nom}
+          </span>
+          , sans la partie réservée à la hiérarchie{' '}
+          <strong className="font-semibold text-ink-strong">pour&nbsp;signature</strong>. Elle ne
+          pourra plus être modifiée.
+          {v.n2 ? (
+            // Le N+2 la reçoit en même temps, ou jamais (ADR-0278).
+            <label className="mt-4 flex cursor-pointer items-start gap-3">
+              <Checkbox
+                className="mt-[3px]"
+                checked={auN2}
+                onChange={(ev) => setAuN2(ev.target.checked)}
+              />
+              <span className="font-medium text-ink-strong">
+                Envoyer aussi la fiche au N+2, {v.n2.prenom} {v.n2.nom} pour&nbsp;signature
+              </span>
+            </label>
+          ) : null}
+        </Confirmation>
+      ) : null}
+    </>
+  );
+}
+
+/** La transmission à la DCH, sur sa carte : à faire en orange, faite en vert ; rien avant. */
+function statutDeLaTransmission(v: EvaluationDeLAgent): Statut | null {
+  if (v.dch === 'transmise') {
+    return {
+      libelle: v.transmiseALaDCHLe ? `Transmise le ${jourCourt(v.transmiseALaDCHLe)}` : 'Transmise',
+      ton: 'vert',
+    };
+  }
+  return v.dch === 'a_transmettre' ? { libelle: 'À transmettre', ton: 'orange' } : null;
+}
+
+type GesteVersLaDCH = 'dch' | 'reprise-n2';
+
+/**
+ * Le suivi de la fiche transmise, au bas de la page (ADR-0278) : une ligne
+ * pour l'agent, qui la valide, et une pour le N+2 quand le N+1 a envoyé la
+ * fiche au N+2, chaque ligne avec son jour. Tant que le N+2 garde la fiche,
+ * le N+1 peut la reprendre, pour de bon. Validée par l'agent, revenue du
+ * N+2 ou reprise, ou sans envoi au N+2, le N+1 la transmet à la DCH
+ * (ADR-0221).
+ */
+function VersLaDCH({ vue: v }: { vue: EvaluationDeLAgent }) {
+  const qc = useQueryClient();
+  const [confirmer, setConfirmer] = useState<GesteVersLaDCH | null>(null);
+  const geste = useMutation({
+    mutationFn: (route: GesteVersLaDCH) =>
+      api<EvaluationDeLAgent>(`/campagne/equipe/${v.agent.employeeId}/${route}`, {
+        method: 'POST',
+      }),
+    onSuccess: async (vue) => {
+      setConfirmer(null);
+      qc.setQueryData([...CLE_CAMPAGNE, 'equipe', v.agent.employeeId], vue);
+      await qc.invalidateQueries({ queryKey: CLE_CAMPAGNE, exact: true });
+    },
+  });
+  const transmiseLe = v.evaluationTransmiseLe;
+  const chezLeN2 =
+    v.envoyeeAuN2Le !== null &&
+    (v.etatDesCommentaires === 'a_commenter' || v.etatDesCommentaires === 'en_cours');
+  // La campagne terminée, la fiche est verrouillée : plus de geste (ADR-0273).
+  if (v.phase === 'terminee' || !transmiseLe || v.dch === 'transmise') return null;
+
+  const agent = `${v.agent.prenom} ${v.agent.nom}`;
+  const n2 = v.n2 ? `${v.n2.prenom} ${v.n2.nom}` : null;
+  const recus = v.commentairesDuN2;
+  const chezLAgent = v.valideeLe
+    ? `Validée par ${agent} le ${dateEnLettres(v.valideeLe)}`
+    : `Chez l’agent, ${agent}, depuis le ${dateEnLettres(transmiseLe)}`;
+  const auN2 = !v.envoyeeAuN2Le
+    ? null
+    : chezLeN2
+      ? `Chez le N+2${n2 ? `, ${n2},` : ''} depuis le ${dateEnLettres(v.envoyeeAuN2Le)}`
+      : recus
+        ? `Commentaires du N+2 reçus le ${dateEnLettres(recus.le)}`
+        : v.repriseAuN2Le
+          ? `Reprise au N+2 le ${dateEnLettres(v.repriseAuN2Le)}`
+          : null;
+  const enCours = (route: GesteVersLaDCH) => geste.isPending && geste.variables === route;
+  const fermer = () => {
+    setConfirmer(null);
+    geste.reset();
+  };
+
+  return (
+    <>
+      <div className="sticky bottom-4 z-20">
+        <Card className="flex flex-col gap-3 px-5 py-3.5 shadow-[0_10px_30px_-12px_rgb(0_40_90/0.3)] sm:flex-row sm:items-center sm:gap-5">
+          <div className="min-w-0 flex-1 text-[12px] leading-relaxed text-ink-muted">
+            <p>{chezLAgent}</p>
+            {auN2 ? <p>{auN2}</p> : null}
+            {geste.error && !confirmer ? (
+              <p role="alert" className="mt-1 text-danger">
+                {messageDe(geste.error)}
+              </p>
+            ) : null}
+          </div>
+          {chezLeN2 || v.dch === 'a_transmettre' ? (
+            <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
+              {chezLeN2 ? (
+                <Button
+                  variant="secondary"
+                  className="h-9 px-4"
+                  onClick={() => setConfirmer('reprise-n2')}
+                >
+                  <Icon name="replay" size={15} />
+                  Reprendre au N+2
+                </Button>
+              ) : null}
+              {v.dch === 'a_transmettre' ? (
+                <Button className="h-9 px-5" onClick={() => setConfirmer('dch')}>
+                  <Icon name="task_alt" size={15} />
+                  Transmettre à la DCH
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </Card>
+      </div>
+      {confirmer === 'dch' ? (
+        <Confirmation
+          titre="Transmettre la fiche à la DCH ?"
+          libelle="Transmettre"
+          enCours={enCours('dch')}
+          erreur={geste.error ? messageDe(geste.error) : null}
+          onConfirmer={() => geste.mutate('dch')}
+          onClose={fermer}
+        >
+          La fiche d’évaluation {v.annee} de{' '}
+          <span className="font-semibold text-ink-strong">{agent}</span> sera transmise à la DCH.
+          Elle ne pourra plus être modifiée.
+        </Confirmation>
+      ) : null}
+      {confirmer === 'reprise-n2' ? (
+        <Confirmation
+          titre="Reprendre la fiche au N+2 ?"
+          libelle="Reprendre"
+          enCours={enCours('reprise-n2')}
+          erreur={geste.error ? messageDe(geste.error) : null}
+          onConfirmer={() => geste.mutate('reprise-n2')}
+          onClose={fermer}
+        >
+          {n2 ? <span className="font-semibold text-ink-strong">{n2}</span> : 'Le N+2'} ne pourra
+          plus la commenter, mais en gardera une copie. La reprise est définitive.
+        </Confirmation>
+      ) : null}
+    </>
+  );
+}
