@@ -201,7 +201,8 @@ export default function SuiviDeLaDCHPage() {
 /** Un agent du suivi : son nom et son matricule, sa direction, son N+1, l'étape de sa fiche. */
 function Ligne({ fiche: f }: { fiche: FicheSuivie }) {
   const etape = ETAPES[f.etape];
-  const transmise = f.etape === 'transmise';
+  // Transmise, la fiche s'ouvre ; sa propre fiche, non (ADR-0289).
+  const transmise = f.ouvrable;
   const nom = `${f.prenom} ${f.nom}`;
   return (
     <Tr>

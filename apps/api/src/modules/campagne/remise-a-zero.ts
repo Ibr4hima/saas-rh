@@ -18,6 +18,7 @@ export const COLONNES_DE_LA_CAMPAGNE = [
   'evaluation_par_employee_id',
   'evaluation_transmise_le',
   'envoyee_n2_le',
+  'envoyee_n2_a',
   'validee_le',
   'renvoyee_le',
   'renvoi_mot',

@@ -223,11 +223,11 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0215](0215-formulaire-d-auto-evaluation.md)          | Le formulaire d'auto-évaluation de la campagne, sur la fiche S1/EN05                    | compl. 0216/0280, rév. 0233/0238/0241/0275  |
 | [0216](0216-evaluation-par-le-n1.md)                  | L'évaluation par le N+1 sur la fiche S1/EN05, à côté de l'auto-évaluation de l'agent    | compl. 0217, révisée 6 fois, de 0226 à 0284 |
 | [0217](0217-validation-par-l-agent.md)                | La validation de l'évaluation par l'agent, ou son renvoi au N+1 avec un mot             | compl. 0218/0268, rév. 0220 à 0285 (5 fois) |
-| [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | compl. 0221, révisée 6 fois, de 0226 à 0278 |
+| [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | compl. 0221, révisée 7 fois, de 0226 à 0289 |
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée, révisée par 0243                  |
 | [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223, 0227 et 0258    |
-| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | révisée 8 fois, de 0226 à 0281, compl. 0279 |
-| [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | compl. 0271/0274, rév. 0227/0233            |
+| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | révisée 9 fois, de 0226 à 0289, compl. 0279 |
+| [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | compl. 0271/0274, rév. 0227/0233/0289       |
 | [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée, révisée par 0236, 0237 et 0245    |
 | [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée, complétée par 0248 et 0264        |
 | [0225](0225-en-tete-sans-matricule.md)                | L'en-tête et les cartes des agents sans le matricule, le poste seul sous le nom         | acceptée                                    |
@@ -246,7 +246,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0238](0238-reponses-oui-non-et-puces.md)             | Les réponses par oui ou non et en puces de l'auto-évaluation, souhaits obligatoires     | acceptée, complétée par 0251, 0259, 0261    |
 | [0239](0239-trois-a-cinq-objectifs-a-venir.md)        | De trois à cinq objectifs pour l'année à venir, fixés par le N+1                        | compl. 0262, rempl. 0272, reprise 0274      |
 | [0240](0240-titres-de-section-plus-petits.md)         | Les titres de section de la campagne, un peu plus petits                                | acceptée                                    |
-| [0241](0241-valider-l-auto-evaluation.md)             | Valider son auto-évaluation, la fiche en PDF, et la barre au bas de la page             | révisée par 0242 et 0254, complétée 0260    |
+| [0241](0241-valider-l-auto-evaluation.md)             | Valider son auto-évaluation, la fiche en PDF, et la barre au bas de la page             | révisée : 0242, 0254, 0289 ; compl. 0260    |
 | [0242](0242-bandeau-de-l-auto-evaluation.md)          | Le bandeau de l'auto-évaluation, sans icône, Modifier à droite                          | acceptée                                    |
 | [0243](0243-date-de-la-campagne-dans-un-cadre.md)     | La date de la barre de la campagne, dans un cadre                                       | acceptée                                    |
 | [0244](0244-fiche-sans-objectif-sans-echelle.md)      | La fiche sans objectif, la mention seule, sans l'échelle                                | acceptée, complétée par 0275                |
@@ -260,12 +260,12 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0252](0252-etapes-sans-n2-etat-en-bleu.md)           | La bande des étapes : sans les commentaires du N+2 chez le N+1, l'état en bleu          | acceptée, révisée par 0258                  |
 | [0253](0253-point-des-groupes-de-l-equipe.md)         | Le point de couleur revient devant les titres de groupe de Mon équipe                   | acceptée                                    |
 | [0254](0254-barre-sans-ce-qui-manque.md)              | La barre au bas de la fiche ne dresse plus la liste de ce qui manque                    | acceptée                                    |
-| [0255](0255-fiches-a-commenter.md)                    | Fiches d'évaluation à commenter : sur l'accueil du N+2, les fiches validées par l'agent | acceptée, révisée par 0278 et 0286          |
+| [0255](0255-fiches-a-commenter.md)                    | Fiches d'évaluation à commenter : sur l'accueil du N+2, les fiches validées par l'agent | acceptée, révisée par 0278, 0286 et 0289    |
 | [0256](0256-suivi-des-evaluations-dans-la-barre.md)   | Le suivi des évaluations s'ouvre d'un bouton de la barre, à gauche de la date           | acceptée, complétée par 0285                |
 | [0257](0257-cartes-de-l-equipe-ouvertes.md)           | Mon équipe : toutes les cartes s'ouvrent, et l'auto-évaluation faite y dit sa date      | acceptée                                    |
 | [0258](0258-evaluation-par-le-n1.md)                  | Évaluation par le N+1, dans la période et dans la bande des étapes                      | acceptée                                    |
 | [0259](0259-lecture-des-reponses.md)                  | La lecture des réponses : le oui et ses puces ensemble, les puces au bord               | acceptée                                    |
-| [0260](0260-valider-l-evaluation-du-n1.md)            | Valider chez le N+1 : la fiche en PDF avant de la transmettre à l'agent                 | acceptée                                    |
+| [0260](0260-valider-l-evaluation-du-n1.md)            | Valider chez le N+1 : la fiche en PDF avant de la transmettre à l'agent                 | acceptée, révisée par 0289                  |
 | [0261](0261-autres-realisations-en-puces.md)          | Autres réalisations en dehors des objectifs, en puces                                   | acceptée                                    |
 | [0262](0262-aide-a-la-redaction-des-objectifs.md)     | Comment définir des objectifs : une fiche d'aide à côté du titre des objectifs          | acceptée, révisée par 0263, 0272 et 0274    |
 | [0263](0263-fiche-des-objectifs-resserree.md)         | La fiche Comment définir des objectifs, resserrée : son titre, cinq parties             | acceptée                                    |
@@ -283,8 +283,8 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0275](0275-notes-des-objectifs-de-0-a-3.md)          | Les objectifs se notent de 0 à 3, avec le relevé des notes et leur moyenne              | acceptée, révisée par 0276 et 0277          |
 | [0276](0276-notes-de-1-a-4-et-arrondi-a-2.md)         | Les objectifs se notent de 1 à 4 ; le N+1 peut arrondir la moyenne à 2 en le justifiant | acceptée, révisée par 0277                  |
 | [0277](0277-moyennes-sans-zeros-inutiles.md)          | Les moyennes des objectifs s'écrivent sans zéros inutiles : 3 / 4, 2,5 / 4, 1,67 / 4    | acceptée                                    |
-| [0278](0278-envoi-simultane-a-l-agent-et-au-n2.md)    | La fiche part à l'agent et, au choix du N+1, au N+2 en même temps                       | acceptée, compl. 0279, rév. 0284            |
-| [0279](0279-telechargement-par-le-n1-et-le-n2.md)     | Le N+1 et le N+2 téléchargent aussi la fiche complète en PDF                            | acceptée, révisée par 0281                  |
+| [0278](0278-envoi-simultane-a-l-agent-et-au-n2.md)    | La fiche part à l'agent et, au choix du N+1, au N+2 en même temps                       | acceptée, compl. 0279, rév. 0284 et 0289    |
+| [0279](0279-telechargement-par-le-n1-et-le-n2.md)     | Le N+1 et le N+2 téléchargent aussi la fiche complète en PDF                            | acceptée, révisée par 0281 et 0289          |
 | [0280](0280-saisie-sans-perte.md)                     | La saisie ne se perd plus : relances, copie locale ; Continuer mon auto-évaluation      | acceptée                                    |
 | [0281](0281-bouton-telecharger.md)                    | Le bouton de téléchargement dit Télécharger, partout                                    | acceptée                                    |
 | [0282](0282-polices-et-theme-sans-saut.md)            | Les polices et le thème justes dès le premier affichage, déconnexion comprise           | acceptée                                    |
@@ -294,3 +294,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0286](0286-fiches-pour-avis-et-commentaire.md)       | Fiche transmise pour avis et commentaire : section du N+2, sans l'état sur les cartes   | acceptée, révisée par 0287                  |
 | [0287](0287-fiche-transmise-pour-commentaire.md)      | Fiche transmise pour commentaire : la section du N+2, sans pour avis                    | acceptée                                    |
 | [0288](0288-connexion-et-infrastructure-durcies.md)   | La connexion et l'infrastructure durcies après l'audit                                  | acceptée                                    |
+| [0289](0289-n2-garde-et-gestes-reverifies.md)         | Campagne : le N+2 de l'envoi garde la fiche, l'évaluateur se fige, gestes revérifiés    | acceptée                                    |

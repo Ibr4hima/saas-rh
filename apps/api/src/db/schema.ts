@@ -1045,6 +1045,9 @@ export const fichesEntretien = pgTable('fiches_entretien', {
   repriseN2Le: timestamp('reprise_n2_le', { withTimezone: true }),
   transmiseDchLe: timestamp('transmise_dch_le', { withTimezone: true }),
   transmiseDchPar: uuid('transmise_dch_par'),
+  /** L'envoi au N+2 avec l'évaluation (0147, ADR-0278), et à qui, gardé à l'envoi (0149, ADR-0289). */
+  envoyeeN2Le: timestamp('envoyee_n2_le', { withTimezone: true }),
+  envoyeeN2A: uuid('envoyee_n2_a'),
   /** Les objectifs de l'année fixés par le N+1 : son brouillon, puis leur transmission (0145, ADR-0274). */
   objectifsBrouillon: jsonb('objectifs_brouillon'),
   objectifsParEmployeeId: uuid('objectifs_par_employee_id'),

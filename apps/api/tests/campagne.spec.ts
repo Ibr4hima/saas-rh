@@ -462,7 +462,16 @@ describe('l’auto-évaluation (ADR-0215)', () => {
   });
 
   it('complète, part au N+1, qui la lit ; elle ne change plus', async () => {
-    const v = await campagne.transmettreMonAuto(session('ibou'), complete);
+    // Deux envois qui se croisent : un seul part, l'autre reçoit le refus (ADR-0289).
+    const envois = await Promise.allSettled([
+      campagne.transmettreMonAuto(session('ibou'), complete),
+      campagne.transmettreMonAuto(session('ibou'), complete),
+    ]);
+    expect(envois.filter((e) => e.status === 'fulfilled')).toHaveLength(1);
+    expect(envois.find((e) => e.status === 'rejected')).toMatchObject({
+      reason: { problem: { status: 409, code: 'campagne.auto_transmise' } },
+    });
+    const v = await campagne.monAuto(session('ibou'));
     expect([v.etat, v.modifiable, v.transmiseLe]).toEqual(['transmise', false, AUJOURD_HUI]);
     const vu = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
     expect(vu.autoEvaluation).toMatchObject({
@@ -476,6 +485,10 @@ describe('l’auto-évaluation (ADR-0215)', () => {
     const { equipe } = await campagne.accueil(session('awa'));
     expect(equipe.find((a) => a.employeeId === agents.ibou)?.auto.etat).toBe('transmise');
     await expect(campagne.enregistrerMonAuto(session('ibou'), complete)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.auto_transmise' },
+    });
+    // Transmise, elle ne se prévisualise plus : ce qui ne s'écrit plus ne s'imprime plus.
+    await expect(campagne.apercuDeMonAuto(session('ibou'), complete)).rejects.toMatchObject({
       problem: { status: 409, code: 'campagne.auto_transmise' },
     });
   });
@@ -732,11 +745,23 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
       },
       reservee: { comprehension: 'B', tenue: 'A', observations: '' },
     };
-    // Envoyée en même temps au N+2, Cheikh Mbaye (ADR-0278).
-    const t = await campagne.transmettreEvaluation(session('awa'), agents.ibou, {
-      ...complete,
-      envoyerAuN2: true,
+    // Envoyée en même temps au N+2, Cheikh Mbaye (ADR-0278). Deux envois qui
+    // se croisent : un seul part, l'autre reçoit le refus (ADR-0289).
+    const envois = await Promise.allSettled([
+      campagne.transmettreEvaluation(session('awa'), agents.ibou, {
+        ...complete,
+        envoyerAuN2: true,
+      }),
+      campagne.transmettreEvaluation(session('awa'), agents.ibou, {
+        ...complete,
+        envoyerAuN2: true,
+      }),
+    ]);
+    expect(envois.filter((e) => e.status === 'fulfilled')).toHaveLength(1);
+    expect(envois.find((e) => e.status === 'rejected')).toMatchObject({
+      reason: { problem: { status: 409, code: 'campagne.evaluation_transmise' } },
     });
+    const t = await campagne.agentDeLEquipe(session('awa'), agents.ibou);
     expect([t.evaluation.arrondi, t.evaluation.justificationDeLArrondi]).toEqual([false, '']);
     expect([t.envoyeeAuN2Le, t.etatDesCommentaires, t.dch]).toEqual([
       AUJOURD_HUI,
@@ -764,6 +789,10 @@ describe('l’évaluation du N+1 (ADR-0216)', () => {
     expect(equipe.find((a) => a.employeeId === agents.ibou)?.evaluation).toBe('transmise');
     await expect(
       campagne.enregistrerEvaluation(session('awa'), agents.ibou, complete),
+    ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.evaluation_transmise' } });
+    // Transmise, elle ne se prévisualise plus : le PDF est celui qui se télécharge.
+    await expect(
+      campagne.apercuDeLEvaluation(session('awa'), agents.ibou, complete),
     ).rejects.toMatchObject({ problem: { status: 409, code: 'campagne.evaluation_transmise' } });
   });
 
@@ -985,6 +1014,64 @@ describe('les commentaires du N+2 (ADR-0218)', () => {
     expect((await campagne.agentDeLEquipe(session('dg'), agents.ousmane)).n2).toBeNull();
   });
 
+  it('le N+2 de l’envoi garde la fiche, même quand l’organigramme change (ADR-0289)', async () => {
+    // Awa Diop passe sous Ousmane Fall pour la campagne : Ousmane Fall devient
+    // le N+2 de son équipe pour ce qui n'est pas encore envoyé. Les fiches
+    // déjà envoyées restent à Cheikh Mbaye, qui les a reçues.
+    const { rows } = await raw(
+      `SELECT evaluateur_employee_id AS e FROM fiches_entretien WHERE employee_id = $1 AND annee = $2`,
+      [agents.awa, ANNEE],
+    );
+    await raw(
+      `INSERT INTO fiches_entretien (id, tenant_id, employee_id, annee, evaluateur_employee_id)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (tenant_id, employee_id, annee)
+       DO UPDATE SET evaluateur_employee_id = EXCLUDED.evaluateur_employee_id`,
+      [randomUUID(), tenantId, agents.awa, ANNEE, agents.ousmane],
+    );
+    try {
+      const cheikh = await campagne.accueil(session('dg'));
+      expect(cheikh.aCommenter.map((a) => a.employeeId)).toEqual([agents.ibou, agents.moussa]);
+      const v = await campagne.ficheDuN2(session('dg'), agents.ibou);
+      expect([v.etat, v.modifiable, v.fiche?.reservee.comprehension]).toEqual([
+        'en_cours',
+        true,
+        'B',
+      ]);
+      // Le nouveau N+2 n'a rien reçu : ces fiches ne s'ouvrent pas pour Ousmane Fall.
+      expect((await campagne.accueil(session('ousmane'))).aCommenter).toEqual([]);
+      for (const geste of [
+        () => campagne.ficheDuN2(session('ousmane'), agents.ibou),
+        () => campagne.pdfDuN2(session('ousmane'), agents.ibou),
+        () => campagne.enregistrerCommentaires(session('ousmane'), agents.ibou, 'Lu.'),
+      ]) {
+        await expect(geste()).rejects.toMatchObject({
+          problem: { status: 404, code: 'campagne.agent_hors_perimetre' },
+        });
+      }
+      // Le N+1 voit le N+2 de l'envoi ; pour une fiche pas encore envoyée, le N+2 d'aujourd'hui.
+      expect((await campagne.agentDeLEquipe(session('awa'), agents.ibou)).n2).toMatchObject({
+        prenom: 'Cheikh',
+        nom: 'Mbaye',
+      });
+      expect((await campagne.agentDeLEquipe(session('awa'), agents.fatou)).n2).toMatchObject({
+        prenom: 'Ousmane',
+        nom: 'Fall',
+      });
+      const brouillon = await campagne.enregistrerCommentaires(
+        session('dg'),
+        agents.ibou,
+        'Brouillon.',
+      );
+      expect(brouillon.etat).toBe('en_cours');
+    } finally {
+      await raw(
+        `UPDATE fiches_entretien SET evaluateur_employee_id = $3 WHERE employee_id = $1 AND annee = $2`,
+        [agents.awa, ANNEE, rows[0]?.e ?? null],
+      );
+    }
+  });
+
   it('transmis au N+1, ils ne changent plus ; l’agent ne les lit jamais', async () => {
     const texte = 'Un agent fiable, à préparer à plus de responsabilités.';
     const v = await campagne.transmettreCommentaires(session('dg'), agents.ibou, texte);
@@ -1039,6 +1126,26 @@ describe('la transmission à la DCH (ADR-0221)', () => {
     await expect(campagne.transmettreALaDCH(session('dg'), agents.ibou)).rejects.toMatchObject({
       problem: { status: 404, code: 'campagne.agent_hors_equipe' },
     });
+    // Transmise, elle reste au N+1 qui l'a transmise, même si l'organigramme
+    // change ensuite (ADR-0222, ADR-0289).
+    await raw(
+      `UPDATE fiches_entretien SET evaluateur_employee_id = $3 WHERE employee_id = $1 AND annee = $2`,
+      [agents.ibou, ANNEE, agents.dg],
+    );
+    try {
+      expect((await campagne.agentDeLEquipe(session('awa'), agents.ibou)).dch).toBe('transmise');
+      await expect(campagne.agentDeLEquipe(session('dg'), agents.ibou)).rejects.toMatchObject({
+        problem: { status: 404, code: 'campagne.agent_hors_equipe' },
+      });
+      await expect(campagne.pdfDeLEquipe(session('dg'), agents.ibou)).rejects.toMatchObject({
+        problem: { status: 404, code: 'campagne.agent_hors_equipe' },
+      });
+    } finally {
+      await raw(
+        `UPDATE fiches_entretien SET evaluateur_employee_id = $3 WHERE employee_id = $1 AND annee = $2`,
+        [agents.ibou, ANNEE, agents.awa],
+      );
+    }
   });
 
   it('chez le N+2, elle attend ; le N+1 la reprend pour de bon, puis la transmet (ADR-0278)', async () => {
@@ -1194,9 +1301,27 @@ describe('la transmission à la DCH (ADR-0221)', () => {
     expect((await campagne.accueil(session('admin'))).dch).toEqual({ fiches: 5, transmises: 3 });
     expect((await campagne.accueil(session('awa'))).dch).toBeNull();
 
-    await expect(campagne.ficheDeLaDCH(dch, agents.fatou)).rejects.toMatchObject({
+    await expect(campagne.ficheDeLaDCH(dch, agents.awa)).rejects.toMatchObject({
       problem: { status: 409, code: 'campagne.fiche_non_transmise' },
     });
+    // Membre de la DCH ou non, sa propre fiche ne s'ouvre pas depuis le suivi :
+    // la partie réservée et les commentaires du N+2 ne sont pas pour l'agent (ADR-0289).
+    const ibouDCH = { ...session('ibou'), capacites: ['pilotage'] } as SessionUser;
+    for (const geste of [
+      () => campagne.ficheDeLaDCH(ibouDCH, agents.ibou),
+      () => campagne.pdfDeLaDCH(ibouDCH, agents.ibou),
+    ]) {
+      await expect(geste()).rejects.toMatchObject({
+        problem: { status: 403, code: 'campagne.sa_propre_fiche' },
+      });
+    }
+    expect((await campagne.suiviDeLaDCH(ibouDCH)).fiches.map((x) => [x.nom, x.ouvrable])).toEqual([
+      ['Diop', false],
+      ['Fall', true],
+      ['Ndiaye', false],
+      ['Sall', false],
+      ['Sarr', true],
+    ]);
     const f = await campagne.ficheDeLaDCH(session('admin'), agents.ibou);
     expect(f.fiche.reservee.comprehension).toBe('B');
     expect(f.commentairesDuN2?.texte).toBe(
@@ -1204,6 +1329,7 @@ describe('la transmission à la DCH (ADR-0221)', () => {
     );
     expect([f.transmiseLe, f.valideeLe, f.repriseAuN2Le]).toEqual([AUJOURD_HUI, AUJOURD_HUI, null]);
     expect(f.transmisePar).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
+    expect(f.evaluePar).toMatchObject({ prenom: 'Awa', nom: 'Diop' });
     expect(f.n2).toMatchObject({ prenom: 'Cheikh', nom: 'Mbaye' });
 
     const espion = vi.spyOn(PDFDocument.prototype, 'text');

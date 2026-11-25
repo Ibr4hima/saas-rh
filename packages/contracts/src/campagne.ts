@@ -400,6 +400,11 @@ export interface FicheSuivie {
   etape: EtapeDeLaFiche;
   /** AAAA-MM-JJ : le jour de sa transmission à la DCH. */
   transmiseLe: string | null;
+  /**
+   * La DCH peut l'ouvrir : transmise, et pas la fiche de qui consulte le
+   * suivi (ADR-0289).
+   */
+  ouvrable: boolean;
 }
 
 /** Le suivi de la DCH : chaque agent à évaluer cette année, et où en est sa fiche. */
@@ -422,7 +427,12 @@ export interface FichePourLaDCH {
   autoTransmiseLe: string | null;
   evaluationTransmiseLe: string | null;
   valideeLe: string | null;
-  /** Le N+2 de l'agent ; `null` s'il n'y en a pas. */
+  /** Le N+1 qui a transmis l'évaluation à l'agent, et qui la signe (ADR-0289). */
+  evaluePar: PersonneDeLaCampagne | null;
+  /**
+   * Le N+2 à qui la fiche a été envoyée ; sans envoi, le N+2 de l'agent ;
+   * `null` s'il n'y en a pas.
+   */
   n2: PersonneDeLaCampagne | null;
   commentairesDuN2: CommentairesDuN2 | null;
   /** AAAA-MM-JJ : le jour où le N+1 l'a reprise au N+2, sans ses commentaires. */

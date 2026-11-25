@@ -65,7 +65,8 @@ export default function FicheDeLaDCHPage() {
 }
 
 function Fiche({ vue: v }: { vue: FichePourLaDCH }) {
-  const n1 = v.agent.evaluateur;
+  // Le N+1 qui a transmis l'évaluation à l'agent signe la fiche (ADR-0289).
+  const n1 = v.evaluePar ?? v.agent.evaluateur;
   const recus = v.commentairesDuN2;
   const etape = (titre: string, etat: string, qui: string) => (
     <CarteDEtape titre={titre} etat={etat} periode={qui} />
