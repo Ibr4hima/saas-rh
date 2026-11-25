@@ -1,6 +1,6 @@
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, asc, eq, gt, isNull, lt, sql } from 'drizzle-orm';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { and, asc, eq, gt, isNull, lt, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import {
   ALPHABET_DU_CODE,
@@ -14,11 +14,14 @@ import {
   type InfoDuCode,
 } from '@teranga/contracts';
 import { EncryptionService } from '../../common/encryption.service';
-import { problem } from '../../common/problem';
+import { ECHECS_DE_CODE_PAR_COUPLE, Limiteur } from '../../common/limiteur';
+import { pourLeJournal, problem } from '../../common/problem';
 import { loadEnv } from '../../config/env';
 import * as t from '../../db/schema';
 import { TenantDb } from '../../db/tenant-db';
+import { directionDuPersonnel } from '../acces/dch';
 import { ExpediteurCourriels } from '../courriels/expediteur';
+import { directeurGeneral } from '../people/chaine';
 import { accesDuCompte, enActivite } from '../people/en-activite';
 import { compteALAdresse, hashToken } from '../portal/invitation';
 import { reconcilierLeCircuit } from '../time/visas';
@@ -37,16 +40,20 @@ import { AuthService, type IssuedSession, type RequestMeta } from './auth.servic
    après la réponse : le temps de réponse ne dit rien non plus.
 
    Chaque couple nom et adresse a son compteur d'envois : trois codes par
-   quart d'heure, quarante-cinq secondes entre deux. Seuls comptent les
-   codes qui n'ont pas servi : une connexion réussie remet le compteur à
-   zéro, et se reconnecter aussitôt fait partir un nouveau code. Un code est
-   lié à la personne, pas à la demande : des codes redemandés à sa place
-   arrivent dans sa boîte et servent à sa propre connexion. Cinq essais par
-   connexion en cours ; au-delà, on reprend depuis le début.
+   quart d'heure, quarante-cinq secondes entre deux, douze par jour. Seuls
+   comptent les codes qui n'ont pas servi : une connexion réussie remet le
+   compteur à zéro, et se reconnecter aussitôt fait partir un nouveau code.
+   Un code est lié à la personne, pas à la demande : des codes redemandés à
+   sa place arrivent dans sa boîte et servent à sa propre connexion. Seul le
+   dernier code envoyé vaut. Cinq essais par connexion en cours, comptés
+   avant toute comparaison ; au-delà, on reprend depuis le début. Et dix
+   codes faux par heure pour une même personne, toutes connexions
+   confondues (ADR-0288).
 
    En campagne (ADR-0246), l'adresse se cherche aussi dans les dossiers :
    un agent en activité dont le dossier porte cette adresse professionnelle
-   et ce nom reçoit son code à cette adresse, avec ou sans compte.
+   et ce nom reçoit son code à cette adresse, avec ou sans compte. Relié à
+   un compte, le dossier doit porter l'adresse du compte (ADR-0288).
    Sans compte, le compte s'ouvre au premier code juste, relié au dossier,
    sans mot de passe. Un code qui ne part pas le dit dans le journal du
    serveur, sans l'adresse : jamais à l'écran.
@@ -58,6 +65,8 @@ export const ESSAIS_PAR_CONNEXION = 5;
 export const ENVOIS_PAR_FENETRE = 3;
 export const FENETRE_DES_ENVOIS_MINUTES = 15;
 export const DELAI_ENTRE_ENVOIS_SECONDES = 45;
+/** Les codes envoyés à une même personne sans servir, sur vingt-quatre heures (ADR-0288). */
+export const CODES_PAR_JOUR = 12;
 
 /**
  * Le nom tel qu'il se compare : sans accent, en capitales, sans ce qui
@@ -168,12 +177,18 @@ export class ConnexionParCodeService {
     this.logger.log(`Code non envoyé : ${raison}`);
   }
 
+  /** Les codes faux d'une personne, toutes connexions confondues (ADR-0288). */
+  private readonly echecs: Limiteur;
+
   constructor(
     @Inject(TenantDb) private readonly db: TenantDb,
     @Inject(EncryptionService) private readonly enc: EncryptionService,
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(ExpediteurCourriels) private readonly expediteur?: ExpediteurCourriels,
-  ) {}
+    @Optional() @Inject(Limiteur) limiteur?: Limiteur,
+  ) {
+    this.echecs = limiteur ?? new Limiteur(db);
+  }
 
   /** L'empreinte d'un couple nom et adresse, ou d'un code : le clair n'est gardé nulle part. */
   private empreinte(usage: 'couple' | 'code', ...parties: string[]): string {
@@ -223,8 +238,9 @@ export class ConnexionParCodeService {
       jeton,
       expiresAt,
       attente: { email: masquerEmail(email), ...(code.ok ? {} : { info: code.raison }) },
-      enFond: this.rattacher(id, nom, email, code.ok ? code : null).catch((e: Error) =>
-        this.logger.error(`Demande de code : ${e.message}`),
+      // Le journal ne garde pas les valeurs de la requête : l'adresse en est une.
+      enFond: this.rattacher(id, nom, email, code.ok ? code : null).catch((e: unknown) =>
+        this.logger.error('Demande de code', pourLeJournal(e)),
       ),
     };
   }
@@ -238,16 +254,29 @@ export class ConnexionParCodeService {
       // Deux demandes simultanées pour le même couple ne passent pas toutes
       // deux sous la limite.
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${compteur}))`);
-      const { rows } = await tx.execute<{ n: number; ecoule: number | null }>(sql`
-        SELECT count(*)::int AS n, extract(epoch FROM now() - max(created_at))::float AS ecoule
+      const { rows } = await tx.execute<{ n: number; jour: number; ecoule: number | null }>(sql`
+        SELECT count(*) FILTER (
+                 WHERE created_at > now() - make_interval(mins => ${FENETRE_DES_ENVOIS_MINUTES}::int)
+               )::int AS n,
+               count(*)::int AS jour,
+               extract(epoch FROM now() - max(created_at))::float AS ecoule
           FROM codes_de_connexion
          WHERE compteur = ${compteur} AND used_at IS NULL
-           AND created_at > now() - make_interval(mins => ${FENETRE_DES_ENVOIS_MINUTES}::int)`);
-      const { n, ecoule } = rows[0]!;
-      if (Number(n) >= ENVOIS_PAR_FENETRE) return { ok: false, raison: 'quota' };
+           AND created_at > now() - interval '24 hours'`);
+      const { n, jour, ecoule } = rows[0]!;
+      // Trois par quart d'heure, et douze par jour au plus : une boîte ne se
+      // remplit pas de codes demandés à la place de la personne (ADR-0288).
+      if (Number(n) >= ENVOIS_PAR_FENETRE || Number(jour) >= CODES_PAR_JOUR) {
+        return { ok: false, raison: 'quota' };
+      }
       if (ecoule !== null && Number(ecoule) < DELAI_ENTRE_ENVOIS_SECONDES) {
         return { ok: false, raison: 'trop_tot' };
       }
+      // Seul le dernier code vaut : les précédents tombent. Ils comptent
+      // toujours dans les plafonds d'envoi.
+      await tx.execute(sql`
+        UPDATE codes_de_connexion SET expires_at = now()
+         WHERE compteur = ${compteur} AND used_at IS NULL AND expires_at > now()`);
       const code = Array.from(
         { length: LONGUEUR_DU_CODE },
         () => ALPHABET_DU_CODE[randomInt(ALPHABET_DU_CODE.length)],
@@ -369,6 +398,20 @@ export class ConnexionParCodeService {
         this.pasEnvoye('le compte relié au dossier ne se connecte plus (inactif, coupé ou fermé).');
         return null;
       }
+      // L'adresse du dossier n'est pas celle du compte : elle se modifie
+      // depuis la gestion du personnel, et le code ouvrirait le compte à qui
+      // la change. Jamais pour un compte de direction ou d'administration,
+      // ni vers l'adresse d'un autre compte (ADR-0288).
+      if (compte.email.trim().toLowerCase() !== email) {
+        if (await this.protege(dossier.tenantId, dossier.employeeId, dossier.userId)) {
+          this.pasEnvoye('compte de direction ou d’administration : le code part à son adresse.');
+          return null;
+        }
+        if (await this.adresseDUnAutreCompte(email, dossier.userId)) {
+          this.pasEnvoye('l’adresse du dossier sert déjà à un autre compte.');
+          return null;
+        }
+      }
       return { ...dossier, prenom: compte.prenom };
     }
     const [autre] = await this.db.global
@@ -381,6 +424,33 @@ export class ConnexionParCodeService {
       return null;
     }
     return dossier;
+  }
+
+  /**
+   * Un dossier de la direction (la personne qui dirige la DCH, le DG) ou
+   * relié à un compte d'administration : comme son invitation, qui ne part
+   * que de l'administration, son code ne part qu'à l'adresse du compte.
+   */
+  private async protege(tenantId: string, employeeId: string, userId: string): Promise<boolean> {
+    return this.db.withTenant({ tenantId }, async (tx) => {
+      if ((await directionDuPersonnel(tx))?.directeurEmployeeId === employeeId) return true;
+      if ((await directeurGeneral(tx)) === employeeId) return true;
+      const { rows } = await tx.execute<{ admin: boolean }>(sql`
+        SELECT EXISTS (
+          SELECT 1 FROM user_tenant_memberships
+           WHERE user_id = ${userId} AND tenant_id = ${tenantId} AND role = 'admin') AS admin`);
+      return Boolean(rows[0]?.admin);
+    });
+  }
+
+  /** Vrai si l'adresse est celle d'un autre compte que `userId`. */
+  private async adresseDUnAutreCompte(email: string, userId: string): Promise<boolean> {
+    const [autre] = await this.db.global
+      .select({ id: t.users.id })
+      .from(t.users)
+      .where(and(sql`lower(${t.users.email}) = ${email}`, ne(t.users.id, userId)))
+      .limit(1);
+    return Boolean(autre);
   }
 
   /** Un dossier de l'organisation, s'il est en activité : son adresse, ses noms, son compte. */
@@ -609,7 +679,7 @@ export class ConnexionParCodeService {
     const enFond = (async () => {
       const destinataire = await this.destinataireDe(attente);
       if (destinataire) await this.envoyer(destinataire, code);
-    })().catch((e: Error) => this.logger.error(`Code redemandé : ${e.message}`));
+    })().catch((e: unknown) => this.logger.error('Code redemandé', pourLeJournal(e)));
     return { info: 'renvoye', enFond };
   }
 
@@ -623,7 +693,11 @@ export class ConnexionParCodeService {
     meta: RequestMeta,
   ): Promise<IssuedSession> {
     const attente = (await this.attente(jeton)) ?? connexionExpiree();
-    if (attente.essais >= ESSAIS_PAR_CONNEXION) codeBloque();
+    // Trop de codes faux pour cette personne, toutes connexions confondues :
+    // en ouvrir une autre ne rend pas d'essais (ADR-0288).
+    if ((await this.echecs.consulter(ECHECS_DE_CODE_PAR_COUPLE, attente.compteur)).bloque) {
+      codeBloque();
+    }
     const maintenant = new Date();
     const actifs = await this.db.global
       .select({ id: t.codesDeConnexion.id, codeHash: t.codesDeConnexion.codeHash })
@@ -636,12 +710,20 @@ export class ConnexionParCodeService {
         ),
       );
     if (actifs.length === 0) codeExpire();
+    // L'essai se compte avant toute comparaison, en une seule écriture : de
+    // dix saisies simultanées, cinq au plus sont comparées.
     const [compte] = await this.db.global
       .update(t.connexionsEnAttente)
       .set({ essais: sql`${t.connexionsEnAttente.essais} + 1` })
-      .where(eq(t.connexionsEnAttente.id, attente.id))
+      .where(
+        and(
+          eq(t.connexionsEnAttente.id, attente.id),
+          lt(t.connexionsEnAttente.essais, ESSAIS_PAR_CONNEXION),
+        ),
+      )
       .returning({ essais: t.connexionsEnAttente.essais });
-    const essais = compte?.essais ?? ESSAIS_PAR_CONNEXION;
+    if (!compte) return codeBloque();
+    const { essais } = compte;
 
     const propre = codeSaisi(saisie);
     const forme =
@@ -652,6 +734,7 @@ export class ConnexionParCodeService {
     let bon: string | null = null;
     for (const c of actifs) if (egales(empreinte, c.codeHash) && forme) bon = c.id;
     if (!bon || !attente.tenantId || (!attente.userId && !attente.employeeId)) {
+      await this.echecs.compter(ECHECS_DE_CODE_PAR_COUPLE, attente.compteur);
       return essais >= ESSAIS_PAR_CONNEXION ? codeBloque() : codeIncorrect();
     }
     const codeId = bon;
@@ -681,6 +764,7 @@ export class ConnexionParCodeService {
       return true;
     });
     if (!pris) codeExpire();
+    await this.echecs.oublier(ECHECS_DE_CODE_PAR_COUPLE, attente.compteur);
     // En campagne, le dossier sans compte ouvre le sien.
     const userId =
       attente.userId ??

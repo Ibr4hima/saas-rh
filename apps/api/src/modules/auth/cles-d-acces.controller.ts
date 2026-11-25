@@ -30,6 +30,10 @@ import { SessionGuard, type AuthenticatedRequest } from './session.guard';
 const jetonDe = (req: Request): string | undefined =>
   (req.cookies as Record<string, string> | undefined)?.[DEFI_COOKIE];
 
+/** Le jeton de la session ouverte, pour savoir depuis quand elle l'est. */
+const jetonDeSession = (req: Request): string | undefined =>
+  (req.cookies as Record<string, string> | undefined)?.[SESSION_COOKIE];
+
 /**
  * Les clés d'accès (ADR-0247) : créer une clé, session ouverte ; ouvrir une
  * session avec elle.
@@ -61,6 +65,7 @@ export class ClesDAccesController {
     @Req() req: AuthenticatedRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<OptionsDeCreation> {
+    await this.service.exigerUneConnexionRecente(jetonDeSession(req));
     const d = await this.service.optionsDeCreation(req.sessionUser);
     res.cookie(DEFI_COOKIE, d.jeton, optionsDuCookie(d.expiresAt));
     return d.options;
@@ -76,6 +81,7 @@ export class ClesDAccesController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ ok: true }> {
     try {
+      await this.service.exigerUneConnexionRecente(jetonDeSession(req));
       await this.service.creer(jetonDe(req), req.sessionUser, body);
     } finally {
       // Pris ou non, le défi ne resservira pas.

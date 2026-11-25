@@ -243,6 +243,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await vider();
+  // Les codes faux d'une personne se comptent d'une connexion à l'autre :
+  // chaque test repart d'un compteur vide (ADR-0288).
+  await raw(`DELETE FROM rate_limit_counters WHERE bucket = 'code_echec_couple'`);
   transport = new TransportDeTest();
   expediteur = new ExpediteurCourriels(
     db,
@@ -406,9 +409,15 @@ describe('la demande', () => {
     expect((await service.renvoyer(d.jeton)).info).toBe('quota');
 
     await expediteur.envoyerCeQuiAttend();
-    expect(transport.envoyes).toHaveLength(3);
-    // Le premier code reçu sert toujours.
-    const session = await service.verifier(d.jeton, premier, meta);
+    // Le deuxième code, remplacé par le troisième avant de partir, ne part
+    // plus : seuls le premier, déjà reçu, et le dernier sont envoyés.
+    expect(transport.envoyes).toHaveLength(2);
+    // Seul le dernier code reçu sert : les précédents sont tombés (ADR-0288).
+    expect((await refus(service.verifier(d.jeton, premier, meta))).code).toBe(
+      'auth.code_incorrect',
+    );
+    const dernier = codeDe(transport.envoyes.at(-1)!);
+    const session = await service.verifier(d.jeton, dernier, meta);
     expect(session.user.userId).toBe(awa.userId);
   });
 
@@ -492,6 +501,51 @@ describe('le code', () => {
     const reprise = await demander('Diop', awa.locale, d.jeton);
     expect(await attente(d.jeton)).toBeUndefined();
     expect((await service.verifier(reprise.jeton, code, meta)).user.userId).toBe(awa.userId);
+  });
+
+  it('des saisies simultanées : cinq au plus sont comparées (ADR-0288)', async () => {
+    const awa = await creerCompte('Awa', 'Diop', { dossier: 'actif' });
+    const d = await demander('Diop', awa.locale);
+    const code = await recevoir();
+    const faux = code.startsWith('2') ? '3ZZZZZ' : '2ZZZZZ';
+    const reponses = await Promise.all(
+      Array.from({ length: 12 }, () => refus(service.verifier(d.jeton, faux, meta))),
+    );
+    expect(reponses.filter((r) => r.code === 'auth.code_incorrect')).toHaveLength(4);
+    expect(reponses.filter((r) => r.code === 'auth.code_bloque')).toHaveLength(8);
+    expect((await attente(d.jeton))!.essais).toBe(5);
+  });
+
+  it('dix codes faux par heure pour une personne, toutes connexions confondues (ADR-0288)', async () => {
+    const awa = await creerCompte('Awa', 'Diop', { dossier: 'actif' });
+    const premiere = await demander('Diop', awa.locale);
+    const code = await recevoir();
+    const faux = code.startsWith('2') ? '3ZZZZZ' : '2ZZZZZ';
+    // Chaque nouvelle connexion ouvre cinq essais, mais la personne n'en a que dix.
+    let d = premiere;
+    for (let i = 0; i < 10; i += 1) {
+      if (i % 4 === 0 && i > 0) d = await demander('Diop', awa.locale);
+      expect((await refus(service.verifier(d.jeton, faux, meta))).code).toBe('auth.code_incorrect');
+    }
+    const encore = await demander('Diop', awa.locale);
+    expect((await refus(service.verifier(encore.jeton, code, meta))).code).toBe('auth.code_bloque');
+  });
+
+  it('douze codes par jour au plus pour une même personne (ADR-0288)', async () => {
+    const awa = await creerCompte('Awa', 'Diop', { dossier: 'actif' });
+    const d = await demander('Diop', awa.locale);
+    await recevoir();
+    const { compteur } = (await attente(d.jeton))!;
+    // Onze codes de plus dans la journée, envoyés il y a plus d'un quart d'heure.
+    for (let i = 0; i < 11; i += 1) {
+      await raw(
+        `INSERT INTO codes_de_connexion (id, compteur, code_hash, expires_at, created_at)
+         VALUES ($1, $2, 'x', now() - interval '1 minute', now() - interval '2 hours')`,
+        [randomUUID(), compteur],
+      );
+    }
+    await reculer(d.jeton, 50);
+    expect((await service.renvoyer(d.jeton)).info).toBe('quota');
   });
 
   it('un couple faux n’ouvre rien, même avec un code bien formé', async () => {
@@ -651,8 +705,30 @@ describe('en campagne, le dossier reçoit son code (ADR-0246)', () => {
     await renvoi.enFond;
     expect((await enFile()).map((c) => c.recipient)).toEqual([dossier.email, dossier.email]);
 
-    const session = await service.verifier(d.jeton, code, meta);
+    // Le nouveau code remplace le premier (ADR-0288).
+    const nouveau = await recevoir();
+    expect(nouveau).not.toBe(code);
+    const session = await service.verifier(d.jeton, nouveau, meta);
     expect(session.user.userId).toBe(awa.userId);
+  });
+
+  it('un compte d’administration à une autre adresse : rien ne part (ADR-0288)', async () => {
+    const awa = await creerCompte('Awa', 'Diop');
+    await raw(`UPDATE user_tenant_memberships SET role = 'admin' WHERE user_id = $1`, [awa.userId]);
+    const dossier = await creerDossier('Awa', 'Diop', { userId: awa.userId });
+    const d = await demander('Diop', dossier.locale);
+    expect(await attente(d.jeton)).toMatchObject({ user_id: null, employee_id: null });
+    expect((await enFile()).map((c) => c.recipient)).not.toContain(dossier.email);
+  });
+
+  it('l’adresse d’un autre compte portée par un dossier : rien ne part (ADR-0288)', async () => {
+    // Quelqu'un met sa propre adresse sur le dossier d'une autre personne.
+    const cheikh = await creerCompte('Cheikh', 'Mbaye');
+    const awa = await creerCompte('Awa', 'Diop');
+    await creerDossier('Awa', 'Diop', { userId: awa.userId, locale: cheikh.locale });
+    const d = await demander('Diop', cheikh.locale);
+    expect(await attente(d.jeton)).toMatchObject({ user_id: null, employee_id: null });
+    expect(await enFile()).toHaveLength(0);
   });
 
   it('hors campagne, un dossier sans compte ne reçoit rien', async () => {

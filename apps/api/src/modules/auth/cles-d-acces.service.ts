@@ -43,6 +43,9 @@ import { CleRefusee, verifierLaConnexion, verifierLaCreation } from './webauthn'
 /** Le défi d'une demande vit cinq minutes : le temps de répondre à son appareil. */
 export const DEFI_MINUTES = 5;
 
+/** Une clé se crée dans le quart d'heure qui suit la connexion (ADR-0288). */
+export const CONNEXION_RECENTE_MS = 15 * 60_000;
+
 /** Les options données à l'appareil, et le jeton du cookie qui garde leur défi. */
 export interface Defi<O> {
   jeton: string;
@@ -79,6 +82,24 @@ export class ClesDAccesService {
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(ConnexionParCodeService) private readonly comptes: ConnexionParCodeService,
   ) {}
+
+  /**
+   * Une clé ne se crée que juste après la connexion, quinze minutes au plus
+   * après : une session restée ouverte sur un poste ne sert pas à poser une
+   * clé qui survivrait à sa fermeture (ADR-0288).
+   */
+  async exigerUneConnexionRecente(jeton: string | undefined): Promise<void> {
+    const [session] = jeton
+      ? await this.db.global
+          .select({ creeeLe: t.sessions.createdAt })
+          .from(t.sessions)
+          .where(eq(t.sessions.tokenHash, hashToken(jeton)))
+          .limit(1)
+      : [];
+    if (!session || Date.now() - session.creeeLe.getTime() > CONNEXION_RECENTE_MS) {
+      problem(403, 'auth.connexion_recente', 'Reconnectez-vous pour créer votre clé d’accès.');
+    }
+  }
 
   /**
    * L'identifiant du compte que l'appareil garde avec la clé : opaque, il ne

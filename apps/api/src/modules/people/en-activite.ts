@@ -198,6 +198,9 @@ export async function accesDuCompte(
              e.status = 'archived' AND e.inactivite_motif IN ('licenciement', 'deces') AS sans_delai
         FROM employees e JOIN persons p ON p.id = e.person_id
        WHERE p.user_id = ${userId}
+       -- Réembauché, le compte a plusieurs dossiers : le dossier en cours
+       -- décide, sinon le dernier parti (ADR-0288).
+       ORDER BY e.status = 'archived', fin DESC NULLS FIRST, e.created_at DESC
        LIMIT 1)
     SELECT CASE WHEN sans_delai THEN fin ELSE fin + ${DELAI_D_ACCES_JOURS}::int END::text AS dernier,
            sans_delai OR fin + ${DELAI_D_ACCES_JOURS}::int < CURRENT_DATE AS ferme

@@ -5,7 +5,8 @@
  * Ce qui compte : rien ne dit à qui demande si l'adresse a un compte ; le
  * lien ne part qu'à un compte qui se connecte encore, et ne rouvre jamais un
  * compte fermé ; un nouveau lien remplace l'ancien, dont le courriel ne part
- * plus ; le mot de passe changé ferme toutes les sessions.
+ * plus ; le mot de passe changé ferme toutes les sessions et efface les
+ * clés d'accès.
  */
 import { randomUUID } from 'node:crypto';
 import { verify as argonVerify } from '@node-rs/argon2';
@@ -157,6 +158,7 @@ async function vider() {
   }
   await raw(`DELETE FROM user_tenant_memberships WHERE tenant_id = $1`, [tenantId]);
   await raw(`DELETE FROM sessions WHERE user_id = ANY($1::uuid[])`, [ids]);
+  await raw(`DELETE FROM cles_d_acces WHERE user_id = ANY($1::uuid[])`, [ids]);
   await raw(`DELETE FROM password_resets WHERE user_id = ANY($1::uuid[])`, [ids]);
   await raw(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [ids]);
 }
@@ -276,7 +278,7 @@ describe('la demande', () => {
 });
 
 describe('le nouveau mot de passe', () => {
-  it('remplace l’ancien, ferme toutes les sessions, et le lien ne sert qu’une fois', async () => {
+  it('remplace l’ancien, ferme les sessions, efface les clés, et le lien sert une fois', async () => {
     const awa = await creerCompte('Awa', { dossier: 'actif' });
     for (let i = 0; i < 2; i += 1) {
       await raw(
@@ -285,6 +287,12 @@ describe('le nouveau mot de passe', () => {
         [randomUUID(), awa.userId, tenantId, randomUUID()],
       );
     }
+    // Une clé d'accès posée avant : elle tombe avec l'ancien mot de passe (ADR-0288).
+    await raw(
+      `INSERT INTO cles_d_acces (id, user_id, identifiant, cle_publique, algorithme)
+       VALUES ($1,$2,$3,'\\x00',-7)`,
+      [randomUUID(), awa.userId, `cle-${randomUUID()}`],
+    );
     const jeton = await recevoirUnLien(awa.email);
 
     expect(await service.enregistrer(jeton, 'UnNouveauSecret2026!')).toEqual({ email: awa.email });
@@ -296,6 +304,8 @@ describe('le nouveau mot de passe', () => {
       [awa.userId],
     );
     expect(ouvertes[0].n).toBe(0);
+    const { rows: cles } = await raw(`SELECT 1 FROM cles_d_acces WHERE user_id = $1`, [awa.userId]);
+    expect(cles).toHaveLength(0);
     expect((await liens(awa.userId))[0]!.used_at).not.toBeNull();
 
     expect(await service.lien(jeton)).toEqual({ valide: false });

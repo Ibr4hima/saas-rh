@@ -276,4 +276,16 @@ describe('audit append-only (ADR-0008)', () => {
       withTenant(A.tenantId, A.userId, (c) => c.query(`DELETE FROM audit_log`)),
     ).rejects.toThrow(/permission denied/i);
   });
+
+  it("le rôle applicatif n'y écrit rien lui-même : seul le déclencheur le fait (ADR-0288)", async () => {
+    await expect(
+      withTenant(A.tenantId, A.userId, (c) =>
+        c.query(
+          `INSERT INTO audit_log (tenant_id, table_name, row_id, action, actor_user_id)
+           VALUES ($1, 'persons', gen_random_uuid(), 'INSERT', gen_random_uuid())`,
+          [A.tenantId],
+        ),
+      ),
+    ).rejects.toThrow(/permission denied/i);
+  });
 });

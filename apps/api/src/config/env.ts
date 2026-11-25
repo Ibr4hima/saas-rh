@@ -7,11 +7,33 @@ import { z } from 'zod';
 /** La clé de développement publiée dans `.env.example` : connue de tous. */
 const CLE_DE_DEVELOPPEMENT = 'mfM8qEsFfS1lIiWvm8hrM8zqi+O/PFhzPku1whgaMoU=';
 
-/** Une entrée de `trust proxy` : une adresse, un réseau, ou un nom qu'Express connaît. */
+/**
+ * Une entrée de `trust proxy` : une adresse, un réseau, ou un nom qu'Express
+ * connaît. Un réseau trop large (0.0.0.0/0, ::/0) croirait l'en-tête de
+ * n'importe quel client, et ses limites tomberaient (ADR-0288) : au moins un
+ * /8 en IPv4, un /7 en IPv6 (les adresses locales uniques, fc00::/7).
+ */
 const procheDeConfiance = (v: string) => {
   if (['loopback', 'linklocal', 'uniquelocal'].includes(v)) return true;
-  const [adresse, masque] = v.split('/');
-  return isIP(adresse ?? '') !== 0 && (masque === undefined || /^\d{1,3}$/.test(masque));
+  const [adresse, masque, ...reste] = v.split('/');
+  const version = isIP(adresse ?? '');
+  if (version === 0 || reste.length > 0) return false;
+  if (masque === undefined) return true;
+  if (!/^\d{1,3}$/.test(masque)) return false;
+  const bits = Number(masque);
+  return version === 4 ? bits >= 8 && bits <= 32 : bits >= 7 && bits <= 128;
+};
+
+/**
+ * Le site n'est servi qu'à cette machine ou au réseau du bureau : localhost,
+ * 127.0.0.0/8, ::1, *.localhost, 10/8, 172.16/12, 192.168/16.
+ */
+const siteLocal = (url: string) => {
+  const hote = new URL(url).hostname.replace(/^\[|\]$/g, '');
+  if (hote === 'localhost' || hote.endsWith('.localhost') || hote === '::1') return true;
+  if (isIP(hote) !== 4) return false;
+  const [a, b] = hote.split('.').map(Number) as [number, number];
+  return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
 };
 
 export const envSchema = z
@@ -165,11 +187,19 @@ export const envSchema = z
       path: ['MAIL_TRANSPORT'],
     },
   )
-  .refine((e) => e.NODE_ENV !== 'production' || e.DATA_ENCRYPTION_KEY !== CLE_DE_DEVELOPPEMENT, {
-    message:
-      'DATA_ENCRYPTION_KEY : la clé de développement est publique, en générer une (openssl rand -base64 32)',
-    path: ['DATA_ENCRYPTION_KEY'],
-  })
+  // La clé publiée ne chiffre que des données d'essai : refusée en
+  // production, et dès que le site sort de la machine ou du bureau, même
+  // si NODE_ENV a été oublié (ADR-0288).
+  .refine(
+    (e) =>
+      e.DATA_ENCRYPTION_KEY !== CLE_DE_DEVELOPPEMENT ||
+      (e.NODE_ENV !== 'production' && siteLocal(e.PUBLIC_WEB_URL)),
+    {
+      message:
+        'DATA_ENCRYPTION_KEY : la clé de développement est publique, en générer une (openssl rand -base64 32)',
+      path: ['DATA_ENCRYPTION_KEY'],
+    },
+  )
   // En production, rien ne passe en clair sur le réseau, et rien ne s'ouvre
   // par défaut : l'API refuse de démarrer plutôt que de tourner mal réglée.
   .refine((e) => e.NODE_ENV !== 'production' || e.COOKIE_SECURE, {

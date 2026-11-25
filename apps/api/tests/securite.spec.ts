@@ -5,6 +5,7 @@
  */
 import type { NextFunction, Request, Response } from 'express';
 import { describe, expect, it } from 'vitest';
+import { EncryptionService } from '../src/common/encryption.service';
 import { controleDOrigine, entetesDeSecurite, originesAutorisees } from '../src/common/securite';
 import { envSchema } from '../src/config/env';
 import { optionsDuCookie } from '../src/modules/auth/auth.constants';
@@ -138,5 +139,22 @@ describe('ce que chaque réponse dit au navigateur', () => {
 
   it('le cookie de session : illisible par la page, envoyé par le seul site', () => {
     expect(optionsDuCookie()).toMatchObject({ httpOnly: true, sameSite: 'strict', path: '/' });
+  });
+});
+
+describe('un chiffré se lit entier, ou pas du tout', () => {
+  const enc = new EncryptionService();
+
+  it('un tag raccourci est refusé, même juste (ADR-0288)', () => {
+    const stocke = enc.encrypt('1234567890123');
+    expect(enc.decrypt(stocke)).toBe('1234567890123');
+    const [v, iv, tag, chiffre] = stocke.split(':') as [string, string, string, string];
+    const court = Buffer.from(tag, 'base64').subarray(0, 4).toString('base64');
+    expect(() => enc.decrypt([v, iv, court, chiffre].join(':'))).toThrow(/invalide/);
+    expect(() => enc.decrypt(`${stocke}:de-trop`)).toThrow(/invalide/);
+  });
+
+  it('une valeur vide se chiffre et se relit', () => {
+    expect(enc.decrypt(enc.encrypt(''))).toBe('');
   });
 });

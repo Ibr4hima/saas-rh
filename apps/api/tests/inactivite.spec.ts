@@ -596,6 +596,30 @@ describe('trente jours pour récupérer ses documents', () => {
     expect(refus).toMatch(/^Votre accès au portail a pris fin le .+ Il sera rouvert/);
   });
 
+  it('réembauché : le dossier en cours décide, pas l’ancien (ADR-0288)', async () => {
+    const lamine = await agent('Lamine', uCompta, { type: 'cdi', debut: -10, fin: null });
+    const { rows } = await raw(`SELECT person_id FROM employees WHERE id = $1`, [
+      lamine.employeeId,
+    ]);
+    // Son premier passage s'est fini par un licenciement, il y a deux ans.
+    await raw(
+      `INSERT INTO employees (id, tenant_id, person_id, employee_number, hired_on, status,
+                              inactivite_motif, archived_at, fin_activite)
+       VALUES ($1,$2,$3,'INA-Lamine-1','2020-01-01','archived','licenciement',
+               now() - interval '2 years', CURRENT_DATE - 700)`,
+      [randomUUID(), tenantId, rows[0].person_id],
+    );
+    for (let i = 0; i < 3; i += 1) {
+      expect(
+        await db.withTenant({ tenantId, userId: adminUserId }, (tx) =>
+          accesDuCompte(tx, lamine.userId),
+        ),
+      ).toEqual({ finDAcces: null, ferme: false });
+    }
+    const { user } = await auth.login({ email: lamine.email, password: MOT_DE_PASSE }, {});
+    expect(user.finDAcces).toBeNull();
+  });
+
   it('désactivée à la main, même délai, compté depuis sa fin d’activité', async () => {
     await raw(
       `UPDATE contracts SET end_date = NULL, contract_type = 'cdi' WHERE employee_id = $1`,

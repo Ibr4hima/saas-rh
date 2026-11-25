@@ -57,7 +57,9 @@ export class EncryptionService {
     if (stocke.length < 29 || stocke[0] !== VERSION_CANDIDATURES) {
       throw new Error('Format de donnée chiffrée invalide');
     }
-    const d = createDecipheriv('aes-256-gcm', this.cles[usage], stocke.subarray(1, 13));
+    const d = createDecipheriv('aes-256-gcm', this.cles[usage], stocke.subarray(1, 13), {
+      authTagLength: 16,
+    });
     d.setAAD(Buffer.from(contexte, 'utf8'));
     d.setAuthTag(stocke.subarray(13, 29));
     return Buffer.concat([d.update(stocke.subarray(29)), d.final()]);
@@ -103,12 +105,22 @@ export class EncryptionService {
   }
 
   decrypt(stored: string): string {
-    const [version, iv, tag, ciphertext] = stored.split(':');
-    if (version !== VERSION || !iv || !tag || !ciphertext) {
+    const [version, iv, tag, ciphertext, ...reste] = stored.split(':');
+    // Un tag raccourci se forgerait plus vite : seize octets, pas moins (ADR-0288).
+    const etiquette = Buffer.from(tag ?? '', 'base64');
+    if (
+      version !== VERSION ||
+      !iv ||
+      etiquette.length !== 16 ||
+      ciphertext === undefined ||
+      reste.length > 0
+    ) {
       throw new Error('Format de champ chiffré invalide');
     }
-    const decipher = createDecipheriv('aes-256-gcm', this.key, Buffer.from(iv, 'base64'));
-    decipher.setAuthTag(Buffer.from(tag, 'base64'));
+    const decipher = createDecipheriv('aes-256-gcm', this.key, Buffer.from(iv, 'base64'), {
+      authTagLength: 16,
+    });
+    decipher.setAuthTag(etiquette);
     return Buffer.concat([
       decipher.update(Buffer.from(ciphertext, 'base64')),
       decipher.final(),

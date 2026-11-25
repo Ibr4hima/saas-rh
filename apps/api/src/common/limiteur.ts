@@ -66,6 +66,16 @@ export const ESSAIS_DE_CODE: Regle = { bucket: 'code_essai_ip', fenetreSecondes:
 /** Les codes redemandés : trois cents par quart d'heure. */
 export const RENVOIS_DE_CODE: Regle = { bucket: 'code_renvoi_ip', fenetreSecondes: 900, max: 300 };
 /**
+ * Les codes faux pour une même personne (son couple nom et adresse), toutes
+ * connexions en cours confondues : dix par heure. Ouvrir une connexion de
+ * plus ne rend pas d'essais (ADR-0288).
+ */
+export const ECHECS_DE_CODE_PAR_COUPLE: Regle = {
+  bucket: 'code_echec_couple',
+  fenetreSecondes: 3600,
+  max: 10,
+};
+/**
  * Les connexions par clé d'accès (ADR-0247), d'une même adresse réseau :
  * chacune demande un défi puis le rend signé, mille gestes par quart
  * d'heure, comme les demandes de code.
@@ -142,9 +152,11 @@ export class Limiteur {
       const bloque = compter ? estime > regle.max : estime >= regle.max;
       return { bloque, reessayerDans: Math.max(1, Math.ceil(fenetre - ecoule)) };
     } catch (err) {
-      // La base ne répond pas : on laisse passer plutôt que de fermer la porte.
+      // La base ne répond pas : la porte se ferme un instant. Laisser passer
+      // reviendrait à couper toutes les limites, celles des connexions
+      // comprises, à qui sait occuper la base (ADR-0288).
       console.warn('Limiteur indisponible', (err as Error).name);
-      return { bloque: false, reessayerDans: 0 };
+      return { bloque: true, reessayerDans: 30 };
     }
   }
 

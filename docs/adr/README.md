@@ -251,8 +251,8 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0243](0243-date-de-la-campagne-dans-un-cadre.md)     | La date de la barre de la campagne, dans un cadre                                       | acceptée                                    |
 | [0244](0244-fiche-sans-objectif-sans-echelle.md)      | La fiche sans objectif, la mention seule, sans l'échelle                                | acceptée, complétée par 0275                |
 | [0245](0245-puce-de-l-entretien-avec-le-n1.md)        | La puce de l'entretien : votre N+1, au lieu de votre supérieur hiérarchique             | acceptée                                    |
-| [0246](0246-code-au-dossier-en-campagne.md)           | En campagne, le code part à l'adresse du dossier, et le compte s'ouvre au premier code  | acceptée                                    |
-| [0247](0247-cles-d-acces.md)                          | Les clés d'accès : le code à la première connexion, puis Face ID ou l'empreinte         | acceptée                                    |
+| [0246](0246-code-au-dossier-en-campagne.md)           | En campagne, le code part à l'adresse du dossier, et le compte s'ouvre au premier code  | acceptée, révisée par 0288                  |
+| [0247](0247-cles-d-acces.md)                          | Les clés d'accès : le code à la première connexion, puis Face ID ou l'empreinte         | acceptée, révisée par 0288                  |
 | [0248](0248-civilite-du-n1-a-la-transmission.md)      | La confirmation de l'auto-évaluation nomme le N+1 avec sa civilité                      | acceptée                                    |
 | [0249](0249-titre-des-fenetres-a-la-ligne.md)         | Le titre d'une fenêtre passe à la ligne, il n'est plus coupé                            | acceptée                                    |
 | [0250](0250-cartes-sans-point-ni-fiche.md)            | Les cartes des agents sans point de couleur, et sans la fiche dans Mon équipe           | acceptée, révisée par 0253                  |
@@ -293,3 +293,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0285](0285-valider-mon-evaluation-en-haut.md)        | Valider mon évaluation monte en haut, à gauche de la date, sans la mention de la fiche  | acceptée                                    |
 | [0286](0286-fiches-pour-avis-et-commentaire.md)       | Fiche transmise pour avis et commentaire : section du N+2, sans l'état sur les cartes   | acceptée, révisée par 0287                  |
 | [0287](0287-fiche-transmise-pour-commentaire.md)      | Fiche transmise pour commentaire : la section du N+2, sans pour avis                    | acceptée                                    |
+| [0288](0288-connexion-et-infrastructure-durcies.md)   | La connexion et l'infrastructure durcies après l'audit                                  | acceptée                                    |

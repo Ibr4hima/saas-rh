@@ -167,8 +167,8 @@ export class ReinitialisationService {
 
   /**
    * Le nouveau mot de passe. Le lien sert une fois ; les autres liens du
-   * compte tombent, et toutes ses sessions se ferment : qui avait le mot de
-   * passe d'avant n'a plus rien d'ouvert.
+   * compte tombent, toutes ses sessions se ferment et ses clés d'accès
+   * s'effacent : qui avait le mot de passe d'avant n'a plus rien d'ouvert.
    */
   async enregistrer(token: string, password: string): Promise<{ email: string }> {
     const lien = (await this.valable(token)) ?? lienInvalide();
@@ -219,6 +219,9 @@ export class ReinitialisationService {
         .update(t.sessions)
         .set({ revokedAt: maintenant })
         .where(and(eq(t.sessions.userId, lien.userId), isNull(t.sessions.revokedAt)));
+      // Les clés d'accès tombent aussi : une clé posée depuis une session
+      // volée ne survit pas au nouveau mot de passe (ADR-0288).
+      await tx.delete(t.clesDAcces).where(eq(t.clesDAcces.userId, lien.userId));
     });
     return { email: lien.email };
   }

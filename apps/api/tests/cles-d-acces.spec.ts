@@ -51,7 +51,9 @@ async function refus(p: Promise<unknown>): Promise<{ status: number; code: strin
 }
 
 /** Un compte de l'organisation, sa session ouverte. */
-async function creerCompte(prenom: string): Promise<{ userId: string; user: SessionUser }> {
+async function creerCompte(
+  prenom: string,
+): Promise<{ userId: string; user: SessionUser; jeton: string }> {
   const userId = randomUUID();
   await raw(
     `INSERT INTO users (id, email, password_hash, given_name, family_name)
@@ -63,7 +65,7 @@ async function creerCompte(prenom: string): Promise<{ userId: string; user: Sess
     [randomUUID(), tenantId, userId],
   );
   const session = await auth.issueSession(userId, tenantId, meta);
-  return { userId, user: session.user };
+  return { userId, user: session.user, jeton: session.token };
 }
 
 /** Le dossier du compte, parti depuis tant de jours (une démission). */
@@ -218,6 +220,20 @@ describe('la création d’une clé', () => {
       status: 410,
       code: 'auth.cle_expiree',
     });
+  });
+
+  it('une clé ne se crée que dans le quart d’heure qui suit la connexion (ADR-0288)', async () => {
+    const { jeton } = await creerCompte('Awa');
+    await expect(service.exigerUneConnexionRecente(jeton)).resolves.toBeUndefined();
+    const refusee = { status: 403, code: 'auth.connexion_recente' };
+    expect(await refus(service.exigerUneConnexionRecente(undefined))).toEqual(refusee);
+    expect(await refus(service.exigerUneConnexionRecente('inconnu'))).toEqual(refusee);
+    // Une session restée ouverte sur un poste ne pose pas de clé.
+    await raw(
+      `UPDATE sessions SET created_at = now() - interval '16 minutes' WHERE token_hash = $1`,
+      [hashToken(jeton)],
+    );
+    expect(await refus(service.exigerUneConnexionRecente(jeton))).toEqual(refusee);
   });
 
   it('une clé que la vérification refuse ne s’ajoute pas', async () => {
