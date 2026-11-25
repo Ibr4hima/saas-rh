@@ -1219,6 +1219,55 @@ describe('la transmission à la DCH (ADR-0221)', () => {
   });
 });
 
+describe('le PDF de la fiche, pour le N+1 et le N+2 (ADR-0279)', () => {
+  /** Le PDF, et tout le texte qu'il imprime. */
+  async function imprime(geste: () => Promise<{ filename: string; pdf: Buffer }>) {
+    const espion = vi.spyOn(PDFDocument.prototype, 'text');
+    try {
+      const { filename, pdf } = await geste();
+      return {
+        filename,
+        pdf,
+        texte: espion.mock.calls.map((appel) => String(appel[0])).join(' '),
+      };
+    } finally {
+      espion.mockRestore();
+    }
+  }
+
+  it('le N+1 télécharge la fiche complète dès la transmission à l’agent', async () => {
+    const ibou = await imprime(() => campagne.pdfDeLEquipe(session('awa'), agents.ibou));
+    expect(ibou.filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU-complete.pdf`);
+    expect(ibou.pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    // La partie réservée, et les commentaires du N+2, une fois transmis.
+    expect(ibou.texte).toContain('Commentaires du N+2');
+    expect(ibou.texte).toContain('fiable');
+    await expect(campagne.pdfDeLEquipe(session('awa'), agents.fatou)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.evaluation_non_transmise' },
+    });
+    // Le N+2 n'est pas le N+1 de l'agent.
+    await expect(campagne.pdfDeLEquipe(session('dg'), agents.ibou)).rejects.toMatchObject({
+      problem: { status: 404, code: 'campagne.agent_hors_equipe' },
+    });
+  });
+
+  it('le N+2 télécharge la fiche envoyée, même reprise, sans un brouillon jamais transmis', async () => {
+    const ibou = await imprime(() => campagne.pdfDuN2(session('dg'), agents.ibou));
+    expect(ibou.filename).toBe(`fiche-entretien-${ANNEE}-CAMP-IBOU-complete.pdf`);
+    expect(ibou.texte).toContain('fiable');
+    // Reprise par le N+1 : la copie du N+2, sans son brouillon.
+    const moussa = await imprime(() => campagne.pdfDuN2(session('dg'), agents.moussa));
+    expect(moussa.pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(moussa.texte).not.toContain('Brouillon du N+2.');
+    await expect(campagne.pdfDuN2(session('dg'), agents.fatou)).rejects.toMatchObject({
+      problem: { status: 409, code: 'campagne.fiche_non_envoyee' },
+    });
+    await expect(campagne.pdfDuN2(session('awa'), agents.ibou)).rejects.toMatchObject({
+      problem: { status: 404, code: 'campagne.agent_hors_perimetre' },
+    });
+  });
+});
+
 describe('le téléchargement de son évaluation (ADR-0268)', () => {
   /** Les textes d'un PDF, les espaces insécables lus comme des espaces. */
   const textesDuPdf = async (generer: () => Promise<unknown>): Promise<string> => {

@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   dateEnLettres,
   LONGUEURS_DE_LA_FICHE,
+  nomDeLaFiche,
   personnelDeLaFiche,
   type FicheComplete,
   type FichePourLeN2,
@@ -29,6 +30,7 @@ import {
   statutDesCommentaires,
 } from '../../../../../components/campagne/fiche';
 import { BandeauDeLAgent } from '../../../../../components/campagne/charte';
+import { TelechargerLaFiche } from '../../../../../components/campagne/telecharger';
 import { Confirmation, messageDe, ZoneDeTexte } from '../../../../../components/grille-evaluation';
 import { Icon } from '../../../../../components/icons';
 import { api, ApiError } from '../../../../../lib/api';
@@ -43,8 +45,9 @@ import { CLE_CAMPAGNE } from '../../../../../lib/campagne';
    s'enregistrent seuls, et la barre au bas de la page porte
    « Transmettre au N+1 », avec ou sans un mot (ADR-0241). Transmis, ils se
    lisent et ne changent plus. Reprise par le N+1, la fiche reste en
-   lecture, sans les commentaires. Cette page ne s'ouvre qu'au N+2 de
-   l'agent.
+   lecture, sans les commentaires. Envoyée, reprise ou non, la fiche
+   complète se télécharge en PDF depuis le bandeau (ADR-0279). Cette page
+   ne s'ouvre qu'au N+2 de l'agent.
    ──────────────────────────────────────────────────────────────── */
 
 const cleDe = (employeeId: string) => [...CLE_CAMPAGNE, 'n2', employeeId];
@@ -106,7 +109,19 @@ function Fiche({ vue: v }: { vue: FichePourLeN2 }) {
   );
   return (
     <>
-      <BandeauDeLAgent agent={v.agent} />
+      <BandeauDeLAgent
+        agent={v.agent}
+        action={
+          // La copie du N+2 : la fiche complète, dès l'envoi, même reprise (ADR-0279).
+          v.fiche ? (
+            <TelechargerLaFiche
+              chemin={`/campagne/n2/${v.agent.employeeId}/pdf`}
+              nom={nomDeLaFiche(v.annee, v.agent.matricule, true)}
+              libelle="Télécharger le PDF"
+            />
+          ) : undefined
+        }
+      />
       <Etapes nombre={3}>
         <CarteDEtape
           titre="Auto-évaluation"

@@ -328,6 +328,58 @@ export class CampagneService {
     return fiche;
   }
 
+  /**
+   * La fiche complète d'un agent de son équipe, en PDF, partie réservée
+   * comprise, dès que l'évaluation est transmise à l'agent (ADR-0279).
+   */
+  async pdfDeLEquipe(
+    user: SessionUser,
+    employeeId: string,
+  ): Promise<{ filename: string; pdf: Buffer }> {
+    const d = await this.db.withTenant(
+      { tenantId: user.tenantId, userId: user.userId },
+      async (tx) => {
+        const { annee } = await monAgent(tx, user, employeeId);
+        const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
+        if (!annuelle.evaluationTransmiseLe) {
+          problem(
+            409,
+            'campagne.evaluation_non_transmise',
+            'L’évaluation n’est pas encore transmise à l’agent',
+          );
+        }
+        return pdfCompletDe(tx, employeeId, annee, annuelle);
+      },
+    );
+    return {
+      filename: nomDeLaFiche(d.annee, d.agent.matricule, true),
+      pdf: await ficheDEntretienPdf(d),
+    };
+  }
+
+  /**
+   * La fiche complète d'un agent dont la personne connectée est le N+2, en
+   * PDF, dès que le N+1 l'envoie au N+2, et même reprise : la copie du N+2
+   * (ADR-0278, ADR-0279).
+   */
+  async pdfDuN2(user: SessionUser, employeeId: string): Promise<{ filename: string; pdf: Buffer }> {
+    const d = await this.db.withTenant(
+      { tenantId: user.tenantId, userId: user.userId },
+      async (tx) => {
+        const { annee } = await monN2(tx, user, employeeId);
+        const annuelle = await ficheDeLAnnee(tx, employeeId, annee);
+        if (!annuelle.envoyeeAuN2Le) {
+          problem(409, 'campagne.fiche_non_envoyee', 'La fiche ne vous a pas été envoyée');
+        }
+        return pdfCompletDe(tx, employeeId, annee, annuelle);
+      },
+    );
+    return {
+      filename: nomDeLaFiche(d.annee, d.agent.matricule, true),
+      pdf: await ficheDEntretienPdf(d),
+    };
+  }
+
   /** Le PDF de la fiche transmise : la version complète, pour le dossier de l'agent. */
   async pdfDeLaDCH(
     user: SessionUser,
@@ -1650,6 +1702,24 @@ interface FicheLueParLaDCH {
   aujourdhui: string;
 }
 
+/** Ce que le PDF complet imprime d'une fiche, partie réservée comprise. */
+interface FicheDuPdfComplet {
+  fiche: Pick<
+    FichePourLaDCH,
+    | 'annee'
+    | 'agent'
+    | 'objectifs'
+    | 'fiche'
+    | 'evaluationTransmiseLe'
+    | 'valideeLe'
+    | 'n2'
+    | 'commentairesDuN2'
+  >;
+  /** AAAA-MM-JJ. */
+  posteDepuis: string | null;
+  aujourdhui: string;
+}
+
 /** La fiche d'un agent, transmise à la DCH, en entier ; avant, la DCH ne la lit pas. */
 async function ficheDeLaDCHDans(
   tx: Tx,
@@ -1727,7 +1797,7 @@ function agentDuPdf(
  * est celle que le N+1 a confirmée (ADR-0265) ; sur une fiche transmise
  * avant, le PDF la laisse à fixer.
  */
-function donneesDuPdf({ fiche: f, posteDepuis, aujourdhui }: FicheLueParLaDCH): DonneesDeLaFiche {
+function donneesDuPdf({ fiche: f, posteDepuis, aujourdhui }: FicheDuPdfComplet): DonneesDeLaFiche {
   const a = f.agent;
   const n1 = a.evaluateur;
   const c = f.commentairesDuN2;
@@ -1748,6 +1818,41 @@ function donneesDuPdf({ fiche: f, posteDepuis, aujourdhui }: FicheLueParLaDCH): 
         ? { prenom: n2.prenom, nom: n2.nom, fonction: n2.poste, le: c.le, commentaires: c.texte }
         : null,
   };
+}
+
+/**
+ * La fiche complète d'un agent, en PDF, pour qui la lit en entier, partie
+ * réservée comprise : son N+1 et son N+2 (ADR-0279), comme la DCH. Les
+ * commentaires du N+2 n'y figurent qu'une fois transmis, jamais leur
+ * brouillon.
+ */
+async function pdfCompletDe(
+  tx: Tx,
+  employeeId: string,
+  annee: number,
+  annuelle: FicheDeLAnnee,
+): Promise<DonneesDeLaFiche> {
+  const agent = await ficheDe(tx, employeeId, annee);
+  const n2 = await n2De(tx, employeeId, annee);
+  const { posteDepuis, aujourdhui } = await prisePoste(tx, employeeId);
+  return donneesDuPdf({
+    fiche: {
+      annee,
+      agent,
+      objectifs: annuelle.objectifs,
+      fiche: {
+        auto: annuelle.auto ?? autoEvaluationVide(),
+        evaluation: annuelle.evaluation ?? evaluationDuN1Vide(),
+        reservee: annuelle.reservee ?? partieReserveeVide(),
+      },
+      evaluationTransmiseLe: annuelle.evaluationTransmiseLe,
+      valideeLe: annuelle.valideeLe,
+      n2: n2?.personne ?? null,
+      commentairesDuN2: annuelle.commentairesDuN2,
+    },
+    posteDepuis,
+    aujourdhui,
+  });
 }
 
 // ──────────────────────────────────────────────── l'administration (ADR-0222)

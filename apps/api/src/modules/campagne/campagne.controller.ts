@@ -111,6 +111,20 @@ export class CampagneController {
     res.end(pdf);
   }
 
+  /** La fiche complète d'un agent de son équipe, en PDF, une fois l'évaluation transmise (ADR-0279). */
+  @Get('equipe/:employeeId/pdf')
+  async pdfDeLEquipe(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Res() res: Response,
+  ) {
+    const { filename, pdf } = await this.campagne.pdfDeLEquipe(req.sessionUser, employeeId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', contentDisposition('attachment', filename));
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(pdf);
+  }
+
   /** La fiche, transmise à la DCH par le N+1 : elle ne change plus. */
   @Post('equipe/:employeeId/dch')
   @HttpCode(200)
@@ -244,6 +258,20 @@ export class CampagneController {
     @Param('employeeId', ParseUUIDPipe) employeeId: string,
   ) {
     return this.campagne.ficheDuN2(req.sessionUser, employeeId);
+  }
+
+  /** La fiche complète d'un agent dont on est le N+2, en PDF, une fois envoyée par le N+1 (ADR-0279). */
+  @Get('n2/:employeeId/pdf')
+  async pdfDuN2(
+    @Req() req: AuthenticatedRequest,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Res() res: Response,
+  ) {
+    const { filename, pdf } = await this.campagne.pdfDuN2(req.sessionUser, employeeId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', contentDisposition('attachment', filename));
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(pdf);
   }
 
   /** Le brouillon de ses commentaires de N+2. */

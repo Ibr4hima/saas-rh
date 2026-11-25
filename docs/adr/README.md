@@ -226,7 +226,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0218](0218-commentaires-du-n2.md)                    | Les commentaires du N+2, sur la fiche validée par l'agent, transmis au N+1              | compl. 0221, révisée 6 fois, de 0226 à 0278 |
 | [0219](0219-date-dans-la-barre-de-la-campagne.md)     | La date du jour dans la barre de la campagne, sans le calendrier des jours fériés       | acceptée, révisée par 0243                  |
 | [0220](0220-periode-d-evaluation-sur-l-accueil.md)    | La période d'évaluation annuelle sur l'accueil, ses deux temps expliqués                | acceptée, révisée par 0223, 0227 et 0258    |
-| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | rév. 0226/0227/0233/0256/0265/0273/0278     |
+| [0221](0221-transmission-a-la-dch.md)                 | La transmission de la fiche à la DCH par le N+1, et le suivi de la DCH                  | révisée 7 fois, de 0226 à 0278, compl. 0279 |
 | [0222](0222-administration-de-la-campagne.md)         | L'administration de la campagne : les dates, qui évalue qui, l'import du personnel      | compl. 0271/0274, rév. 0227/0233            |
 | [0223](0223-statut-et-puces-de-la-periode.md)         | Le statut en toutes lettres, et les puces de la période aux textes de l'APIX            | acceptée, révisée par 0236, 0237 et 0245    |
 | [0224](0224-en-tete-de-l-agent.md)                    | L'en-tête de l'agent : direction en entier, email pro, supérieur hiérarchique accordé   | acceptée, complétée par 0248 et 0264        |
@@ -273,7 +273,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0265](0265-entretien-confirme-et-date.md)            | Le N+1 confirme l'entretien avec l'agent et en donne la date                            | acceptée                                    |
 | [0266](0266-confirmation-du-n1.md)                    | Votre évaluation sera transmise à … : la confirmation du N+1                            | acceptée, révisée par 0267                  |
 | [0267](0267-validation-sans-renvoi.md)                | L'agent valide son évaluation, sans pouvoir la renvoyer au N+1                          | acceptée                                    |
-| [0268](0268-telechargement-par-l-agent.md)            | Télécharger : l'agent enregistre son évaluation en PDF, sans la partie réservée         | acceptée, révisée par 0269                  |
+| [0268](0268-telechargement-par-l-agent.md)            | Télécharger : l'agent enregistre son évaluation en PDF, sans la partie réservée         | acceptée, rév. 0269, compl. 0279            |
 | [0269](0269-telechargement-apres-validation.md)       | Télécharger n'apparaît qu'une fois l'évaluation validée                                 | acceptée                                    |
 | [0270](0270-remise-a-zero-de-la-campagne.md)          | Remettre à zéro les fiches de la campagne après des essais                              | acceptée, complétée par 0271                |
 | [0271](0271-remise-a-zero-dans-l-administration.md)   | Remettre à zéro : l'administration remet la fiche d'un agent à zéro                     | acceptée                                    |
@@ -283,4 +283,5 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0275](0275-notes-des-objectifs-de-0-a-3.md)          | Les objectifs se notent de 0 à 3, avec le relevé des notes et leur moyenne              | acceptée, révisée par 0276 et 0277          |
 | [0276](0276-notes-de-1-a-4-et-arrondi-a-2.md)         | Les objectifs se notent de 1 à 4 ; le N+1 peut arrondir la moyenne à 2 en le justifiant | acceptée, révisée par 0277                  |
 | [0277](0277-moyennes-sans-zeros-inutiles.md)          | Les moyennes des objectifs s'écrivent sans zéros inutiles : 3 / 4, 2,5 / 4, 1,67 / 4    | acceptée                                    |
-| [0278](0278-envoi-simultane-a-l-agent-et-au-n2.md)    | La fiche part à l'agent et, au choix du N+1, au N+2 en même temps                       | acceptée                                    |
+| [0278](0278-envoi-simultane-a-l-agent-et-au-n2.md)    | La fiche part à l'agent et, au choix du N+1, au N+2 en même temps                       | acceptée, complétée par 0279                |
+| [0279](0279-telechargement-par-le-n1-et-le-n2.md)     | Le N+1 et le N+2 téléchargent aussi la fiche complète en PDF                            | acceptée                                    |

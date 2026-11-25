@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ceQuiManqueALEvaluationDuN1,
   dateEnLettres,
+  nomDeLaFiche,
   personnelDeLaFiche,
   type AutoEvaluation,
   type EcritureDeLEvaluation,
@@ -33,6 +34,7 @@ import {
 } from '../../../../../components/campagne/fiche';
 import { ApercuEnPdf } from '../../../../../components/campagne/apercu';
 import { BandeauDeLAgent } from '../../../../../components/campagne/charte';
+import { TelechargerLaFiche } from '../../../../../components/campagne/telecharger';
 import { Confirmation, messageDe } from '../../../../../components/grille-evaluation';
 import { Icon } from '../../../../../components/icons';
 import { api, ApiError } from '../../../../../lib/api';
@@ -58,8 +60,10 @@ import { aujourdhui } from '../../../../../lib/temps';
    (ADR-0218), sans étape propre dans la bande (ADR-0252). La barre du bas
    suit l'agent et le N+2, porte « Reprendre au N+2 » tant que le N+2 garde
    la fiche, puis « Transmettre à la DCH » une fois la fiche validée et
-   revenue du N+2, ou dès la validation sans envoi au N+2 (ADR-0221). Cette
-   page ne s'ouvre qu'à l'évaluateur de l'agent.
+   revenue du N+2, ou dès la validation sans envoi au N+2 (ADR-0221). Dès
+   la transmission à l'agent, le bandeau porte « Télécharger le PDF » : la
+   fiche complète, partie réservée comprise (ADR-0279). Cette page ne
+   s'ouvre qu'à l'évaluateur de l'agent.
    ──────────────────────────────────────────────────────────────── */
 
 export default function AgentDeLEquipePage() {
@@ -112,7 +116,20 @@ function Agent({ vue: v }: { vue: EvaluationDeLAgent }) {
   ) : null;
   return (
     <>
-      <BandeauDeLAgent agent={v.agent} />
+      <BandeauDeLAgent
+        agent={v.agent}
+        action={
+          // La fiche complète, partie réservée comprise, dès la transmission
+          // à l'agent (ADR-0279).
+          v.evaluationTransmiseLe ? (
+            <TelechargerLaFiche
+              chemin={`/campagne/equipe/${v.agent.employeeId}/pdf`}
+              nom={nomDeLaFiche(v.annee, v.agent.matricule, true)}
+              libelle="Télécharger le PDF"
+            />
+          ) : undefined
+        }
+      />
       {/* Les étapes côte à côte : l'auto-évaluation, l'évaluation par le N+1,
           la DCH. Les commentaires du N+2 se lisent sur la fiche (ADR-0252). */}
       <Etapes nombre={3}>
