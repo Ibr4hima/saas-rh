@@ -18,7 +18,7 @@ import { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ECHECS_PAR_COMPTE, Limiteur, empreinte } from '../src/common/limiteur';
+import { ECHECS_PAR_ADRESSE, ECHECS_PAR_COMPTE, Limiteur, empreinte } from '../src/common/limiteur';
 import {
   archiveEmployeesSchema,
   newContractSchema,
@@ -1177,6 +1177,30 @@ describe('les droits du portail (audit)', () => {
     expect(
       await codeOf(() => invitations.invite(gestionnaire(), moussa.employeeId, 'employee')),
     ).toBe('portal.already_active');
+  });
+
+  it('un lien d’invitation inconnu se compte par adresse réseau, comme un mot de passe faux (ADR-0290)', async () => {
+    const limiteur = new Limiteur(db);
+    const controleur = new PortalController(invitations, db, limiteur);
+    const adresse = '203.0.113.77';
+    const req = { ip: adresse, headers: {} } as never;
+    const res = { setHeader: () => undefined, cookie: () => undefined } as never;
+    try {
+      for (let i = 0; i < 20; i++) {
+        const lien = `inconnu${i}`.padEnd(32, 'x');
+        expect(
+          await codeOf(() => controleur.accept(lien, { password: 'UnMotDePasse1!' }, req, res)),
+        ).toBe('portal.invitation_invalid');
+      }
+      // Arrêté avant de chercher le lien, et avant tout calcul du mot de passe.
+      expect(
+        await codeOf(() =>
+          controleur.accept('y'.repeat(32), { password: 'UnMotDePasse1!' }, req, res),
+        ),
+      ).toBe('auth.too_many_attempts');
+    } finally {
+      await limiteur.oublier(ECHECS_PAR_ADRESSE, adresse);
+    }
   });
 
   it('deviner le mot de passe d’un compte par une invitation : le compteur de la connexion', async () => {

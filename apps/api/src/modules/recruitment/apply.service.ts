@@ -40,6 +40,17 @@ export class ApplyService {
     private readonly expediteur?: ExpediteurCourriels,
   ) {}
 
+  /**
+   * L'offre de ce lien reçoit des candidatures, comme `info` la montre : la
+   * porte des corps le demande avant de lire un dossier (ADR-0290).
+   */
+  async accepteDesCandidatures(slug: string): Promise<boolean> {
+    return this.db.withJobSlug(slug, async (tx) => {
+      const [row] = await tx.select({ id: t.jobPostings.id }).from(t.jobPostings).limit(1);
+      return Boolean(row);
+    });
+  }
+
   /** Ce que voit le candidat qui suit le lien : l'offre publiée, rien d'autre. */
   async info(slug: string): Promise<PublicJobInfo> {
     return this.db.withJobSlug(slug, async (tx) => {

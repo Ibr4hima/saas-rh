@@ -10,6 +10,18 @@ export interface AuthenticatedRequest extends Request {
   sessionToken: string;
 }
 
+/**
+ * En campagne (ADR-0211), un compte qui n'est pas d'administration n'a que
+ * l'évaluation annuelle : sa session, la campagne, la déconnexion et ses
+ * clés d'accès. Le reste de l'API lui est fermé, comme les écrans
+ * (ADR-0290).
+ */
+const OUVERT_EN_CAMPAGNE = /^(\/v1)?\/(campagne(\/|$)|me$|auth\/)/;
+
+/** La route demandée hors de la campagne, pour un compte qui n'a que la campagne. */
+export const fermeeEnCampagne = (user: SessionUser, chemin: string): boolean =>
+  user.campagne !== null && user.role !== 'admin' && !OUVERT_EN_CAMPAGNE.test(chemin);
+
 @Injectable()
 export class SessionGuard implements CanActivate {
   constructor(@Inject(AuthService) private readonly auth: AuthService) {}
@@ -28,6 +40,13 @@ export class SessionGuard implements CanActivate {
     });
     if (!user) {
       problem(401, 'auth.session_invalid', 'Votre session a expiré : reconnectez-vous');
+    }
+    if (fermeeEnCampagne(user, req.path)) {
+      problem(
+        403,
+        'campagne.hors_campagne',
+        'Pendant la campagne, seule l’évaluation annuelle est ouverte',
+      );
     }
     req.sessionUser = user;
     req.sessionToken = token;

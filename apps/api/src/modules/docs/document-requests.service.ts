@@ -51,7 +51,13 @@ import {
   repondParDecision,
 } from '../notifications/phrases';
 import { periodeDu } from './bulletin';
-import { agentDuCompte, detenteursDe, directionDuPersonnel, joursFeries } from '../acces/dch';
+import {
+  agentDuCompte,
+  detenteursDe,
+  directionDuPersonnel,
+  joursFeries,
+  membreDCH,
+} from '../acces/dch';
 import { heuresOuvreesEntre } from '../time/heures-ouvrees';
 import { refuserHorsCible, situationDuDossier } from '../documents/cibles';
 import {
@@ -125,17 +131,22 @@ function labelList(types: string[]): string {
  * Traite-t-on CE document pour la DCH ? La personne qui dirige la DCH, qui
  * détient l'habilitation de ce type, ou à qui la demande est confiée. Une
  * domiciliation bancaire ne s'ouvre pas à qui traite seulement les
- * attestations.
+ * attestations. Confiée, la demande ne s'ouvre que tant qu'elle est en
+ * cours, et à un membre de la DCH : après un départ de la DCH, ses
+ * documents ne se relisent plus (ADR-0290), comme dans la file.
  */
 async function traiteCeDocument(
   tx: Tx,
   moi: string | null,
   directeur: string | null,
-  row: { docTypes: string[]; confieeAEmployeeId: string | null },
+  row: { docTypes: string[]; confieeAEmployeeId: string | null; status: string },
 ): Promise<boolean> {
   if (!moi) return false;
-  if (row.confieeAEmployeeId === moi || directeur === moi) return true;
-  return (await detenteursDe(tx, capaciteDesDocuments(row.docTypes))).includes(moi);
+  if (directeur === moi) return true;
+  if ((await detenteursDe(tx, capaciteDesDocuments(row.docTypes))).includes(moi)) return true;
+  if (row.confieeAEmployeeId !== moi || !OPEN_STATUSES.includes(row.status)) return false;
+  const dch = await directionDuPersonnel(tx);
+  return dch !== null && (await membreDCH(tx, dch, moi)) !== 'parti';
 }
 
 /**

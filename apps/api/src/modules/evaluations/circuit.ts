@@ -1,7 +1,9 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { periodeDEvaluationEnLettres } from '@teranga/contracts';
+import { loadEnv } from '../../config/env';
 import type { Tx } from '../../db/tenant-db';
 import { retirerLesAppels, tenirLesAppels } from '../acces/appels';
+import { ficheCommencee } from '../campagne/remise-a-zero';
 import { notifierChacun } from '../notifications/notifier';
 import { DG } from '../people/chaine';
 import { enActivite, enStage } from '../people/en-activite';
@@ -18,6 +20,17 @@ import { enActivite, enStage } from '../people/en-activite';
 
    Les appels d'une grille ont pour clé `evaluation:<agent>:<année>`.
    ──────────────────────────────────────────────────────────────── */
+
+/**
+ * Une année que la campagne d'évaluation évalue (ADR-0211) : celle du mode
+ * campagne, ou une année dont des fiches de la campagne sont commencées. La
+ * plateforme ne l'évalue pas une seconde fois, et ne l'annonce pas
+ * (ADR-0290).
+ */
+export const anneeDeLaCampagne = (annee: SQL) => sql`(
+  ${loadEnv().CAMPAGNE_D_EVALUATION}::int IS NOT DISTINCT FROM ${annee}
+  OR EXISTS (SELECT 1 FROM fiches_entretien fc
+              WHERE fc.annee = ${annee} AND ${sql.raw(ficheCommencee('fc'))}))`;
 
 export const prefixeDeLaGrille = (employeeId: string, annee: number) =>
   `evaluation:${employeeId}:${annee}`;
@@ -102,7 +115,9 @@ export async function annoncerLOuverture(
   }>(sql`
     SELECT id, annee, du::text AS du, au::text AS au FROM evaluation_periodes
      WHERE ouverture_annoncee_le IS NULL
-       AND COALESCE(${aujourdhui ?? null}::date, CURRENT_DATE) BETWEEN du AND au`);
+       AND COALESCE(${aujourdhui ?? null}::date, CURRENT_DATE) BETWEEN du AND au
+       -- La campagne a ses propres écrans : la plateforme n'annonce pas sa période.
+       AND NOT ${anneeDeLaCampagne(sql`annee`)}`);
   for (const p of periodes) {
     const { rows } = await tx.execute<{ user_id: string }>(sql`
       SELECT DISTINCT pn.user_id

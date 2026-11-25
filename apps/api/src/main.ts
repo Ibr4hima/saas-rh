@@ -11,6 +11,7 @@ import { controleDOrigine, entetesDeSecurite, originesAutorisees } from './commo
 import { loadEnv } from './config/env';
 import { SESSION_COOKIE } from './modules/auth/auth.constants';
 import { AuthService } from './modules/auth/auth.service';
+import { ApplyService } from './modules/recruitment/apply.service';
 
 async function bootstrap(): Promise<void> {
   const env = loadEnv();
@@ -42,11 +43,13 @@ async function bootstrap(): Promise<void> {
   // analyseur : elle descend en flux jusqu'au disque, après les gardes.
   app.use(cookieParser());
   const auth = app.get(AuthService);
+  const candidatures = app.get(ApplyService);
   app.use(
     porteDesCorps({
       limiteur: app.get(Limiteur),
       session: (jeton) => auth.resolveSession(jeton),
       cookie: SESSION_COOKIE,
+      offreOuverte: (slug) => candidatures.accepteDesCandidatures(slug),
     }),
   );
   app.useGlobalFilters(new ProblemFilter());

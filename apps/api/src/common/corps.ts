@@ -16,7 +16,7 @@ import {
   type SessionUser,
 } from '@teranga/contracts';
 import { ProblemException } from './problem';
-import { CANDIDATURES, adresseDuClient, type Limiteur } from './limiteur';
+import { CANDIDATURES, CANDIDATURES_PAR_ADRESSE, adresseDuClient, type Limiteur } from './limiteur';
 
 /* ────────────────────────────────────────────────────────────────
    Les corps de requête : qui peut envoyer quoi, avant d'en lire un octet.
@@ -207,6 +207,11 @@ export interface Portier {
   /** La session d'un cookie, ou null (cf. `AuthService.resolveSession`). */
   session: (jeton: string) => Promise<SessionUser | null>;
   cookie: string;
+  /**
+   * L'offre de ce lien reçoit des candidatures (cf. `ApplyService`) : sinon,
+   * le dossier n'est pas lu (ADR-0290).
+   */
+  offreOuverte?: (slug: string) => Promise<boolean>;
 }
 
 const refus = (status: number, code: string, title: string, detail?: string) =>
@@ -220,6 +225,8 @@ export function porteDesCorps(portier: Portier): RequestHandler {
   const routes = ROUTES_A_FICHIER.map((r) => ({ ...r, lire: analyseur(r.analyseur, r.limite) }));
   const ailleurs = json({ limit: LIMITE_AILLEURS });
   let candidaturesEnCours = 0;
+  /** Une candidature à la fois par adresse : trois envois lents ne prennent pas toutes les places. */
+  const enCoursParAdresse = new Map<string, number>();
 
   return (req: Request, res: Response, next: NextFunction) => {
     const refuser = (e: ProblemException) => {
@@ -274,19 +281,43 @@ export function porteDesCorps(portier: Portier): RequestHandler {
         return;
       }
 
-      // La candidature publique : une adresse sous sa limite, sur cette offre.
+      // La candidature publique : une adresse sous sa limite, toutes offres
+      // confondues ; une offre qui reçoit des candidatures ; puis la limite
+      // de l'adresse sur cette offre (ADR-0290). Tout cela avant de lire un
+      // dossier qui pèse jusqu'à 35 Mo.
       const offre = req.path.split('/')[4]!;
-      const verdict = await portier.limiteur.compter(
-        CANDIDATURES,
-        `${adresseDuClient(req)}|${offre}`,
-      );
-      if (verdict.bloque) {
+      const adresse = adresseDuClient(req);
+      const tropDeCandidatures = (verdict: { reessayerDans: number }) => {
         res.setHeader('Retry-After', String(verdict.reessayerDans));
         return refuser(
           refus(429, 'recruitment.too_many_requests', 'Trop de tentatives, réessayez plus tard'),
         );
+      };
+      const toutes = await portier.limiteur.compter(CANDIDATURES_PAR_ADRESSE, adresse);
+      if (toutes.bloque) return tropDeCandidatures(toutes);
+      if (portier.offreOuverte && !(await portier.offreOuverte(offre))) {
+        return refuser(
+          refus(410, 'recruitment.job_unavailable', "Cette offre n'accepte plus de candidatures"),
+        );
       }
-      // Et une place : une candidature pèse jusqu'à 35 Mo une fois lue.
+      const verdict = await portier.limiteur.compter(
+        CANDIDATURES,
+        `${adresse}|${offre.toLowerCase()}`,
+      );
+      if (verdict.bloque) return tropDeCandidatures(verdict);
+      // Et une place : une candidature pèse jusqu'à 35 Mo une fois lue. Une
+      // adresse n'en tient qu'une à la fois (ADR-0290).
+      if ((enCoursParAdresse.get(adresse) ?? 0) > 0) {
+        res.setHeader('Retry-After', '10');
+        return refuser(
+          refus(
+            429,
+            'recruitment.envoi_en_cours',
+            'Une candidature est déjà en cours d’envoi depuis cette connexion',
+            'Attendez la fin de l’envoi, puis réessayez.',
+          ),
+        );
+      }
       if (candidaturesEnCours >= CANDIDATURES_SIMULTANEES) {
         res.setHeader('Retry-After', '10');
         return refuser(
@@ -298,11 +329,15 @@ export function porteDesCorps(portier: Portier): RequestHandler {
         );
       }
       candidaturesEnCours += 1;
+      enCoursParAdresse.set(adresse, (enCoursParAdresse.get(adresse) ?? 0) + 1);
       let libre = false;
       const liberer = () => {
         if (libre) return;
         libre = true;
         candidaturesEnCours -= 1;
+        const reste = (enCoursParAdresse.get(adresse) ?? 1) - 1;
+        if (reste > 0) enCoursParAdresse.set(adresse, reste);
+        else enCoursParAdresse.delete(adresse);
       };
       res.once('finish', liberer);
       res.once('close', liberer);

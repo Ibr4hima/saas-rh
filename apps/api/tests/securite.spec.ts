@@ -5,10 +5,12 @@
  */
 import type { NextFunction, Request, Response } from 'express';
 import { describe, expect, it } from 'vitest';
+import type { SessionUser } from '@teranga/contracts';
 import { EncryptionService } from '../src/common/encryption.service';
 import { controleDOrigine, entetesDeSecurite, originesAutorisees } from '../src/common/securite';
 import { envSchema } from '../src/config/env';
 import { optionsDuCookie } from '../src/modules/auth/auth.constants';
+import { fermeeEnCampagne } from '../src/modules/auth/session.guard';
 
 const base = {
   DATABASE_URL: 'postgres://x',
@@ -156,5 +158,36 @@ describe('un chiffré se lit entier, ou pas du tout', () => {
 
   it('une valeur vide se chiffre et se relit', () => {
     expect(enc.decrypt(enc.encrypt(''))).toBe('');
+  });
+});
+
+describe('en campagne, l’API se ferme comme les écrans (ADR-0290)', () => {
+  const agent = { role: 'employee', campagne: 2026 } as SessionUser;
+
+  it('un agent n’a que sa session, la campagne et la déconnexion', () => {
+    for (const ouvert of [
+      '/v1/me',
+      '/v1/campagne',
+      '/v1/campagne/equipe/x/pdf',
+      '/v1/auth/logout',
+      '/v1/auth/cles/creation',
+    ]) {
+      expect(fermeeEnCampagne(agent, ouvert), ouvert).toBe(false);
+    }
+    for (const ferme of [
+      '/v1/employees',
+      '/v1/me/documents',
+      '/v1/campagnes',
+      '/v1/leave-requests',
+      '/v1/notifications',
+      '/v1/org-units',
+    ]) {
+      expect(fermeeEnCampagne(agent, ferme), ferme).toBe(true);
+    }
+  });
+
+  it('l’administration garde toute l’API ; hors campagne, rien ne change', () => {
+    expect(fermeeEnCampagne({ ...agent, role: 'admin' }, '/v1/employees')).toBe(false);
+    expect(fermeeEnCampagne({ ...agent, campagne: null }, '/v1/employees')).toBe(false);
   });
 });

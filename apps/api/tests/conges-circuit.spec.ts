@@ -1205,6 +1205,37 @@ describe('un congé validé qui change', () => {
     expect(await notif('Ousmane', `conge:${id}:annule`)).not.toBeNull();
   });
 
+  it('saisir un congé pour un agent ne donne la main que tant qu’on gère ses congés (ADR-0290)', async () => {
+    const id = await congeValide(moussa, 30, 34);
+    // Saisi par Ousmane Fall, qui ne gère pas les congés : ni annulation,
+    // ni justificatif de sa part.
+    const saisiPar = (qui: Agent) =>
+      raw(`UPDATE absence_requests SET requested_by_user_id = $2 WHERE id = $1`, [
+        id,
+        qui.session.userId,
+      ]);
+    await saisiPar(ousmane);
+    expect(await codeOf(() => absences.cancel(ousmane.session, id))).toBe(
+      'absence.cancel_forbidden',
+    );
+    expect(
+      await codeOf(() =>
+        absences.joindreJustificatif(ousmane.session, id, {
+          filename: 'certificat.pdf',
+          contentBase64: Buffer.from('%PDF-1.4 certificat').toString('base64'),
+        }),
+      ),
+    ).toBe('absence.document_forbidden');
+    // Saisi par qui gère les congés : l'annulation se fait comme celle de
+    // l'agent, et porte le nom de la personne qui annule.
+    await saisiPar(mariama);
+    await absences.cancel(mariama.session, id);
+    expect((await vue(id)).annulation).toEqual({ par: 'Mariama Test', motif: null });
+    expect(await notif('Moussa', `conge:${id}:annule`)).toMatch(
+      /^Votre congé annuel .* a été annulé$/,
+    );
+  });
+
   it('l’agent revient plus tôt : son N+1 confirme, les jours sont recomptés', async () => {
     const id = await congeValide(moussa, -3, 7);
     await absences.demanderReprise(moussa.session, id, { reprise: jour(1) });

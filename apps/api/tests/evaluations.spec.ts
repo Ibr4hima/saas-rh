@@ -382,6 +382,48 @@ describe('la période d’évaluation', () => {
       expect(await titres(qui)).not.toContain(annonce);
     }
   });
+
+  it('une année que la campagne évalue ne s’évalue ni ne s’annonce sur la plateforme (ADR-0290)', async () => {
+    const annee = ANNEE + 3;
+    const du = `${annee}-01-05`;
+    await raw(
+      `INSERT INTO evaluation_periodes (id, tenant_id, annee, du, au) VALUES ($1,$2,$3,$4,$5)`,
+      [randomUUID(), tenantId, annee, du, `${annee}-01-20`],
+    );
+    // Une auto-évaluation commencée dans la campagne : l'année est la sienne.
+    await raw(
+      `INSERT INTO fiches_entretien (id, tenant_id, employee_id, annee, auto)
+       VALUES ($1,$2,$3,$4,'{}'::jsonb)`,
+      [randomUUID(), tenantId, agents.fatou, annee],
+    );
+    try {
+      await db.withTenant({ tenantId }, (tx) => annoncerLOuverture(tx, tenantId, du));
+      expect((await titres('awa')).some((t) => t.includes(`évaluation ${annee}`))).toBe(false);
+      expect(
+        await codeOf(() =>
+          evaluations.enregistrer(session('awa'), agents.moussa, annee, complete()),
+        ),
+      ).toBe('evaluations.annee_de_la_campagne');
+      // Ses dates se fixent dans l'administration de la campagne, pas ici.
+      expect(
+        await codeOf(() =>
+          evaluations.fixerPeriode(session('mariama'), annee, {
+            du: `${annee}-01-02`,
+            au: `${annee}-01-03`,
+          }),
+        ),
+      ).toBe('evaluations.annee_de_la_campagne');
+    } finally {
+      await raw(`DELETE FROM fiches_entretien WHERE tenant_id = $1 AND annee = $2`, [
+        tenantId,
+        annee,
+      ]);
+      await raw(`DELETE FROM evaluation_periodes WHERE tenant_id = $1 AND annee = $2`, [
+        tenantId,
+        annee,
+      ]);
+    }
+  });
 });
 
 describe('l’équipe du N+1', () => {

@@ -1834,7 +1834,12 @@ export class AbsencesService {
     await this.db.withTenant(ctxOf(user), async (tx) => {
       const request = await this.verrouiller(tx, requestId);
       const self = await this.selfEmployeeId(tx, user);
-      const sienne = request.employeeId === self || request.requestedByUserId === user.userId;
+      const parLAgent = request.employeeId === self;
+      // La personne qui a saisi la demande pour l'agent l'annule comme
+      // l'agent, tant que cette personne gère encore les congés de l'agent ;
+      // l'annulation porte alors son nom (ADR-0290).
+      const sienne =
+        parLAgent || (await this.aSaisiPourLAgent(tx, user, request.requestedByUserId, request));
       const aVenir = request.status === 'approved' && pasCommencee(request);
       if (sienne) {
         if (request.status !== 'pending' && !aVenir) {
@@ -1878,15 +1883,15 @@ export class AbsencesService {
           status: 'cancelled',
           decidedAt: new Date(),
           repriseDemandee: null,
-          annuleParUserId: sienne ? null : user.userId,
-          annuleMotif: sienne ? null : input.motif!.trim(),
+          annuleParUserId: parLAgent ? null : user.userId,
+          annuleMotif: parLAgent ? null : input.motif?.trim() || null,
           updatedAt: new Date(),
         })
         .where(eq(t.absenceRequests.id, requestId));
       // Plus rien à viser ni à confirmer : les appels restés dans les boîtes s'en vont.
       await reconcilierDemande(tx, requestId);
       await reconcilierReprise(tx, requestId);
-      if (d) await annoncerLeChangement(tx, d, { quoi: 'annule', parLAgent: sienne }, user.userId);
+      if (d) await annoncerLeChangement(tx, d, { quoi: 'annule', parLAgent }, user.userId);
     });
   }
 
@@ -2212,6 +2217,22 @@ export class AbsencesService {
     return chefs;
   }
 
+  /**
+   * La personne connectée a saisi cette demande pour l'agent, et gère encore
+   * ses congés : sinon, avoir saisi la demande ne donne plus rien
+   * (ADR-0290).
+   */
+  private async aSaisiPourLAgent(
+    tx: Tx,
+    user: SessionUser,
+    requestedByUserId: string | null,
+    request: { employeeId: string },
+  ): Promise<boolean> {
+    return (
+      requestedByUserId === user.userId && (await this.gereLeCongeDe(tx, user, request.employeeId))
+    );
+  }
+
   /** Gère les congés pour la DCH, et CE congé n'est pas celui d'un de ses chefs. */
   private async gereLeCongeDe(tx: Tx, user: SessionUser, employeeId: string): Promise<boolean> {
     if (!(await this.gereLesConges(tx, user))) return false;
@@ -2321,10 +2342,10 @@ export class AbsencesService {
     await this.db.withTenant(ctxOf(user), async (tx) => {
       const request = await this.verrouiller(tx, requestId);
       const self = await this.selfEmployeeId(tx, user);
+      // Qui a saisi la demande n'a plus de droit propre : la DCH qui gère ses
+      // congés, ou l'agent (ADR-0290).
       const autorise =
-        request.employeeId === self ||
-        request.requestedByUserId === user.userId ||
-        (await this.gereLeCongeDe(tx, user, request.employeeId));
+        request.employeeId === self || (await this.gereLeCongeDe(tx, user, request.employeeId));
       if (!autorise) {
         problem(403, 'absence.document_forbidden', 'Justificatif réservé à la DCH et au titulaire');
       }
@@ -2798,7 +2819,7 @@ export class AbsencesService {
         sensible ||
         (voitLaFile && !horsDeMaMain.has(request.employeeId)) ||
         sienne ||
-        request.requestedByUserId === user.userId ||
+        (request.requestedByUserId === user.userId && gere) ||
         (moi !== null && request.confieeAEmployeeId === moi && request.status === 'pending');
       const justificatif = documentRows.find((d) => d.requestId === request.id)?.filename ?? null;
       const valide = request.status === 'approved';
@@ -2882,11 +2903,10 @@ export class AbsencesService {
             sienne && commence && request.endDate > today && !request.repriseDemandee,
           confirmerReprise,
           rappeler: !sienne && commence && request.endDate > today && (sonN1 || gere),
-          // Le justificatif qui suit la demande : l'agent, qui l'a saisie
-          // pour lui, ou la DCH ; tant qu'elle attend, ou validée sans lui.
+          // Le justificatif qui suit la demande : l'agent, ou la DCH qui gère
+          // ses congés ; tant que la demande attend, ou validée sans justificatif.
           joindreJustificatif:
-            (request.status === 'pending' || (valide && !justificatif)) &&
-            (sienne || request.requestedByUserId === user.userId || gere),
+            (request.status === 'pending' || (valide && !justificatif)) && (sienne || gere),
           renouveler: renouvelables.includes(request.id) && !suivies.has(request.id),
         },
         approvals: visas.map((a) => ({

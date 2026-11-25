@@ -191,6 +191,15 @@ type LettreAuCandidat = Extract<Gabarit, { nom: 'accuse_candidature' | 'refus_ca
 
 const SIGNATURE_DCH = ['Cordialement,', 'La Direction du Capital Humain'];
 
+/**
+ * La salutation d'un candidat. Le formulaire de candidature est ouvert à
+ * tous : un prénom s'y écrit en lettres, avec un trait d'union ou une
+ * apostrophe ; un lien ou une adresse tapés à sa place ne partent pas dans
+ * un courriel signé de la DCH, la salutation reste « Bonjour, » (ADR-0290).
+ */
+const bonjourAuCandidat = (prenom: string) =>
+  /^[\p{L}\p{M}][\p{L}\p{M}'’-]{0,39}$/u.test(prenom) ? `Bonjour ${prenom},` : 'Bonjour,';
+
 /** Le lien « mot de passe oublié » vaut une heure (cf. REINITIALISATION_TTL_MINUTES). */
 const APRES_REINITIALISATION = [
   'Ce lien est personnel et valable une heure.',
@@ -275,10 +284,11 @@ function corps(g: Gabarit, rendu: Rendu): ContenuCourriel {
   if (g.nom === 'refus_candidature' || g.nom === 'accuse_candidature') {
     const lettre = g.nom === 'refus_candidature' ? lettreDeRefus(g) : lettreDAccuse(g);
     const reference = g.reference ? `Référence de l’offre : ${g.reference}` : null;
+    const bonjour = bonjourAuCandidat(g.prenom);
     return {
       subject,
       text: [
-        `Bonjour ${g.prenom},`,
+        bonjour,
         '',
         ...lettre.flatMap((p) => [p, '']),
         ...SIGNATURE_DCH,
@@ -292,7 +302,7 @@ function corps(g: Gabarit, rendu: Rendu): ContenuCourriel {
         sousTitre: g.poste,
         ...(g.reference ? { reference: g.reference } : {}),
         lettre: {
-          paragraphes: [`Bonjour ${g.prenom},`, ...lettre],
+          paragraphes: [bonjour, ...lettre],
           signature: SIGNATURE_DCH,
         },
         apres: [],

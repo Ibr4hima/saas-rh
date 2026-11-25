@@ -313,6 +313,31 @@ describe('la demande et sa lettre', () => {
     );
   });
 
+  it('confiée, la lettre se lit tant que la demande est en cours, et par un membre de la DCH (ADR-0290)', async () => {
+    const lamine = await agent('Lamine', 'Ba', uDCH);
+    const id = await demande('decision_disponibilite', '2026-11-02');
+    await raw(`UPDATE document_requests SET confiee_a_employee_id = $1 WHERE id = $2`, [
+      lamine.employeeId,
+      id,
+    ]);
+    expect((await demandes.lettre(lamine.session, id)).filename).toBe('Lettre de demande.pdf');
+    // Remise : la demande est close, la lettre ne se relit plus par qui l'avait reçue.
+    await raw(`UPDATE document_requests SET status = 'delivered' WHERE id = $1`, [id]);
+    expect(await codeOf(() => demandes.lettre(lamine.session, id))).toBe(
+      'documents.forbidden_scope',
+    );
+    // En cours, mais sortie de la DCH : rien non plus.
+    await raw(`UPDATE document_requests SET status = 'processing' WHERE id = $1`, [id]);
+    await raw(
+      `UPDATE assignments SET org_unit_id = (SELECT org_unit_id FROM assignments WHERE employee_id = $2)
+        WHERE employee_id = $1`,
+      [lamine.employeeId, moussa.employeeId],
+    );
+    expect(await codeOf(() => demandes.lettre(lamine.session, id))).toBe(
+      'documents.forbidden_scope',
+    );
+  });
+
   it('la demande annulée emporte sa lettre', async () => {
     const id = await demande('domiciliation_bancaire');
     await demandes.cancel(moussa.session, id);

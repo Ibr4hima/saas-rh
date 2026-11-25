@@ -383,6 +383,22 @@ export class InvitationsService {
     meta: { ip?: string; userAgent?: string },
   ): Promise<{ result: AcceptResult; session?: IssuedSession }> {
     const tokenHash = hashToken(token);
+    // Le lien d'abord, qui ne coûte presque rien : un jeton inconnu, expiré
+    // ou déjà servi ne fait pas calculer Argon2id au serveur (ADR-0290).
+    // La transaction le revérifie ensuite, sous verrou.
+    const lien = await this.db.withInvitationToken(tokenHash, async (tx) => {
+      const [i] = await tx
+        .select({ expiresAt: t.invitations.expiresAt, acceptedAt: t.invitations.acceptedAt })
+        .from(t.invitations)
+        .limit(1);
+      return i ?? null;
+    });
+    if (!lien || lien.expiresAt < new Date()) {
+      problem(410, 'portal.invitation_invalid', "Cette invitation n'est plus valable");
+    }
+    if (lien.acceptedAt) {
+      problem(410, 'portal.invitation_used', 'Cette invitation a déjà été utilisée');
+    }
     // Argon2id AVANT la transaction : pas de travail long sous verrou.
     const passwordHash = await argonHash(password);
 

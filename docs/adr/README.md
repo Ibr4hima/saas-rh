@@ -216,7 +216,7 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0208](0208-fiche-d-entretien-vierge.md)              | La fiche d'entretien vierge, toutes ses sections à remplir à la main                    | acceptée, révisée : 0209, 0272, 0283        |
 | [0209](0209-paraphes-sur-la-fiche-d-entretien.md)     | Les paraphes sur la fiche d'entretien, et les lignes de la section 8.4                  | acceptée, révisée par 0283                  |
 | [0210](0210-connexion-de-l-administration.md)         | La page de connexion de l'administration, à l'adresse et au mot de passe                | acceptée, complétée par 0211 et 0222        |
-| [0211](0211-mode-campagne-et-accueil.md)              | Le mode campagne et l'accueil de l'évaluation annuelle, sans menu                       | révisée : 0212, 0214, 0216, 0222 à 0227     |
+| [0211](0211-mode-campagne-et-accueil.md)              | Le mode campagne et l'accueil de l'évaluation annuelle, sans menu                       | révisée 10 fois, de 0212 à 0290             |
 | [0212](0212-barre-de-la-campagne.md)                  | La barre de la campagne, son titre en grand ; la connexion des agents par code          | acceptée, complétée (0219), révisée (0231)  |
 | [0213](0213-fond-clair-fafafa.md)                     | Le fond clair de l'application revient à #FAFAFA                                        | acceptée                                    |
 | [0214](0214-bouton-m-auto-evaluer.md)                 | Le bouton M'auto-évaluer et la coche bleue de l'auto-évaluation faite                   | complétée 0217, révisée 0220, 0226, 0227    |
@@ -295,3 +295,4 @@ Format : contexte → décision → conséquences. Statuts : `acceptée` | `remp
 | [0287](0287-fiche-transmise-pour-commentaire.md)      | Fiche transmise pour commentaire : la section du N+2, sans pour avis                    | acceptée                                    |
 | [0288](0288-connexion-et-infrastructure-durcies.md)   | La connexion et l'infrastructure durcies après l'audit                                  | acceptée                                    |
 | [0289](0289-n2-garde-et-gestes-reverifies.md)         | Campagne : le N+2 de l'envoi garde la fiche, l'évaluateur se fige, gestes revérifiés    | acceptée                                    |
+| [0290](0290-api-fermee-hors-campagne.md)              | Plateforme : l'API fermée hors campagne, et les abus bornés                             | acceptée                                    |

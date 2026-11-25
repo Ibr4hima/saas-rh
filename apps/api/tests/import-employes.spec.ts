@@ -1,3 +1,4 @@
+import { deflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import type { CelluleXlsx } from '../src/common/xlsx';
 import { lirePremiereFeuille, XlsxIllisible } from '../src/common/xlsx';
@@ -35,7 +36,7 @@ import {
   nomDePersonne,
   nomDeVille,
 } from '../src/modules/people/import-valeurs';
-import { classeur } from './fabrique-xlsx';
+import { classeur, fabriquerXlsx } from './fabrique-xlsx';
 
 /* ────────────────────────────────────────────────────────────────
    L'import du fichier du personnel de la DCH (ADR-0159) : la lecture.
@@ -136,6 +137,58 @@ describe('lecture d’un classeur .xlsx', () => {
     expect(() => lirePremiereFeuille(Buffer.from('ceci est un csv;pas un xlsx'))).toThrow(
       XlsxIllisible,
     );
+  });
+
+  it('lit l’identifiant d’une relation à la lettre, jamais comme un motif (ADR-0290)', () => {
+    const ligne = (texte: string) =>
+      `<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>${texte}</t></is></c></row></sheetData></worksheet>`;
+    const f = lirePremiereFeuille(
+      fabriquerXlsx({
+        'xl/workbook.xml': `<workbook xmlns:r="x"><sheets><sheet name="Employés" sheetId="1" r:id=".*"/></sheets></workbook>`,
+        'xl/_rels/workbook.xml.rels': `<Relationships><Relationship Id="autre" Target="worksheets/piege.xml"/><Relationship Id=".*" Target="worksheets/sheet1.xml"/></Relationships>`,
+        'xl/worksheets/piege.xml': ligne('Piège'),
+        'xl/worksheets/sheet1.xml': ligne('Prénom'),
+      }),
+    );
+    expect(f.lignes[0]).toEqual(['Prénom']);
+  });
+
+  it('arrête une entrée qui se décompresse au-delà du plafond, quoi qu’elle annonce', () => {
+    // 40 Mo de zéros, compressés en quelques kilooctets, annoncés à 100 octets.
+    const donnees = deflateRawSync(Buffer.alloc(40 * 1024 * 1024));
+    const nom = Buffer.from('xl/workbook.xml');
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(8, 8);
+    local.writeUInt32LE(donnees.length, 18);
+    local.writeUInt32LE(100, 22);
+    local.writeUInt16LE(nom.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(8, 10);
+    central.writeUInt32LE(donnees.length, 20);
+    central.writeUInt32LE(100, 24);
+    central.writeUInt16LE(nom.length, 28);
+    const avant = Buffer.concat([local, nom, donnees]);
+    const repertoire = Buffer.concat([central, nom]);
+    const fin = Buffer.alloc(22);
+    fin.writeUInt32LE(0x06054b50, 0);
+    fin.writeUInt16LE(1, 8);
+    fin.writeUInt16LE(1, 10);
+    fin.writeUInt32LE(repertoire.length, 12);
+    fin.writeUInt32LE(avant.length, 16);
+    expect(() => lirePremiereFeuille(Buffer.concat([avant, repertoire, fin]))).toThrow(
+      /trop volumineux/,
+    );
+  });
+
+  it('garde tel quel un caractère hors d’Unicode, sans arrêter la lecture', () => {
+    const f = lirePremiereFeuille(
+      classeur(
+        `<sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>A&#x110000;B</t></is></c></row></sheetData>`,
+      ),
+    );
+    expect(f.lignes[0]).toEqual(['A&#x110000;B']);
   });
 });
 

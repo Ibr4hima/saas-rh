@@ -38,6 +38,7 @@ import { AcademySuiviService } from '../academy/academy-suivi.service';
 import type { DocumentPdf } from '../documents/feuille';
 import { notifier } from '../notifications/notifier';
 import {
+  anneeDeLaCampagne,
   evaluable,
   lienDeLAgent,
   lienDeLEquipe,
@@ -170,6 +171,9 @@ export class EvaluationsService {
       );
     }
     return this.db.withTenant(this.ctx(user), async (tx) => {
+      // Les dates d'une année de la campagne se fixent dans son
+      // administration (ADR-0222) : la plateforme n'y touche pas (ADR-0290).
+      await this.horsDeLaCampagne(tx, annee);
       await tx.execute(sql`
         INSERT INTO evaluation_periodes (id, tenant_id, annee, du, au)
         VALUES (${uuidv7()}, ${user.tenantId}, ${annee}, ${input.du}, ${input.au})
@@ -463,6 +467,7 @@ export class EvaluationsService {
   ): Promise<VueDeGrille> {
     return this.db.withTenant(this.ctx(user), async (tx) => {
       const c = await this.contexte(tx, user, employeeId, annee);
+      if (!c.grille) await this.horsDeLaCampagne(tx, annee);
       this.exiger(c, 'enregistrer');
       const modele = this.modeleDe(c.agent);
       const lu = completerLaGrille(contenuDeGrilleSchema.parse(contenu), modele);
@@ -1068,6 +1073,24 @@ export class EvaluationsService {
   }
 
   // ──────────────────────────────────────────────── lectures
+
+  /**
+   * Une année que la campagne évalue ne s'évalue pas une seconde fois sur
+   * la plateforme : la fiche de la campagne est l'évaluation de l'année
+   * (ADR-0290). Une grille commencée avant reste.
+   */
+  private async horsDeLaCampagne(tx: Tx, annee: number): Promise<void> {
+    const { rows } = await tx.execute<{ oui: boolean }>(
+      sql`SELECT ${anneeDeLaCampagne(sql`${annee}::int`)} AS oui`,
+    );
+    if (rows[0]?.oui) {
+      problem(
+        409,
+        'evaluations.annee_de_la_campagne',
+        `L’évaluation ${annee} se fait dans la campagne d’évaluation annuelle`,
+      );
+    }
+  }
 
   private async aujourdhui(tx: Tx): Promise<string> {
     const { rows } = await tx.execute<{ jour: string }>(sql`SELECT CURRENT_DATE::text AS jour`);

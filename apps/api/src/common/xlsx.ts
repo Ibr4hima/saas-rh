@@ -111,7 +111,25 @@ function extraire(buf: Buffer, e: EntreeZip, budget: { reste: number }): Buffer 
   const longueurExtra = buf.readUInt16LE(e.offsetLocal + 28);
   const debut = e.offsetLocal + 30 + longueurNom + longueurExtra;
   const brut = buf.subarray(debut, debut + e.tailleCompressee);
-  const sortie = e.methode === 0 ? Buffer.from(brut) : inflateRawSync(brut);
+  // La taille annoncée par l'archive se déclare, elle ne se vérifie pas : la
+  // décompression elle-même s'arrête au plafond (ADR-0290).
+  const plafond = Math.max(0, Math.min(MAX_ENTREE_DECOMPRESSEE, budget.reste));
+  let sortie: Buffer;
+  if (e.methode === 0) {
+    sortie = Buffer.from(brut);
+  } else if (e.methode === 8) {
+    try {
+      sortie = inflateRawSync(brut, { maxOutputLength: plafond });
+    } catch (err) {
+      throw new XlsxIllisible(
+        (err as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE'
+          ? 'Ce fichier est trop volumineux une fois ouvert'
+          : 'Ce fichier est endommagé : enregistrez-le de nouveau au format .xlsx',
+      );
+    }
+  } else {
+    throw new XlsxIllisible('Ce fichier est endommagé : enregistrez-le de nouveau au format .xlsx');
+  }
   budget.reste -= sortie.length;
   if (budget.reste < 0) throw new XlsxIllisible('Ce fichier est trop volumineux une fois ouvert');
   return sortie;
@@ -127,13 +145,19 @@ const ENTITES: Record<string, string> = {
   apos: "'",
 };
 
-/** `Mari&#233;` → « Marié ». Les classeurs échappent les accents en numérique. */
+/**
+ * `Mari&#233;` → « Marié ». Les classeurs échappent les accents en numérique.
+ * Un numéro hors d'Unicode reste tel quel, au lieu d'arrêter la lecture.
+ */
 function decoder(texte: string): string {
   return texte.replace(/&(#x?[0-9a-fA-F]+|[a-z]+);/g, (tout, code: string) => {
-    if (code.startsWith('#x') || code.startsWith('#X')) {
-      return String.fromCodePoint(parseInt(code.slice(2), 16));
+    if (code.startsWith('#')) {
+      const hexa = code[1] === 'x' || code[1] === 'X';
+      const point = parseInt(code.slice(hexa ? 2 : 1), hexa ? 16 : 10);
+      return Number.isInteger(point) && point >= 0 && point <= 0x10ffff
+        ? String.fromCodePoint(point)
+        : tout;
     }
-    if (code.startsWith('#')) return String.fromCodePoint(parseInt(code.slice(1), 10));
     return ENTITES[code] ?? tout;
   });
 }
@@ -228,12 +252,16 @@ export function lirePremiereFeuille(buf: Buffer): FeuilleXlsx {
   const premiere = /<sheet\b[^>]*name="([^"]*)"[^>]*r:id="([^"]*)"/.exec(workbook);
   const nomFeuille = decoder(premiere?.[1] ?? 'Feuille 1');
   const idRelation = premiere?.[2];
-  const relations = lire('xl/_rels/workbook.xml.rels') ?? '';
-  const cible = idRelation
-    ? (new RegExp(`<Relationship[^>]*Id="${idRelation}"[^>]*Target="([^"]*)"`).exec(
-        relations,
-      )?.[1] ?? new RegExp(`Target="([^"]*)"[^>]*Id="${idRelation}"`).exec(relations)?.[1])
-    : undefined;
+  // Chaque relation se lit attribut par attribut : l'identifiant vient du
+  // fichier, il ne sert jamais à construire une expression régulière
+  // (ADR-0290).
+  const relations = new Map<string, string>();
+  for (const r of (lire('xl/_rels/workbook.xml.rels') ?? '').matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = /\bId="([^"]*)"/.exec(r[0])?.[1];
+    const target = /\bTarget="([^"]*)"/.exec(r[0])?.[1];
+    if (id !== undefined && target !== undefined) relations.set(id, target);
+  }
+  const cible = idRelation !== undefined ? relations.get(idRelation) : undefined;
   const cheminFeuille = cible ? cible.replace(/^\/?(xl\/)?/, 'xl/') : 'xl/worksheets/sheet1.xml';
   const feuille = lire(cheminFeuille) ?? lire('xl/worksheets/sheet1.xml');
   if (!feuille) throw new XlsxIllisible('Le fichier ne contient aucune feuille lisible');

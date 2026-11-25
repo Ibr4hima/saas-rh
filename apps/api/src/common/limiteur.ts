@@ -25,6 +25,15 @@ export interface Verdict {
 
 /** Les candidatures d'une adresse sur une offre : dix par dix minutes. */
 export const CANDIDATURES: Regle = { bucket: 'candidature', fenetreSecondes: 600, max: 10 };
+/**
+ * Les candidatures d'une adresse, toutes offres confondues : trente par
+ * heure. Changer d'offre ne rend pas d'essais (ADR-0290).
+ */
+export const CANDIDATURES_PAR_ADRESSE: Regle = {
+  bucket: 'candidature_ip',
+  fenetreSecondes: 3600,
+  max: 30,
+};
 /** Les connexions manquées d'une adresse : vingt par quart d'heure. */
 export const ECHECS_PAR_ADRESSE: Regle = {
   bucket: 'connexion_ip',

@@ -35,6 +35,13 @@ import { InvitationsService } from './invitations.service';
 import { typeDeContratAu } from '../people/en-activite';
 import { quiViseraPour } from '../time/visas';
 
+/** Les refus de l'acceptation qui se comptent par adresse réseau (ADR-0290). */
+const ECHECS_D_INVITATION = new Set([
+  'portal.existing_account',
+  'portal.invitation_invalid',
+  'portal.invitation_used',
+]);
+
 @Controller()
 export class PortalController {
   constructor(
@@ -169,9 +176,6 @@ export class PortalController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) {
-      problem(410, 'portal.invitation_invalid', "Cette invitation n'est plus valable");
-    }
     // Relier un compte existant demande son mot de passe : les échecs se
     // comptent par adresse, comme à la connexion (le compte, lui, est
     // compté dans le service).
@@ -188,12 +192,18 @@ export class PortalController {
     }
     let accepte: Awaited<ReturnType<InvitationsService['accept']>>;
     try {
+      if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) {
+        problem(410, 'portal.invitation_invalid', "Cette invitation n'est plus valable");
+      }
       accepte = await this.invitations.accept(token, body.password, {
         ip: req.ip,
         userAgent: req.headers['user-agent'],
       });
     } catch (err) {
-      if (err instanceof ProblemException && err.problem.code === 'portal.existing_account') {
+      // Un mot de passe faux, mais aussi un lien inconnu ou déjà servi : qui
+      // essaie des jetons à la chaîne s'arrête comme qui essaie des mots de
+      // passe (ADR-0290).
+      if (err instanceof ProblemException && ECHECS_D_INVITATION.has(err.problem.code)) {
         await this.limiteur.compter(ECHECS_PAR_ADRESSE, adresse);
       }
       throw err;

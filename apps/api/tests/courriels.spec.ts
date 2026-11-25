@@ -554,6 +554,28 @@ describe('le gabarit', () => {
     expect(c.subject).toBe('Votre accès au portail RH');
   });
 
+  it('salue un candidat par son prénom, jamais par un lien tapé à sa place (ADR-0290)', () => {
+    const accuse = (prenom: string) =>
+      composer(
+        {
+          nom: 'accuse_candidature',
+          prenom,
+          organisation: 'APIX',
+          poste: 'Analyste',
+          reference: null,
+        },
+        rendu,
+      );
+    expect(accuse('Awa').text.startsWith('Bonjour Awa,')).toBe(true);
+    expect(accuse('Marie-Ève').text.startsWith('Bonjour Marie-Ève,')).toBe(true);
+    for (const piege of ['https://piege.example/connexion', 'piege@example.com', 'Appelez0700']) {
+      const c = accuse(piege);
+      expect(c.text.startsWith('Bonjour,')).toBe(true);
+      expect(c.text).not.toContain('piege');
+      expect(c.html).not.toContain('piege');
+    }
+  });
+
   it('accueille selon qui revient : un retour, un compte à relier', () => {
     const invitation = (accueil?: 'retour' | 'compte') =>
       composer(
